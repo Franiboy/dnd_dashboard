@@ -6,7 +6,7 @@ D&D Dashboard ist eine webbasierte Anwendung mit einem gemeinsamen, passwortgesc
 
 - **Frontend:** React, Vite, TypeScript, Tailwind CSS
 - **Backend:** Node.js, Express, SQLite (better-sqlite3), Socket.io
-- **Auth:** JWT (Cookie + Auth-Header), bcrypt
+- **Auth:** JWT (Cookie + Auth-Header), Discord OAuth2
 - **Echtzeit:** Socket.io
 
 ## Wichtige Befehle
@@ -30,7 +30,7 @@ npm start          # Produktionsserver (erfordert vorherigen Build)
 - `shared/types.ts` – Gemeinsame TypeScript-Typen für Frontend und Backend
 - `src/App.tsx` – React-App-Einstieg mit Router
 - `src/hooks/useSocket.ts` – `useAuth` und `useSocket` Hooks
-- `src/pages/` – Seiten: Login, Register, Home, Bingo, Admin, Profile
+- `src/pages/` – Seiten: Login, AdminLogin, AuthCallback, Home, Bingo, Admin, Profile
 - `src/components/` – Wiederverwendbare Komponenten
 
 ## Wichtige Konventionen
@@ -46,11 +46,12 @@ npm start          # Produktionsserver (erfordert vorherigen Build)
 
 - `ADMIN_PASSWORD` muss in `.env` gesetzt sein, sonst startet der Server nicht. `.env.example` enthält keinen Wert.
 - `JWT_SECRET` muss in `.env` gesetzt sein.
+- `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` und `DISCORD_REDIRECT_URI` müssen für Discord OAuth gesetzt sein.
 - Der Admin-Username `admin` ist gegen Löschen, Sperren und Admin-Entzug geschützt.
 - Admins können sich selbst nicht verändern.
-- Login und Registrierung haben IP-basiertes Rate-Limiting.
+- Login und Admin-Login haben IP-basiertes Rate-Limiting.
 - Nach 5 fehlgeschlagenen Login-Versuchen wird ein Account für 15 Minuten gesperrt.
-- Geheime Werte (JWT_SECRET, ADMIN_PASSWORD) gehören in `.env` und dürfen nicht committed werden.
+- Geheime Werte (JWT_SECRET, ADMIN_PASSWORD, DISCORD_CLIENT_SECRET) gehören in `.env` und dürfen nicht committed werden.
 
 ## Bekannte Edge Cases
 
@@ -62,4 +63,4 @@ npm start          # Produktionsserver (erfordert vorherigen Build)
 ## Dateien, die nicht verändert werden sollten
 
 - `.gitignore` enthält sensible Dateien (`.env`, `*.db`, `dist`, `dist-server`).
-- `server/users.ts` enthält `INITIAL_ADMIN_USERNAME` und `INITIAL_ADMIN_PASSWORD`.
+- `server/users.ts` enthält `INITIAL_ADMIN_USERNAME` und liest `ADMIN_PASSWORD` aus `.env`.
