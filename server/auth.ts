@@ -46,7 +46,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     return;
   }
   const user = findUserById(payload.userId);
-  if (!user || !user.isApproved) {
+  if (!user) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }

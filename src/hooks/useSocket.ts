@@ -62,9 +62,9 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const login = async (username: string, password: string): Promise<boolean> => {
+  const loginAdmin = async (username: string, password: string): Promise<boolean> => {
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -86,19 +86,39 @@ export function useAuth() {
     }
   };
 
-  const register = async (username: string, displayName: string, password: string): Promise<string | null> => {
+  const handleDiscordCallback = async (code: string): Promise<{ ok: boolean; message?: string }> => {
     try {
-      const res = await fetch('/api/register', {
+      const res = await fetch('/api/auth/discord/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, displayName, password }),
+        body: JSON.stringify({ code }),
         credentials: 'include',
       });
       const data = await res.json();
       if (res.ok) {
-        return data.message || 'Registrierung erfolgreich';
+        setUser(data.user);
+        setToken(data.token);
+        localStorage.setItem('dnd_token', data.token);
+        setError(null);
+        return { ok: true };
       }
-      setError(data.error || 'Registrierung fehlgeschlagen');
+      if (res.status === 403 && data.user) {
+        return { ok: false, message: data.error || 'Account wurde noch nicht freigegeben' };
+      }
+      setError(data.error || 'Discord Login fehlgeschlagen');
+      return { ok: false };
+    } catch {
+      setError('Server nicht erreichbar');
+      return { ok: false };
+    }
+  };
+
+  const startDiscordLogin = async (): Promise<string | null> => {
+    try {
+      const res = await fetch('/api/auth/discord', { credentials: 'include' });
+      const data = await res.json();
+      if (res.ok) return data.url;
+      setError(data.error || 'Discord Login nicht verfügbar');
       return null;
     } catch {
       setError('Server nicht erreichbar');
@@ -161,5 +181,5 @@ export function useAuth() {
     fetchMe();
   }, [token]);
 
-  return { user, token, loading, error, login, register, updateDisplayName, logout, setError };
+  return { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, updateDisplayName, logout, setError };
 }
