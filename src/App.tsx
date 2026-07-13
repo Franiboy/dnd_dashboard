@@ -2,7 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth, useSocket } from './hooks/useSocket';
 import { Login } from './pages/Login';
-import { Register } from './pages/Register';
+import { AdminLogin } from './pages/AdminLogin';
+import { AuthCallback } from './pages/AuthCallback';
 import { Home } from './pages/Home';
 import { Bingo } from './pages/Bingo';
 import { Admin } from './pages/Admin';
@@ -10,39 +11,34 @@ import { Profile } from './pages/Profile';
 import { Toast } from './components/Toast';
 
 function App() {
-  const { user, token, loading, error, login, register, updateDisplayName, logout, setError } = useAuth();
+  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, updateDisplayName, logout, setError } = useAuth();
   const { game, socket, playerId, bingo } = useSocket(token, user);
-  const [showRegister, setShowRegister] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-slate-400">Lade...</div>;
   }
 
-  const handleLogin = async (username: string, password: string) => {
-    await login(username, password);
+  const handleAdminLogin = async (username: string, password: string) => {
+    return await loginAdmin(username, password);
   };
 
-  const handleRegister = async (username: string, displayName: string, password: string) => {
+  const handleDiscord = async () => {
     setError(null);
-    const msg = await register(username, displayName, password);
-    if (msg) {
-      setToast(msg);
-      setShowRegister(false);
-    }
-    return msg;
+    return await startDiscordLogin();
   };
 
   if (!user) {
     return (
-      <>
+      <BrowserRouter>
         <Toast message={toast} onClose={() => setToast(null)} />
-        {showRegister ? (
-          <Register onRegister={handleRegister} onBack={() => setShowRegister(false)} error={error} />
-        ) : (
-          <Login onLogin={handleLogin} onRegister={() => setShowRegister(true)} error={error} />
-        )}
-      </>
+        <Routes>
+          <Route path="/" element={<Login onDiscordLogin={handleDiscord} error={error} />} />
+          <Route path="/admin-login" element={<AdminLogin onLogin={handleAdminLogin} error={error} />} />
+          <Route path="/auth/discord" element={<AuthCallback onCallback={handleDiscordCallback} />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </BrowserRouter>
     );
   }
 
@@ -51,7 +47,10 @@ function App() {
       <Toast message={toast} onClose={() => setToast(null)} />
       <div className="min-h-screen flex flex-col">
         <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
-          <Link to="/profile" className="font-semibold text-[var(--text-h)] hover:text-[var(--accent)]">{user.displayName}</Link>
+          <Link to="/profile" className="flex items-center gap-3 font-semibold text-[var(--text-h)] hover:text-[var(--accent)]">
+            {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
+            <span>{user.displayName}</span>
+          </Link>
           <div className="flex gap-4">
             {user.isAdmin && (
               <Link to="/admin" className="text-slate-400 hover:text-[var(--text-h)]">Admin</Link>

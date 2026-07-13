@@ -17,7 +17,9 @@ db.exec(`
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,
+    discord_id TEXT UNIQUE,
+    avatar_url TEXT,
     is_admin INTEGER NOT NULL DEFAULT 0,
     is_approved INTEGER NOT NULL DEFAULT 0,
     failed_login_attempts INTEGER NOT NULL DEFAULT 0,
@@ -31,7 +33,9 @@ function rowToUser(row: any): User {
     id: row.id,
     username: row.username,
     displayName: row.display_name,
-    passwordHash: row.password_hash,
+    passwordHash: row.password_hash || null,
+    discordId: row.discord_id || null,
+    avatarUrl: row.avatar_url || null,
     isAdmin: !!row.is_admin,
     isApproved: !!row.is_approved,
     failedLoginAttempts: row.failed_login_attempts || 0,
@@ -45,6 +49,7 @@ export function toSafeUser(user: User): SafeUser {
     id: user.id,
     username: user.username,
     displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
     isAdmin: user.isAdmin,
     isApproved: user.isApproved,
   };
@@ -59,12 +64,11 @@ function isLocked(user: User): boolean {
   return new Date(user.lockedUntil) > new Date();
 }
 
-export function createUser(username: string, displayName: string, password: string): SafeUser {
+export function createDiscordUser(discordId: string, username: string, displayName: string, avatarUrl: string | null): SafeUser {
   const id = crypto.randomUUID();
-  const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
   db.prepare(
-    'INSERT INTO users (id, username, display_name, password_hash, is_admin, is_approved, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, 0, 0, 0, null, new Date().toISOString());
+    'INSERT INTO users (id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, username.trim().toLowerCase(), displayName.trim(), null, discordId, avatarUrl, 0, 0, 0, null, new Date().toISOString());
   return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)));
 }
 
@@ -72,8 +76,8 @@ export function createAdminUser(username: string, displayName: string, password:
   const id = crypto.randomUUID();
   const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
   db.prepare(
-    'INSERT INTO users (id, username, display_name, password_hash, is_admin, is_approved, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, 1, 1, 0, null, new Date().toISOString());
+    'INSERT INTO users (id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, null, null, 1, 1, 0, null, new Date().toISOString());
   return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)));
 }
 
@@ -90,12 +94,18 @@ export function findUserByUsername(username: string): User | null {
   return row ? rowToUser(row) : null;
 }
 
+export function findUserByDiscordId(discordId: string): User | null {
+  const row = db.prepare('SELECT * FROM users WHERE discord_id = ?').get(discordId);
+  return row ? rowToUser(row) : null;
+}
+
 export function findUserById(id: string): User | null {
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   return row ? rowToUser(row) : null;
 }
 
 export function verifyPassword(user: User, password: string): boolean {
+  if (!user.passwordHash) return false;
   return bcrypt.compareSync(password, user.passwordHash);
 }
 
@@ -124,6 +134,13 @@ export function updateDisplayName(id: string, displayName: string): SafeUser | n
   const trimmed = displayName.trim();
   if (!trimmed) return null;
   db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(trimmed, id);
+  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
+}
+
+export function updateDiscordAvatar(id: string, avatarUrl: string | null): SafeUser | null {
+  const user = findUserById(id);
+  if (!user) return null;
+  db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(avatarUrl, id);
   return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
 }
 
