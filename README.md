@@ -11,7 +11,7 @@ Web-basiertes Dashboard für Dungeons & Dragons mit einem gemeinsamen, passwortg
 - Profilseite zum Ändern des Anzeigenamens
 - Echtzeit-Bingo mit Socket.io
 - Gemeinsamer Aufgaben-Pool
-- Spieler-Liste und History
+- Spieler-Liste
 - Brute-Force-Schutz durch Rate-Limiting und Account-Lockout
 
 ## Tech Stack
