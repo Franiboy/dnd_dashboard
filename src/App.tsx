@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth, useSocket } from './hooks/useSocket';
 import { Login } from './pages/Login';
@@ -7,7 +7,6 @@ import { AuthCallback } from './pages/AuthCallback';
 import { Home } from './pages/Home';
 import { Bingo } from './pages/Bingo';
 import { Admin } from './pages/Admin';
-import { Profile } from './pages/Profile';
 import { Toast } from './components/Toast';
 
 function PendingApproval({ user, onCheckApproved, onLogout }: { user: { displayName: string; avatarUrl: string | null }; onCheckApproved: () => Promise<boolean>; onLogout: () => void }) {
@@ -42,7 +41,7 @@ function PendingApproval({ user, onCheckApproved, onLogout }: { user: { displayN
 }
 
 function App() {
-  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, updateDisplayName, logout, checkApproved } = useAuth();
+  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved } = useAuth();
   const { game, socket, playerId, bingo } = useSocket(token, user);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -105,18 +104,15 @@ function App() {
       <Toast message={toast} onClose={() => setToast(null)} />
       <div className="min-h-screen flex flex-col">
         <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
-          <Link to="/profile" className="flex items-center gap-3 font-semibold text-[var(--text-h)] hover:text-[var(--accent)]">
+          <div className="flex items-center gap-3 font-semibold text-[var(--text-h)]">
             {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
             <span>{user.displayName}</span>
-          </Link>
-          <div className="flex gap-4">
-            <button onClick={logout} className="text-slate-400 hover:text-[var(--text-h)]">Logout</button>
           </div>
+          <button onClick={logout} className="text-slate-400 hover:text-[var(--text-h)]">Logout</button>
         </header>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/bingo" element={<Bingo game={game} socket={socket} playerId={playerId} bingo={bingo} />} />
-          <Route path="/profile" element={<Profile user={user} onUpdateDisplayName={updateDisplayName} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>
