@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import type { BingoGame } from '../shared/types.ts';
+import type { BingoGame } from '../shared/types.js';
 
 const db = new Database('dnd.db');
 

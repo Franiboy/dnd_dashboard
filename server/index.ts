@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
-} from '../shared/types.ts';
+} from '../shared/types.js';
 import {
   addTask,
   confirmTask,
@@ -21,7 +21,7 @@ import {
   resetGame,
   startGame,
   updateBoard,
-} from './game.ts';
+} from './game.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,10 +71,10 @@ app.get('/api/state', requireAuth, (req, res) => {
 });
 
 // Serve static files in production
-const distDir = path.join(__dirname, '..', 'dist');
+const distDir = path.join(__dirname, '..', '..', 'dist');
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distDir));
-  app.get('*', requireAuth, (req, res) => {
+  app.get(/.*/, requireAuth, (req, res) => {
     res.sendFile(path.join(distDir, 'index.html'));
   });
 }
@@ -136,13 +136,14 @@ io.on('connection', (socket) => {
 
   socket.on('confirmTaskFor', ({ playerId, taskId }) => {
     const sourceId = socketPlayerMap.get(socket.id);
-    const source = sourceId ? game.players.find((p) => p.id === sourceId) : undefined;
-    const game = confirmTaskFor(playerId, taskId, source?.name || 'Unbekannt');
-    const target = game.players.find((p) => p.id === playerId);
+    const current = getGame();
+    const source = sourceId ? current.players.find((p) => p.id === sourceId) : undefined;
+    const nextGame = confirmTaskFor(playerId, taskId, source?.name || 'Unbekannt');
+    const target = nextGame.players.find((p) => p.id === playerId);
     if (target?.status === 'bingo') {
       io.emit('bingo', target.name);
     }
-    io.emit('state', game);
+    io.emit('state', nextGame);
   });
 
   socket.on('finishGame', () => {

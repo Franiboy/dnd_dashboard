@@ -7,8 +7,9 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "vite",
     "server": "tsx watch --include ./server ./server/index.ts",
-    "build": "tsc -b && vite build",
-    "start": "node dist-server/index.js",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "tsc -b && vite build && npm run build:server",
+    "start": "node dist-server/server/index.js",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.2",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",
     "@types/node": "^24.13.3",
