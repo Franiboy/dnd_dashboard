@@ -84,7 +84,6 @@ function ConfirmFor({ game, socket, playerId }: { game: BingoGame; socket: Socke
 }
 
 export function Bingo({ game, socket, playerId, bingo }: BingoProps) {
-  const [name, setName] = useState('');
   const [gridSize, setGridSize] = useState(5);
 
   useEffect(() => {
@@ -94,12 +93,6 @@ export function Bingo({ game, socket, playerId, bingo }: BingoProps) {
   if (!game) {
     return <div className="p-6 text-center text-slate-400">Lade...</div>;
   }
-
-  const join = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !socket) return;
-    socket.emit('join', name.trim());
-  };
 
   const start = () => {
     socket?.emit('startGame', gridSize);
@@ -136,21 +129,7 @@ export function Bingo({ game, socket, playerId, bingo }: BingoProps) {
       )}
 
       {needsJoin ? (
-        <form onSubmit={join} className="max-w-md mx-auto bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6">
-          <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Mitspielen</h2>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Dein Name"
-            className="w-full px-4 py-3 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] mb-4 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-          />
-          <button
-            type="submit"
-            className="w-full py-3 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
-          >
-            Beitreten
-          </button>
-        </form>
+        <div className="text-center text-slate-400">Trete dem Spiel bei...</div>
       ) : (
         <>
           <div className="grid lg:grid-cols-3 gap-6 mb-8">
