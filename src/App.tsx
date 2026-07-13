@@ -7,11 +7,13 @@ import { Home } from './pages/Home';
 import { Bingo } from './pages/Bingo';
 import { Admin } from './pages/Admin';
 import { Profile } from './pages/Profile';
+import { Toast } from './components/Toast';
 
 function App() {
   const { user, token, loading, error, login, register, updateDisplayName, logout, setError } = useAuth();
   const { game, socket, playerId, bingo } = useSocket(token, user);
   const [showRegister, setShowRegister] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-slate-400">Lade...</div>;
@@ -25,20 +27,28 @@ function App() {
     setError(null);
     const msg = await register(username, displayName, password);
     if (msg) {
-      setTimeout(() => setShowRegister(false), 2000);
+      setToast(msg);
+      setShowRegister(false);
     }
     return msg;
   };
 
   if (!user) {
-    if (showRegister) {
-      return <Register onRegister={handleRegister} onBack={() => setShowRegister(false)} error={error} />;
-    }
-    return <Login onLogin={handleLogin} onRegister={() => setShowRegister(true)} error={error} />;
+    return (
+      <>
+        <Toast message={toast} onClose={() => setToast(null)} />
+        {showRegister ? (
+          <Register onRegister={handleRegister} onBack={() => setShowRegister(false)} error={error} />
+        ) : (
+          <Login onLogin={handleLogin} onRegister={() => setShowRegister(true)} error={error} />
+        )}
+      </>
+    );
   }
 
   return (
     <BrowserRouter>
+      <Toast message={toast} onClose={() => setToast(null)} />
       <div className="min-h-screen flex flex-col">
         <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
           <Link to="/profile" className="font-semibold text-[var(--text-h)] hover:text-[var(--accent)]">{user.displayName}</Link>

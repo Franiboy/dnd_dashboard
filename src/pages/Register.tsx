@@ -13,11 +13,9 @@ export function Register({ onRegister, onBack, error }: RegisterProps) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMessage(null);
     setLocalError(null);
 
     if (!username.trim() || !displayName.trim() || !password.trim()) {
@@ -33,8 +31,7 @@ export function Register({ onRegister, onBack, error }: RegisterProps) {
       return;
     }
 
-    const msg = await onRegister(username.trim(), displayName.trim(), password);
-    if (msg) setMessage(msg);
+    await onRegister(username.trim(), displayName.trim(), password);
   };
 
   return (
@@ -72,7 +69,6 @@ export function Register({ onRegister, onBack, error }: RegisterProps) {
           className="mb-4"
         />
         {(error || localError) && <p className="text-[var(--danger)] text-sm mb-4">{error || localError}</p>}
-        {message && <p className="text-[var(--accent)] text-sm mb-4">{message}</p>}
         <button
           type="submit"
           className="w-full py-3 rounded-lg bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
