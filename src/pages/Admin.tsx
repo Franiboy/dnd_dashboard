@@ -76,7 +76,6 @@ export function Admin({ currentUser }: AdminProps) {
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-[var(--border)]">
-              <th className="p-3">Username</th>
               <th className="p-3">Anzeigename</th>
               <th className="p-3">Status</th>
               <th className="p-3">Admin</th>
@@ -89,11 +88,10 @@ export function Admin({ currentUser }: AdminProps) {
                 <td className="p-3 text-[var(--text-h)]">
                   <div className="flex items-center gap-2">
                     {u.avatarUrl && <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
-                    <span>{u.username} {isInitialAdmin(u) && <span className="text-xs text-slate-500">(Ursprungsadmin)</span>}
+                    <span>{u.displayName} {isInitialAdmin(u) && <span className="text-xs text-slate-500">(Ursprungsadmin)</span>}
                     {isOwn(u) && !isInitialAdmin(u) && <span className="text-xs text-slate-500"> (Du)</span>}</span>
                   </div>
                 </td>
-                <td className="p-3 text-[var(--text-h)]">{u.displayName}</td>
                 <td className="p-3">
                   {u.isApproved ? (
                     <span className="text-[var(--accent)]">Freigegeben</span>
