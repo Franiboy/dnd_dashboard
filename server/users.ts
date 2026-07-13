@@ -5,6 +5,8 @@ import type { SafeUser, User } from '../shared/types.js';
 const db = new Database('dnd.db');
 
 const SALT_ROUNDS = 10;
+export const INITIAL_ADMIN_USERNAME = 'admin';
+export const INITIAL_ADMIN_PASSWORD = '***REMOVED***';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -40,6 +42,10 @@ export function toSafeUser(user: User): SafeUser {
   };
 }
 
+export function isInitialAdmin(user: { username: string }): boolean {
+  return user.username === INITIAL_ADMIN_USERNAME;
+}
+
 export function createUser(username: string, displayName: string, password: string): SafeUser {
   const id = crypto.randomUUID();
   const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
@@ -56,6 +62,14 @@ export function createAdminUser(username: string, displayName: string, password:
     'INSERT INTO users (id, username, display_name, password_hash, is_admin, is_approved, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, 1, 1, new Date().toISOString());
   return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)));
+}
+
+export function updateUserPassword(id: string, password: string): SafeUser | null {
+  const user = findUserById(id);
+  if (!user) return null;
+  const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
+  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
 }
 
 export function findUserByUsername(username: string): User | null {
@@ -97,10 +111,23 @@ export function deleteUser(id: string): boolean {
 }
 
 export function ensureAdminUser(): SafeUser | null {
-  const admin = db.prepare('SELECT * FROM users WHERE is_admin = 1 LIMIT 1').get() as any;
-  if (!admin) {
-    console.log('Creating default admin user: admin / admin');
-    return createAdminUser('admin', 'Admin', 'admin');
+  const existing = findUserByUsername(INITIAL_ADMIN_USERNAME);
+  if (!existing) {
+    console.log('Creating default admin user:', INITIAL_ADMIN_USERNAME);
+    const created = createAdminUser(INITIAL_ADMIN_USERNAME, 'Admin', INITIAL_ADMIN_PASSWORD);
+    return created;
   }
-  return toSafeUser(rowToUser(admin));
+
+  const valid = verifyPassword(existing, INITIAL_ADMIN_PASSWORD);
+  if (!valid) {
+    console.log('Resetting admin password for:', INITIAL_ADMIN_USERNAME);
+    updateUserPassword(existing.id, INITIAL_ADMIN_PASSWORD);
+  }
+
+  if (!existing.isApproved || !existing.isAdmin) {
+    db.prepare('UPDATE users SET is_admin = 1, is_approved = 1 WHERE id = ?').run(existing.id);
+  }
+
+  const admin = findUserById(existing.id);
+  return admin ? toSafeUser(admin) : null;
 }
