@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev": "concurrently --kill-others --handle-input \"npm run server\" \"npm run client\" ",
     "client": "vite",
     "server": "tsx watch --include ./server ./server/index.ts",
     "build:server": "tsc -p tsconfig.server.json",
