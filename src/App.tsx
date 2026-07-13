@@ -11,7 +11,7 @@ import { Profile } from './pages/Profile';
 import { Toast } from './components/Toast';
 
 function App() {
-  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, updateDisplayName, logout, setError } = useAuth();
+  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, updateDisplayName, logout } = useAuth();
   const { game, socket, playerId, bingo } = useSocket(token, user);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -24,7 +24,6 @@ function App() {
   };
 
   const handleDiscord = async () => {
-    setError(null);
     return await startDiscordLogin();
   };
 
@@ -42,6 +41,24 @@ function App() {
     );
   }
 
+  if (user.isAdmin) {
+    return (
+      <BrowserRouter>
+        <Toast message={toast} onClose={() => setToast(null)} />
+        <div className="min-h-screen flex flex-col">
+          <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
+            <span className="font-semibold text-[var(--text-h)]">{user.displayName}</span>
+            <button onClick={logout} className="text-slate-400 hover:text-[var(--text-h)]">Logout</button>
+          </header>
+          <Routes>
+            <Route path="/admin" element={<Admin currentUser={user} />} />
+            <Route path="*" element={<Navigate to="/admin" />} />
+          </Routes>
+        </div>
+      </BrowserRouter>
+    );
+  }
+
   return (
     <BrowserRouter>
       <Toast message={toast} onClose={() => setToast(null)} />
@@ -52,16 +69,12 @@ function App() {
             <span>{user.displayName}</span>
           </Link>
           <div className="flex gap-4">
-            {user.isAdmin && (
-              <Link to="/admin" className="text-slate-400 hover:text-[var(--text-h)]">Admin</Link>
-            )}
             <button onClick={logout} className="text-slate-400 hover:text-[var(--text-h)]">Logout</button>
           </div>
         </header>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/bingo" element={<Bingo game={game} socket={socket} playerId={playerId} bingo={bingo} />} />
-          <Route path="/admin" element={user.isAdmin ? <Admin currentUser={user} /> : <Navigate to="/" />} />
           <Route path="/profile" element={<Profile user={user} onUpdateDisplayName={updateDisplayName} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
