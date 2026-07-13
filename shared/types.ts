@@ -48,7 +48,9 @@ export interface User {
   id: string;
   username: string;
   displayName: string;
-  passwordHash: string;
+  passwordHash: string | null;
+  discordId: string | null;
+  avatarUrl: string | null;
   isAdmin: boolean;
   isApproved: boolean;
   failedLoginAttempts: number;
@@ -60,6 +62,7 @@ export interface SafeUser {
   id: string;
   username: string;
   displayName: string;
+  avatarUrl: string | null;
   isAdmin: boolean;
   isApproved: boolean;
 }
