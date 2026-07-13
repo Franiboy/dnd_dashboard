@@ -27,6 +27,8 @@ export function Admin({ currentUser }: AdminProps) {
 
   useEffect(() => {
     fetchUsers();
+    const interval = setInterval(fetchUsers, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const action = async (id: string, endpoint: string, body?: object) => {
