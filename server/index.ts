@@ -15,13 +15,16 @@ import {
   addTask,
   confirmTask,
   confirmTaskFor,
-  finishGame,
+  finishAndResetGame,
   getGame,
   joinPlayer,
-  leavePlayer,
+  lockBoard,
   removeTask,
-  resetGame,
+  setGridSize,
+  setPlayerOnline,
   startGame,
+  unconfirmTask,
+  unlockBoard,
   updateBoard,
 } from './game.js';
 import {
@@ -306,7 +309,8 @@ io.on('connection', (socket) => {
     if (existing) {
       socketPlayerMap.set(socket.id, existing.id);
       socket.emit('joined', existing.id);
-      return socket.emit('state', currentGame);
+      const updatedGame = setPlayerOnline(existing.id, true);
+      return io.emit('state', updatedGame);
     }
 
     const { game: nextGame, playerId } = joinPlayer(displayName);
@@ -324,10 +328,19 @@ io.on('connection', (socket) => {
     io.emit('state', removeTask(taskId));
   });
 
-  socket.on('startGame', (gridSize) => {
+  socket.on('setGridSize', (gridSize) => {
+    if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können die Feldgröße ändern.');
+    try {
+      io.emit('state', setGridSize(gridSize));
+    } catch (e: any) {
+      socket.emit('error', e.message);
+    }
+  });
+
+  socket.on('startGame', () => {
     if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel starten.');
     try {
-      io.emit('state', startGame(gridSize));
+      io.emit('state', startGame());
     } catch (e: any) {
       socket.emit('error', e.message);
     }
@@ -336,17 +349,43 @@ io.on('connection', (socket) => {
   socket.on('updateBoard', (board) => {
     const playerId = socketPlayerMap.get(socket.id);
     if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
-    io.emit('state', updateBoard(playerId, board));
+    try {
+      io.emit('state', updateBoard(playerId, board));
+    } catch (e: any) {
+      socket.emit('error', e.message);
+    }
+  });
+
+  socket.on('lockBoard', () => {
+    const playerId = socketPlayerMap.get(socket.id);
+    if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+    try {
+      io.emit('state', lockBoard(playerId));
+    } catch (e: any) {
+      socket.emit('error', e.message);
+    }
+  });
+
+  socket.on('unlockBoard', () => {
+    const playerId = socketPlayerMap.get(socket.id);
+    if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+    try {
+      io.emit('state', unlockBoard(playerId));
+    } catch (e: any) {
+      socket.emit('error', e.message);
+    }
   });
 
   socket.on('confirmTask', (taskId) => {
     const playerId = socketPlayerMap.get(socket.id);
     if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+    const beforeBingo = new Set(getGame().players.filter((p) => p.status === 'bingo').map((p) => p.id));
     const game = confirmTask(playerId, taskId);
-    const player = game.players.find((p) => p.id === playerId);
-    if (player?.status === 'bingo') {
-      io.emit('bingo', player.name);
-    }
+    game.players.forEach((p) => {
+      if (p.status === 'bingo' && !beforeBingo.has(p.id)) {
+        io.emit('bingo', p.name);
+      }
+    });
     io.emit('state', game);
   });
 
@@ -354,30 +393,32 @@ io.on('connection', (socket) => {
     const sourceId = socketPlayerMap.get(socket.id);
     const current = getGame();
     const source = sourceId ? current.players.find((p) => p.id === sourceId) : undefined;
+    const beforeBingo = new Set(current.players.filter((p) => p.status === 'bingo').map((p) => p.id));
     const nextGame = confirmTaskFor(playerId, taskId, source?.name || 'Unbekannt');
-    const target = nextGame.players.find((p) => p.id === playerId);
-    if (target?.status === 'bingo') {
-      io.emit('bingo', target.name);
-    }
+    nextGame.players.forEach((p) => {
+      if (p.status === 'bingo' && !beforeBingo.has(p.id)) {
+        io.emit('bingo', p.name);
+      }
+    });
     io.emit('state', nextGame);
   });
 
-  socket.on('finishGame', () => {
-    if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel beenden.');
-    io.emit('state', finishGame());
+  socket.on('unconfirmTask', (taskId) => {
+    const playerId = socketPlayerMap.get(socket.id);
+    if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+    io.emit('state', unconfirmTask(taskId));
   });
 
   socket.on('resetGame', () => {
     if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel zurücksetzen.');
-    socketPlayerMap.clear();
-    io.emit('state', resetGame());
+    io.emit('state', finishAndResetGame());
   });
 
   socket.on('disconnect', () => {
     const playerId = socketPlayerMap.get(socket.id);
     socketPlayerMap.delete(socket.id);
     if (playerId) {
-      io.emit('state', leavePlayer(playerId));
+      io.emit('state', setPlayerOnline(playerId, false));
     }
   });
 });

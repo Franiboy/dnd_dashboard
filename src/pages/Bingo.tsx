@@ -1,12 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import type { SafeUser } from '../../shared/types';
-import type { Socket } from '../types';
+import type { Player, SafeUser } from '../../shared/types';
 import { useSocket } from '../hooks/useSocket';
 import { TaskPool } from '../components/TaskPool';
 import { PlayerList } from '../components/PlayerList';
-import { History } from '../components/History';
 import { BingoGrid } from '../components/BingoGrid';
+import { TaskStatus } from '../components/TaskStatus';
 
 function playBingoSound() {
   try {
@@ -27,56 +26,6 @@ function playBingoSound() {
   }
 }
 
-function ConfirmFor({ game, socket, playerId }: { game: any; socket: Socket | null; playerId: string | null }) {
-  const [selectedTask, setSelectedTask] = useState('');
-  const [selectedPlayer, setSelectedPlayer] = useState('');
-
-  const submit = () => {
-    if (!selectedTask || !selectedPlayer || !socket) return;
-    socket.emit('confirmTaskFor', { playerId: selectedPlayer, taskId: selectedTask });
-  };
-
-  return (
-    <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 mb-8">
-      <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Für anderen bestätigen</h2>
-      <div className="flex flex-wrap gap-3 items-end">
-        <select
-          value={selectedTask}
-          onChange={(e) => setSelectedTask(e.target.value)}
-          className="px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)]"
-        >
-          <option value="">Aufgabe wählen</option>
-          {game.tasks.map((t: any) => (
-            <option key={t.id} value={t.id}>
-              {t.text}
-            </option>
-          ))}
-        </select>
-        <select
-          value={selectedPlayer}
-          onChange={(e) => setSelectedPlayer(e.target.value)}
-          className="px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)]"
-        >
-          <option value="">Spieler wählen</option>
-          {game.players
-            .filter((p: any) => p.id !== playerId)
-            .map((p: any) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-        </select>
-        <button
-          onClick={submit}
-          className="px-5 py-2 rounded bg-[var(--warning)] text-slate-900 font-semibold hover:bg-amber-300 transition"
-        >
-          Erledigt
-        </button>
-      </div>
-    </div>
-  );
-}
-
 interface BingoProps {
   token: string | null;
   user: SafeUser | null;
@@ -84,7 +33,6 @@ interface BingoProps {
 }
 
 export function Bingo({ token, user, onError }: BingoProps) {
-  const [gridSize, setGridSize] = useState(5);
   const { game, socket, playerId, bingo } = useSocket(token, user, onError);
 
   useEffect(() => {
@@ -96,24 +44,65 @@ export function Bingo({ token, user, onError }: BingoProps) {
   }
 
   const start = () => {
-    socket?.emit('startGame', gridSize);
-  };
-
-  const finish = () => {
-    socket?.emit('finishGame');
+    socket?.emit('startGame');
   };
 
   const reset = () => {
-    if (confirm('Wirklich zurücksetzen? Alle Daten gehen verloren.')) {
+    if (confirm('Neue Runde starten? Aufgaben bleiben erhalten, die Bretter werden zurückgesetzt.')) {
       socket?.emit('resetGame');
     }
   };
 
   const isSetup = game.status === 'setup';
   const isPlaying = game.status === 'playing';
-  const player = game.players.find((p: any) => p.id === playerId);
+  const player = game.players.find((p) => p.id === playerId) as Player | undefined;
   const needsJoin = !player;
   const isAdmin = user?.isAdmin || false;
+
+  const lockButton = player && isSetup && (
+    <button
+      onClick={() => socket?.emit(player.locked ? 'unlockBoard' : 'lockBoard')}
+      className={`px-6 py-2 rounded font-semibold transition ${
+        player.locked
+          ? 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
+          : 'bg-[var(--accent)] text-slate-900 hover:bg-green-400'
+      }`}
+    >
+      {player.locked ? 'Entsperren' : 'Einlocken'}
+    </button>
+  );
+
+  const boardPanel = player && (
+    <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 mb-8">
+      <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Dein Bingo-Feld</h2>
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex-1">
+          <BingoGrid game={game} socket={socket} playerId={playerId} />
+          {isSetup && <div className="flex justify-center mt-4">{lockButton}</div>}
+          {isPlaying && isAdmin && (
+            <div className="flex flex-wrap gap-4 mt-6">
+              <button
+                onClick={reset}
+                className="px-6 py-2 rounded bg-[var(--danger)] text-white font-semibold hover:bg-red-400 transition"
+              >
+                Beenden & neue Runde
+              </button>
+            </div>
+          )}
+        </div>
+        {isSetup && (
+          <div className="lg:w-1/3">
+            <TaskPool
+              game={game}
+              socket={socket}
+              isSetup={isSetup}
+              listClassName="max-h-96"
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen p-6">
@@ -134,11 +123,13 @@ export function Bingo({ token, user, onError }: BingoProps) {
         <div className="text-center text-slate-400">Trete dem Spiel bei...</div>
       ) : (
         <>
-          <div className="grid lg:grid-cols-3 gap-6 mb-8">
-            <TaskPool game={game} socket={socket} isSetup={isSetup} />
+          <div className="mb-8">
             <PlayerList game={game} playerId={playerId} />
-            <History game={game} />
           </div>
+
+          {(isSetup || isPlaying) && boardPanel}
+
+          {isPlaying && isAdmin && <TaskStatus game={game} socket={socket} />}
 
           {isSetup && (
             <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 mb-8">
@@ -148,8 +139,8 @@ export function Bingo({ token, user, onError }: BingoProps) {
                   <div className="flex flex-wrap items-center gap-4">
                     <label className="text-slate-400">Feldgröße:</label>
                     <select
-                      value={gridSize}
-                      onChange={(e) => setGridSize(parseInt(e.target.value))}
+                      value={game.gridSize}
+                      onChange={(e) => socket?.emit('setGridSize', parseInt(e.target.value))}
                       className="px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)]"
                     >
                       <option value={3}>3x3</option>
@@ -163,61 +154,22 @@ export function Bingo({ token, user, onError }: BingoProps) {
                       Spiel starten
                     </button>
                     <span className="text-slate-500 text-sm">
-                      {game.tasks.length} Aufgaben, mindestens {gridSize * gridSize} nötig.
+                      {game.tasks.length} Aufgaben, mindestens {game.gridSize * game.gridSize} nötig.
                     </span>
                   </div>
                 </>
               ) : (
                 <>
                   <h2 className="text-xl font-semibold text-[var(--text-h)] mb-2">Warte auf Spielstart</h2>
-                  <p className="text-slate-400">Ein Admin muss das Spiel starten. Du kannst dich entspannen, bis es losgeht.</p>
+                  <p className="text-slate-400">Vergiss nicht, dein Board einzulocken, sobald du fertig bist.</p>
                 </>
               )}
             </div>
           )}
 
-          {isPlaying && (
-            <>
-              <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 mb-8">
-                <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Dein Bingo-Feld</h2>
-                <BingoGrid game={game} socket={socket} playerId={playerId} />
-                {isAdmin && (
-                  <div className="flex flex-wrap gap-4 mt-6">
-                    <button
-                      onClick={finish}
-                      className="px-6 py-2 rounded bg-[var(--warning)] text-slate-900 font-semibold hover:bg-amber-300 transition"
-                    >
-                      Spiel beenden
-                    </button>
-                    <button
-                      onClick={reset}
-                      className="px-6 py-2 rounded bg-[var(--danger)] text-white font-semibold hover:bg-red-400 transition"
-                    >
-                      Reset
-                    </button>
-                  </div>
-                )}
-              </div>
-              <ConfirmFor game={game} socket={socket} playerId={playerId} />
-            </>
-          )}
 
-          {game.status === 'finished' && (
-            <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 text-center">
-              <h2 className="text-2xl font-bold text-[var(--text-h)] mb-2">Spiel beendet</h2>
-              {isAdmin && (
-                <button
-                  onClick={reset}
-                  className="px-6 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
-                >
-                  Neues Spiel
-                </button>
-              )}
-            </div>
-          )}
         </>
       )}
     </div>
   );
 }
-

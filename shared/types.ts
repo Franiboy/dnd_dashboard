@@ -14,6 +14,8 @@ export interface Player {
   name: string;
   status: 'lobby' | 'playing' | 'bingo';
   board: Cell[][] | null;
+  locked: boolean;
+  online: boolean;
   joinedAt: string;
 }
 
@@ -23,18 +25,8 @@ export interface BingoGame {
   tasks: Task[];
   players: Player[];
   gridSize: number;
-  history: HistoryEntry[];
   createdAt: string;
   finishedAt: string | null;
-}
-
-export interface HistoryEntry {
-  id: string;
-  type: 'start' | 'confirm' | 'bingo' | 'finish' | 'join' | 'leave';
-  playerName: string;
-  taskText?: string;
-  timestamp: string;
-  message: string;
 }
 
 export interface ServerToClientEvents {
@@ -71,10 +63,13 @@ export interface ClientToServerEvents {
   join: () => void;
   addTask: (text: string) => void;
   removeTask: (taskId: string) => void;
-  startGame: (gridSize: number) => void;
+  setGridSize: (gridSize: number) => void;
+  startGame: () => void;
   updateBoard: (board: Cell[][]) => void;
+  lockBoard: () => void;
+  unlockBoard: () => void;
   confirmTask: (taskId: string) => void;
   confirmTaskFor: (payload: { playerId: string; taskId: string }) => void;
-  finishGame: () => void;
+  unconfirmTask: (taskId: string) => void;
   resetGame: () => void;
 }

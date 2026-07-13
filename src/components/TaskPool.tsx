@@ -6,9 +6,11 @@ interface TaskPoolProps {
   game: BingoGame;
   socket: Socket | null;
   isSetup: boolean;
+  className?: string;
+  listClassName?: string;
 }
 
-export function TaskPool({ game, socket, isSetup }: TaskPoolProps) {
+export function TaskPool({ game, socket, isSetup, className, listClassName }: TaskPoolProps) {
   const [text, setText] = useState('');
 
   const add = () => {
@@ -22,7 +24,7 @@ export function TaskPool({ game, socket, isSetup }: TaskPoolProps) {
   };
 
   return (
-    <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5">
+    <div className={`bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 ${className || ''}`}>
       <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Aufgaben-Pool</h2>
       {isSetup && (
         <div className="flex gap-2 mb-4">
@@ -41,12 +43,19 @@ export function TaskPool({ game, socket, isSetup }: TaskPoolProps) {
           </button>
         </div>
       )}
-      <ul className="space-y-2 max-h-64 overflow-auto">
+      <ul className={`space-y-2 overflow-auto ${listClassName || 'max-h-64'}`}>
         {game.tasks.length === 0 && <li className="text-slate-500 italic">Noch keine Aufgaben.</li>}
         {game.tasks.map((task) => (
           <li
             key={task.id}
-            className="flex justify-between items-center px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)]"
+            draggable={isSetup}
+            onDragStart={(e) => {
+              if (!isSetup) return;
+              e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'task', taskId: task.id }));
+            }}
+            className={`flex justify-between items-center px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] ${
+              isSetup ? 'cursor-grab active:cursor-grabbing' : ''
+            }`}
           >
             <span className="text-[var(--text-h)]">{task.text}</span>
             {isSetup && (

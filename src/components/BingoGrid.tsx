@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { BingoGame } from '../../shared/types';
+import type { BingoGame, Cell } from '../../shared/types';
 import type { Socket } from '../types';
 
 interface BingoGridProps {
@@ -12,25 +12,90 @@ export function BingoGrid({ game, socket, playerId }: BingoGridProps) {
   const player = game.players.find((p) => p.id === playerId);
   const board = player?.board;
   const [draggedCell, setDraggedCell] = useState<{ r: number; c: number } | null>(null);
+  const [pendingTask, setPendingTask] = useState<{ id: string; action: 'confirm' | 'unconfirm' } | null>(null);
 
   const taskMap = new Map(game.tasks.map((t) => [t.id, t]));
+  const isDrafting = game.status === 'setup';
+  const canEdit = isDrafting && !player?.locked;
 
-  const swap = (r: number, c: number) => {
-    if (!draggedCell || !board || !socket || !playerId) return;
-    const newBoard = board.map((row) => row.map((cell) => ({ ...cell })));
-    const temp = newBoard[draggedCell.r][draggedCell.c];
-    newBoard[draggedCell.r][draggedCell.c] = newBoard[r][c];
-    newBoard[r][c] = temp;
+  const updateBoard = (newBoard: Cell[][]) => {
+    if (!socket || !playerId) return;
     socket.emit('updateBoard', newBoard);
+  };
+
+  const handleDrop = (e: React.DragEvent, r: number, c: number) => {
+    e.preventDefault();
+    if (!canEdit || !board) return;
+    const raw = e.dataTransfer.getData('text/plain');
+    if (!raw) return;
+
+    let payload: { type: string; taskId?: string; r?: number; c?: number } | null = null;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      payload = { type: 'task', taskId: raw };
+    }
+
+    const newBoard = board.map((row) => row.map((cell) => ({ ...cell })));
+
+    if (payload?.type === 'task' && payload.taskId) {
+      const taskId = payload.taskId;
+      // Remove the task from any other cell to avoid duplicates within the board
+      for (let i = 0; i < newBoard.length; i++) {
+        for (let j = 0; j < newBoard[i].length; j++) {
+          if (newBoard[i][j].taskId === taskId) {
+            newBoard[i][j] = { ...newBoard[i][j], taskId: null };
+          }
+        }
+      }
+      newBoard[r][c] = { ...newBoard[r][c], taskId };
+    } else if (payload?.type === 'cell' && draggedCell) {
+      const { r: sr, c: sc } = draggedCell;
+      if (sr === r && sc === c) {
+        setDraggedCell(null);
+        return;
+      }
+      const temp = newBoard[sr][sc];
+      newBoard[sr][sc] = newBoard[r][c];
+      newBoard[r][c] = temp;
+    }
+
+    updateBoard(newBoard);
     setDraggedCell(null);
   };
 
-  const confirm = (taskId: string | null) => {
-    if (!taskId || !socket) return;
-    socket.emit('confirmTask', taskId);
+  const openTaskAction = (taskId: string | null, isConfirmed: boolean) => {
+    if (!taskId || game.status !== 'playing') return;
+    if (isConfirmed) {
+      setPendingTask({ id: taskId, action: 'unconfirm' });
+    } else {
+      if (player?.status === 'bingo' || cellConfirmed(taskId)) return;
+      setPendingTask({ id: taskId, action: 'confirm' });
+    }
   };
 
-  if (!board) return null;
+  const submit = () => {
+    if (!pendingTask || !socket) return;
+    if (pendingTask.action === 'confirm' && player?.status === 'bingo') {
+      setPendingTask(null);
+      return;
+    }
+    if (pendingTask.action === 'confirm') {
+      socket.emit('confirmTask', pendingTask.id);
+    } else {
+      socket.emit('unconfirmTask', pendingTask.id);
+    }
+    setPendingTask(null);
+  };
+
+  const cellConfirmed = (taskId: string) => {
+    if (!board) return true;
+    return board.every((row) => row.every((cell) => cell.taskId !== taskId || cell.confirmedBy));
+  };
+
+  if (!board) return <div className="text-slate-500 text-center">Kein Board verfügbar.</div>;
+
+  const pendingTaskData = pendingTask ? taskMap.get(pendingTask.id) : null;
 
   return (
     <div className="overflow-auto">
@@ -44,26 +109,38 @@ export function BingoGrid({ game, socket, playerId }: BingoGridProps) {
           row.map((cell, c) => {
             const task = cell.taskId ? taskMap.get(cell.taskId) : null;
             const isDragging = draggedCell?.r === r && draggedCell?.c === c;
+            const isEmpty = !cell.taskId;
             return (
               <div
                 key={`${r}-${c}`}
-                draggable={!cell.confirmedBy}
-                onDragStart={() => !cell.confirmedBy && setDraggedCell({ r, c })}
+                draggable={canEdit && !isEmpty}
+                onDragStart={(e) => {
+                  if (!canEdit || isEmpty) return;
+                  e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'cell', r, c }));
+                  setDraggedCell({ r, c });
+                }}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={() => swap(r, c)}
-                onClick={() => confirm(cell.taskId)}
+                onDrop={(e) => handleDrop(e, r, c)}
+                onDragEnd={() => setDraggedCell(null)}
+                onClick={() => openTaskAction(cell.taskId, !!cell.confirmedBy)}
+                title={task?.text || (canEdit && isEmpty ? 'Leeres Feld' : '')}
                 className={`
-                  relative p-3 min-h-[110px] rounded-xl border flex flex-col items-center justify-center text-center
+                  relative p-3 min-h-[110px] rounded-xl border flex flex-col items-center justify-center text-center gap-2
                   transition select-none
-                  ${cell.confirmedBy ? 'bg-[var(--accent-dim)] border-[var(--accent)]' : 'bg-slate-900 border-[var(--border)] cursor-move'}
+                  ${cell.confirmedBy ? 'bg-[var(--accent-dim)] border-[var(--accent)]' : 'bg-slate-900 border-[var(--border)]'}
+                  ${canEdit ? 'cursor-move' : 'cursor-default'}
                   ${isDragging ? 'opacity-50' : 'opacity-100'}
                 `}
               >
-                <span className={`text-sm leading-tight ${cell.confirmedBy ? 'text-[var(--accent)]' : 'text-[var(--text-h)]'}`}>
-                  {task?.text || '?'}
-                </span>
+                {task ? (
+                  <span className={`text-sm leading-tight ${cell.confirmedBy ? 'text-[var(--accent)]' : 'text-[var(--text-h)]'}`}>
+                    {task.text}
+                  </span>
+                ) : (
+                  <span className="text-slate-600 text-sm">{canEdit ? '+' : '?'}</span>
+                )}
                 {cell.confirmedBy && (
-                  <span className="text-xs text-[var(--accent)] mt-2 font-semibold">
+                  <span className="text-xs text-[var(--accent)] mt-1 font-semibold">
                     ✓ {cell.confirmedBy}
                   </span>
                 )}
@@ -73,8 +150,46 @@ export function BingoGrid({ game, socket, playerId }: BingoGridProps) {
         )}
       </div>
       <p className="text-center text-slate-500 text-sm mt-4">
-        Zellen per Drag & Drop tauschen. Zum Bestätigen auf eine Zelle klicken.
+        {canEdit
+          ? 'Ziehe Aufgaben per Drag & Drop auf die Felder. Ziehe Felder, um sie zu tauschen.'
+          : game.status === 'setup' && player?.locked
+          ? 'Board ist eingelockt. Warte auf Spielstart.'
+          : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
       </p>
+
+      {pendingTaskData && pendingTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 className="text-xl font-semibold text-[var(--text-h)] mb-2">
+              {pendingTask.action === 'confirm' ? 'Aufgabe bestätigen' : 'Bestätigung entfernen'}
+            </h3>
+            <p className="text-slate-300 mb-6">
+              Soll <span className="text-[var(--text-h)] font-medium">{pendingTaskData.text}</span>{' '}
+              {pendingTask.action === 'confirm'
+                ? 'als erledigt markiert werden? Dies gilt für alle Spieler.'
+                : 'nicht mehr als erledigt gelten? Dies gilt für alle Spieler.'}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setPendingTask(null)}
+                className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={submit}
+                className={`px-4 py-2 rounded font-semibold transition ${
+                  pendingTask.action === 'confirm'
+                    ? 'bg-[var(--accent)] text-slate-900 hover:bg-green-400'
+                    : 'bg-[var(--danger)] text-white hover:bg-red-400'
+                }`}
+              >
+                {pendingTask.action === 'confirm' ? 'Erledigt' : 'Entfernen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
