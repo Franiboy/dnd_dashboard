@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PasswordInput } from '../components/PasswordInput';
 
 interface LoginProps {
   onLogin: (username: string, password: string) => void;
@@ -30,12 +31,11 @@ export function Login({ onLogin, onRegister, error }: LoginProps) {
           placeholder="Username"
           className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] mb-4"
         />
-        <input
-          type="password"
+        <PasswordInput
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={setPassword}
           placeholder="Passwort"
-          className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] mb-4"
+          className="mb-4"
         />
         {error && <p className="text-[var(--danger)] text-sm mb-4">{error}</p>}
         <button

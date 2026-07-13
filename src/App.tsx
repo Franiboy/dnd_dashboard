@@ -6,9 +6,10 @@ import { Register } from './pages/Register';
 import { Home } from './pages/Home';
 import { Bingo } from './pages/Bingo';
 import { Admin } from './pages/Admin';
+import { Profile } from './pages/Profile';
 
 function App() {
-  const { user, token, loading, error, login, register, logout, setError } = useAuth();
+  const { user, token, loading, error, login, register, updateDisplayName, logout, setError } = useAuth();
   const { game, socket, playerId, bingo } = useSocket(token);
   const [showRegister, setShowRegister] = useState(false);
 
@@ -40,7 +41,7 @@ function App() {
     <BrowserRouter>
       <div className="min-h-screen flex flex-col">
         <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
-          <span className="font-semibold text-[var(--text-h)]">{user.displayName}</span>
+          <Link to="/profile" className="font-semibold text-[var(--text-h)] hover:text-[var(--accent)]">{user.displayName}</Link>
           <div className="flex gap-4">
             {user.isAdmin && (
               <Link to="/admin" className="text-slate-400 hover:text-[var(--text-h)]">Admin</Link>
@@ -52,6 +53,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/bingo" element={<Bingo game={game} socket={socket} playerId={playerId} bingo={bingo} />} />
           <Route path="/admin" element={user.isAdmin ? <Admin currentUser={user} /> : <Navigate to="/" />} />
+          <Route path="/profile" element={<Profile user={user} onUpdateDisplayName={updateDisplayName} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>
