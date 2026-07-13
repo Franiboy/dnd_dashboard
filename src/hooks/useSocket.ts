@@ -4,7 +4,7 @@ import type { BingoGame, ClientToServerEvents, ServerToClientEvents, SafeUser } 
 
 export { useAuth } from './useAuth';
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
 export function useSocket(token: string | null, user: SafeUser | null, onError?: (msg: string) => void) {
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
@@ -17,7 +17,7 @@ export function useSocket(token: string | null, user: SafeUser | null, onError?:
   useEffect(() => {
     if (!token || !user) return;
 
-    const socket = io(SERVER_URL, {
+    const socket = io(SERVER_URL || undefined, {
       auth: { token },
       reconnection: true,
     });
