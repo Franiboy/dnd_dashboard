@@ -44,12 +44,13 @@ npm start          # Produktionsserver (erfordert vorherigen Build)
 
 ## Sicherheitshinweise
 
-- Default-Admin: `admin` / `***REMOVED***`
+- `ADMIN_PASSWORD` muss in `.env` gesetzt sein, sonst startet der Server nicht.
+- `JWT_SECRET` muss in `.env` gesetzt sein.
 - Der Admin-Username `admin` ist gegen Löschen, Sperren und Admin-Entzug geschützt.
 - Admins können sich selbst nicht verändern.
 - Login und Registrierung haben IP-basiertes Rate-Limiting.
 - Nach 5 fehlgeschlagenen Login-Versuchen wird ein Account für 15 Minuten gesperrt.
-- Geheime Werte (JWT_SECRET, Admin-Passwort) gehören in `.env` und dürfen nicht committed werden.
+- Geheime Werte (JWT_SECRET, ADMIN_PASSWORD) gehören in `.env` und dürfen nicht committed werden.
 
 ## Bekannte Edge Cases
 

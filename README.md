@@ -68,12 +68,16 @@ Der Server liefert dann `dist/` aus und ist auf dem in `PORT` konfigurierten Por
 
 ## Default Admin
 
-Beim ersten Start wird ein Admin-Account erstellt:
+Beim ersten Start wird ein Admin-Account erstellt. Das Passwort wird aus der Umgebungsvariablen `ADMIN_PASSWORD` gelesen. Kopiere `.env.example` nach `.env` und passe es an:
+
+```bash
+cp .env.example .env
+```
 
 - Username: `admin`
-- Passwort: `***REMOVED***`
+- Passwort: Wert aus `ADMIN_PASSWORD` in `.env`
 
-Der Admin kann über das Admin-Panel neue Benutzer freigeben, weitere Admins ernennen und Benutzer löschen.
+Der Admin kann über das Admin-Panel neue Benutzer freigeben, weitere Admins ernennen und Benutzer löschen. Der Server startet nicht, wenn `ADMIN_PASSWORD` nicht gesetzt ist.
 
 ## Datenbank
 

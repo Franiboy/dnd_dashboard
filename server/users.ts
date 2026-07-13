@@ -7,7 +7,7 @@ const db = new Database(DB_PATH);
 
 const SALT_ROUNDS = 10;
 export const INITIAL_ADMIN_USERNAME = 'admin';
-export const INITIAL_ADMIN_PASSWORD = '***REMOVED***';
+export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
@@ -155,17 +155,22 @@ export function checkLoginAllowed(user: User): { allowed: true } | { allowed: fa
 }
 
 export function ensureAdminUser(): SafeUser | null {
+  if (!ADMIN_PASSWORD) {
+    console.error('Fehler: ADMIN_PASSWORD ist nicht gesetzt. Bitte .env.example nach .env kopieren und anpassen.');
+    process.exit(1);
+  }
+
   const existing = findUserByUsername(INITIAL_ADMIN_USERNAME);
   if (!existing) {
     console.log('Creating default admin user:', INITIAL_ADMIN_USERNAME);
-    const created = createAdminUser(INITIAL_ADMIN_USERNAME, 'Admin', INITIAL_ADMIN_PASSWORD);
+    const created = createAdminUser(INITIAL_ADMIN_USERNAME, 'Admin', ADMIN_PASSWORD);
     return created;
   }
 
-  const valid = verifyPassword(existing, INITIAL_ADMIN_PASSWORD);
+  const valid = verifyPassword(existing, ADMIN_PASSWORD);
   if (!valid) {
     console.log('Resetting admin password for:', INITIAL_ADMIN_USERNAME);
-    updateUserPassword(existing.id, INITIAL_ADMIN_PASSWORD);
+    updateUserPassword(existing.id, ADMIN_PASSWORD);
   }
 
   if (!existing.isApproved || !existing.isAdmin) {
