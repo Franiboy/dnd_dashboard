@@ -279,3 +279,14 @@ io.on('connection', (socket) => {
 http.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+function shutdown(signal: string) {
+  console.log(`\n${signal} received, shutting down gracefully...`);
+  http.close(() => {
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGHUP', () => shutdown('SIGHUP'));
