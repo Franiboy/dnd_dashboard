@@ -1,32 +1,103 @@
-# React + TypeScript + Vite
+# D&D Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Web-basiertes Dashboard für Dungeons & Dragons mit einem gemeinsamen, passwortgeschützten Bingo-Modus.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Benutzerregistrierung mit Admin-Freigabe
+- JWT-Authentifizierung über Cookie und Auth-Header
+- Admin-Panel zur Benutzerverwaltung
+- Profilseite zum Ändern des Anzeigenamens
+- Echtzeit-Bingo mit Socket.io
+- Gemeinsamer Aufgaben-Pool
+- Spieler-Liste und History
+- Brute-Force-Schutz durch Rate-Limiting und Account-Lockout
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Backend:** Node.js, Express, SQLite (better-sqlite3), Socket.io
+- **Frontend:** React, Vite, TypeScript, Tailwind CSS
+- **Echtzeit:** Socket.io
+- **Auth:** JWT, bcrypt
 
-## Expanding the Oxlint configuration
+## Voraussetzungen
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+- Node.js >= 22
+- npm
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+## Installation
+
+```bash
+npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Entwicklung
+
+Starte Server und Client gemeinsam:
+
+```bash
+npm run dev
+```
+
+- Client läuft auf http://localhost:5173
+- Server läuft auf http://localhost:3001
+
+Einzeln starten:
+
+```bash
+npm run server
+npm run client
+```
+
+## Build
+
+```bash
+npm run build
+```
+
+Erzeugt `dist/` (Client) und `dist-server/` (Server).
+
+## Produktion
+
+```bash
+npm run build
+npm start
+```
+
+Der Server liefert dann `dist/` aus und ist auf dem in `PORT` konfigurierten Port erreichbar (Standard 3001).
+
+## Default Admin
+
+Beim ersten Start wird ein Admin-Account erstellt:
+
+- Username: `admin`
+- Passwort: `***REMOVED***`
+
+Der Admin kann über das Admin-Panel neue Benutzer freigeben, weitere Admins ernennen und Benutzer löschen.
+
+## Datenbank
+
+Die SQLite-Datenbank wird als `dnd.db` im Projektroot angelegt. Sie enthält Benutzer- und Spieldaten und ist in `.gitignore` eingetragen.
+
+Für Tests kann eine separate Datenbank verwendet werden:
+
+```bash
+DB_PATH=dnd_test.db npm run server
+```
+
+## Test
+
+```bash
+npm run test:server
+# In einem zweiten Terminal
+npm run test
+```
+
+## Wichtige Dateien
+
+- `server/index.ts` – Express- und Socket.io-Setup
+- `server/users.ts` – Benutzerdatenbank und Authentifizierung
+- `server/game.ts` – Bingo-Spiel-Logik
+- `shared/types.ts` – Gemeinsame TypeScript-Typen
+- `src/App.tsx` – React-App-Einstieg
+- `src/hooks/useSocket.ts` – Auth- und Socket-Hooks
