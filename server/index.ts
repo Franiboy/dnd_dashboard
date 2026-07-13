@@ -300,6 +300,7 @@ io.on('connection', (socket) => {
   socket.on('join', () => {
     const displayName = user?.displayName;
     if (!displayName) return socket.emit('error', 'Name fehlt.');
+    if (user?.isAdmin) return socket.emit('error', 'Admin kann nicht als Spieler beitreten.');
 
     const currentGame = getGame();
     const existing = currentGame.players.find((p) => p.name === displayName);
