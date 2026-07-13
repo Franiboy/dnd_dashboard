@@ -4,7 +4,8 @@ Web-basiertes Dashboard für Dungeons & Dragons mit einem gemeinsamen, passwortg
 
 ## Features
 
-- Benutzerregistrierung mit Admin-Freigabe
+- Discord OAuth2 Login
+- Admin-Freigabe für neue Discord-Benutzer
 - JWT-Authentifizierung über Cookie und Auth-Header
 - Admin-Panel zur Benutzerverwaltung
 - Profilseite zum Ändern des Anzeigenamens
@@ -66,6 +67,18 @@ npm start
 
 Der Server liefert dann `dist/` aus und ist auf dem in `PORT` konfigurierten Port erreichbar (Standard 3001).
 
+## Discord OAuth2
+
+Für den Discord Login musst du eine Anwendung im [Discord Developer Portal](https://discord.com/developers/applications) erstellen und folgende Werte in `.env` eintragen:
+
+```bash
+DISCORD_CLIENT_ID=deine-client-id
+DISCORD_CLIENT_SECRET=dein-client-secret
+DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
+```
+
+Füge unter `OAuth2 → Redirects` die URL `http://localhost:5173/auth/discord` hinzu.
+
 ## Default Admin
 
 Beim ersten Start wird ein Admin-Account erstellt. Das Passwort wird aus der Umgebungsvariablen `ADMIN_PASSWORD` gelesen. Kopiere `.env.example` nach `.env` und setze ein sicheres Passwort:
@@ -78,7 +91,7 @@ cp .env.example .env
 - Username: `admin`
 - Passwort: Wert aus `ADMIN_PASSWORD` in `.env`
 
-Der Admin kann über das Admin-Panel neue Benutzer freigeben, weitere Admins ernennen und Benutzer löschen. Der Server startet nicht, wenn `ADMIN_PASSWORD` nicht gesetzt ist.
+Der Default Admin kann über ein Easter Egg erreicht werden: Auf der Login-Seite 5 Mal auf den Titel klicken, dann erscheint der Admin Login Link. Der Admin kann im Admin-Panel nur noch Benutzer freigeben, löschen und Admin-Rechte vergeben. Normale Registrierung entfällt, da jeder Benutzer über Discord kommt.
 
 ## Datenbank
 
