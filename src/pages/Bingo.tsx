@@ -112,6 +112,7 @@ export function Bingo({ token, user }: BingoProps) {
   const isPlaying = game.status === 'playing';
   const player = game.players.find((p: any) => p.id === playerId);
   const needsJoin = !player;
+  const isAdmin = user?.isAdmin || false;
 
   return (
     <div className="min-h-screen p-6">
@@ -140,28 +141,37 @@ export function Bingo({ token, user }: BingoProps) {
 
           {isSetup && (
             <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 mb-8">
-              <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Spiel starten</h2>
-              <div className="flex flex-wrap items-center gap-4">
-                <label className="text-slate-400">Feldgröße:</label>
-                <select
-                  value={gridSize}
-                  onChange={(e) => setGridSize(parseInt(e.target.value))}
-                  className="px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)]"
-                >
-                  <option value={3}>3x3</option>
-                  <option value={4}>4x4</option>
-                  <option value={5}>5x5</option>
-                </select>
-                <button
-                  onClick={start}
-                  className="px-6 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
-                >
-                  Spiel starten
-                </button>
-                <span className="text-slate-500 text-sm">
-                  {game.tasks.length} Aufgaben, mindestens {gridSize * gridSize} nötig.
-                </span>
-              </div>
+              {isAdmin ? (
+                <>
+                  <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Spiel starten</h2>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <label className="text-slate-400">Feldgröße:</label>
+                    <select
+                      value={gridSize}
+                      onChange={(e) => setGridSize(parseInt(e.target.value))}
+                      className="px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)]"
+                    >
+                      <option value={3}>3x3</option>
+                      <option value={4}>4x4</option>
+                      <option value={5}>5x5</option>
+                    </select>
+                    <button
+                      onClick={start}
+                      className="px-6 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
+                    >
+                      Spiel starten
+                    </button>
+                    <span className="text-slate-500 text-sm">
+                      {game.tasks.length} Aufgaben, mindestens {gridSize * gridSize} nötig.
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-semibold text-[var(--text-h)] mb-2">Warte auf Spielstart</h2>
+                  <p className="text-slate-400">Ein Admin muss das Spiel starten. Du kannst dich entspannen, bis es losgeht.</p>
+                </>
+              )}
             </div>
           )}
 
@@ -170,20 +180,22 @@ export function Bingo({ token, user }: BingoProps) {
               <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 mb-8">
                 <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Dein Bingo-Feld</h2>
                 <BingoGrid game={game} socket={socket} playerId={playerId} />
-                <div className="flex flex-wrap gap-4 mt-6">
-                  <button
-                    onClick={finish}
-                    className="px-6 py-2 rounded bg-[var(--warning)] text-slate-900 font-semibold hover:bg-amber-300 transition"
-                  >
-                    Spiel beenden
-                  </button>
-                  <button
-                    onClick={reset}
-                    className="px-6 py-2 rounded bg-[var(--danger)] text-white font-semibold hover:bg-red-400 transition"
-                  >
-                    Reset
-                  </button>
-                </div>
+                {isAdmin && (
+                  <div className="flex flex-wrap gap-4 mt-6">
+                    <button
+                      onClick={finish}
+                      className="px-6 py-2 rounded bg-[var(--warning)] text-slate-900 font-semibold hover:bg-amber-300 transition"
+                    >
+                      Spiel beenden
+                    </button>
+                    <button
+                      onClick={reset}
+                      className="px-6 py-2 rounded bg-[var(--danger)] text-white font-semibold hover:bg-red-400 transition"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                )}
               </div>
               <ConfirmFor game={game} socket={socket} playerId={playerId} />
             </>
@@ -192,12 +204,14 @@ export function Bingo({ token, user }: BingoProps) {
           {game.status === 'finished' && (
             <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 text-center">
               <h2 className="text-2xl font-bold text-[var(--text-h)] mb-2">Spiel beendet</h2>
-              <button
-                onClick={reset}
-                className="px-6 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
-              >
-                Neues Spiel
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={reset}
+                  className="px-6 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
+                >
+                  Neues Spiel
+                </button>
+              )}
             </div>
           )}
         </>
