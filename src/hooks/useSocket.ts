@@ -129,27 +129,6 @@ export function useAuth() {
     }
   };
 
-  const updateDisplayName = async (displayName: string): Promise<boolean> => {
-    try {
-      const res = await fetch('/api/me', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ displayName }),
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setUser(data.user);
-        return true;
-      }
-      setError(data.error || 'Aktualisierung fehlgeschlagen');
-      return false;
-    } catch {
-      setError('Server nicht erreichbar');
-      return false;
-    }
-  };
-
   const logout = async () => {
     await fetch('/api/logout', { method: 'POST', credentials: 'include' });
     setUser(null);
@@ -203,5 +182,5 @@ export function useAuth() {
     fetchMe();
   }, [token]);
 
-  return { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, updateDisplayName, logout, checkApproved, setError };
+  return { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, setError };
 }
