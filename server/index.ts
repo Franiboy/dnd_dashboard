@@ -18,6 +18,7 @@ import {
   finishGame,
   getGame,
   joinPlayer,
+  leavePlayer,
   removeTask,
   resetGame,
   startGame,
@@ -370,7 +371,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    const playerId = socketPlayerMap.get(socket.id);
     socketPlayerMap.delete(socket.id);
+    if (playerId) {
+      io.emit('state', leavePlayer(playerId));
+    }
   });
 });
 
