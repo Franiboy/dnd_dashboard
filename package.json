@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "concurrently --handle-input --kill-others --kill-others-on-fail \"npm run server\" \"npm run client\"",
     "client": "vite",
-    "server": "node --watch --import ./node_modules/tsx/dist/loader.mjs ./server/index.ts",
+    "server": "node --import ./node_modules/tsx/dist/loader.mjs ./server/index.ts",
+    "server:watch": "node --watch --import ./node_modules/tsx/dist/loader.mjs ./server/index.ts",
     "build:server": "tsc -p tsconfig.server.json",
     "build": "tsc -b && vite build && npm run build:server",
     "start": "node dist-server/server/index.js",

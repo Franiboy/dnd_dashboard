@@ -300,7 +300,11 @@ http.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 
+let isShuttingDown = false;
+
 function shutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   console.log(`\n${signal} received, shutting down gracefully...`);
   http.close(() => {
     process.exit(0);
