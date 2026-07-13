@@ -13,7 +13,7 @@ dist-server
 dist-ssr
 *.local
 .env
-dnd.db
+*.db
 
 # Editor directories and files
 .vscode/*
