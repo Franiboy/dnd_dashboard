@@ -326,6 +326,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('startGame', (gridSize) => {
+    if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel starten.');
     try {
       io.emit('state', startGame(gridSize));
     } catch (e: any) {
@@ -363,10 +364,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('finishGame', () => {
+    if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel beenden.');
     io.emit('state', finishGame());
   });
 
   socket.on('resetGame', () => {
+    if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel zurücksetzen.');
     socketPlayerMap.clear();
     io.emit('state', resetGame());
   });
