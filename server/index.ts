@@ -6,6 +6,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { rateLimit } from 'express-rate-limit';
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -33,6 +34,7 @@ import {
   verifyToken,
 } from './auth.js';
 import {
+  checkLoginAllowed,
   createUser,
   deleteUser,
   ensureAdminUser,
@@ -40,6 +42,8 @@ import {
   findUserByUsername,
   getAllUsers,
   isInitialAdmin,
+  recordFailedLogin,
+  resetFailedLogins,
   setUserAdmin,
   setUserApproved,
   toSafeUser,
@@ -61,6 +65,15 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
+const loginRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zu viele Anmeldeversuche. Bitte später erneut versuchen.' },
+  skip: (req) => req.method !== 'POST',
+});
+
 // Ensure admin user exists at startup
 ensureAdminUser();
 
@@ -81,15 +94,29 @@ app.post('/api/register', (req, res) => {
   res.json({ ok: true, message: 'Registrierung erfolgreich. Warte auf Freigabe durch einen Admin.', user });
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', loginRateLimit, (req, res) => {
   const { username, password } = req.body;
   const user = findUserByUsername(username);
-  if (!user || !verifyPassword(user, password)) {
+
+  if (!user) {
     return res.status(401).json({ error: 'Falsche Anmeldedaten' });
   }
+
+  const allowed = checkLoginAllowed(user);
+  if (!allowed.allowed) {
+    return res.status(403).json({ error: allowed.reason });
+  }
+
+  if (!verifyPassword(user, password)) {
+    recordFailedLogin(user);
+    return res.status(401).json({ error: 'Falsche Anmeldedaten' });
+  }
+
   if (!user.isApproved) {
     return res.status(403).json({ error: 'Account wurde noch nicht freigegeben' });
   }
+
+  resetFailedLogins(user);
   const token = createToken(user);
   setAuthCookie(res, token);
   res.json({ ok: true, user: toSafeUser(user), token });
