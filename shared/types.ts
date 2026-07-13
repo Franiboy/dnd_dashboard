@@ -65,7 +65,7 @@ export interface SafeUser {
 }
 
 export interface ClientToServerEvents {
-  join: (name: string) => void;
+  join: () => void;
   addTask: (text: string) => void;
   removeTask: (taskId: string) => void;
   startGame: (gridSize: number) => void;

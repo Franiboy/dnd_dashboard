@@ -10,7 +10,7 @@ import { Profile } from './pages/Profile';
 
 function App() {
   const { user, token, loading, error, login, register, updateDisplayName, logout, setError } = useAuth();
-  const { game, socket, playerId, bingo } = useSocket(token);
+  const { game, socket, playerId, bingo } = useSocket(token, user);
   const [showRegister, setShowRegister] = useState(false);
 
   if (loading) {

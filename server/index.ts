@@ -218,13 +218,22 @@ io.on('connection', (socket) => {
   const user = (socket as any).user;
   socket.emit('state', getGame());
 
-  socket.on('join', (name) => {
-    const displayName = user?.displayName || name.trim();
+  socket.on('join', () => {
+    const displayName = user?.displayName;
     if (!displayName) return socket.emit('error', 'Name fehlt.');
-    const { game, playerId } = joinPlayer(displayName);
+
+    const currentGame = getGame();
+    const existing = currentGame.players.find((p) => p.name === displayName);
+    if (existing) {
+      socketPlayerMap.set(socket.id, existing.id);
+      socket.emit('joined', existing.id);
+      return socket.emit('state', currentGame);
+    }
+
+    const { game: nextGame, playerId } = joinPlayer(displayName);
     socketPlayerMap.set(socket.id, playerId);
     socket.emit('joined', playerId);
-    io.emit('state', game);
+    io.emit('state', nextGame);
   });
 
   socket.on('addTask', (text) => {
