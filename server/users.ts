@@ -2,7 +2,8 @@ import bcrypt from 'bcrypt';
 import Database from 'better-sqlite3';
 import type { SafeUser, User } from '../shared/types.js';
 
-const db = new Database('dnd.db');
+const DB_PATH = process.env.DB_PATH || 'dnd.db';
+const db = new Database(DB_PATH);
 
 const SALT_ROUNDS = 10;
 export const INITIAL_ADMIN_USERNAME = 'admin';
