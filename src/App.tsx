@@ -11,7 +11,7 @@ import { Profile } from './pages/Profile';
 import { Toast } from './components/Toast';
 
 function App() {
-  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, updateDisplayName, logout } = useAuth();
+  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, updateDisplayName, logout, checkApproved } = useAuth();
   const { game, socket, playerId, bingo } = useSocket(token, user);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -34,7 +34,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Login onDiscordLogin={handleDiscord} error={error} />} />
           <Route path="/admin-login" element={<AdminLogin onLogin={handleAdminLogin} error={error} />} />
-          <Route path="/auth/discord" element={<AuthCallback onCallback={handleDiscordCallback} />} />
+          <Route path="/auth/discord" element={<AuthCallback onCallback={handleDiscordCallback} onCheckApproved={checkApproved} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </BrowserRouter>
