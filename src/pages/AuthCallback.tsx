@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 interface AuthCallbackProps {
@@ -11,6 +11,7 @@ export function AuthCallback({ onCallback, onCheckApproved }: AuthCallbackProps)
   const navigate = useNavigate();
   const [status, setStatus] = useState('Verarbeite Discord Login...');
   const [waiting, setWaiting] = useState(false);
+  const processedRef = useRef(false);
 
   useEffect(() => {
     const code = searchParams.get('code');
@@ -18,6 +19,8 @@ export function AuthCallback({ onCallback, onCheckApproved }: AuthCallbackProps)
       setStatus('Kein Code von Discord erhalten.');
       return;
     }
+    if (processedRef.current) return;
+    processedRef.current = true;
 
     onCallback(code).then((result) => {
       if (result.ok) {
