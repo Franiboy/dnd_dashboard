@@ -8,6 +8,9 @@ const SALT_ROUNDS = 10;
 export const INITIAL_ADMIN_USERNAME = 'admin';
 export const INITIAL_ADMIN_PASSWORD = '***REMOVED***';
 
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 15;
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -16,6 +19,8 @@ db.exec(`
     password_hash TEXT NOT NULL,
     is_admin INTEGER NOT NULL DEFAULT 0,
     is_approved INTEGER NOT NULL DEFAULT 0,
+    failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until TEXT,
     created_at TEXT NOT NULL
   );
 `);
@@ -28,6 +33,8 @@ function rowToUser(row: any): User {
     passwordHash: row.password_hash,
     isAdmin: !!row.is_admin,
     isApproved: !!row.is_approved,
+    failedLoginAttempts: row.failed_login_attempts || 0,
+    lockedUntil: row.locked_until || null,
     createdAt: row.created_at,
   };
 }
@@ -46,12 +53,17 @@ export function isInitialAdmin(user: { username: string }): boolean {
   return user.username === INITIAL_ADMIN_USERNAME;
 }
 
+function isLocked(user: User): boolean {
+  if (!user.lockedUntil) return false;
+  return new Date(user.lockedUntil) > new Date();
+}
+
 export function createUser(username: string, displayName: string, password: string): SafeUser {
   const id = crypto.randomUUID();
   const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
   db.prepare(
-    'INSERT INTO users (id, username, display_name, password_hash, is_admin, is_approved, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, 0, 0, new Date().toISOString());
+    'INSERT INTO users (id, username, display_name, password_hash, is_admin, is_approved, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, 0, 0, 0, null, new Date().toISOString());
   return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)));
 }
 
@@ -59,8 +71,8 @@ export function createAdminUser(username: string, displayName: string, password:
   const id = crypto.randomUUID();
   const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
   db.prepare(
-    'INSERT INTO users (id, username, display_name, password_hash, is_admin, is_approved, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, 1, 1, new Date().toISOString());
+    'INSERT INTO users (id, username, display_name, password_hash, is_admin, is_approved, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, 1, 1, 0, null, new Date().toISOString());
   return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)));
 }
 
@@ -110,6 +122,28 @@ export function deleteUser(id: string): boolean {
   return result.changes > 0;
 }
 
+export function recordFailedLogin(user: User): void {
+  const attempts = user.failedLoginAttempts + 1;
+  let lockedUntil: string | null = user.lockedUntil;
+  if (attempts >= MAX_FAILED_ATTEMPTS) {
+    const until = new Date();
+    until.setMinutes(until.getMinutes() + LOCKOUT_MINUTES);
+    lockedUntil = until.toISOString();
+  }
+  db.prepare('UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE id = ?').run(attempts, lockedUntil, user.id);
+}
+
+export function resetFailedLogins(user: User): void {
+  db.prepare('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?').run(user.id);
+}
+
+export function checkLoginAllowed(user: User): { allowed: true } | { allowed: false; reason: string } {
+  if (isLocked(user)) {
+    return { allowed: false, reason: `Account ist gesperrt bis ${new Date(user.lockedUntil!).toLocaleString('de-DE')}` };
+  }
+  return { allowed: true };
+}
+
 export function ensureAdminUser(): SafeUser | null {
   const existing = findUserByUsername(INITIAL_ADMIN_USERNAME);
   if (!existing) {
@@ -127,6 +161,8 @@ export function ensureAdminUser(): SafeUser | null {
   if (!existing.isApproved || !existing.isAdmin) {
     db.prepare('UPDATE users SET is_admin = 1, is_approved = 1 WHERE id = ?').run(existing.id);
   }
+
+  resetFailedLogins(existing);
 
   const admin = findUserById(existing.id);
   return admin ? toSafeUser(admin) : null;

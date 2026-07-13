@@ -51,6 +51,8 @@ export interface User {
   passwordHash: string;
   isAdmin: boolean;
   isApproved: boolean;
+  failedLoginAttempts: number;
+  lockedUntil: string | null;
   createdAt: string;
 }
 
