@@ -1,0 +1,57 @@
+export interface Task {
+  id: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface Cell {
+  taskId: string | null;
+  confirmedBy: string | null;
+}
+
+export interface Player {
+  id: string;
+  name: string;
+  status: 'lobby' | 'playing' | 'bingo';
+  board: Cell[][] | null;
+  joinedAt: string;
+}
+
+export interface BingoGame {
+  id: string;
+  status: 'setup' | 'playing' | 'finished';
+  tasks: Task[];
+  players: Player[];
+  gridSize: number;
+  history: HistoryEntry[];
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+export interface HistoryEntry {
+  id: string;
+  type: 'start' | 'confirm' | 'bingo' | 'finish' | 'join' | 'leave';
+  playerName: string;
+  taskText?: string;
+  timestamp: string;
+  message: string;
+}
+
+export interface ServerToClientEvents {
+  state: (game: BingoGame) => void;
+  error: (message: string) => void;
+  bingo: (playerName: string) => void;
+  joined: (playerId: string) => void;
+}
+
+export interface ClientToServerEvents {
+  join: (name: string) => void;
+  addTask: (text: string) => void;
+  removeTask: (taskId: string) => void;
+  startGame: (gridSize: number) => void;
+  updateBoard: (board: Cell[][]) => void;
+  confirmTask: (taskId: string) => void;
+  confirmTaskFor: (payload: { playerId: string; taskId: string }) => void;
+  finishGame: () => void;
+  resetGame: () => void;
+}
