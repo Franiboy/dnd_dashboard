@@ -65,7 +65,7 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
-const loginRateLimit = rateLimit({
+const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
@@ -78,7 +78,7 @@ const loginRateLimit = rateLimit({
 ensureAdminUser();
 
 // Auth routes
-app.post('/api/register', (req, res) => {
+app.post('/api/register', authRateLimit, (req, res) => {
   const { username, displayName, password } = req.body;
   if (!username?.trim() || !displayName?.trim() || !password?.trim()) {
     return res.status(400).json({ error: 'Alle Felder sind Pflicht' });
@@ -94,7 +94,7 @@ app.post('/api/register', (req, res) => {
   res.json({ ok: true, message: 'Registrierung erfolgreich. Warte auf Freigabe durch einen Admin.', user });
 });
 
-app.post('/api/login', loginRateLimit, (req, res) => {
+app.post('/api/login', authRateLimit, (req, res) => {
   const { username, password } = req.body;
   const user = findUserByUsername(username);
 
@@ -107,13 +107,9 @@ app.post('/api/login', loginRateLimit, (req, res) => {
     return res.status(403).json({ error: allowed.reason });
   }
 
-  if (!verifyPassword(user, password)) {
+  if (!verifyPassword(user, password) || !user.isApproved) {
     recordFailedLogin(user);
     return res.status(401).json({ error: 'Falsche Anmeldedaten' });
-  }
-
-  if (!user.isApproved) {
-    return res.status(403).json({ error: 'Account wurde noch nicht freigegeben' });
   }
 
   resetFailedLogins(user);
