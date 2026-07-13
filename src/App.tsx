@@ -1,49 +1,60 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { useSocket } from './hooks/useSocket';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useAuth, useSocket } from './hooks/useSocket';
 import { Login } from './pages/Login';
+import { Register } from './pages/Register';
 import { Home } from './pages/Home';
 import { Bingo } from './pages/Bingo';
+import { Admin } from './pages/Admin';
 
 function App() {
-  const [password, setPassword] = useState<string | null>(localStorage.getItem('dnd_password'));
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const { game, socket, playerId, bingo, error } = useSocket(password);
+  const { user, token, loading, error, login, register, logout, setError } = useAuth();
+  const { game, socket, playerId, bingo } = useSocket(token);
+  const [showRegister, setShowRegister] = useState(false);
 
-  useEffect(() => {
-    if (error) setLoginError(error);
-  }, [error]);
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center text-slate-400">Lade...</div>;
+  }
 
-  const handleLogin = async (pw: string) => {
-    try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pw }),
-      });
-      if (res.ok) {
-        setPassword(pw);
-        localStorage.setItem('dnd_password', pw);
-        setLoginError(null);
-      } else {
-        setLoginError('Falsches Passwort');
-      }
-    } catch {
-      setLoginError('Server nicht erreichbar');
-    }
+  const handleLogin = async (username: string, password: string) => {
+    await login(username, password);
   };
 
-  if (!password) {
-    return <Login onLogin={handleLogin} error={loginError} />;
+  const handleRegister = async (username: string, displayName: string, password: string) => {
+    setError(null);
+    const msg = await register(username, displayName, password);
+    if (msg) {
+      setTimeout(() => setShowRegister(false), 2000);
+    }
+    return msg;
+  };
+
+  if (!user) {
+    if (showRegister) {
+      return <Register onRegister={handleRegister} onBack={() => setShowRegister(false)} error={error} />;
+    }
+    return <Login onLogin={handleLogin} onRegister={() => setShowRegister(true)} error={error} />;
   }
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/bingo" element={<Bingo game={game} socket={socket} playerId={playerId} bingo={bingo} />} />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
+      <div className="min-h-screen flex flex-col">
+        <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
+          <span className="font-semibold text-[var(--text-h)]">{user.displayName}</span>
+          <div className="flex gap-4">
+            {user.isAdmin && (
+              <Link to="/admin" className="text-slate-400 hover:text-[var(--text-h)]">Admin</Link>
+            )}
+            <button onClick={logout} className="text-slate-400 hover:text-[var(--text-h)]">Logout</button>
+          </div>
+        </header>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/bingo" element={<Bingo game={game} socket={socket} playerId={playerId} bingo={bingo} />} />
+          <Route path="/admin" element={user.isAdmin ? <Admin /> : <Navigate to="/" />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </div>
     </BrowserRouter>
   );
 }
