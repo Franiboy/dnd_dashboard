@@ -80,11 +80,12 @@ function ConfirmFor({ game, socket, playerId }: { game: any; socket: Socket | nu
 interface BingoProps {
   token: string | null;
   user: SafeUser | null;
+  onError?: (msg: string) => void;
 }
 
-export function Bingo({ token, user }: BingoProps) {
+export function Bingo({ token, user, onError }: BingoProps) {
   const [gridSize, setGridSize] = useState(5);
-  const { game, socket, playerId, bingo } = useSocket(token, user);
+  const { game, socket, playerId, bingo } = useSocket(token, user, onError);
 
   useEffect(() => {
     if (bingo) playBingoSound();
