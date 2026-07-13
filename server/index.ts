@@ -47,6 +47,7 @@ import {
   setUserAdmin,
   setUserApproved,
   toSafeUser,
+  updateDisplayName,
   verifyPassword,
 } from './users.js';
 
@@ -125,6 +126,16 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', authMiddleware, (req: AuthRequest, res) => {
   res.json({ ok: true, user: toSafeUser(req.user!) });
+});
+
+app.put('/api/me', authMiddleware, (req: AuthRequest, res) => {
+  const { displayName } = req.body;
+  if (!displayName?.trim()) {
+    return res.status(400).json({ error: 'Anzeigename darf nicht leer sein' });
+  }
+  const updated = updateDisplayName(req.user!.id, displayName);
+  if (!updated) return res.status(404).json({ error: 'User nicht gefunden' });
+  res.json({ ok: true, user: updated });
 });
 
 app.get('/api/state', authMiddleware, (req: AuthRequest, res) => {

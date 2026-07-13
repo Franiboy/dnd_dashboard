@@ -117,6 +117,15 @@ export function setUserAdmin(id: string, isAdmin: boolean): SafeUser | null {
   return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
 }
 
+export function updateDisplayName(id: string, displayName: string): SafeUser | null {
+  const user = findUserById(id);
+  if (!user) return null;
+  const trimmed = displayName.trim();
+  if (!trimmed) return null;
+  db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(trimmed, id);
+  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
+}
+
 export function deleteUser(id: string): boolean {
   const result = db.prepare('DELETE FROM users WHERE id = ?').run(id);
   return result.changes > 0;
