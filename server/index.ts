@@ -166,7 +166,9 @@ app.post('/api/auth/discord/callback', authRateLimit, async (req, res) => {
     }
 
     if (!user.isApproved) {
-      return res.status(403).json({ error: 'Account wurde noch nicht freigegeben', user: toSafeUser(user) });
+      const token = createToken(user);
+      setAuthCookie(res, token);
+      return res.status(403).json({ error: 'Account wurde noch nicht freigegeben', user: toSafeUser(user), token });
     }
 
     const allowed = checkLoginAllowed(user);
