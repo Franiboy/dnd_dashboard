@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PasswordInput } from '../components/PasswordInput';
 
 interface RegisterProps {
   onRegister: (username: string, displayName: string, password: string) => Promise<string | null>;
@@ -58,19 +59,17 @@ export function Register({ onRegister, onBack, error }: RegisterProps) {
           placeholder="Anzeigename"
           className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] mb-4"
         />
-        <input
-          type="password"
+        <PasswordInput
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={setPassword}
           placeholder="Passwort"
-          className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] mb-4"
+          className="mb-4"
         />
-        <input
-          type="password"
+        <PasswordInput
           value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
+          onChange={setConfirmPassword}
           placeholder="Passwort wiederholen"
-          className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] mb-4"
+          className="mb-4"
         />
         {(error || localError) && <p className="text-[var(--danger)] text-sm mb-4">{error || localError}</p>}
         {message && <p className="text-[var(--accent)] text-sm mb-4">{message}</p>}
