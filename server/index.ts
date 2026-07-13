@@ -279,6 +279,9 @@ app.delete('/api/admin/users/:id', authMiddleware, requireAdmin, (req: AuthReque
 const distDir = path.join(__dirname, '..', '..', 'dist');
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distDir));
+  app.get(/^\/(auth\/.*)?$/, (req, res) => {
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
   app.get(/.*/, authMiddleware, (req: AuthRequest, res) => {
     res.sendFile(path.join(distDir, 'index.html'));
   });
