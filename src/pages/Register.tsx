@@ -10,12 +10,28 @@ export function Register({ onRegister, onBack, error }: RegisterProps) {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
-    if (!username.trim() || !displayName.trim() || !password.trim()) return;
+    setLocalError(null);
+
+    if (!username.trim() || !displayName.trim() || !password.trim()) {
+      setLocalError('Alle Felder sind Pflicht');
+      return;
+    }
+    if (password.length < 4) {
+      setLocalError('Passwort muss mindestens 4 Zeichen haben');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setLocalError('Passwörter stimmen nicht überein');
+      return;
+    }
+
     const msg = await onRegister(username.trim(), displayName.trim(), password);
     if (msg) setMessage(msg);
   };
@@ -49,7 +65,14 @@ export function Register({ onRegister, onBack, error }: RegisterProps) {
           placeholder="Passwort"
           className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] mb-4"
         />
-        {error && <p className="text-[var(--danger)] text-sm mb-4">{error}</p>}
+        <input
+          type="password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          placeholder="Passwort wiederholen"
+          className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] mb-4"
+        />
+        {(error || localError) && <p className="text-[var(--danger)] text-sm mb-4">{error || localError}</p>}
         {message && <p className="text-[var(--accent)] text-sm mb-4">{message}</p>}
         <button
           type="submit"
