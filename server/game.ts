@@ -21,12 +21,6 @@ function defaultGame(): BingoGame {
 
 let game: BingoGame = loadGame() || defaultGame();
 
-// Remove legacy admin players from persisted state
-if (game.players.some((p) => p.name === 'Admin')) {
-  game.players = game.players.filter((p) => p.name !== 'Admin');
-  saveGame(game);
-}
-
 export function getGame(): BingoGame {
   return game;
 }
