@@ -6,7 +6,7 @@ export { useAuth } from './useAuth';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
 
-export function useSocket(token: string | null, user: SafeUser | null) {
+export function useSocket(token: string | null, user: SafeUser | null, onError?: (msg: string) => void) {
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const [game, setGame] = useState<BingoGame | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +32,10 @@ export function useSocket(token: string | null, user: SafeUser | null) {
     });
 
     socket.on('state', (g) => setGame(g));
-    socket.on('error', (msg) => setError(msg));
+    socket.on('error', (msg) => {
+      setError(msg);
+      onError?.(msg);
+    });
     socket.on('joined', (id) => {
       setPlayerId(id);
       joinedRef.current = true;
@@ -46,7 +49,7 @@ export function useSocket(token: string | null, user: SafeUser | null) {
       joinedRef.current = false;
       socket.disconnect();
     };
-  }, [token, user?.id]);
+  }, [token, user?.id, onError]);
 
   return {
     socket: socketRef.current,

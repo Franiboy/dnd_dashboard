@@ -41,8 +41,15 @@ function PendingApproval({ user, onCheckApproved, onLogout }: { user: { displayN
 }
 
 function App() {
-  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved } = useAuth();
+  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, setError } = useAuth();
   const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (error) {
+      setToast(error);
+      setError(null);
+    }
+  }, [error, setError]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-slate-400">Lade...</div>;
@@ -118,7 +125,7 @@ function App() {
         </header>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/bingo" element={<Bingo token={token} user={user} />} />
+          <Route path="/bingo" element={<Bingo token={token} user={user} onError={(msg) => setToast(msg)} />} />
           <Route path="/admin" element={user.isAdmin ? <Admin currentUser={user} /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
