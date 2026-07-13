@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from './hooks/useSocket';
 import { Login } from './pages/Login';
@@ -80,7 +80,9 @@ function App() {
     );
   }
 
-  if (user.isAdmin) {
+  const isInitialAdmin = user.username === 'admin';
+
+  if (isInitialAdmin) {
     return (
       <BrowserRouter>
         <Toast message={toast} onClose={() => setToast(null)} />
@@ -107,11 +109,17 @@ function App() {
             {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
             <span>{user.displayName}</span>
           </div>
-          <button onClick={logout} className="text-slate-400 hover:text-[var(--text-h)]">Logout</button>
+          <div className="flex gap-4">
+            {user.isAdmin && (
+              <Link to="/admin" className="text-slate-400 hover:text-[var(--text-h)]">Admin</Link>
+            )}
+            <button onClick={logout} className="text-slate-400 hover:text-[var(--text-h)]">Logout</button>
+          </div>
         </header>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/bingo" element={<Bingo token={token} user={user} />} />
+          <Route path="/admin" element={user.isAdmin ? <Admin currentUser={user} /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>
