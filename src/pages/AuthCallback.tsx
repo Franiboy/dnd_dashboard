@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 interface AuthCallbackProps {
@@ -6,12 +6,13 @@ interface AuthCallbackProps {
   onCheckApproved?: () => Promise<boolean>;
 }
 
+const PROCESSED_KEY = 'discord_code_processed';
+
 export function AuthCallback({ onCallback, onCheckApproved }: AuthCallbackProps) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [status, setStatus] = useState('Verarbeite Discord Login...');
   const [waiting, setWaiting] = useState(false);
-  const processedRef = useRef(false);
 
   useEffect(() => {
     const code = searchParams.get('code');
@@ -19,8 +20,15 @@ export function AuthCallback({ onCallback, onCheckApproved }: AuthCallbackProps)
       setStatus('Kein Code von Discord erhalten.');
       return;
     }
-    if (processedRef.current) return;
-    processedRef.current = true;
+
+    // Avoid double-processing the same code (e.g. React Strict Mode remount)
+    const processedCode = sessionStorage.getItem(PROCESSED_KEY);
+    if (processedCode === code) {
+      setStatus('Code wurde bereits verarbeitet. Bitte warte auf Freigabe.');
+      setWaiting(true);
+      return;
+    }
+    sessionStorage.setItem(PROCESSED_KEY, code);
 
     onCallback(code).then((result) => {
       if (result.ok) {
