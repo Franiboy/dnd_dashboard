@@ -67,6 +67,15 @@ export function joinPlayer(name: string): { game: BingoGame; playerId: string } 
   return { game, playerId: id };
 }
 
+export function leavePlayer(playerId: string): BingoGame {
+  const player = game.players.find((p) => p.id === playerId);
+  if (player) {
+    game.players = game.players.filter((p) => p.id !== playerId);
+    addHistory('leave', player.name, `${player.name} hat das Spiel verlassen.`);
+  }
+  return game;
+}
+
 export function updatePlayerName(playerId: string, name: string): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
   if (player) player.name = name.trim();

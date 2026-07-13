@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { useAuth, useSocket } from './hooks/useSocket';
+import { useAuth } from './hooks/useSocket';
 import { Login } from './pages/Login';
 import { AdminLogin } from './pages/AdminLogin';
 import { AuthCallback } from './pages/AuthCallback';
@@ -42,7 +42,6 @@ function PendingApproval({ user, onCheckApproved, onLogout }: { user: { displayN
 
 function App() {
   const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved } = useAuth();
-  const { game, socket, playerId, bingo } = useSocket(token, user);
   const [toast, setToast] = useState<string | null>(null);
 
   if (loading) {
@@ -112,7 +111,7 @@ function App() {
         </header>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/bingo" element={<Bingo game={game} socket={socket} playerId={playerId} bingo={bingo} />} />
+          <Route path="/bingo" element={<Bingo token={token} user={user} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>

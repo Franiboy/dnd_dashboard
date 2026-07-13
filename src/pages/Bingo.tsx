@@ -1,18 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import type { BingoGame } from '../../shared/types';
+import type { SafeUser } from '../../shared/types';
 import type { Socket } from '../types';
+import { useSocket } from '../hooks/useSocket';
 import { TaskPool } from '../components/TaskPool';
 import { PlayerList } from '../components/PlayerList';
 import { History } from '../components/History';
 import { BingoGrid } from '../components/BingoGrid';
-
-interface BingoProps {
-  game: BingoGame | null;
-  socket: Socket | null;
-  playerId: string | null;
-  bingo: string | null;
-}
 
 function playBingoSound() {
   try {
@@ -33,7 +27,7 @@ function playBingoSound() {
   }
 }
 
-function ConfirmFor({ game, socket, playerId }: { game: BingoGame; socket: Socket | null; playerId: string | null }) {
+function ConfirmFor({ game, socket, playerId }: { game: any; socket: Socket | null; playerId: string | null }) {
   const [selectedTask, setSelectedTask] = useState('');
   const [selectedPlayer, setSelectedPlayer] = useState('');
 
@@ -52,7 +46,7 @@ function ConfirmFor({ game, socket, playerId }: { game: BingoGame; socket: Socke
           className="px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)]"
         >
           <option value="">Aufgabe wählen</option>
-          {game.tasks.map((t) => (
+          {game.tasks.map((t: any) => (
             <option key={t.id} value={t.id}>
               {t.text}
             </option>
@@ -65,8 +59,8 @@ function ConfirmFor({ game, socket, playerId }: { game: BingoGame; socket: Socke
         >
           <option value="">Spieler wählen</option>
           {game.players
-            .filter((p) => p.id !== playerId)
-            .map((p) => (
+            .filter((p: any) => p.id !== playerId)
+            .map((p: any) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
@@ -83,8 +77,14 @@ function ConfirmFor({ game, socket, playerId }: { game: BingoGame; socket: Socke
   );
 }
 
-export function Bingo({ game, socket, playerId, bingo }: BingoProps) {
+interface BingoProps {
+  token: string | null;
+  user: SafeUser | null;
+}
+
+export function Bingo({ token, user }: BingoProps) {
   const [gridSize, setGridSize] = useState(5);
+  const { game, socket, playerId, bingo } = useSocket(token, user);
 
   useEffect(() => {
     if (bingo) playBingoSound();
@@ -110,7 +110,7 @@ export function Bingo({ game, socket, playerId, bingo }: BingoProps) {
 
   const isSetup = game.status === 'setup';
   const isPlaying = game.status === 'playing';
-  const player = game.players.find((p) => p.id === playerId);
+  const player = game.players.find((p: any) => p.id === playerId);
   const needsJoin = !player;
 
   return (
@@ -205,3 +205,4 @@ export function Bingo({ game, socket, playerId, bingo }: BingoProps) {
     </div>
   );
 }
+
