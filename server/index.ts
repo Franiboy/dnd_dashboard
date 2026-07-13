@@ -395,8 +395,19 @@ function shutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`\n${signal} received, shutting down gracefully...`);
-  http.close(() => {
+
+  // Force close after 1.5s even if sockets are still open
+  const forceExit = setTimeout(() => {
+    console.log('Forcing shutdown...');
     process.exit(0);
+  }, 1500);
+
+  // Close Socket.io to drop active connections
+  io.close(() => {
+    http.close(() => {
+      clearTimeout(forceExit);
+      process.exit(0);
+    });
   });
 }
 
