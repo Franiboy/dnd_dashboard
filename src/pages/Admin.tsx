@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { SafeUser } from '../../shared/types';
 
-export function Admin() {
+interface AdminProps {
+  currentUser: SafeUser;
+}
+
+export function Admin({ currentUser }: AdminProps) {
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +31,7 @@ export function Admin() {
 
   const action = async (id: string, endpoint: string, body?: object) => {
     const res = await fetch(`/api/admin/users/${id}${endpoint}`, {
-      method: body ? 'POST' : 'POST',
+      method: 'POST',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
       credentials: 'include',
@@ -54,6 +58,9 @@ export function Admin() {
     fetchUsers();
   };
 
+  const isOwn = (u: SafeUser) => u.id === currentUser.id;
+  const isInitialAdmin = (u: SafeUser) => u.username === 'admin';
+
   return (
     <div className="min-h-screen p-6">
       <div className="flex items-center justify-between mb-6">
@@ -77,7 +84,10 @@ export function Admin() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id} className="border-b border-[var(--border)] last:border-0">
-                <td className="p-3 text-[var(--text-h)]">{u.username}</td>
+                <td className="p-3 text-[var(--text-h)]">
+                  {u.username} {isInitialAdmin(u) && <span className="text-xs text-slate-500">(Ursprungsadmin)</span>}
+                  {isOwn(u) && !isInitialAdmin(u) && <span className="text-xs text-slate-500"> (Du)</span>}
+                </td>
                 <td className="p-3 text-[var(--text-h)]">{u.displayName}</td>
                 <td className="p-3">
                   {u.isApproved ? (
@@ -88,34 +98,41 @@ export function Admin() {
                 </td>
                 <td className="p-3">{u.isAdmin ? 'Ja' : 'Nein'}</td>
                 <td className="p-3 flex flex-wrap gap-2">
-                  {!u.isApproved && (
-                    <button
-                      onClick={() => action(u.id, '/approve')}
-                      className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 text-xs font-semibold"
-                    >
-                      Freigeben
-                    </button>
+                  {!isInitialAdmin(u) && !isOwn(u) && (
+                    <>
+                      {!u.isApproved && (
+                        <button
+                          onClick={() => action(u.id, '/approve')}
+                          className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 text-xs font-semibold"
+                        >
+                          Freigeben
+                        </button>
+                      )}
+                      {u.isApproved && (
+                        <button
+                          onClick={() => action(u.id, '/reject')}
+                          className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 text-xs font-semibold"
+                        >
+                          Sperren
+                        </button>
+                      )}
+                      <button
+                        onClick={() => action(u.id, '/admin', { isAdmin: !u.isAdmin })}
+                        className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs"
+                      >
+                        {u.isAdmin ? 'Admin entfernen' : 'Zum Admin'}
+                      </button>
+                      <button
+                        onClick={() => deleteU(u.id)}
+                        className="px-3 py-1 rounded bg-[var(--danger)] text-white text-xs"
+                      >
+                        Löschen
+                      </button>
+                    </>
                   )}
-                  {u.isApproved && (
-                    <button
-                      onClick={() => action(u.id, '/reject')}
-                      className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 text-xs font-semibold"
-                    >
-                      Sperren
-                    </button>
+                  {(isInitialAdmin(u) || isOwn(u)) && (
+                    <span className="text-slate-500 text-xs">Geschützt</span>
                   )}
-                  <button
-                    onClick={() => action(u.id, '/admin', { isAdmin: !u.isAdmin })}
-                    className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs"
-                  >
-                    {u.isAdmin ? 'Admin entfernen' : 'Zum Admin'}
-                  </button>
-                  <button
-                    onClick={() => deleteU(u.id)}
-                    className="px-3 py-1 rounded bg-[var(--danger)] text-white text-xs"
-                  >
-                    Löschen
-                  </button>
                 </td>
               </tr>
             ))}
