@@ -44,6 +44,24 @@ export interface ServerToClientEvents {
   joined: (playerId: string) => void;
 }
 
+export interface User {
+  id: string;
+  username: string;
+  displayName: string;
+  passwordHash: string;
+  isAdmin: boolean;
+  isApproved: boolean;
+  createdAt: string;
+}
+
+export interface SafeUser {
+  id: string;
+  username: string;
+  displayName: string;
+  isAdmin: boolean;
+  isApproved: boolean;
+}
+
 export interface ClientToServerEvents {
   join: (name: string) => void;
   addTask: (text: string) => void;

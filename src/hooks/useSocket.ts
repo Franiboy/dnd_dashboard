@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import type { BingoGame, ClientToServerEvents, ServerToClientEvents } from '../../shared/types';
+import type { BingoGame, ClientToServerEvents, ServerToClientEvents, SafeUser } from '../../shared/types';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
 
-export function useSocket(password: string | null) {
+export function useSocket(token: string | null) {
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const [game, setGame] = useState<BingoGame | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -12,10 +12,10 @@ export function useSocket(password: string | null) {
   const [bingo, setBingo] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!password) return;
+    if (!token) return;
 
     const socket = io(SERVER_URL, {
-      auth: { password },
+      auth: { token },
       reconnection: true,
     });
 
@@ -32,7 +32,7 @@ export function useSocket(password: string | null) {
     return () => {
       socket.disconnect();
     };
-  }, [password]);
+  }, [token]);
 
   return {
     socket: socketRef.current,
@@ -42,4 +42,91 @@ export function useSocket(password: string | null) {
     bingo,
     setError,
   };
+}
+
+export function useAuth() {
+  const [user, setUser] = useState<SafeUser | null>(null);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('dnd_token'));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const login = async (username: string, password: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUser(data.user);
+        setToken(data.token);
+        localStorage.setItem('dnd_token', data.token);
+        setError(null);
+        return true;
+      }
+      setError(data.error || 'Login fehlgeschlagen');
+      return false;
+    } catch {
+      setError('Server nicht erreichbar');
+      return false;
+    }
+  };
+
+  const register = async (username: string, displayName: string, password: string): Promise<string | null> => {
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, displayName, password }),
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return data.message || 'Registrierung erfolgreich';
+      }
+      setError(data.error || 'Registrierung fehlgeschlagen');
+      return null;
+    } catch {
+      setError('Server nicht erreichbar');
+      return null;
+    }
+  };
+
+  const logout = async () => {
+    await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('dnd_token');
+  };
+
+  const fetchMe = async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const res = await fetch('/api/me', {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data.user);
+      } else {
+        localStorage.removeItem('dnd_token');
+        setToken(null);
+      }
+    } catch {
+      setToken(null);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchMe();
+  }, [token]);
+
+  return { user, token, loading, error, login, register, logout, setError };
 }
