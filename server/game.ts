@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'crypto';
-import type { BingoGame, Cell, HistoryEntry, Player, Task } from '../shared/types.js';
+import type { BingoGame, Cell, Player } from '../shared/types.js';
 import { loadGame, saveGame } from './db.js';
 
 function createId(): string {
@@ -13,7 +13,6 @@ function defaultGame(): BingoGame {
     tasks: [],
     players: [],
     gridSize: 5,
-    history: [],
     createdAt: new Date().toISOString(),
     finishedAt: null,
   };
@@ -29,16 +28,29 @@ function persist(): void {
   saveGame(game);
 }
 
-function addHistory(type: HistoryEntry['type'], playerName: string, message: string, taskText?: string): void {
-  game.history.unshift({
-    id: createId(),
-    type,
-    playerName,
-    message,
-    taskText,
-    timestamp: new Date().toISOString(),
-  });
-  persist();
+function createEmptyBoard(size: number): Cell[][] {
+  const board: Cell[][] = [];
+  for (let r = 0; r < size; r++) {
+    board[r] = [];
+    for (let c = 0; c < size; c++) {
+      board[r][c] = { taskId: null, confirmedBy: null };
+    }
+  }
+  return board;
+}
+
+function isValidBoard(board: Cell[][], size: number): boolean {
+  if (!Array.isArray(board) || board.length !== size) return false;
+  const taskIds = new Set(game.tasks.map((t) => t.id));
+  for (let r = 0; r < size; r++) {
+    const row = board[r];
+    if (!Array.isArray(row) || row.length !== size) return false;
+    for (let c = 0; c < size; c++) {
+      const cell = row[c];
+      if (cell.taskId !== null && !taskIds.has(cell.taskId)) return false;
+    }
+  }
+  return true;
 }
 
 export function addTask(text: string): BingoGame {
@@ -49,6 +61,20 @@ export function addTask(text: string): BingoGame {
 
 export function removeTask(taskId: string): BingoGame {
   game.tasks = game.tasks.filter((t) => t.id !== taskId);
+  game.players.forEach((p) => {
+    if (!p.board) return;
+    let changed = false;
+    for (let r = 0; r < p.board.length; r++) {
+      for (let c = 0; c < p.board[r].length; c++) {
+        if (p.board[r][c].taskId === taskId) {
+          p.board[r][c] = { ...p.board[r][c], taskId: null };
+          p.locked = false;
+          changed = true;
+        }
+      }
+    }
+    if (changed) p.locked = false;
+  });
   persist();
   return game;
 }
@@ -59,20 +85,20 @@ export function joinPlayer(name: string): { game: BingoGame; playerId: string } 
     id,
     name: name.trim(),
     status: 'lobby',
-    board: null,
+    board: createEmptyBoard(game.gridSize),
+    locked: false,
+    online: true,
     joinedAt: new Date().toISOString(),
   };
   game.players.push(player);
-  addHistory('join', player.name, `${player.name} ist dem Spiel beigetreten.`);
+  persist();
   return { game, playerId: id };
 }
 
-export function leavePlayer(playerId: string): BingoGame {
+export function setPlayerOnline(playerId: string, online: boolean): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
-  if (player) {
-    game.players = game.players.filter((p) => p.id !== playerId);
-    addHistory('leave', player.name, `${player.name} hat das Spiel verlassen.`);
-  }
+  if (player) player.online = online;
+  persist();
   return game;
 }
 
@@ -83,67 +109,112 @@ export function updatePlayerName(playerId: string, name: string): BingoGame {
   return game;
 }
 
-export function startGame(gridSize: number): BingoGame {
-  if (game.tasks.length < gridSize * gridSize) {
-    throw new Error(`Mindestens ${gridSize * gridSize} Aufgaben nötig.`);
+export function setGridSize(gridSize: number): BingoGame {
+  if (game.status !== 'setup') {
+    throw new Error('Feldgröße kann nur in der Setup-Phase geändert werden.');
+  }
+  if (gridSize < 3 || gridSize > 5) {
+    throw new Error('Ungültige Feldgröße.');
   }
   game.gridSize = gridSize;
-  game.status = 'playing';
-  const shuffled = [...game.tasks].sort(() => Math.random() - 0.5);
   game.players.forEach((p) => {
-    p.status = 'playing';
-    p.board = createBoard(shuffled, gridSize);
+    p.board = createEmptyBoard(gridSize);
+    p.locked = false;
   });
-  addHistory('start', 'System', `Spiel gestartet mit ${gridSize}x${gridSize} Feld.`);
   persist();
   return game;
 }
 
-function createBoard(tasks: Task[], size: number): Cell[][] {
-  const selected = tasks.slice(0, size * size);
-  const board: Cell[][] = [];
-  for (let r = 0; r < size; r++) {
-    board[r] = [];
-    for (let c = 0; c < size; c++) {
-      board[r][c] = { taskId: selected[r * size + c].id, confirmedBy: null };
-    }
+export function startGame(): BingoGame {
+  if (game.status !== 'setup') {
+    throw new Error('Spiel kann nur aus der Setup-Phase gestartet werden.');
   }
-  return board;
+  const needed = game.gridSize * game.gridSize;
+  if (game.tasks.length < needed) {
+    throw new Error(`Mindestens ${needed} Aufgaben nötig.`);
+  }
+  const onlinePlayers = game.players.filter((p) => p.online);
+  if (onlinePlayers.length === 0) {
+    throw new Error('Mindestens ein Spieler muss beigetreten sein.');
+  }
+  const notLocked = onlinePlayers.find((p) => !p.locked);
+  if (notLocked) {
+    throw new Error('Alle Spieler müssen ihr Board einlocken.');
+  }
+  const invalidBoard = onlinePlayers.find(
+    (p) => !p.board || !isValidBoard(p.board, game.gridSize) || p.board.some((row) => row.some((cell) => !cell.taskId))
+  );
+  if (invalidBoard) {
+    throw new Error('Nicht alle Boards sind vollständig ausgefüllt.');
+  }
+  game.status = 'playing';
+  game.players.forEach((p) => {
+    p.status = 'playing';
+  });
+  persist();
+  return game;
 }
 
 export function updateBoard(playerId: string, board: Cell[][]): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
-  if (!player) return game;
+  if (!player) throw new Error('Spieler nicht gefunden.');
+  if (game.status !== 'setup') throw new Error('Board kann nur vor Spielstart bearbeitet werden.');
+  if (player.locked) throw new Error('Board ist gesperrt. Entsperre es, um Änderungen vorzunehmen.');
+  if (!isValidBoard(board, game.gridSize)) throw new Error('Ungültiges Board.');
   player.board = board;
-  if (player.status === 'lobby') player.status = 'playing';
   persist();
   return game;
 }
 
-export function confirmTask(playerId: string, taskId: string, confirmedByName?: string): BingoGame {
+export function lockBoard(playerId: string): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
-  if (!player || !player.board) return game;
+  if (!player) throw new Error('Spieler nicht gefunden.');
+  if (game.status !== 'setup') throw new Error('Board kann nur vor Spielstart eingelockt werden.');
+  if (!player.board || !isValidBoard(player.board, game.gridSize)) {
+    throw new Error('Board ist ungültig.');
+  }
+  if (player.board.some((row) => row.some((cell) => !cell.taskId))) {
+    throw new Error('Board muss vollständig ausgefüllt sein, bevor es eingelockt wird.');
+  }
+  player.locked = true;
+  persist();
+  return game;
+}
 
-  const task = game.tasks.find((t) => t.id === taskId);
-  const taskText = task?.text;
+export function unlockBoard(playerId: string): BingoGame {
+  const player = game.players.find((p) => p.id === playerId);
+  if (!player) throw new Error('Spieler nicht gefunden.');
+  if (game.status !== 'setup') throw new Error('Board kann nur vor Spielstart entsperrt werden.');
+  player.locked = false;
+  persist();
+  return game;
+}
 
-  let changed = false;
-  for (let r = 0; r < player.board.length; r++) {
-    for (let c = 0; c < player.board[r].length; c++) {
-      const cell = player.board[r][c];
-      if (cell.taskId === taskId && !cell.confirmedBy) {
-        cell.confirmedBy = confirmedByName || player.name;
-        changed = true;
+export function confirmTask(sourcePlayerId: string, taskId: string, confirmedByName?: string): BingoGame {
+  if (game.status !== 'playing') return game;
+  const source = game.players.find((p) => p.id === sourcePlayerId);
+  const confirmedBy = confirmedByName || source?.name || 'Unbekannt';
+
+  let anyChanged = false;
+  for (const player of game.players) {
+    if (!player.board) continue;
+    let playerChanged = false;
+    for (let r = 0; r < player.board.length; r++) {
+      for (let c = 0; c < player.board[r].length; c++) {
+        const cell = player.board[r][c];
+        if (cell.taskId === taskId && !cell.confirmedBy) {
+          cell.confirmedBy = confirmedBy;
+          playerChanged = true;
+          anyChanged = true;
+        }
       }
+    }
+    if (playerChanged && hasBingo(player.board)) {
+      player.status = 'bingo';
     }
   }
 
-  if (changed) {
-    addHistory('confirm', player.name, `${player.name} hat "${taskText || taskId}" erledigt.`, taskText);
-    if (hasBingo(player.board)) {
-      player.status = 'bingo';
-      addHistory('bingo', player.name, `${player.name} hat BINGO!`);
-    }
+  if (anyChanged) {
     persist();
   }
 
@@ -156,32 +227,51 @@ export function confirmTaskFor(targetPlayerId: string, taskId: string, sourceNam
   return confirmTask(targetPlayerId, taskId, sourceName);
 }
 
+export function unconfirmTask(taskId: string): BingoGame {
+  if (game.status !== 'playing') return game;
+  let changed = false;
+  for (const player of game.players) {
+    if (!player.board) continue;
+    for (let r = 0; r < player.board.length; r++) {
+      for (let c = 0; c < player.board[r].length; c++) {
+        const cell = player.board[r][c];
+        if (cell.taskId === taskId && cell.confirmedBy) {
+          cell.confirmedBy = null;
+          changed = true;
+        }
+      }
+    }
+    if (hasBingo(player.board)) {
+      if (player.status !== 'bingo') player.status = 'bingo';
+    } else {
+      if (player.status === 'bingo') player.status = 'playing';
+    }
+  }
+  if (changed) persist();
+  return game;
+}
+
 function hasBingo(board: Cell[][]): boolean {
   const size = board.length;
-  // rows
   for (let r = 0; r < size; r++) {
     if (board[r].every((cell) => cell.confirmedBy)) return true;
   }
-  // cols
   for (let c = 0; c < size; c++) {
     if (board.every((row) => row[c].confirmedBy)) return true;
   }
-  // diagonals
   if (board.every((row, i) => row[i].confirmedBy)) return true;
   if (board.every((row, i) => row[size - 1 - i].confirmedBy)) return true;
   return false;
 }
 
-export function finishGame(): BingoGame {
-  game.status = 'finished';
+export function finishAndResetGame(): BingoGame {
   game.finishedAt = new Date().toISOString();
-  addHistory('finish', 'System', 'Spiel beendet.');
-  persist();
-  return game;
-}
-
-export function resetGame(): BingoGame {
-  game = defaultGame();
+  game.status = 'setup';
+  game.players.forEach((p) => {
+    p.status = 'lobby';
+    p.board = createEmptyBoard(game.gridSize);
+    p.locked = false;
+  });
   persist();
   return game;
 }

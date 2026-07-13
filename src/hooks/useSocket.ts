@@ -31,6 +31,10 @@ export function useSocket(token: string | null, user: SafeUser | null, onError?:
       }
     });
 
+    socket.on('disconnect', () => {
+      joinedRef.current = false;
+    });
+
     socket.on('state', (g) => setGame(g));
     socket.on('error', (msg) => {
       setError(msg);
