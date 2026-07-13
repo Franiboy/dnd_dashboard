@@ -102,7 +102,10 @@ export function useAuth() {
         setError(null);
         return { ok: true };
       }
-      if (res.status === 403 && data.user) {
+      if (res.status === 403 && data.user && data.token) {
+        setUser(data.user);
+        setToken(data.token);
+        localStorage.setItem('dnd_token', data.token);
         return { ok: false, message: data.error || 'Account wurde noch nicht freigegeben' };
       }
       setError(data.error || 'Discord Login fehlgeschlagen');
@@ -154,6 +157,25 @@ export function useAuth() {
     localStorage.removeItem('dnd_token');
   };
 
+  const checkApproved = async (): Promise<boolean> => {
+    if (!token) return false;
+    try {
+      const res = await fetch('/api/me', {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      if (data.user?.isApproved) {
+        setUser(data.user);
+        return true;
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  };
+
   const fetchMe = async () => {
     if (!token) {
       setLoading(false);
@@ -181,5 +203,5 @@ export function useAuth() {
     fetchMe();
   }, [token]);
 
-  return { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, updateDisplayName, logout, setError };
+  return { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, updateDisplayName, logout, checkApproved, setError };
 }
