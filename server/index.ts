@@ -22,6 +22,28 @@ import {
   startGame,
   updateBoard,
 } from './game.js';
+import {
+  authMiddleware,
+  clearAuthCookie,
+  createToken,
+  requireAdmin,
+  setAuthCookie,
+  type AuthRequest,
+  getToken,
+  verifyToken,
+} from './auth.js';
+import {
+  createUser,
+  deleteUser,
+  ensureAdminUser,
+  findUserById,
+  findUserByUsername,
+  getAllUsers,
+  setUserAdmin,
+  setUserApproved,
+  toSafeUser,
+  verifyPassword,
+} from './users.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,48 +55,93 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
 });
 
 const PORT = process.env.PORT || 3001;
-const DND_PASSWORD = process.env.DND_PASSWORD || 'dnd1234';
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
-// Auth middleware for API
-function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const token = req.cookies?.dnd_auth || req.headers['x-dnd-password'];
-  if (token === DND_PASSWORD) {
-    return next();
+// Ensure admin user exists at startup
+ensureAdminUser();
+
+// Auth routes
+app.post('/api/register', (req, res) => {
+  const { username, displayName, password } = req.body;
+  if (!username?.trim() || !displayName?.trim() || !password?.trim()) {
+    return res.status(400).json({ error: 'Alle Felder sind Pflicht' });
   }
-  res.status(401).json({ error: 'Unauthorized' });
-}
+  if (password.length < 4) {
+    return res.status(400).json({ error: 'Passwort muss mindestens 4 Zeichen haben' });
+  }
+  const existing = findUserByUsername(username);
+  if (existing) {
+    return res.status(400).json({ error: 'Username existiert bereits' });
+  }
+  const user = createUser(username, displayName, password);
+  res.json({ ok: true, message: 'Registrierung erfolgreich. Warte auf Freigabe durch einen Admin.', user });
+});
 
 app.post('/api/login', (req, res) => {
-  const { password } = req.body;
-  if (password === DND_PASSWORD) {
-    res.cookie('dnd_auth', password, { httpOnly: true, maxAge: 1000 * 60 * 60 * 24 * 7 });
-    return res.json({ ok: true });
+  const { username, password } = req.body;
+  const user = findUserByUsername(username);
+  if (!user || !verifyPassword(user, password)) {
+    return res.status(401).json({ error: 'Falsche Anmeldedaten' });
   }
-  res.status(401).json({ error: 'Falsches Passwort' });
+  if (!user.isApproved) {
+    return res.status(403).json({ error: 'Account wurde noch nicht freigegeben' });
+  }
+  const token = createToken(user);
+  setAuthCookie(res, token);
+  res.json({ ok: true, user: toSafeUser(user), token });
 });
 
 app.post('/api/logout', (req, res) => {
-  res.clearCookie('dnd_auth');
+  clearAuthCookie(res);
   res.json({ ok: true });
 });
 
-app.get('/api/me', requireAuth, (req, res) => {
-  res.json({ ok: true });
+app.get('/api/me', authMiddleware, (req: AuthRequest, res) => {
+  res.json({ ok: true, user: toSafeUser(req.user!) });
 });
 
-app.get('/api/state', requireAuth, (req, res) => {
+app.get('/api/state', authMiddleware, (req: AuthRequest, res) => {
   res.json(getGame());
+});
+
+// Admin routes
+app.get('/api/admin/users', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  res.json(getAllUsers());
+});
+
+app.post('/api/admin/users/:id/approve', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const user = setUserApproved(req.params.id as string, true);
+  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  res.json(user);
+});
+
+app.post('/api/admin/users/:id/reject', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const user = setUserApproved(req.params.id as string, false);
+  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  res.json(user);
+});
+
+app.post('/api/admin/users/:id/admin', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const { isAdmin } = req.body;
+  const user = setUserAdmin(req.params.id as string, isAdmin);
+  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  res.json(user);
+});
+
+app.delete('/api/admin/users/:id', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const success = deleteUser(req.params.id as string);
+  if (!success) return res.status(404).json({ error: 'User nicht gefunden' });
+  res.json({ ok: true });
 });
 
 // Serve static files in production
 const distDir = path.join(__dirname, '..', '..', 'dist');
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distDir));
-  app.get(/.*/, requireAuth, (req, res) => {
+  app.get(/.*/, authMiddleware, (req: AuthRequest, res) => {
     res.sendFile(path.join(distDir, 'index.html'));
   });
 }
@@ -82,19 +149,24 @@ if (process.env.NODE_ENV === 'production') {
 const socketPlayerMap = new Map<string, string>();
 
 io.use((socket, next) => {
-  const password = socket.handshake.auth?.password || socket.handshake.headers['x-dnd-password'];
-  if (password === DND_PASSWORD) {
-    return next();
-  }
-  next(new Error('Unauthorized'));
+  const token = socket.handshake.auth?.token || getToken(socket.handshake as any);
+  if (!token) return next(new Error('Unauthorized'));
+  const payload = verifyToken(token);
+  if (!payload) return next(new Error('Unauthorized'));
+  const user = findUserById(payload.userId);
+  if (!user || !user.isApproved) return next(new Error('Unauthorized'));
+  (socket as any).user = user;
+  next();
 });
 
 io.on('connection', (socket) => {
+  const user = (socket as any).user;
   socket.emit('state', getGame());
 
   socket.on('join', (name) => {
-    if (!name.trim()) return socket.emit('error', 'Name fehlt.');
-    const { game, playerId } = joinPlayer(name);
+    const displayName = user?.displayName || name.trim();
+    if (!displayName) return socket.emit('error', 'Name fehlt.');
+    const { game, playerId } = joinPlayer(displayName);
     socketPlayerMap.set(socket.id, playerId);
     socket.emit('joined', playerId);
     io.emit('state', game);
