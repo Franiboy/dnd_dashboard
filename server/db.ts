@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3';
 import type { BingoGame } from '../shared/types.js';
 
-const db = new Database('dnd.db');
+const DB_PATH = process.env.DB_PATH || 'dnd.db';
+const db = new Database(DB_PATH);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS games (
