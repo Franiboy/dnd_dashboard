@@ -68,10 +68,11 @@ Der Server liefert dann `dist/` aus und ist auf dem in `PORT` konfigurierten Por
 
 ## Default Admin
 
-Beim ersten Start wird ein Admin-Account erstellt. Das Passwort wird aus der Umgebungsvariablen `ADMIN_PASSWORD` gelesen. Kopiere `.env.example` nach `.env` und passe es an:
+Beim ersten Start wird ein Admin-Account erstellt. Das Passwort wird aus der Umgebungsvariablen `ADMIN_PASSWORD` gelesen. Kopiere `.env.example` nach `.env` und setze ein sicheres Passwort:
 
 ```bash
 cp .env.example .env
+# .env editieren: ADMIN_PASSWORD=dein-sicheres-passwort
 ```
 
 - Username: `admin`

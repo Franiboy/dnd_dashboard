@@ -44,7 +44,7 @@ npm start          # Produktionsserver (erfordert vorherigen Build)
 
 ## Sicherheitshinweise
 
-- `ADMIN_PASSWORD` muss in `.env` gesetzt sein, sonst startet der Server nicht.
+- `ADMIN_PASSWORD` muss in `.env` gesetzt sein, sonst startet der Server nicht. `.env.example` enthält keinen Wert.
 - `JWT_SECRET` muss in `.env` gesetzt sein.
 - Der Admin-Username `admin` ist gegen Löschen, Sperren und Admin-Entzug geschützt.
 - Admins können sich selbst nicht verändern.
