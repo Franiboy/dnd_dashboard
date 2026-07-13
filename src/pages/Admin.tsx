@@ -87,8 +87,11 @@ export function Admin({ currentUser }: AdminProps) {
             {users.map((u) => (
               <tr key={u.id} className="border-b border-[var(--border)] last:border-0">
                 <td className="p-3 text-[var(--text-h)]">
-                  {u.username} {isInitialAdmin(u) && <span className="text-xs text-slate-500">(Ursprungsadmin)</span>}
-                  {isOwn(u) && !isInitialAdmin(u) && <span className="text-xs text-slate-500"> (Du)</span>}
+                  <div className="flex items-center gap-2">
+                    {u.avatarUrl && <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
+                    <span>{u.username} {isInitialAdmin(u) && <span className="text-xs text-slate-500">(Ursprungsadmin)</span>}
+                    {isOwn(u) && !isInitialAdmin(u) && <span className="text-xs text-slate-500"> (Du)</span>}</span>
+                  </div>
                 </td>
                 <td className="p-3 text-[var(--text-h)]">{u.displayName}</td>
                 <td className="p-3">
