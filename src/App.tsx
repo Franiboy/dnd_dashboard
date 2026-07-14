@@ -11,6 +11,7 @@ import { AuthCallback } from './pages/AuthCallback';
 import { Home } from './pages/Home';
 import { Bingo } from './pages/Bingo';
 import { Admin } from './pages/Admin';
+import { FeatureRequest } from './pages/FeatureRequest';
 
 const PUBLIC_PATHS = ['/', '/admin-login', '/auth/discord'];
 
@@ -91,6 +92,7 @@ function App() {
           ) : (
             <>
               <Route path="/" element={<Home />} />
+              <Route path="/feature-request" element={<FeatureRequest />} />
               <Route path="/bingo" element={<ProtectedRoute user={user}><Bingo token={token} user={user} /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/" />} />
             </>
