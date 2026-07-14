@@ -34,7 +34,6 @@ export function Login({ onDiscordLogin, error }: LoginProps) {
         <h1
           className="text-3xl font-bold text-[var(--text-h)] mb-2 cursor-default select-none"
           onClick={handleLogoClick}
-          title="Klicke 5 Mal für Admin Login"
         >
           DnD Dashboard
         </h1>
