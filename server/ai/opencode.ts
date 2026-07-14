@@ -48,7 +48,7 @@ export function runOpenCode({
   return new Promise((resolve) => {
     const child = spawn(bin, args, {
       cwd: worktreePath,
-      stdio: 'pipe',
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     });
 
@@ -62,6 +62,10 @@ export function runOpenCode({
       const line = data.toString();
       output += line;
       onLog?.(line);
+    });
+    child.on('error', (err) => {
+      output += `\nOpenCode spawn error: ${err.message}\n`;
+      resolve({ success: false, output, exitCode: -1 });
     });
     child.on('close', (exitCode) => {
       resolve({ success: exitCode === 0, output, exitCode: exitCode ?? 1 });
