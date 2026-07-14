@@ -33,7 +33,7 @@ app.use(cookieParser());
 ensureAdminUser();
 
 app.get('/api/version', (req, res) => {
-  res.json({ version: getVersion() });
+  res.json(getVersion());
 });
 
 app.use('/api', authRouter);
