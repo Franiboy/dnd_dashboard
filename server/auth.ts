@@ -74,8 +74,38 @@ export function clearAuthCookie(res: Response): void {
   }
 }
 
+function getCookieTokens(req: Request): string[] {
+  const header = req.headers.cookie;
+  if (!header || typeof header !== 'string') return [];
+  const tokens: string[] = [];
+  for (const part of header.split(';')) {
+    const [name, value] = part.trim().split('=');
+    if (name === COOKIE_NAME && value) {
+      tokens.push(decodeURIComponent(value));
+    }
+  }
+  return tokens;
+}
+
+function getBearerToken(req: Request): string | null {
+  const auth = req.headers['authorization'];
+  if (!auth) return null;
+  const value = typeof auth === 'string' ? auth : auth[0];
+  return value.replace(/^Bearer\s+/i, '');
+}
+
 export function getToken(req: Request): string | null {
-  return req.cookies?.[COOKIE_NAME] || (req.headers['authorization']?.toString().replace('Bearer ', '') ?? null);
+  const candidates = [...getCookieTokens(req)];
+  const bearer = getBearerToken(req);
+  if (bearer) candidates.push(bearer);
+
+  for (const token of candidates) {
+    const payload = verifyToken(token);
+    if (payload && findUserById(payload.userId)) {
+      return token;
+    }
+  }
+  return null;
 }
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -85,11 +115,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     return;
   }
   const payload = verifyToken(token);
-  if (!payload) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const user = findUserById(payload.userId);
+  const user = payload ? findUserById(payload.userId) : null;
   if (!user) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
