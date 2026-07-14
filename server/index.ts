@@ -7,7 +7,6 @@ import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type { ClientToServerEvents, ServerToClientEvents } from '../shared/types.js';
-import { authMiddleware, type AuthRequest } from './auth.js';
 import { ensureAdminUser } from './users.js';
 import adminRouter from './routes/admin.js';
 import authRouter from './routes/auth.js';
@@ -35,14 +34,14 @@ ensureAdminUser();
 app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
 
-// Serve static files in production
+// Serve static files in production and fall back to index.html for all non-API routes
 const distDir = path.join(__dirname, '..', '..', 'dist');
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distDir));
-  app.get(/^\/(auth\/.*)?$/, (req, res) => {
-    res.sendFile(path.join(distDir, 'index.html'));
-  });
-  app.get(/.*/, authMiddleware, (req: AuthRequest, res) => {
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+      return next();
+    }
     res.sendFile(path.join(distDir, 'index.html'));
   });
 }
