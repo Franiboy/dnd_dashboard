@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useApi } from '../hooks/useApi';
+import { useError } from '../hooks/useError';
 import type { SafeUser } from '../../shared/types';
 
 interface AdminProps {
@@ -7,57 +9,48 @@ interface AdminProps {
 }
 
 export function Admin({ currentUser }: AdminProps) {
+  const { request } = useApi();
+  const { showError } = useError();
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUsers = async () => {
-    try {
-      const res = await fetch('/api/admin/users', { credentials: 'include' });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || 'Fehler beim Laden');
-        return;
-      }
-      const data = await res.json();
+  const fetchUsers = useCallback(async () => {
+    const { data, error: fetchError } = await request<SafeUser[]>('/api/admin/users', { credentials: 'include' }, false);
+    if (data) {
       setUsers(data);
-    } catch {
-      setError('Server nicht erreichbar');
+      setError(null);
+    } else if (fetchError) {
+      setError(fetchError);
     }
-  };
+  }, [request]);
 
   useEffect(() => {
     fetchUsers();
-    const interval = setInterval(fetchUsers, 1000);
+    const interval = setInterval(fetchUsers, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    if (error) showError(error);
+  }, [error, showError]);
 
   const action = async (id: string, endpoint: string, body?: object) => {
-    const res = await fetch(`/api/admin/users/${id}${endpoint}`, {
+    const { error: actionError } = await request(`/api/admin/users/${id}${endpoint}`, {
       method: 'POST',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
       credentials: 'include',
     });
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || 'Fehler');
-      return;
-    }
-    fetchUsers();
+    if (!actionError) fetchUsers();
   };
 
   const deleteU = async (id: string) => {
     if (!confirm('Wirklich löschen?')) return;
-    const res = await fetch(`/api/admin/users/${id}`, {
+    const { error: deleteError } = await request(`/api/admin/users/${id}`, {
       method: 'DELETE',
       credentials: 'include',
     });
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || 'Fehler');
-      return;
-    }
-    fetchUsers();
+    if (!deleteError) fetchUsers();
   };
 
   const isOwn = (u: SafeUser) => u.id === currentUser.id;
@@ -69,8 +62,6 @@ export function Admin({ currentUser }: AdminProps) {
         <h1 className="text-3xl font-bold text-[var(--text-h)]">Administration</h1>
         <Link to="/" className="text-slate-400 hover:text-[var(--text-h)]">← Zurück</Link>
       </div>
-
-      {error && <p className="text-[var(--danger)] mb-4">{error}</p>}
 
       <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 overflow-auto">
         <table className="w-full text-left text-sm">

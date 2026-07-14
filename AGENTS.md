@@ -51,6 +51,9 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - `src/App.tsx` – React-App-Einstieg mit Router
 - `src/hooks/useAuth.ts` – Auth-Hook (Login, Token, /api/me)
 - `src/hooks/useSocket.ts` – Socket.io-Hook
+- `src/hooks/useApi.ts` – `fetch`-Wrapper mit automatischer Fehler-Toast-Anzeige
+- `src/hooks/useError.ts` – Zugriff auf den globalen Fehler-Context
+- `src/contexts/ErrorContext.ts` / `ErrorProvider.tsx` – Globaler Fehler-/Toast-Context
 - `src/pages/` – Seiten: Login, AdminLogin, AuthCallback, Home, Bingo, Admin
 - `src/components/` – Wiederverwendbare Komponenten (Layout, ProtectedRoute, ConfirmDialog, Toast)
 - `src/types.ts` – Frontend-Typ-Alias für den Socket.io-Client
