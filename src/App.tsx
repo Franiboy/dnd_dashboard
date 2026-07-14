@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { Layout } from './components/Layout';
@@ -11,6 +11,43 @@ import { AuthCallback } from './pages/AuthCallback';
 import { Home } from './pages/Home';
 import { Bingo } from './pages/Bingo';
 import { Admin } from './pages/Admin';
+
+const PUBLIC_PATHS = ['/', '/admin-login', '/auth/discord'];
+
+interface PublicRoutesProps {
+  error: string | null;
+  loginAdmin: (username: string, password: string) => Promise<boolean>;
+  startDiscordLogin: () => Promise<string | null>;
+  handleDiscordCallback: (code: string) => Promise<{ ok: boolean; message?: string }>;
+  checkApproved: () => Promise<boolean>;
+  setToast: (message: string | null) => void;
+}
+
+function PublicRoutes({
+  error,
+  loginAdmin,
+  startDiscordLogin,
+  handleDiscordCallback,
+  checkApproved,
+  setToast,
+}: PublicRoutesProps) {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!PUBLIC_PATHS.includes(location.pathname)) {
+      setToast('Bitte einloggen, um diese Seite zu sehen.');
+    }
+  }, [location.pathname, setToast]);
+
+  return (
+    <Routes>
+      <Route path="/" element={<Login onDiscordLogin={startDiscordLogin} error={error} />} />
+      <Route path="/admin-login" element={<AdminLogin onLogin={loginAdmin} error={error} />} />
+      <Route path="/auth/discord" element={<AuthCallback onCallback={handleDiscordCallback} onCheckApproved={checkApproved} />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
 
 function App() {
   const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, setError } = useAuth();
@@ -31,12 +68,14 @@ function App() {
     return (
       <BrowserRouter>
         <Toast message={toast} onClose={() => setToast(null)} />
-        <Routes>
-          <Route path="/" element={<Login onDiscordLogin={startDiscordLogin} error={error} />} />
-          <Route path="/admin-login" element={<AdminLogin onLogin={loginAdmin} error={error} />} />
-          <Route path="/auth/discord" element={<AuthCallback onCallback={handleDiscordCallback} onCheckApproved={checkApproved} />} />
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
+        <PublicRoutes
+          error={error}
+          loginAdmin={loginAdmin}
+          startDiscordLogin={startDiscordLogin}
+          handleDiscordCallback={handleDiscordCallback}
+          checkApproved={checkApproved}
+          setToast={setToast}
+        />
       </BrowserRouter>
     );
   }
