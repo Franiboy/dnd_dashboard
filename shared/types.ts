@@ -59,6 +59,24 @@ export interface SafeUser {
   isApproved: boolean;
 }
 
+export interface FeatureRequest {
+  id: number;
+  requestedBy: string;
+  title: string;
+  description: string;
+  status: 'pending' | 'running' | 'preview_ready' | 'failed' | 'merged';
+  branch: string | null;
+  worktreePath: string | null;
+  previewPort: number | null;
+  previewUrl: string | null;
+  previewPid: number | null;
+  sessionTitle: string | null;
+  sessionId: string | null;
+  logs: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ClientToServerEvents {
   join: () => void;
   addTask: (text: string) => void;

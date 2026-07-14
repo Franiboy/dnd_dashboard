@@ -42,9 +42,21 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
         <div className="flex justify-center">
           {version && (
             <div className="flex flex-col items-center">
-              <span className="text-2xl font-black font-mono text-[var(--text-h)] drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] transition-transform duration-200 hover:scale-110">
-                v.{version.mainVersion}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-black font-mono text-[var(--text-h)] drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] transition-transform duration-200 hover:scale-110">
+                  v.{version.mainVersion}
+                </span>
+                {version.branch === 'main' && (
+                  <Link
+                    to="/feature-request"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-semibold shadow hover:brightness-110 transition"
+                    title="Feature Request"
+                  >
+                    <span className="font-bold">+</span>
+                    <span>Feature Request</span>
+                  </Link>
+                )}
+              </div>
               {version.branch !== 'main' && (
                 <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-[var(--warning)] text-slate-900 font-semibold mt-1">
                   {version.branch}
