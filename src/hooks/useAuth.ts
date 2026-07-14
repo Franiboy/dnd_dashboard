@@ -90,12 +90,10 @@ export function useAuth() {
   };
 
   const checkApproved = async (): Promise<boolean> => {
-    if (!token) return false;
     try {
-      const res = await fetch('/api/me', {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      });
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch('/api/me', { headers, credentials: 'include' });
       if (!res.ok) return false;
       const data = await res.json();
       if (data.user?.isApproved) {
@@ -109,27 +107,24 @@ export function useAuth() {
   };
 
   const fetchMe = useCallback(async () => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
     try {
-      const res = await fetch('/api/me', {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      });
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch('/api/me', { headers, credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
+        setError(null);
       } else {
+        setUser(null);
         localStorage.removeItem('dnd_token');
         setToken(null);
       }
     } catch {
-      setToken(null);
+      setUser(null);
     }
     setLoading(false);
-  }, [token, setUser, setToken, setLoading]);
+  }, [token, setUser, setToken, setLoading, setError]);
 
   useEffect(() => {
     fetchMe();
