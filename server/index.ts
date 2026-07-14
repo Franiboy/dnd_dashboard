@@ -48,13 +48,11 @@ import {
   findUserByUsername,
   getAllUsers,
   isInitialAdmin,
-  recordFailedLogin,
   resetFailedLogins,
   setUserAdmin,
   setUserApproved,
   toSafeUser,
   updateDiscordProfile,
-  verifyPassword,
 } from './users.js';
 
 const __filename = fileURLToPath(import.meta.url);
