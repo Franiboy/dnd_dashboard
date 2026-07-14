@@ -1,5 +1,5 @@
 import { spawn, execSync } from 'node:child_process';
-import { existsSync, copyFileSync } from 'node:fs';
+import { existsSync, copyFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { findFreePort } from '../utils/port.js';
 import { runOpenCode, findOpenCodeSessionId } from './opencode.js';
@@ -7,6 +7,7 @@ import {
   updateFeatureRequest,
   appendFeatureRequestLogs,
   getFeatureRequestById,
+  deleteFeatureRequest,
 } from '../repositories/featureRequests.js';
 
 const PREVIEW_PORT_BASE = 4000;
@@ -383,6 +384,110 @@ export function mergeAndPushFeatureRequest(id: number): { success: boolean; erro
       previewPort: null,
       previewPid: null,
     });
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
+}
+
+function killProcess(pid: number) {
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch {
+    // ignore
+  }
+}
+
+function killProcessGroup(pid: number) {
+  try {
+    process.kill(-pid, 'SIGTERM');
+  } catch {
+    // ignore
+  }
+}
+
+function killProcessesByPort(port: number | null) {
+  if (!port) return;
+  try {
+    execSync(`lsof -t -i :${port} 2>/dev/null | xargs kill -9 2>/dev/null || true`, {
+      timeout: 10000,
+    });
+  } catch {
+    // ignore
+  }
+}
+
+function killProcessesInWorktree(worktreePath: string) {
+  try {
+    execSync(`fuser -k -TERM "${worktreePath}" 2>/dev/null || true`, { timeout: 5000 });
+  } catch {
+    // ignore
+  }
+  // fallback / final cleanup if processes are still hanging
+  try {
+    execSync(`fuser -k -KILL "${worktreePath}" 2>/dev/null || true`, { timeout: 5000 });
+  } catch {
+    // ignore
+  }
+}
+
+function removeWorktree(worktreePath: string) {
+  if (!existsSync(worktreePath)) return;
+  try {
+    execGit(`worktree remove --force ${worktreePath}`, { cwd: process.cwd() });
+  } catch {
+    // not a registered worktree anymore; remove directory directly
+    try {
+      rmSync(worktreePath, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function deleteLocalBranch(branch: string) {
+  try {
+    execGit(`branch -D ${branch}`, { cwd: process.cwd() });
+  } catch {
+    // ignore if branch does not exist
+  }
+}
+
+function deleteRemoteBranch(branch: string) {
+  try {
+    execGit(`push origin --delete ${branch}`, { cwd: process.cwd(), timeout: 60000 });
+  } catch {
+    // ignore if remote branch does not exist
+  }
+}
+
+export function cleanupFeatureRequest(id: number): { success: boolean; error?: string } {
+  const request = getFeatureRequestById(id);
+  if (!request) return { success: false, error: 'Feature request not found' };
+
+  try {
+    // Stop preview server (if running)
+    if (request.previewPid) {
+      killProcess(request.previewPid);
+      killProcessGroup(request.previewPid);
+    }
+    killProcessesByPort(request.previewPort);
+
+    // Stop any remaining processes using the worktree (opencode, npm, etc.)
+    if (request.worktreePath) {
+      killProcessesInWorktree(request.worktreePath);
+      removeWorktree(request.worktreePath);
+    }
+
+    // Delete branches
+    if (request.branch) {
+      deleteLocalBranch(request.branch);
+      deleteRemoteBranch(request.branch);
+    }
+
+    // Delete database record
+    deleteFeatureRequest(id);
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

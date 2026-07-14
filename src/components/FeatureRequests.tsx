@@ -80,6 +80,20 @@ export function FeatureRequests() {
     }
   }
 
+  async function handleDelete(id: number) {
+    if (!confirm('Wirklich löschen? Worktree, Branch und Remote-Branch werden entfernt.')) return;
+    const { error: reqError } = await request(
+      `/api/ai/feature-requests/${id}`,
+      { method: 'DELETE' },
+      false,
+    );
+    if (reqError) {
+      setError(reqError);
+    } else {
+      load();
+    }
+  }
+
   async function handleContinue(id: number) {
     const prompt = continuePrompts[id] || '';
     const { error: reqError } = await request(
@@ -161,6 +175,12 @@ export function FeatureRequests() {
                   Session fortsetzen
                 </button>
               )}
+              <button
+                onClick={() => handleDelete(req.id)}
+                className="px-3 py-1 rounded bg-[var(--danger)] text-white text-sm"
+              >
+                Löschen
+              </button>
             </div>
           </div>
           {(req.sessionId || req.sessionTitle) && req.status !== 'running' && (
