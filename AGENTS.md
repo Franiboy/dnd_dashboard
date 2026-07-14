@@ -69,8 +69,8 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - Client-Imports verwenden kein `.js`-Suffix und können `.ts`/`.tsx` direkt importieren.
 - `tsconfig.json` enthält nur Projekt-Referenzen (`tsconfig.app.json`, `tsconfig.node.json`).
 - `tsconfig.server.json` baut `server/` und `shared/` nach `dist-server/`.
-- `scripts/buildVersion.ts` generiert `dist-server/version.json` aus der Git-Commit-Anzahl.
-- `server/version.ts` versucht zur Laufzeit `git rev-list --count main` zu lesen; falls Git nicht verfügbar ist, wird auf `dist-server/version.json` zurückgegriffen.
+- `scripts/buildVersion.ts` generiert `dist-server/version.json` aus der lokalen `HEAD`-Commit-Anzahl.
+- `server/version.ts` versucht zur Laufzeit `git rev-list --count HEAD` zu lesen; falls Git nicht verfügbar ist, wird auf `dist-server/version.json` zurückgegriffen.
 - Das SQLite-Handle wird in `server/database.ts` zentral geöffnet und von `server/users.ts` und `server/repositories/games.ts` verwendet.
 - `dnd.db` und `dnd_test.db` sind `.gitignore`d und werden automatisch erstellt.
 - Umgebungsvariablen werden über `dotenv` aus `.env` geladen.
