@@ -24,7 +24,7 @@ function buildPrompt(title: string, description: string, branch: string): string
     `Description: ${description}`,
     ``,
     `Rules:`,
-    `- Create a git branch named "${branch}" and check it out.`,
+    `- Use the already existing and checked-out branch "${branch}".`,
     `- Make the minimal changes needed to implement the feature.`,
     `- Follow the existing code style and architecture (React functional components, Express routes, better-sqlite3 for DB).`,
     `- Do not start any server or interactive process.`,
@@ -32,6 +32,70 @@ function buildPrompt(title: string, description: string, branch: string): string
     `- If you need to add a dependency, use npm install --save <package>.`,
     `- Run "npm run build" to verify the build passes before finishing.`,
   ].join('\n');
+}
+
+function sanitizeBranchName(raw: string, fallbackId: number): string {
+  // Try to extract a feature/<slug> branch name from the raw output.
+  const match = raw.match(/feature\/[a-z0-9-]+/i);
+  let slug = match ? match[0] : raw;
+
+  // If the AI returned only a slug without prefix, add it.
+  if (!slug.startsWith('feature/')) {
+    const cleaned = slug
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40);
+    slug = cleaned ? `feature/${cleaned}` : `feature/${fallbackId}`;
+  }
+
+  // Ensure valid git branch characters and reasonable length.
+  slug = slug
+    .replace(/[^a-z0-9\/_-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  if (slug.length > 60 || !slug.startsWith('feature/')) {
+    slug = `feature/${fallbackId}`;
+  }
+
+  return slug;
+}
+
+async function suggestBranchName(
+  id: number,
+  title: string,
+  description: string,
+  worktreePath: string,
+  model: string,
+): Promise<string> {
+  const prompt = [
+    `Analyze the following feature request and suggest a short, descriptive git branch name in kebab-case.`,
+    `The branch name MUST start with "feature/" and must NOT contain "ai".`,
+    ``,
+    `Title: ${title}`,
+    `Description: ${description}`,
+    ``,
+    `You may briefly look at the codebase to pick a fitting name, but do NOT modify any files and do NOT run any commands.`,
+    `Output exactly one line in this format:`,
+    `BRANCH: feature/<short-kebab-description>`,
+  ].join('\n');
+
+  const result = await runOpenCode({
+    prompt,
+    worktreePath,
+    model,
+    title: `dnd-analyze-${id}`,
+  });
+
+  if (result.success) {
+    const branchMatch = result.output.match(/BRANCH:\s*(.+)/);
+    if (branchMatch) {
+      return sanitizeBranchName(branchMatch[1].trim(), id);
+    }
+  }
+
+  return `feature/${id}`;
 }
 
 function logLine(id: number, line: string): void {
@@ -94,7 +158,7 @@ export function startFeatureRequest(
   if (!request) return;
 
   const model = process.env.AI_MODEL || 'dotsource_rag/code-secure-local';
-  const branch = `feature/ai-${id}`;
+  let branch = `feature/${id}`;
   const sessionTitle = `dnd-feature-request-${id}`;
   let worktreePath = resolve(join(process.cwd(), '..', `${WORKTREE_PREFIX}${id}`));
   worktreePath = createUniquePath(worktreePath);
@@ -114,6 +178,30 @@ export function startFeatureRequest(
       logLine(id, `Creating git worktree and branch ${branch}...\n`);
       execGit(`worktree add -f -B ${branch} ${worktreePath} main`, { cwd: process.cwd() });
       logLine(id, `Worktree created at ${worktreePath}\n`);
+
+      logLine(id, `Analyzing feature request for a descriptive branch name...\n`);
+      const suggestedBranch = await suggestBranchName(id, request.title, request.description, worktreePath, model);
+      if (suggestedBranch !== branch) {
+        logLine(id, `AI suggests branch name: ${suggestedBranch}\n`);
+        try {
+          // Remove any files the analysis run may have created.
+          execGit('reset --hard HEAD', { cwd: worktreePath });
+          execGit('clean -fd', { cwd: worktreePath });
+          execGit(`branch -m ${branch} ${suggestedBranch}`, { cwd: process.cwd() });
+          const slug = suggestedBranch.replace('feature/', '');
+          const newWorktreePath = createUniquePath(resolve(join(process.cwd(), '..', `${WORKTREE_PREFIX}${slug}`)));
+          execGit(`worktree move "${worktreePath}" "${newWorktreePath}"`, { cwd: process.cwd() });
+          branch = suggestedBranch;
+          worktreePath = newWorktreePath;
+          updateFeatureRequest(id, { branch, worktreePath });
+          logLine(id, `Renamed worktree to ${worktreePath} and branch to ${branch}\n`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          logLine(id, `Branch rename failed, keeping ${branch}: ${message}\n`);
+        }
+      } else {
+        logLine(id, `Using default branch name: ${branch}\n`);
+      }
 
       const mainEnv = join(process.cwd(), '.env');
       const worktreeEnv = join(worktreePath, '.env');
