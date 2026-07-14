@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
+import { ConfirmDialog } from './ConfirmDialog';
 import type { FeatureRequest } from '../../shared/types';
 
 interface VersionInfo {
@@ -17,6 +18,7 @@ export function FeatureRequests() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [continuePrompts, setContinuePrompts] = useState<Record<number, string>>({});
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,8 +82,8 @@ export function FeatureRequests() {
     }
   }
 
-  async function handleDelete(id: number) {
-    if (!confirm('Wirklich löschen? Worktree, Branch und Remote-Branch werden entfernt.')) return;
+  async function handleDeleteConfirm(id: number) {
+    setDeleteId(null);
     const { error: reqError } = await request(
       `/api/ai/feature-requests/${id}`,
       { method: 'DELETE' },
@@ -176,7 +178,7 @@ export function FeatureRequests() {
                 </button>
               )}
               <button
-                onClick={() => handleDelete(req.id)}
+                onClick={() => setDeleteId(req.id)}
                 className="px-3 py-1 rounded bg-[var(--danger)] text-white text-sm"
               >
                 Löschen
@@ -206,7 +208,7 @@ export function FeatureRequests() {
               Vorschau: {req.previewUrl}
             </a>
           )}
-          {req.logs && (
+      {req.logs && (
             <details className="mt-2">
               <summary className="text-xs text-slate-500 cursor-pointer">Logs</summary>
               <pre className="mt-2 p-2 bg-black/30 rounded text-xs text-slate-300 overflow-auto max-h-48">
@@ -216,6 +218,19 @@ export function FeatureRequests() {
           )}
         </div>
       ))}
+      {deleteId !== null && (
+        <ConfirmDialog
+          title="Feature-Request löschen"
+          confirmLabel="Löschen"
+          cancelLabel="Abbrechen"
+          variant="danger"
+          onConfirm={() => handleDeleteConfirm(deleteId)}
+          onCancel={() => setDeleteId(null)}
+        >
+          Soll der Feature-Request „{requests.find((r) => r.id === deleteId)?.title}“ wirklich gelöscht werden?
+          Worktree, Branch und Remote-Branch werden entfernt.
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
