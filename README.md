@@ -7,9 +7,9 @@ Web-basiertes Dashboard für Dungeons & Dragons mit einem gemeinsamen, passwortg
 - Discord OAuth2 Login
 - Admin-Freigabe für neue Discord-Benutzer
 - JWT-Authentifizierung über Cookie und Auth-Header
-- Admin-Panel zur Benutzerverwaltung
-- Profilseite zum Ändern des Anzeigenamens
-- Echtzeit-Bingo mit Socket.io
+- Admin-Panel zur Benutzerverwaltung (Freigabe, Sperren, Admin-Rechte, Löschen)
+- Admin-Login über Easter Egg (5x auf den Titel klicken)
+- Echtzeit-Bingo mit Socket.io (Spielstart, Feldgröße, Reset)
 - Gemeinsamer Aufgaben-Pool
 - Spieler-Liste
 - Brute-Force-Schutz durch Rate-Limiting und Account-Lockout
@@ -113,9 +113,12 @@ npm run test
 
 ## Wichtige Dateien
 
-- `server/index.ts` – Express- und Socket.io-Setup
+- `server/index.ts` – Express- und Socket.io-Setup, API-Routen
+- `server/auth.ts` – JWT-Handling und Middleware
 - `server/users.ts` – Benutzerdatenbank und Authentifizierung
+- `server/db.ts` – SQLite-Spielstand-Speicherung
 - `server/game.ts` – Bingo-Spiel-Logik
 - `shared/types.ts` – Gemeinsame TypeScript-Typen
 - `src/App.tsx` – React-App-Einstieg
-- `src/hooks/useSocket.ts` – Auth- und Socket-Hooks
+- `src/hooks/useAuth.ts` – Auth-Hook
+- `src/hooks/useSocket.ts` – Socket.io-Hook
