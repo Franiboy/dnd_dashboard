@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useError } from './useError';
 import type { SafeUser } from '../../shared/types';
 
 export function useAuth() {
+  const { showError } = useError();
   const [user, setUser] = useState<SafeUser | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('dnd_token'));
   const [loading, setLoading] = useState(true);
@@ -24,9 +26,11 @@ export function useAuth() {
         return true;
       }
       setError(data.error || 'Login fehlgeschlagen');
+      showError(data.error || 'Login fehlgeschlagen');
       return false;
     } catch {
       setError('Server nicht erreichbar');
+      showError('Server nicht erreichbar');
       return false;
     }
   };
@@ -54,9 +58,11 @@ export function useAuth() {
         return { ok: false, message: data.error || 'Account wurde noch nicht freigegeben' };
       }
       setError(data.error || 'Discord Login fehlgeschlagen');
+      showError(data.error || 'Discord Login fehlgeschlagen');
       return { ok: false };
     } catch {
       setError('Server nicht erreichbar');
+      showError('Server nicht erreichbar');
       return { ok: false };
     }
   };
@@ -67,9 +73,11 @@ export function useAuth() {
       const data = await res.json();
       if (res.ok) return data.url;
       setError(data.error || 'Discord Login nicht verfügbar');
+      showError(data.error || 'Discord Login nicht verfügbar');
       return null;
     } catch {
       setError('Server nicht erreichbar');
+      showError('Server nicht erreichbar');
       return null;
     }
   };
@@ -100,7 +108,7 @@ export function useAuth() {
     return false;
   };
 
-  const fetchMe = async () => {
+  const fetchMe = useCallback(async () => {
     if (!token) {
       setLoading(false);
       return;
@@ -121,11 +129,11 @@ export function useAuth() {
       setToken(null);
     }
     setLoading(false);
-  };
+  }, [token, setUser, setToken, setLoading]);
 
   useEffect(() => {
     fetchMe();
-  }, [token]);
+  }, [fetchMe]);
 
   return { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, setError };
 }
