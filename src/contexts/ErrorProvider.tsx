@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ErrorContext, type ToastType } from './ErrorContext';
 import { Toast } from '../components/Toast';
 
@@ -17,8 +17,13 @@ export function ErrorProvider({ children }: { children: ReactNode }) {
     setToast(null);
   }, []);
 
+  const value = useMemo(
+    () => ({ toast, showError, showInfo, showSuccess, clearError }),
+    [toast, showError, showInfo, showSuccess, clearError],
+  );
+
   return (
-    <ErrorContext.Provider value={{ toast, showError, showInfo, showSuccess, clearError }}>
+    <ErrorContext.Provider value={value}>
       {children}
       <Toast message={toast?.message ?? null} type={toast?.type} onClose={clearError} />
     </ErrorContext.Provider>
