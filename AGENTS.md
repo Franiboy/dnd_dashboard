@@ -24,6 +24,7 @@ npm run server:watch     # Server mit tsx und Node --watch
 npm run client           # Nur Vite-Dev-Server
 npm run build            # Client (tsc + vite build) + Server (tsc -p tsconfig.server.json)
 npm run build:server     # Nur Server bauen
+npm run build:version    # Schreibt `dist-server/version.json` aus der Git-Commit-Anzahl
 npm run start            # Produktionsserver (erfordert vorherigen Build)
 npm run preview          # Vite-Production-Preview
 npm run test:server      # Server mit separater Test-DB starten
@@ -47,6 +48,7 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - `server/routes/auth.ts` – Auth-/Login-/State-API-Routen
 - `server/routes/admin.ts` – Admin-API-Routen
 - `server/socket.ts` – Socket.io-Event-Handler
+- `server/version.ts` – Liest die aktuelle Git-Commit-Nummer aus
 - `shared/types.ts` – Gemeinsame TypeScript-Typen für Frontend und Backend
 - `src/App.tsx` – React-App-Einstieg mit Router
 - `src/hooks/useAuth.ts` – Auth-Hook (Login, Token, /api/me)
@@ -67,6 +69,8 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - Client-Imports verwenden kein `.js`-Suffix und können `.ts`/`.tsx` direkt importieren.
 - `tsconfig.json` enthält nur Projekt-Referenzen (`tsconfig.app.json`, `tsconfig.node.json`).
 - `tsconfig.server.json` baut `server/` und `shared/` nach `dist-server/`.
+- `scripts/buildVersion.ts` generiert `dist-server/version.json` aus der Git-Commit-Anzahl.
+- `server/version.ts` versucht zur Laufzeit `git rev-list --count main` zu lesen; falls Git nicht verfügbar ist, wird auf `dist-server/version.json` zurückgegriffen.
 - Das SQLite-Handle wird in `server/database.ts` zentral geöffnet und von `server/users.ts` und `server/repositories/games.ts` verwendet.
 - `dnd.db` und `dnd_test.db` sind `.gitignore`d und werden automatisch erstellt.
 - Umgebungsvariablen werden über `dotenv` aus `.env` geladen.
