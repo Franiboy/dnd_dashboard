@@ -13,6 +13,7 @@ import aiRouter from './routes/ai.js';
 import authRouter from './routes/auth.js';
 import { setupSocket } from './socket.js';
 import { getVersion } from './version.js';
+import { runMigrations } from './migrations.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,7 +39,8 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Ensure admin user exists at startup
+// Run schema migrations and ensure admin user exists at startup
+runMigrations();
 ensureAdminUser();
 
 app.get('/api/version', (req, res) => {
