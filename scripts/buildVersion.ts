@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 function getVersion(): number {
   try {
-    const count = execSync('git rev-list --count main', {
+    const count = execSync('git rev-list --count HEAD', {
       encoding: 'utf-8',
       timeout: 5000,
     });
