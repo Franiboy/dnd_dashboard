@@ -40,8 +40,9 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 
 - `server/index.ts` – Express- und Socket.io-Setup, API-Routen, Shutdown-Handler
 - `server/auth.ts` – JWT-Erstellung, -Validierung, Auth-Middleware, Admin-Middleware
+- `server/database.ts` – Zentrale SQLite-Verbindung
 - `server/users.ts` – SQLite-Benutzerverwaltung, Passwort-Hashing, Account-Lockout
-- `server/db.ts` – SQLite-Spielstand-Speicherung (JSON in `games`-Tabelle)
+- `server/repositories/games.ts` – SQLite-Spielstand-Speicherung (JSON in `games`-Tabelle)
 - `server/game.ts` – Bingo-Spiel-Logik, Persistenz, Bingo-Prüfung
 - `shared/types.ts` – Gemeinsame TypeScript-Typen für Frontend und Backend
 - `src/App.tsx` – React-App-Einstieg mit Router
@@ -60,7 +61,7 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - Client-Imports verwenden kein `.js`-Suffix und können `.ts`/`.tsx` direkt importieren.
 - `tsconfig.json` enthält nur Projekt-Referenzen (`tsconfig.app.json`, `tsconfig.node.json`).
 - `tsconfig.server.json` baut `server/` und `shared/` nach `dist-server/`.
-- Das SQLite-Handle wird in `server/users.ts` und `server/db.ts` jeweils separat geöffnet.
+- Das SQLite-Handle wird in `server/database.ts` zentral geöffnet und von `server/users.ts` und `server/repositories/games.ts` verwendet.
 - `dnd.db` und `dnd_test.db` sind `.gitignore`d und werden automatisch erstellt.
 - Umgebungsvariablen werden über `dotenv` aus `.env` geladen.
 - In Produktion liefert Express `dist/` aus und `trust proxy` ist aktiviert.

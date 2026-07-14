@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'crypto';
 import type { BingoGame, Cell, Player } from '../shared/types.js';
-import { loadGame, saveGame } from './db.js';
+import { loadGame, saveGame } from './repositories/games.js';
 
 function createId(): string {
   return randomUUID ? randomUUID() : randomBytes(16).toString('hex');
