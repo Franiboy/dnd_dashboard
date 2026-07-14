@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
-import { startFeatureRequest, continueFeatureRequest, mergeAndPushFeatureRequest } from '../ai/worker.js';
+import { startFeatureRequest, continueFeatureRequest, mergeAndPushFeatureRequest, cleanupFeatureRequest } from '../ai/worker.js';
 import {
   createFeatureRequest,
   getFeatureRequestById,
@@ -74,6 +74,23 @@ router.post('/feature-requests/:id/continue', authMiddleware, requireAdmin, (req
 
   continueFeatureRequest(id, continuePrompt, req.protocol, req.hostname);
   res.json({ ok: true });
+});
+
+// Admin: delete a feature request and clean up worktree, branch and remote branch
+router.delete('/feature-requests/:id', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
+  }
+  const id = Number(req.params.id);
+  const request = getFeatureRequestById(id);
+  if (!request) return res.status(404).json({ error: 'Feature Request nicht gefunden' });
+
+  const result = cleanupFeatureRequest(id);
+  if (result.success) {
+    res.json({ ok: true });
+  } else {
+    res.status(500).json({ error: result.error || 'Löschen fehlgeschlagen' });
+  }
 });
 
 // Admin: merge and push the feature request
