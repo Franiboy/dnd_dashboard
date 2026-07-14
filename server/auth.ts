@@ -28,25 +28,34 @@ export function verifyToken(token: string): { userId: string } | null {
 }
 
 export function setAuthCookie(res: Response, token: string): void {
-  const options: import('express').CookieOptions = {
+  const hostname = res.req?.hostname;
+  const isLocalhost = hostname === 'localhost';
+  const domain = isLocalhost ? 'localhost' : undefined;
+
+  // Clear any stale host-only cookie and then set the desired domain cookie.
+  // On localhost this avoids duplicate dnd_token values for different ports.
+  res.clearCookie(COOKIE_NAME);
+  if (domain) {
+    res.clearCookie(COOKIE_NAME, { domain });
+  }
+
+  res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     maxAge: 1000 * 60 * 60 * 24 * 7,
     sameSite: 'lax',
-  };
-  const hostname = res.req?.hostname;
-  if (hostname === 'localhost') {
-    options.domain = 'localhost';
-  }
-  res.cookie(COOKIE_NAME, token, options);
+    domain,
+  });
 }
 
 export function clearAuthCookie(res: Response): void {
   const hostname = res.req?.hostname;
-  const options: import('express').CookieOptions = {};
-  if (hostname === 'localhost') {
-    options.domain = 'localhost';
+  const isLocalhost = hostname === 'localhost';
+  const domain = isLocalhost ? 'localhost' : undefined;
+
+  res.clearCookie(COOKIE_NAME);
+  if (domain) {
+    res.clearCookie(COOKIE_NAME, { domain });
   }
-  res.clearCookie(COOKIE_NAME, options);
 }
 
 export function getToken(req: Request): string | null {
