@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { BingoGame } from '../../shared/types';
 import type { Socket } from '../types';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface TaskStatusProps {
   game: BingoGame;
@@ -61,37 +62,20 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
       </ul>
 
       {pendingTaskData && pendingTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-            <h3 className="text-xl font-semibold text-[var(--text-h)] mb-2">
-              {pendingTask.action === 'confirm' ? 'Aufgabe bestätigen' : 'Bestätigung entfernen'}
-            </h3>
-            <p className="text-slate-300 mb-6">
-              Soll <span className="text-[var(--text-h)] font-medium">{pendingTaskData.text}</span>{' '}
-              {pendingTask.action === 'confirm'
-                ? 'als erledigt markiert werden? Dies gilt für alle Spieler.'
-                : 'nicht mehr als erledigt gelten? Dies gilt für alle Spieler.'}
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setPendingTask(null)}
-                className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
-              >
-                Abbrechen
-              </button>
-              <button
-                onClick={submit}
-                className={`px-4 py-2 rounded font-semibold transition ${
-                  pendingTask.action === 'confirm'
-                    ? 'bg-[var(--accent)] text-slate-900 hover:bg-green-400'
-                    : 'bg-[var(--danger)] text-white hover:bg-red-400'
-                }`}
-              >
-                {pendingTask.action === 'confirm' ? 'Erledigt' : 'Entfernen'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={pendingTask.action === 'confirm' ? 'Aufgabe bestätigen' : 'Bestätigung entfernen'}
+          confirmLabel={pendingTask.action === 'confirm' ? 'Erledigt' : 'Entfernen'}
+          variant={pendingTask.action === 'confirm' ? 'accent' : 'danger'}
+          onConfirm={submit}
+          onCancel={() => setPendingTask(null)}
+        >
+          <p>
+            Soll <span className="text-[var(--text-h)] font-medium">{pendingTaskData.text}</span>{' '}
+            {pendingTask.action === 'confirm'
+              ? 'als erledigt markiert werden? Dies gilt für alle Spieler.'
+              : 'nicht mehr als erledigt gelten? Dies gilt für alle Spieler.'}
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );
