@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import type { ClientToServerEvents, ServerToClientEvents } from '../shared/types.js';
 import { ensureAdminUser } from './users.js';
 import adminRouter from './routes/admin.js';
+import aiRouter from './routes/ai.js';
 import authRouter from './routes/auth.js';
 import { setupSocket } from './socket.js';
 import { getVersion } from './version.js';
@@ -38,6 +39,7 @@ app.get('/api/version', (req, res) => {
 
 app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/ai', aiRouter);
 
 // Serve static files in production and fall back to index.html for all non-API routes
 const distDir = path.join(__dirname, '..', '..', 'dist');
