@@ -1,36 +1,6 @@
 import type { FeatureRequest } from '../../shared/types.js';
 import { db } from '../database.js';
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS feature_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    requestedBy TEXT NOT NULL,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    branch TEXT,
-    worktreePath TEXT,
-    previewPort INTEGER,
-    previewUrl TEXT,
-    previewPid INTEGER,
-    sessionTitle TEXT,
-    sessionId TEXT,
-    logs TEXT NOT NULL DEFAULT '',
-    createdAt TEXT NOT NULL,
-    updatedAt TEXT NOT NULL
-  );
-`);
-
-// Ensure columns added in newer schema versions exist in existing databases
-function ensureColumn(column: string, type: string) {
-  const tableInfo = db.prepare('PRAGMA table_info(feature_requests)').all() as { name: string }[];
-  if (!tableInfo.some((col) => col.name === column)) {
-    db.exec(`ALTER TABLE feature_requests ADD COLUMN ${column} ${type}`);
-  }
-}
-ensureColumn('sessionTitle', 'TEXT');
-ensureColumn('sessionId', 'TEXT');
-
 function rowToFeatureRequest(row: Record<string, unknown>): FeatureRequest {
   return {
     id: row.id as number,

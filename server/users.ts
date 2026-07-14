@@ -9,22 +9,6 @@ export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    display_name TEXT NOT NULL,
-    password_hash TEXT,
-    discord_id TEXT UNIQUE,
-    avatar_url TEXT,
-    is_admin INTEGER NOT NULL DEFAULT 0,
-    is_approved INTEGER NOT NULL DEFAULT 0,
-    failed_login_attempts INTEGER NOT NULL DEFAULT 0,
-    locked_until TEXT,
-    created_at TEXT NOT NULL
-  );
-`);
-
 function rowToUser(row: any): User {
   return {
     id: row.id,

@@ -1,13 +1,6 @@
 import type { BingoGame } from '../../shared/types.js';
 import { db } from '../database.js';
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS games (
-    id INTEGER PRIMARY KEY,
-    data TEXT NOT NULL
-  );
-`);
-
 export function loadGame(): BingoGame | null {
   const row = db.prepare('SELECT data FROM games WHERE id = 1').get() as { data: string } | undefined;
   if (!row) return null;
