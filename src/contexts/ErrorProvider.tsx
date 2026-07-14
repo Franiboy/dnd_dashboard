@@ -1,22 +1,26 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import { ErrorContext } from './ErrorContext';
+import { ErrorContext, type ToastType } from './ErrorContext';
 import { Toast } from '../components/Toast';
 
 export function ErrorProvider({ children }: { children: ReactNode }) {
-  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
 
-  const showError = useCallback((message: string) => {
-    setError((prev) => (prev === message ? prev : message));
+  const show = useCallback((message: string, type: ToastType) => {
+    setToast((prev) => (prev?.message === message && prev?.type === type ? prev : { message, type }));
   }, []);
 
+  const showError = useCallback((message: string) => show(message, 'error'), [show]);
+  const showInfo = useCallback((message: string) => show(message, 'info'), [show]);
+  const showSuccess = useCallback((message: string) => show(message, 'success'), [show]);
+
   const clearError = useCallback(() => {
-    setError(null);
+    setToast(null);
   }, []);
 
   return (
-    <ErrorContext.Provider value={{ error, showError, clearError }}>
+    <ErrorContext.Provider value={{ toast, showError, showInfo, showSuccess, clearError }}>
       {children}
-      <Toast message={error} onClose={clearError} />
+      <Toast message={toast?.message ?? null} type={toast?.type} onClose={clearError} />
     </ErrorContext.Provider>
   );
 }
