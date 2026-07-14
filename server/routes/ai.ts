@@ -10,18 +10,19 @@ import {
 
 const router = Router();
 
-// All approved users can submit a feature request
-router.post('/feature-requests', authMiddleware, (req: AuthRequest, res) => {
+// Only admins can submit a feature request
+router.post('/feature-requests', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
     return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
-  }
-  if (!req.user?.isApproved && !req.user?.isAdmin) {
-    return res.status(403).json({ error: 'Account wurde noch nicht freigegeben' });
   }
 
   const { title, description } = req.body;
   if (!title || typeof title !== 'string' || !description || typeof description !== 'string') {
     return res.status(400).json({ error: 'Titel und Beschreibung sind erforderlich' });
+  }
+
+  if (!req.user) {
+    return res.status(403).json({ error: 'Nicht autorisiert' });
   }
 
   const request = createFeatureRequest(req.user.id, title.trim(), description.trim());

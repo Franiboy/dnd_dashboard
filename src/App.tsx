@@ -92,7 +92,7 @@ function App() {
           ) : (
             <>
               <Route path="/" element={<Home />} />
-              <Route path="/feature-request" element={<FeatureRequest />} />
+              <Route path="/feature-request" element={<ProtectedRoute user={user} adminOnly><FeatureRequest /></ProtectedRoute>} />
               <Route path="/bingo" element={<ProtectedRoute user={user}><Bingo token={token} user={user} /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/" />} />
             </>
