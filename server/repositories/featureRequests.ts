@@ -21,6 +21,16 @@ db.exec(`
   );
 `);
 
+// Ensure columns added in newer schema versions exist in existing databases
+function ensureColumn(column: string, type: string) {
+  const tableInfo = db.prepare('PRAGMA table_info(feature_requests)').all() as { name: string }[];
+  if (!tableInfo.some((col) => col.name === column)) {
+    db.exec(`ALTER TABLE feature_requests ADD COLUMN ${column} ${type}`);
+  }
+}
+ensureColumn('sessionTitle', 'TEXT');
+ensureColumn('sessionId', 'TEXT');
+
 function rowToFeatureRequest(row: Record<string, unknown>): FeatureRequest {
   return {
     id: row.id as number,
