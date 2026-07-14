@@ -1,13 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
+
+interface VersionInfo {
+  mainVersion: number;
+  currentVersion: number;
+  branch: string;
+  ahead: number;
+  aiEnabled: boolean;
+}
 
 export function FeatureRequest() {
   const { request } = useApi();
+  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    request<VersionInfo>('/api/version', undefined, false).then(({ data }) => {
+      if (data) setAiEnabled(data.aiEnabled);
+    });
+  }, [request]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -17,7 +32,7 @@ export function FeatureRequest() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: title.trim(), description: description.trim() }),
-    });
+    }, false);
     setSubmitting(false);
     if (reqError) {
       setError(reqError);
@@ -26,6 +41,22 @@ export function FeatureRequest() {
       setTitle('');
       setDescription('');
     }
+  }
+
+  if (aiEnabled === null) {
+    return <div className="max-w-2xl mx-auto p-6 text-slate-400">Lade...</div>;
+  }
+
+  if (!aiEnabled) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <h1 className="text-2xl font-bold text-[var(--text-h)] mb-4">Feature-Request</h1>
+        <p className="text-slate-400">
+          Das KI-Feature ist nicht konfiguriert. Füge <code>AI_PROVIDER</code> und{' '}
+          <code>AI_MODEL</code> zur <code>.env</code> hinzu, um es zu aktivieren.
+        </p>
+      </div>
+    );
   }
 
   return (

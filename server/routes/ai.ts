@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
+import { isAiEnabled } from '../ai/config.js';
 import { startFeatureRequest, continueFeatureRequest, mergeAndPushFeatureRequest } from '../ai/worker.js';
 import {
   createFeatureRequest,
@@ -11,6 +12,9 @@ const router = Router();
 
 // All approved users can submit a feature request
 router.post('/feature-requests', authMiddleware, (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
+  }
   if (!req.user?.isApproved && !req.user?.isAdmin) {
     return res.status(403).json({ error: 'Account wurde noch nicht freigegeben' });
   }
@@ -32,11 +36,17 @@ router.post('/feature-requests', authMiddleware, (req: AuthRequest, res) => {
 
 // Admin: list all feature requests
 router.get('/feature-requests', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
+  }
   res.json({ requests: listFeatureRequests() });
 });
 
 // Admin: get a single feature request
 router.get('/feature-requests/:id', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
+  }
   const id = Number(req.params.id);
   const request = getFeatureRequestById(id);
   if (!request) return res.status(404).json({ error: 'Feature Request nicht gefunden' });
@@ -45,6 +55,9 @@ router.get('/feature-requests/:id', authMiddleware, requireAdmin, (req: AuthRequ
 
 // Admin: continue an existing OpenCode session for the feature request
 router.post('/feature-requests/:id/continue', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
+  }
   const id = Number(req.params.id);
   const request = getFeatureRequestById(id);
   if (!request) return res.status(404).json({ error: 'Feature Request nicht gefunden' });
@@ -64,6 +77,9 @@ router.post('/feature-requests/:id/continue', authMiddleware, requireAdmin, (req
 
 // Admin: merge and push the feature request
 router.post('/feature-requests/:id/merge', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
+  }
   const id = Number(req.params.id);
   const request = getFeatureRequestById(id);
   if (!request) return res.status(404).json({ error: 'Feature Request nicht gefunden' });
