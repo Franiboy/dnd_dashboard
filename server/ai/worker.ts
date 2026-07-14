@@ -60,6 +60,10 @@ function runCommand(
       output += line;
       options.onLog?.(line);
     });
+    child.on('error', (err) => {
+      output += `\nCommand error: ${err.message}\n`;
+      resolve({ success: false, output, exitCode: -1 });
+    });
     child.on('close', (exitCode) => {
       resolve({ success: exitCode === 0, output, exitCode: exitCode ?? 1 });
     });

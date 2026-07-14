@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'crypto';
 import type { BingoGame, Cell, Player } from '../shared/types.js';
 import { loadGame, saveGame } from './repositories/games.js';
+import { runMigrations } from './migrations.js';
 
 function createId(): string {
   return randomUUID ? randomUUID() : randomBytes(16).toString('hex');
@@ -17,6 +18,8 @@ function defaultGame(): BingoGame {
     finishedAt: null,
   };
 }
+
+runMigrations();
 
 let game: BingoGame = loadGame() || defaultGame();
 
