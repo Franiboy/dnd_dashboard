@@ -19,7 +19,7 @@ function readVersionFromFile(): number | null {
 
 function readVersionFromGit(): number | null {
   try {
-    const count = execSync('git rev-list --count main', {
+    const count = execSync('git rev-list --count HEAD', {
       cwd: process.cwd(),
       encoding: 'utf-8',
       timeout: 5000,
