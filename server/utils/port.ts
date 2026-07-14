@@ -1,7 +1,7 @@
 import { createServer } from 'node:net';
 
 const PREVIEW_PORT_BASE = 4000;
-const PREVIEW_PORT_MAX = 4999;
+const PREVIEW_PORT_MAX = 4255;
 
 export function findFreePort(startPort: number = PREVIEW_PORT_BASE): Promise<number> {
   return new Promise((resolve, reject) => {
