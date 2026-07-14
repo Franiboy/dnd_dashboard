@@ -50,9 +50,9 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - `shared/types.ts` – Gemeinsame TypeScript-Typen für Frontend und Backend
 - `src/App.tsx` – React-App-Einstieg mit Router
 - `src/hooks/useAuth.ts` – Auth-Hook (Login, Token, /api/me)
-- `src/hooks/useSocket.ts` – Socket.io-Hook inkl. `useAuth`-Re-Export
+- `src/hooks/useSocket.ts` – Socket.io-Hook
 - `src/pages/` – Seiten: Login, AdminLogin, AuthCallback, Home, Bingo, Admin
-- `src/components/` – Wiederverwendbare Komponenten
+- `src/components/` – Wiederverwendbare Komponenten (Layout, ProtectedRoute, ConfirmDialog, Toast)
 - `src/types.ts` – Frontend-Typ-Alias für den Socket.io-Client
 - `vite.config.ts` – Vite-Konfiguration mit Proxy und Tailwind
 
