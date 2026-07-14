@@ -11,7 +11,7 @@ import { ensureAdminUser } from './users.js';
 import adminRouter from './routes/admin.js';
 import authRouter from './routes/auth.js';
 import { setupSocket } from './socket.js';
-import { version } from './version.js';
+import { getVersion } from './version.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,7 +33,7 @@ app.use(cookieParser());
 ensureAdminUser();
 
 app.get('/api/version', (req, res) => {
-  res.json({ version });
+  res.json({ version: getVersion() });
 });
 
 app.use('/api', authRouter);

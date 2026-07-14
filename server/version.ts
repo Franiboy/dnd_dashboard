@@ -30,8 +30,6 @@ function readVersionFromGit(): number | null {
   }
 }
 
-function getVersion(): number {
+export function getVersion(): number {
   return readVersionFromGit() ?? readVersionFromFile() ?? 0;
 }
-
-export const version = getVersion();
