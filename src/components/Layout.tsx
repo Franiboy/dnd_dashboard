@@ -8,15 +8,22 @@ interface LayoutProps {
   children: ReactNode;
 }
 
+interface VersionInfo {
+  mainVersion: number;
+  currentVersion: number;
+  branch: string;
+  ahead: number;
+}
+
 export function Layout({ user, onLogout, children }: LayoutProps) {
-  const [version, setVersion] = useState<number | null>(null);
+  const [version, setVersion] = useState<VersionInfo | null>(null);
 
   useEffect(() => {
     fetch('/api/version')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && typeof data.version === 'number') {
-          setVersion(data.version);
+      .then((data: VersionInfo | null) => {
+        if (data && typeof data.mainVersion === 'number' && typeof data.branch === 'string') {
+          setVersion(data);
         }
       })
       .catch(() => {
@@ -33,10 +40,18 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
         </div>
 
         <div className="flex justify-center">
-          {version !== null && (
-            <span className="text-2xl font-black font-mono text-[var(--text-h)] drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] transition-transform duration-200 hover:scale-110">
-              v.{version}
-            </span>
+          {version && (
+            <div className="flex flex-col items-center">
+              <span className="text-2xl font-black font-mono text-[var(--text-h)] drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] transition-transform duration-200 hover:scale-110">
+                v.{version.mainVersion}
+              </span>
+              {version.branch !== 'main' && (
+                <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-[var(--warning)] text-slate-900 font-semibold mt-1">
+                  {version.branch}
+                  {version.ahead > 0 ? ` +${version.ahead}` : ''}
+                </span>
+              )}
+            </div>
           )}
         </div>
 
