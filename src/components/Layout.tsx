@@ -49,11 +49,10 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                 {version.branch === 'main' && (
                   <Link
                     to="/feature-request"
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-semibold shadow hover:brightness-110 transition"
+                    className="inline-flex items-center px-2 py-1 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-semibold shadow hover:brightness-110 transition"
                     title="Feature Request"
                   >
-                    <span className="font-bold">+</span>
-                    <span>Feature Request</span>
+                    Feature Request
                   </Link>
                 )}
               </div>
