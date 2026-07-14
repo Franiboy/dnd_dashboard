@@ -1,10 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
+import { useError } from './hooks/useError';
 import { Layout } from './components/Layout';
 import { PendingApproval } from './components/PendingApproval';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { Toast } from './components/Toast';
 import { Login } from './pages/Login';
 import { AdminLogin } from './pages/AdminLogin';
 import { AuthCallback } from './pages/AuthCallback';
@@ -20,7 +20,6 @@ interface PublicRoutesProps {
   startDiscordLogin: () => Promise<string | null>;
   handleDiscordCallback: (code: string) => Promise<{ ok: boolean; message?: string }>;
   checkApproved: () => Promise<boolean>;
-  setToast: (message: string | null) => void;
 }
 
 function PublicRoutes({
@@ -29,15 +28,15 @@ function PublicRoutes({
   startDiscordLogin,
   handleDiscordCallback,
   checkApproved,
-  setToast,
 }: PublicRoutesProps) {
   const location = useLocation();
+  const { showError } = useError();
 
   useEffect(() => {
     if (!PUBLIC_PATHS.includes(location.pathname)) {
-      setToast('Bitte einloggen, um diese Seite zu sehen.');
+      showError('Bitte einloggen, um diese Seite zu sehen.');
     }
-  }, [location.pathname, setToast]);
+  }, [location.pathname, showError]);
 
   return (
     <Routes>
@@ -50,15 +49,7 @@ function PublicRoutes({
 }
 
 function App() {
-  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, setError } = useAuth();
-  const [toast, setToast] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (error) {
-      setToast(error);
-      setError(null);
-    }
-  }, [error, setError]);
+  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved } = useAuth();
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-slate-400">Lade...</div>;
@@ -67,14 +58,12 @@ function App() {
   if (!user) {
     return (
       <BrowserRouter>
-        <Toast message={toast} onClose={() => setToast(null)} />
         <PublicRoutes
           error={error}
           loginAdmin={loginAdmin}
           startDiscordLogin={startDiscordLogin}
           handleDiscordCallback={handleDiscordCallback}
           checkApproved={checkApproved}
-          setToast={setToast}
         />
       </BrowserRouter>
     );
@@ -94,7 +83,6 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Toast message={toast} onClose={() => setToast(null)} />
       <Layout user={user} onLogout={logout}>
         <Routes>
           <Route path="/admin" element={<ProtectedRoute user={user} adminOnly><Admin currentUser={user} /></ProtectedRoute>} />
@@ -103,7 +91,7 @@ function App() {
           ) : (
             <>
               <Route path="/" element={<Home />} />
-              <Route path="/bingo" element={<ProtectedRoute user={user}><Bingo token={token} user={user} onError={(msg) => setToast(msg)} /></ProtectedRoute>} />
+              <Route path="/bingo" element={<ProtectedRoute user={user}><Bingo token={token} user={user} /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/" />} />
             </>
           )}

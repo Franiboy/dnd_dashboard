@@ -29,11 +29,10 @@ function playBingoSound() {
 interface BingoProps {
   token: string | null;
   user: SafeUser | null;
-  onError?: (msg: string) => void;
 }
 
-export function Bingo({ token, user, onError }: BingoProps) {
-  const { game, socket, playerId, bingo } = useSocket(token, user, onError);
+export function Bingo({ token, user }: BingoProps) {
+  const { game, socket, playerId, bingo } = useSocket(token, user);
 
   useEffect(() => {
     if (bingo) playBingoSound();
