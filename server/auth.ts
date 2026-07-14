@@ -27,34 +27,50 @@ export function verifyToken(token: string): { userId: string } | null {
   }
 }
 
-export function setAuthCookie(res: Response, token: string): void {
+function buildCookieOptions(res: Response): {
+  set: import('express').CookieOptions;
+  clearHostOnly: import('express').CookieOptions;
+  clearDomain: import('express').CookieOptions | null;
+} {
   const hostname = res.req?.hostname;
   const isLocalhost = hostname === 'localhost';
   const domain = isLocalhost ? 'localhost' : undefined;
 
-  // Clear any stale host-only cookie and then set the desired domain cookie.
-  // On localhost this avoids duplicate dnd_token values for different ports.
-  res.clearCookie(COOKIE_NAME);
-  if (domain) {
-    res.clearCookie(COOKIE_NAME, { domain });
+  const base: import('express').CookieOptions = {
+    httpOnly: true,
+    sameSite: 'lax',
+  };
+
+  return {
+    set: {
+      ...base,
+      maxAge: 1000 * 60 * 60 * 24 * 7,
+      domain,
+    },
+    clearHostOnly: { ...base, path: '/' },
+    clearDomain: domain ? { ...base, domain, path: '/' } : null,
+  };
+}
+
+export function setAuthCookie(res: Response, token: string): void {
+  const { set, clearHostOnly, clearDomain } = buildCookieOptions(res);
+
+  // Clear stale cookies first so only one valid token remains.
+  // This matters on localhost where browsers may hold both host-only and domain cookies for different ports.
+  res.clearCookie(COOKIE_NAME, clearHostOnly);
+  if (clearDomain) {
+    res.clearCookie(COOKIE_NAME, clearDomain);
   }
 
-  res.cookie(COOKIE_NAME, token, {
-    httpOnly: true,
-    maxAge: 1000 * 60 * 60 * 24 * 7,
-    sameSite: 'lax',
-    domain,
-  });
+  res.cookie(COOKIE_NAME, token, set);
 }
 
 export function clearAuthCookie(res: Response): void {
-  const hostname = res.req?.hostname;
-  const isLocalhost = hostname === 'localhost';
-  const domain = isLocalhost ? 'localhost' : undefined;
+  const { clearHostOnly, clearDomain } = buildCookieOptions(res);
 
-  res.clearCookie(COOKIE_NAME);
-  if (domain) {
-    res.clearCookie(COOKIE_NAME, { domain });
+  res.clearCookie(COOKIE_NAME, clearHostOnly);
+  if (clearDomain) {
+    res.clearCookie(COOKIE_NAME, clearDomain);
   }
 }
 
