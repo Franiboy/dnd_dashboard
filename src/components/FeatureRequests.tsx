@@ -1,15 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import type { FeatureRequest } from '../../shared/types';
 
+interface VersionInfo {
+  mainVersion: number;
+  currentVersion: number;
+  branch: string;
+  ahead: number;
+  aiEnabled: boolean;
+}
+
 export function FeatureRequests() {
   const { request } = useApi();
+  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [requests, setRequests] = useState<FeatureRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [continuePrompts, setContinuePrompts] = useState<Record<number, string>>({});
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     const { data, error: reqError } = await request<{ requests: FeatureRequest[] }>(
       '/api/ai/feature-requests',
@@ -23,36 +32,47 @@ export function FeatureRequests() {
       setError(reqError);
     }
     setLoading(false);
-  }
-
-  useEffect(() => {
-    async function loadOnMount() {
-      setLoading(true);
-      const { data, error: reqError } = await request<{ requests: FeatureRequest[] }>(
-        '/api/ai/feature-requests',
-      );
-      if (data) {
-        setRequests(data.requests || []);
-        setError(null);
-      } else if (reqError) {
-        setError(reqError);
-      }
-      setLoading(false);
-    }
-
-    loadOnMount();
-    const interval = setInterval(() => {
-      request<{ requests: FeatureRequest[] }>('/api/ai/feature-requests', undefined, false).then(({ data }) => {
-        if (data) setRequests(data.requests || []);
-      });
-    }, 5000);
-    return () => clearInterval(interval);
   }, [request]);
 
+  useEffect(() => {
+    let isMounted = true;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    async function init() {
+      const { data: version } = await request<VersionInfo>('/api/version', undefined, false);
+      if (!isMounted) return;
+
+      if (!version?.aiEnabled) {
+        setAiEnabled(false);
+        setLoading(false);
+        return;
+      }
+
+      setAiEnabled(true);
+      await load();
+
+      interval = setInterval(() => {
+        request<{ requests: FeatureRequest[] }>('/api/ai/feature-requests', undefined, false).then(
+          ({ data }) => {
+            if (data && isMounted) setRequests(data.requests || []);
+          },
+        );
+      }, 5000);
+    }
+
+    init();
+    return () => {
+      isMounted = false;
+      if (interval) clearInterval(interval);
+    };
+  }, [request, load]);
+
   async function handleMerge(id: number) {
-    const { error: reqError } = await request(`/api/ai/feature-requests/${id}/merge`, {
-      method: 'POST',
-    }, false);
+    const { error: reqError } = await request(
+      `/api/ai/feature-requests/${id}/merge`,
+      { method: 'POST' },
+      false,
+    );
     if (reqError) {
       setError(reqError);
     } else {
@@ -62,11 +82,15 @@ export function FeatureRequests() {
 
   async function handleContinue(id: number) {
     const prompt = continuePrompts[id] || '';
-    const { error: reqError } = await request(`/api/ai/feature-requests/${id}/continue`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
-    }, false);
+    const { error: reqError } = await request(
+      `/api/ai/feature-requests/${id}/continue`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      },
+      false,
+    );
     if (reqError) {
       setError(reqError);
     } else {
@@ -92,7 +116,17 @@ export function FeatureRequests() {
     }
   }
 
-  if (loading) return <div className="text-slate-400">Lade Feature-Requests...</div>;
+  if (aiEnabled === null || loading) {
+    return <div className="text-slate-400">Lade KI-Feature-Requests...</div>;
+  }
+
+  if (!aiEnabled) {
+    return (
+      <div className="text-slate-400">
+        KI-Feature-Requests sind nicht aktiviert (AI_PROVIDER/AI_MODEL in .env fehlen).
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
