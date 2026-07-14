@@ -181,11 +181,17 @@ export function startFeatureRequest(
       }
 
       const previewPort = await findFreePort(PREVIEW_PORT_BASE);
+      const previewDbPath = `dnd_preview_${id}.db`;
+      const mainDbPath = process.env.DB_PATH || 'dnd.db';
+      const previewDbFullPath = join(worktreePath, previewDbPath);
+      if (existsSync(mainDbPath)) {
+        copyFileSync(mainDbPath, previewDbFullPath);
+      }
       const previewEnv = {
         ...process.env,
         PORT: String(previewPort),
         NODE_ENV: 'production',
-        DB_PATH: `dnd_preview_${id}.db`,
+        DB_PATH: previewDbPath,
       };
       const previewProcess = spawn('npm', ['start'], {
         cwd: worktreePath,
@@ -305,11 +311,17 @@ export function continueFeatureRequest(
       }
 
       const previewPort = await findFreePort(PREVIEW_PORT_BASE);
+      const previewDbPath = `dnd_preview_${id}.db`;
+      const mainDbPath = process.env.DB_PATH || 'dnd.db';
+      const previewDbFullPath = join(worktreePath, previewDbPath);
+      if (existsSync(mainDbPath)) {
+        copyFileSync(mainDbPath, previewDbFullPath);
+      }
       const previewEnv = {
         ...process.env,
         PORT: String(previewPort),
         NODE_ENV: 'production',
-        DB_PATH: `dnd_preview_${id}.db`,
+        DB_PATH: previewDbPath,
       };
       const previewProcess = spawn('npm', ['start'], {
         cwd: worktreePath,
