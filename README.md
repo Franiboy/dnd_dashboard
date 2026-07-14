@@ -105,10 +105,10 @@ DB_PATH=dnd_test.db npm run server
 
 ## Test
 
+Derzeit ist kein Test-Runner konfiguriert. Der Server kann mit einer separaten Test-Datenbank gestartet werden:
+
 ```bash
 npm run test:server
-# In einem zweiten Terminal
-npm run test
 ```
 
 ## Wichtige Dateien

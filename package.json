@@ -2,6 +2,9 @@
   "name": "dnd_dashboard",
   "private": true,
   "version": "0.0.0",
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "scripts": {
     "dev": "concurrently --handle-input --kill-others --kill-others-on-fail \"npm run server\" \"npm run client\"",
@@ -12,8 +15,7 @@
     "build": "tsc -b && vite build && npm run build:server",
     "start": "node dist-server/server/index.js",
     "preview": "vite preview",
-    "test:server": "DB_PATH=dnd_test.db npm run server",
-    "test": "DB_PATH=dnd_test.db node test-socket.mjs"
+    "test:server": "DB_PATH=dnd_test.db npm run server"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -42,11 +44,8 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.0.3",
-    "autoprefixer": "^10.5.2",
     "concurrently": "^10.0.3",
-    "nodemon": "^3.1.14",
     "oxlint": "^1.71.0",
-    "postcss": "^8.5.19",
     "tailwindcss": "^4.3.2",
     "tsx": "^4.23.1",
     "typescript": "~6.0.2",

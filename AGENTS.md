@@ -27,7 +27,6 @@ npm run build:server     # Nur Server bauen
 npm run start            # Produktionsserver (erfordert vorherigen Build)
 npm run preview          # Vite-Production-Preview
 npm run test:server      # Server mit separater Test-DB starten
-npm run test             # Socket.io-Test via test-socket.mjs ausführen
 npx oxlint               # Optional: Oxlint manuell ausführen
 ```
 
@@ -52,10 +51,6 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - `src/components/` – Wiederverwendbare Komponenten
 - `src/types.ts` – Frontend-Typ-Alias für den Socket.io-Client
 - `vite.config.ts` – Vite-Konfiguration mit Proxy und Tailwind
-
-**Hinweis:** `src/pages/Register.tsx` existiert, ist aber aktuell nicht in der
-Routing-Konfiguration eingebunden. Neue Benutzer kommen ausschließlich über
-Discord OAuth.
 
 ## Wichtige Konventionen
 
@@ -84,8 +79,7 @@ DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
 ```
 
 - `PORT` ist optional, Standard ist `3001`.
-- `JWT_SECRET` muss gesetzt sein (ansonsten fällt der Server auf einen
-  unsicheren Default zurück – in Produktion also unbedingt setzen).
+- `JWT_SECRET` muss gesetzt sein, sonst startet der Server nicht.
 - `ADMIN_PASSWORD` muss gesetzt sein, sonst startet der Server nicht.
 - `DISCORD_*` müssen für Discord-Login konfiguriert sein.
 - Optional: `VITE_SERVER_URL` für den Socket.io-Client im Frontend.
