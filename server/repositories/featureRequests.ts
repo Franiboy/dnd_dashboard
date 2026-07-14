@@ -82,3 +82,7 @@ export function appendFeatureRequestLogs(id: number, log: string): void {
     id,
   );
 }
+
+export function deleteFeatureRequest(id: number): void {
+  db.prepare('DELETE FROM feature_requests WHERE id = ?').run(id);
+}
