@@ -14,10 +14,11 @@ export function useSocket(token: string | null, user: SafeUser | null) {
   const joinedRef = useRef(false);
 
   useEffect(() => {
-    if (!token || !user) return;
+    if (!user) return;
 
     const socket = io(SERVER_URL || undefined, {
-      auth: { token },
+      auth: token ? { token } : undefined,
+      withCredentials: true,
       reconnection: true,
     });
 
