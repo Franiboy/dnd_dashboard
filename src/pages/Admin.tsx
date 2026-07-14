@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
+import { FeatureRequests } from '../components/FeatureRequests';
 import type { SafeUser } from '../../shared/types';
 
 interface AdminProps {
@@ -61,6 +62,10 @@ export function Admin({ currentUser }: AdminProps) {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-[var(--text-h)]">Administration</h1>
         <Link to="/" className="text-slate-400 hover:text-[var(--text-h)]">← Zurück</Link>
+      </div>
+
+      <div className="mb-6">
+        <FeatureRequests />
       </div>
 
       <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 overflow-auto">
