@@ -6,30 +6,82 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-function readVersionFromFile(): number | null {
+export interface VersionInfo {
+  mainVersion: number;
+  currentVersion: number;
+  branch: string;
+  ahead: number;
+}
+
+function readVersionFromFile(): VersionInfo | null {
   const versionPath = join(__dirname, '..', 'version.json');
   if (!existsSync(versionPath)) return null;
   try {
     const data = JSON.parse(readFileSync(versionPath, 'utf-8'));
-    return typeof data.version === 'number' ? data.version : null;
+    if (
+      typeof data.mainVersion === 'number' &&
+      typeof data.currentVersion === 'number' &&
+      typeof data.branch === 'string' &&
+      typeof data.ahead === 'number'
+    ) {
+      return data as VersionInfo;
+    }
   } catch {
-    return null;
+    // ignore
   }
+  return null;
 }
 
-function readVersionFromGit(): number | null {
+function runGit(args: string): string | null {
   try {
-    const count = execSync('git rev-list --count HEAD', {
+    return execSync(`git ${args}`, {
       cwd: process.cwd(),
       encoding: 'utf-8',
       timeout: 5000,
-    });
-    return parseInt(count.trim(), 10);
+    }).trim();
   } catch {
     return null;
   }
 }
 
-export function getVersion(): number {
-  return readVersionFromGit() ?? readVersionFromFile() ?? 0;
+function getCurrentVersion(): number {
+  const out = runGit('rev-list --count HEAD');
+  return out ? parseInt(out, 10) : 0;
+}
+
+function getMainVersion(): number {
+  const out = runGit('rev-list --count main');
+  return out ? parseInt(out, 10) : 0;
+}
+
+function getAhead(): number {
+  const out = runGit('rev-list --count main..HEAD');
+  return out ? parseInt(out, 10) : 0;
+}
+
+function getBranch(): string {
+  return runGit('rev-parse --abbrev-ref HEAD') || 'unknown';
+}
+
+export function getVersion(): VersionInfo {
+  const mainVersion = getMainVersion();
+  const currentVersion = getCurrentVersion();
+  const ahead = getAhead();
+  const branch = getBranch();
+
+  if (mainVersion || currentVersion) {
+    return {
+      mainVersion: mainVersion || currentVersion,
+      currentVersion,
+      branch,
+      ahead,
+    };
+  }
+
+  return readVersionFromFile() ?? {
+    mainVersion: 0,
+    currentVersion: 0,
+    branch: 'unknown',
+    ahead: 0,
+  };
 }
