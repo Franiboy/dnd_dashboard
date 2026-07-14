@@ -38,12 +38,15 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 
 ## Architektur
 
-- `server/index.ts` – Express- und Socket.io-Setup, API-Routen, Shutdown-Handler
+- `server/index.ts` – Express- und Socket.io-Setup, Router-Mounting, Shutdown-Handler
 - `server/auth.ts` – JWT-Erstellung, -Validierung, Auth-Middleware, Admin-Middleware
 - `server/database.ts` – Zentrale SQLite-Verbindung
 - `server/users.ts` – SQLite-Benutzerverwaltung, Passwort-Hashing, Account-Lockout
 - `server/repositories/games.ts` – SQLite-Spielstand-Speicherung (JSON in `games`-Tabelle)
 - `server/game.ts` – Bingo-Spiel-Logik, Persistenz, Bingo-Prüfung
+- `server/routes/auth.ts` – Auth-/Login-/State-API-Routen
+- `server/routes/admin.ts` – Admin-API-Routen
+- `server/socket.ts` – Socket.io-Event-Handler
 - `shared/types.ts` – Gemeinsame TypeScript-Typen für Frontend und Backend
 - `src/App.tsx` – React-App-Einstieg mit Router
 - `src/hooks/useAuth.ts` – Auth-Hook (Login, Token, /api/me)
