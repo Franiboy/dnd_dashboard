@@ -28,11 +28,25 @@ export function verifyToken(token: string): { userId: string } | null {
 }
 
 export function setAuthCookie(res: Response, token: string): void {
-  res.cookie(COOKIE_NAME, token, { httpOnly: true, maxAge: 1000 * 60 * 60 * 24 * 7, sameSite: 'lax' });
+  const options: import('express').CookieOptions = {
+    httpOnly: true,
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+    sameSite: 'lax',
+  };
+  const hostname = res.req?.hostname;
+  if (hostname === 'localhost') {
+    options.domain = 'localhost';
+  }
+  res.cookie(COOKIE_NAME, token, options);
 }
 
 export function clearAuthCookie(res: Response): void {
-  res.clearCookie(COOKIE_NAME);
+  const hostname = res.req?.hostname;
+  const options: import('express').CookieOptions = {};
+  if (hostname === 'localhost') {
+    options.domain = 'localhost';
+  }
+  res.clearCookie(COOKIE_NAME, options);
 }
 
 export function getToken(req: Request): string | null {
