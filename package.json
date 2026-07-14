@@ -12,7 +12,8 @@
     "server": "node --import ./node_modules/tsx/dist/loader.mjs ./server/index.ts",
     "server:watch": "node --watch --import ./node_modules/tsx/dist/loader.mjs ./server/index.ts",
     "build:server": "tsc -p tsconfig.server.json",
-    "build": "tsc -b && vite build && npm run build:server",
+    "build:version": "tsx scripts/buildVersion.ts",
+    "build": "tsc -b && vite build && npm run build:server && npm run build:version",
     "start": "node dist-server/server/index.js",
     "preview": "vite preview",
     "test:server": "DB_PATH=dnd_test.db npm run server"
