@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import type { BingoGame, ClientToServerEvents, ServerToClientEvents, SafeUser } from '../../shared/types';
 
-export { useAuth } from './useAuth';
-
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
 export function useSocket(token: string | null, user: SafeUser | null, onError?: (msg: string) => void) {
