@@ -13,6 +13,7 @@ interface VersionInfo {
   currentVersion: number;
   branch: string;
   ahead: number;
+  aiEnabled: boolean;
 }
 
 export function Layout({ user, onLogout, children }: LayoutProps) {
@@ -46,7 +47,7 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                 <span className="text-2xl font-black font-mono text-[var(--text-h)] drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] transition-transform duration-200 hover:scale-110">
                   v.{version.mainVersion}
                 </span>
-                {version.branch === 'main' && (
+                {version.branch === 'main' && version.aiEnabled && (
                   <Link
                     to="/feature-request"
                     className="inline-flex items-center px-2 py-1 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-semibold shadow hover:brightness-110 transition"

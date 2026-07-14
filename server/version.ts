@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isAiEnabled } from './ai/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,6 +12,7 @@ export interface VersionInfo {
   currentVersion: number;
   branch: string;
   ahead: number;
+  aiEnabled: boolean;
 }
 
 function readVersionFromFile(): VersionInfo | null {
@@ -24,7 +26,10 @@ function readVersionFromFile(): VersionInfo | null {
       typeof data.branch === 'string' &&
       typeof data.ahead === 'number'
     ) {
-      return data as VersionInfo;
+      return {
+        ...data,
+        aiEnabled: typeof data.aiEnabled === 'boolean' ? data.aiEnabled : isAiEnabled(),
+      } as VersionInfo;
     }
   } catch {
     // ignore
@@ -75,6 +80,7 @@ export function getVersion(): VersionInfo {
       currentVersion,
       branch,
       ahead,
+      aiEnabled: isAiEnabled(),
     };
   }
 
@@ -83,5 +89,6 @@ export function getVersion(): VersionInfo {
     currentVersion: 0,
     branch: 'unknown',
     ahead: 0,
+    aiEnabled: false,
   };
 }

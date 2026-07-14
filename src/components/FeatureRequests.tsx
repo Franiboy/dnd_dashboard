@@ -13,6 +13,8 @@ export function FeatureRequests() {
     setLoading(true);
     const { data, error: reqError } = await request<{ requests: FeatureRequest[] }>(
       '/api/ai/feature-requests',
+      undefined,
+      false,
     );
     if (data) {
       setRequests(data.requests || []);
@@ -40,7 +42,7 @@ export function FeatureRequests() {
 
     loadOnMount();
     const interval = setInterval(() => {
-      request<{ requests: FeatureRequest[] }>('/api/ai/feature-requests').then(({ data }) => {
+      request<{ requests: FeatureRequest[] }>('/api/ai/feature-requests', undefined, false).then(({ data }) => {
         if (data) setRequests(data.requests || []);
       });
     }, 5000);
@@ -50,7 +52,7 @@ export function FeatureRequests() {
   async function handleMerge(id: number) {
     const { error: reqError } = await request(`/api/ai/feature-requests/${id}/merge`, {
       method: 'POST',
-    });
+    }, false);
     if (reqError) {
       setError(reqError);
     } else {
@@ -64,7 +66,7 @@ export function FeatureRequests() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt }),
-    });
+    }, false);
     if (reqError) {
       setError(reqError);
     } else {
