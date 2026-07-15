@@ -279,7 +279,7 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
                 </div>
                 <pre
                   ref={(el) => { if (el) logsRefs.current.set(req.id, el); }}
-                  className="p-2 text-xs text-slate-300 overflow-auto max-h-48 whitespace-pre-wrap"
+                  className="p-2 text-xs text-slate-300 overflow-auto max-h-96 whitespace-pre-wrap"
                 >
                   {filterLogs(req.logs, logFilter?.[req.id] || 'all').map((entry, idx) => (
                     <span
