@@ -12,6 +12,7 @@ import adminRouter from './routes/admin.js';
 import aiRouter from './routes/ai.js';
 import authRouter from './routes/auth.js';
 import { setupSocket } from './socket.js';
+import { previewAuthMiddleware } from './auth.js';
 import { getVersion } from './version.js';
 import { runMigrations } from './migrations.js';
 import { recoverPreviewServers } from './ai/worker.js';
@@ -27,6 +28,7 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
 });
 
 const PORT = process.env.PORT || 3001;
+const PREVIEW_MODE = process.env.PREVIEW_MODE === 'true';
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
@@ -49,6 +51,12 @@ recoverPreviewServers().catch((err) => {
   console.error('Failed to recover preview servers:', err);
 });
 
+// In preview mode, all routes (API + static SPA) require an authenticated user
+// with admin or preview access. Login endpoints are not exposed on previews.
+if (PREVIEW_MODE) {
+  app.use(previewAuthMiddleware);
+}
+
 app.get('/api/version', (req, res) => {
   res.json(getVersion());
 });
@@ -69,7 +77,7 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-setupSocket(io);
+setupSocket(io, PREVIEW_MODE);
 
 http.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

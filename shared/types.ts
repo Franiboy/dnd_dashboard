@@ -45,6 +45,7 @@ export interface User {
   avatarUrl: string | null;
   isAdmin: boolean;
   isApproved: boolean;
+  canAccessPreviews: boolean;
   failedLoginAttempts: number;
   lockedUntil: string | null;
   createdAt: string;
@@ -57,6 +58,7 @@ export interface SafeUser {
   avatarUrl: string | null;
   isAdmin: boolean;
   isApproved: boolean;
+  canAccessPreviews: boolean;
 }
 
 export interface FeatureRequest {
