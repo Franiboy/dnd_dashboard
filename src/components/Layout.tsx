@@ -1,6 +1,12 @@
 import { Link } from 'react-router-dom';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { SafeUser, VersionInfo } from '../../shared/types';
+
+interface PreviewItem {
+  id: number;
+  title: string;
+  previewUrl: string | null;
+}
 
 interface LayoutProps {
   user: SafeUser;
@@ -11,6 +17,9 @@ interface LayoutProps {
 export function Layout({ user, onLogout, children }: LayoutProps) {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [isMerging, setIsMerging] = useState(false);
+  const [previews, setPreviews] = useState<PreviewItem[]>([]);
+  const [previewsOpen, setPreviewsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch('/api/version')
@@ -24,6 +33,32 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
         // Version is optional; failing silently is fine
       });
   }, []);
+
+  useEffect(() => {
+    if (version?.branch !== 'main') return;
+    if (!user.isAdmin && !user.canAccessPreviews) return;
+
+    fetch('/api/ai/previews', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { previews: PreviewItem[] } | null) => {
+        if (data) setPreviews(data.previews || []);
+      })
+      .catch(() => {
+        // Previews are optional; failing silently is fine
+      });
+  }, [version, user.isAdmin, user.canAccessPreviews]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setPreviewsOpen(false);
+      }
+    }
+    if (previewsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [previewsOpen]);
 
   const canMergeFromMain =
     version &&
@@ -51,6 +86,8 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
     }
   }
 
+  const isMain = version?.branch === 'main';
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="grid grid-cols-3 items-center px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
@@ -66,7 +103,7 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                 <span className="text-2xl font-black font-mono text-[var(--text-h)] drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] transition-transform duration-200 hover:scale-110">
                   v.{version.mainVersion}
                 </span>
-                {user.isAdmin && version.branch === 'main' && version.aiEnabled && (
+                {user.isAdmin && isMain && version.aiEnabled && (
                   <Link
                     to="/feature-request"
                     className="inline-flex items-center px-2 py-1 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-semibold shadow hover:brightness-110 transition"
@@ -75,8 +112,47 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                     Feature Request
                   </Link>
                 )}
+                {isMain && previews.length > 0 && (user.isAdmin || user.canAccessPreviews) && (
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      onClick={() => setPreviewsOpen((open) => !open)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-700 text-[var(--text-h)] text-xs font-semibold hover:bg-slate-600 transition"
+                      title="Zu einer Preview springen"
+                    >
+                      Previews
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+                    {previewsOpen && (
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-56 rounded-lg border border-[var(--border)] bg-[var(--panel)] shadow-lg z-50 max-h-60 overflow-auto">
+                        {previews.map((preview) => (
+                          <a
+                            key={preview.id}
+                            href={preview.previewUrl || '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block px-3 py-2 text-xs text-[var(--text-h)] hover:bg-slate-700/50 border-b border-[var(--border)] last:border-0"
+                            title={preview.title}
+                          >
+                            #{preview.id} {preview.title}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!isMain && version.mainServerUrl && (
+                  <a
+                    href={version.mainServerUrl}
+                    className="inline-flex items-center px-2 py-1 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-semibold shadow hover:brightness-110 transition"
+                    title="Zurück zu main"
+                  >
+                    Main
+                  </a>
+                )}
               </div>
-              {version.branch !== 'main' && (
+              {!isMain && (
                 <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-[var(--warning)] text-slate-900 font-semibold mt-1">
                   {version.branch}
                   {version.ahead > 0 ? ` +${version.ahead}` : ''}
