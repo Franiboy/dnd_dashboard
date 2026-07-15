@@ -19,7 +19,7 @@ import {
 } from './game.js';
 import { findUserById } from './users.js';
 
-export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvents>) {
+export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvents>, requirePreviewAccess = false) {
   const socketPlayerMap = new Map<string, string>();
 
   io.use((socket, next) => {
@@ -29,6 +29,9 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
     if (!payload) return next(new Error('Unauthorized'));
     const user = findUserById(payload.userId);
     if (!user || !user.isApproved) return next(new Error('Unauthorized'));
+    if (requirePreviewAccess && !user.isAdmin && !user.canAccessPreviews) {
+      return next(new Error('Forbidden: Preview access required'));
+    }
     (socket as any).user = user;
     next();
   });

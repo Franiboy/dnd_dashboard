@@ -42,6 +42,7 @@ const migrations: Migration[] = [
           avatar_url TEXT,
           is_admin INTEGER NOT NULL DEFAULT 0,
           is_approved INTEGER NOT NULL DEFAULT 0,
+          can_access_previews INTEGER NOT NULL DEFAULT 0,
           failed_login_attempts INTEGER NOT NULL DEFAULT 0,
           locked_until TEXT,
           created_at TEXT NOT NULL
@@ -82,6 +83,17 @@ const migrations: Migration[] = [
           updatedAt TEXT NOT NULL
         );
       `);
+    },
+  },
+  {
+    name: 'add_users_can_access_previews',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(users)').all() as {
+        name: string;
+      }[];
+      if (!columns.some((c) => c.name === 'can_access_previews')) {
+        db.exec('ALTER TABLE users ADD COLUMN can_access_previews INTEGER NOT NULL DEFAULT 0');
+      }
     },
   },
   {
