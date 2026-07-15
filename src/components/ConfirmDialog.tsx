@@ -6,6 +6,7 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: 'accent' | 'danger';
+  loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -16,6 +17,7 @@ export function ConfirmDialog({
   confirmLabel = 'Bestätigen',
   cancelLabel = 'Abbrechen',
   variant = 'accent',
+  loading,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -32,15 +34,17 @@ export function ConfirmDialog({
         <div className="flex justify-end gap-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
+            disabled={loading}
+            className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
           >
             {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 rounded font-semibold transition ${confirmClasses}`}
+            disabled={loading}
+            className={`px-4 py-2 rounded font-semibold transition ${confirmClasses} disabled:opacity-50`}
           >
-            {confirmLabel}
+            {loading ? 'Bitte warten...' : confirmLabel}
           </button>
         </div>
       </div>
