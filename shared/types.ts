@@ -61,6 +61,14 @@ export interface SafeUser {
   canAccessPreviews: boolean;
 }
 
+export type LogType = 'system' | 'prompt' | 'ai' | 'build' | 'diff' | 'error';
+
+export interface LogEntry {
+  type: LogType;
+  text: string;
+  timestamp: string;
+}
+
 export interface FeatureRequest {
   id: number;
   requestedBy: string;
@@ -74,7 +82,7 @@ export interface FeatureRequest {
   previewPid: number | null;
   sessionTitle: string | null;
   sessionId: string | null;
-  logs: string;
+  logs: LogEntry[];
   behind?: number | null;
   createdAt: string;
   updatedAt: string;

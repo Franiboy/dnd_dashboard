@@ -4,9 +4,10 @@ import { join, resolve } from 'node:path';
 import { findFreePort, isPortInUse } from '../utils/port.js';
 import { runOpenCode, findOpenCodeSessionId } from './opencode.js';
 import { notifyFeatureRequestsUpdated } from './events.js';
+import type { LogType } from '../../shared/types.js';
 import {
   updateFeatureRequest as updateFeatureRequestRaw,
-  appendFeatureRequestLogs,
+  appendFeatureRequestLogEntry,
   getFeatureRequestById,
   listFeatureRequests,
   deleteFeatureRequest,
@@ -79,8 +80,8 @@ export async function startPreviewServer(
     detached: true,
   });
 
-  previewProcess.stdout?.on('data', (data) => logLine(id, `[preview] ${data}`));
-  previewProcess.stderr?.on('data', (data) => logLine(id, `[preview] ${data}`));
+  previewProcess.stdout?.on('data', (data) => logLine(id, `[preview] ${data}`, 'system'));
+  previewProcess.stderr?.on('data', (data) => logLine(id, `[preview] ${data}`, 'error'));
   previewProcess.on('error', (err) => {
     logLine(id, `Preview server error: ${err.message}\n`);
     updateFeatureRequest(id, { status: 'failed' });
@@ -186,9 +187,20 @@ async function suggestBranchName(
   return `feature/${id}`;
 }
 
-function logLine(id: number, line: string): void {
-  appendFeatureRequestLogs(id, line);
+function logLine(id: number, line: string, type: LogType = 'system'): void {
+  appendFeatureRequestLogEntry(id, { type, text: line, timestamp: new Date().toISOString() });
   notifyFeatureRequestsUpdated();
+}
+
+function captureDiff(id: number, worktreePath: string): void {
+  try {
+    const diff = execSync('git diff --cached --no-color', { cwd: worktreePath, encoding: 'utf-8', timeout: 10000 });
+    if (diff.trim()) {
+      logLine(id, `Staged changes:\n${diff}`, 'diff');
+    }
+  } catch {
+    // ignore diff failures
+  }
 }
 
 function runCommand(
@@ -271,12 +283,13 @@ export function startFeatureRequest(
   let worktreePath = resolve(join(process.cwd(), '..', `${WORKTREE_PREFIX}${id}`));
   worktreePath = createUniquePath(worktreePath);
 
+  const now = new Date().toISOString();
   updateFeatureRequest(id, {
     status: 'running',
     branch,
     worktreePath,
     sessionTitle,
-    logs: `Starting AI feature request #${id}...\nModel: ${model}\nSession title: ${sessionTitle}\n`,
+    logs: [{ type: 'system', text: `Starting AI feature request #${id}...\nModel: ${model}\nSession title: ${sessionTitle}\n`, timestamp: now }],
   });
 
   (async () => {
@@ -302,7 +315,7 @@ export function startFeatureRequest(
           updateFeatureRequest(id, { branch, worktreePath });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          logLine(id, `Branch rename failed, keeping ${branch}: ${message}\n`);
+          logLine(id, `Branch rename failed, keeping ${branch}: ${message}\n`, 'error');
         }
       }
 
@@ -317,22 +330,23 @@ export function startFeatureRequest(
       logLine(id, `Installing dependencies in worktree...\n`);
       const installResult = await runCommand('npm', ['install'], {
         cwd: worktreePath,
-        onLog: (line) => logLine(id, line),
+        onLog: (line) => logLine(id, line, 'build'),
       });
       if (!installResult.success) {
-        logLine(id, `npm install failed with exit code ${installResult.exitCode}\n`);
+        logLine(id, `npm install failed with exit code ${installResult.exitCode}\n`, 'error');
         updateFeatureRequest(id, { status: 'failed' });
         return;
       }
 
       logLine(id, `Running OpenCode with model ${model}...\n`);
       const prompt = buildPrompt(request.title, request.description, branch);
+      logLine(id, `Prompt:\n${prompt}\n`, 'prompt');
       const openCodeResult = await runOpenCode({
         prompt,
         worktreePath,
         model,
         title: sessionTitle,
-        onLog: (line) => logLine(id, line),
+        onLog: (line) => logLine(id, line, 'ai'),
       });
 
       const sessionId = await findOpenCodeSessionId(worktreePath, sessionTitle);
@@ -342,7 +356,7 @@ export function startFeatureRequest(
       }
 
       if (!openCodeResult.success) {
-        logLine(id, `OpenCode failed with exit code ${openCodeResult.exitCode}\n`);
+        logLine(id, `OpenCode failed with exit code ${openCodeResult.exitCode}\n`, 'error');
         updateFeatureRequest(id, { status: 'failed' });
         return;
       }
@@ -351,11 +365,11 @@ export function startFeatureRequest(
 
       const buildResult = await runCommand('npm', ['run', 'build'], {
         cwd: worktreePath,
-        onLog: (line) => logLine(id, line),
+        onLog: (line) => logLine(id, line, 'build'),
       });
 
       if (!buildResult.success) {
-        logLine(id, `Build failed with exit code ${buildResult.exitCode}\n`);
+        logLine(id, `Build failed with exit code ${buildResult.exitCode}\n`, 'error');
         updateFeatureRequest(id, { status: 'failed' });
         return;
       }
@@ -363,6 +377,7 @@ export function startFeatureRequest(
       logLine(id, `Committing changes in worktree...\n`);
       try {
         execGit('add -A', { cwd: worktreePath });
+        captureDiff(id, worktreePath);
         try {
           execSync('git diff --cached --quiet', { cwd: worktreePath, encoding: 'utf-8' });
           // no staged changes
@@ -430,10 +445,11 @@ export function continueFeatureRequest(
   const sessionTitle = request.sessionTitle || `dnd-feature-request-${id}`;
   if (!worktreePath) return;
 
+  const continueNow = new Date().toISOString();
   updateFeatureRequest(id, {
     status: 'running',
     sessionTitle,
-    logs: `${request.logs || ''}\nContinuing AI session for feature request #${id}...\n`,
+    logs: [...(request.logs || []), { type: 'system', text: `Continuing AI session for feature request #${id}...\n`, timestamp: continueNow }],
   });
 
   (async () => {
@@ -457,12 +473,13 @@ export function continueFeatureRequest(
       }
 
       logLine(id, `Continuing OpenCode session ${sessionId}...\n`);
+      logLine(id, `Prompt:\n${prompt}\n`, 'prompt');
       const openCodeResult = await runOpenCode({
         prompt,
         worktreePath,
         model,
         sessionId,
-        onLog: (line) => logLine(id, line),
+        onLog: (line) => logLine(id, line, 'ai'),
       });
 
       const newSessionId = await findOpenCodeSessionId(worktreePath, sessionTitle);
@@ -480,11 +497,11 @@ export function continueFeatureRequest(
 
       const buildResult = await runCommand('npm', ['run', 'build'], {
         cwd: worktreePath,
-        onLog: (line) => logLine(id, line),
+        onLog: (line) => logLine(id, line, 'build'),
       });
 
       if (!buildResult.success) {
-        logLine(id, `Build failed with exit code ${buildResult.exitCode}\n`);
+        logLine(id, `Build failed with exit code ${buildResult.exitCode}\n`, 'error');
         updateFeatureRequest(id, { status: 'failed' });
         return;
       }
@@ -492,6 +509,7 @@ export function continueFeatureRequest(
       logLine(id, `Committing changes in worktree...\n`);
       try {
         execGit('add -A', { cwd: worktreePath });
+        captureDiff(id, worktreePath);
         try {
           execSync('git diff --cached --quiet', { cwd: worktreePath, encoding: 'utf-8' });
           // no staged changes
@@ -650,9 +668,10 @@ export function mergeFromMainForFeatureRequest(
 
   const model = process.env.AI_MODEL || 'dotsource_rag/code-secure-local';
 
+  const mergeNow = new Date().toISOString();
   updateFeatureRequest(id, {
     status: 'running',
-    logs: `${request.logs || ''}\nMerging main into ${request.branch}...\n`,
+    logs: [...(request.logs || []), { type: 'system', text: `Merging main into ${request.branch}...\n`, timestamp: mergeNow }],
   });
 
   (async () => {
@@ -682,11 +701,11 @@ export function mergeFromMainForFeatureRequest(
 
       const buildResult = await runCommand('npm', ['run', 'build'], {
         cwd: request.worktreePath!,
-        onLog: (line) => logLine(id, line),
+        onLog: (line) => logLine(id, line, 'build'),
       });
 
       if (!buildResult.success) {
-        logLine(id, `Rebuild failed with exit code ${buildResult.exitCode}\n`);
+        logLine(id, `Rebuild failed with exit code ${buildResult.exitCode}\n`, 'error');
         updateFeatureRequest(id, { status: 'failed' });
         return;
       }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { ConfirmDialog } from './ConfirmDialog';
 import Convert from 'ansi-to-html';
-import type { FeatureRequest, SafeUser, VersionInfo } from '../../shared/types';
+import type { FeatureRequest, LogEntry, SafeUser, VersionInfo } from '../../shared/types';
 
 interface FeatureRequestsProps {
   currentUser?: SafeUser;
@@ -19,10 +19,24 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
   const [continuePrompts, setContinuePrompts] = useState<Record<number, string>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [loadingAction, setLoadingAction] = useState<{ id: number; type: 'merge' | 'mergeFromMain' | 'continue' | 'delete' } | null>(null);
+  const [logFilter, setLogFilter] = useState<Record<number, 'all' | 'ki' | 'changes' | 'system'>>();
   const logsRefs = useRef<Map<number, HTMLPreElement>>(new Map());
 
   const isLoading = (id: number, type: 'merge' | 'mergeFromMain' | 'continue' | 'delete') =>
     loadingAction?.id === id && loadingAction?.type === type;
+
+  function filterLogs(entries: LogEntry[], filter: 'all' | 'ki' | 'changes' | 'system'): LogEntry[] {
+    switch (filter) {
+      case 'ki':
+        return entries.filter((e) => e.type === 'prompt' || e.type === 'ai');
+      case 'changes':
+        return entries.filter((e) => e.type === 'diff');
+      case 'system':
+        return entries.filter((e) => e.type === 'system' || e.type === 'build' || e.type === 'error');
+      default:
+        return entries;
+    }
+  }
 
   useEffect(() => {
     requests.forEach((req) => {
@@ -244,17 +258,38 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
               Vorschau: {req.previewUrl}
             </a>
           )}
-          {(req.logs || (isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running')) && (
+          {(req.logs.length > 0 || (isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running')) && (
             <details className="mt-2" open>
               <summary className="text-xs text-slate-500 cursor-pointer">Terminal</summary>
               <div className="mt-2 rounded border border-[var(--border)] bg-black/30 overflow-hidden">
+                <div className="flex gap-1 p-2 border-b border-[var(--border)] bg-[var(--panel)]">
+                  {(['all', 'ki', 'changes', 'system'] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      onClick={() => setLogFilter((prev) => ({ ...prev, [req.id]: filter }))}
+                      className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                        (logFilter?.[req.id] || 'all') === filter
+                          ? 'bg-[var(--accent)] text-slate-900'
+                          : 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
+                      }`}
+                    >
+                      {filter === 'all' ? 'Alle' : filter === 'ki' ? 'KI' : filter === 'changes' ? 'Änderungen' : 'System'}
+                    </button>
+                  ))}
+                </div>
                 <pre
                   ref={(el) => { if (el) logsRefs.current.set(req.id, el); }}
                   className="p-2 text-xs text-slate-300 overflow-auto max-h-48 whitespace-pre-wrap"
-                  dangerouslySetInnerHTML={{
-                    __html: req.logs ? ansiConvert.toHtml(req.logs) : 'Noch keine Logs.',
-                  }}
-                />
+                >
+                  {filterLogs(req.logs, logFilter?.[req.id] || 'all').map((entry, idx) => (
+                    <span
+                      key={idx}
+                      dangerouslySetInnerHTML={{
+                        __html: ansiConvert.toHtml(entry.text),
+                      }}
+                    />
+                  ))}
+                </pre>
                 {isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running' && (
                   <div className="flex gap-2 p-2 border-t border-[var(--border)] bg-[var(--panel)]">
                     <input
