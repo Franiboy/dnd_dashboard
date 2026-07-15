@@ -86,7 +86,7 @@ function App() {
     <BrowserRouter>
       <Layout user={user} onLogout={logout}>
         <Routes>
-          <Route path="/admin" element={<ProtectedRoute user={user} adminOnly><Admin currentUser={user} /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute user={user} adminOrPreview><Admin currentUser={user} /></ProtectedRoute>} />
           {isInitialAdmin ? (
             <Route path="*" element={<Navigate to="/admin" />} />
           ) : (

@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { ConfirmDialog } from './ConfirmDialog';
-import type { FeatureRequest, VersionInfo } from '../../shared/types';
+import type { FeatureRequest, SafeUser, VersionInfo } from '../../shared/types';
 
-export function FeatureRequests() {
+interface FeatureRequestsProps {
+  currentUser?: SafeUser;
+}
+
+export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
   const { request } = useApi();
+  const isAdmin = !!currentUser?.isAdmin;
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [requests, setRequests] = useState<FeatureRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +35,7 @@ export function FeatureRequests() {
 
   useEffect(() => {
     let isMounted = true;
-    let interval: ReturnType<typeof setInterval> | null = null;
+    let source: EventSource | null = null;
 
     async function init() {
       const { data: version } = await request<VersionInfo>('/api/version', undefined, false);
@@ -45,19 +50,27 @@ export function FeatureRequests() {
       setAiEnabled(true);
       await load();
 
-      interval = setInterval(() => {
-        request<{ requests: FeatureRequest[] }>('/api/ai/feature-requests', undefined, false).then(
-          ({ data }) => {
-            if (data && isMounted) setRequests(data.requests || []);
-          },
-        );
-      }, 5000);
+      source = new EventSource('/api/ai/feature-requests/events', { withCredentials: true });
+      source.addEventListener('requests', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && Array.isArray(data.requests) && isMounted) {
+            setRequests(data.requests);
+            setError(null);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      });
+      source.addEventListener('error', () => {
+        // Connection errors are handled silently; the browser reconnects automatically
+      });
     }
 
     init();
     return () => {
       isMounted = false;
-      if (interval) clearInterval(interval);
+      if (source) source.close();
     };
   }, [request, load]);
 
@@ -69,8 +82,6 @@ export function FeatureRequests() {
     );
     if (reqError) {
       setError(reqError);
-    } else {
-      load();
     }
   }
 
@@ -82,8 +93,6 @@ export function FeatureRequests() {
     );
     if (reqError) {
       setError(reqError);
-    } else {
-      load();
     }
   }
 
@@ -96,8 +105,6 @@ export function FeatureRequests() {
     );
     if (reqError) {
       setError(reqError);
-    } else {
-      load();
     }
   }
 
@@ -116,7 +123,6 @@ export function FeatureRequests() {
       setError(reqError);
     } else {
       setContinuePrompts((prev) => ({ ...prev, [id]: '' }));
-      load();
     }
   }
 
@@ -166,7 +172,7 @@ export function FeatureRequests() {
               )}
             </div>
             <div className="flex flex-col gap-2 items-end">
-              {req.status === 'preview_ready' && (
+              {isAdmin && req.status === 'preview_ready' && (
                 <button
                   onClick={() => handleMerge(req.id)}
                   className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold text-sm"
@@ -183,7 +189,7 @@ export function FeatureRequests() {
                   Main reinmergen ({req.behind})
                 </button>
               )}
-              {(req.sessionId || req.sessionTitle) && req.status !== 'running' && (
+              {isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running' && (
                 <button
                   onClick={() => handleContinue(req.id)}
                   className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm"
@@ -191,12 +197,14 @@ export function FeatureRequests() {
                   Session fortsetzen
                 </button>
               )}
-              <button
-                onClick={() => setDeleteId(req.id)}
-                className="px-3 py-1 rounded bg-[var(--danger)] text-white text-sm"
-              >
-                Löschen
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setDeleteId(req.id)}
+                  className="px-3 py-1 rounded bg-[var(--danger)] text-white text-sm"
+                >
+                  Löschen
+                </button>
+              )}
             </div>
           </div>
           {(req.sessionId || req.sessionTitle) && req.status !== 'running' && (
