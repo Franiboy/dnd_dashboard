@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button } from './Button';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 
 interface PreviewItem {
@@ -109,14 +109,15 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                 <span className="text-2xl font-black font-mono text-[var(--text-h)] drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] transition-transform duration-200 hover:scale-110">
                   v.{version.mainVersion}
                 </span>
-                {user.isAdmin && isMain && version.aiEnabled && (
-                  <Link
+{user.isAdmin && version.branch === 'main' && version.aiEnabled && (
+                  <Button
+                    as="a"
                     to="/feature-request"
-                    className="inline-flex items-center px-2 py-1 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-semibold shadow hover:brightness-110 transition"
-                    title="Feature Request"
+                    variant="accent"
+                    className="!px-2 !py-1 !rounded-full !text-xs !font-semibold"
                   >
                     Feature Request
-                  </Link>
+                  </Button>
                 )}
                 {showPreviewsDropdown && (
                   <div className="relative" ref={dropdownRef}>
@@ -184,21 +185,21 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
 
         <div className="flex justify-end gap-4">
           {user.isAdmin && (
-            <Link to="/admin" className="text-slate-400 hover:text-[var(--text-h)]">
+            <Button as="a" to="/admin" variant="ghost">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
               Admin
-            </Link>
+            </Button>
           )}
-          <button
-            onClick={onLogout}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--danger)]/20 text-[var(--danger)] hover:bg-[var(--danger)]/30 transition-colors"
-          >
+          <Button as="button" onClick={onLogout} variant="danger">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
             Logout
-          </button>
+          </Button>
         </div>
       </header>
       <main className="flex-1">{children}</main>
