@@ -75,8 +75,20 @@ export interface FeatureRequest {
   sessionTitle: string | null;
   sessionId: string | null;
   logs: string;
+  behind?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface VersionInfo {
+  mainVersion: number;
+  currentVersion: number;
+  branch: string;
+  ahead: number;
+  behind: number;
+  aiEnabled: boolean;
+  previewFeatureRequestId?: number | null;
+  mainServerUrl?: string | null;
 }
 
 export interface ClientToServerEvents {

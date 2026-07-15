@@ -1,13 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
-
-interface VersionInfo {
-  mainVersion: number;
-  currentVersion: number;
-  branch: string;
-  ahead: number;
-  aiEnabled: boolean;
-}
+import type { VersionInfo } from '../../shared/types';
 
 export function FeatureRequest() {
   const { request } = useApi();
