@@ -167,7 +167,7 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                     className="inline-flex items-center px-2 py-1 rounded-full bg-[var(--danger)] text-white text-xs font-semibold hover:brightness-110 disabled:opacity-50"
                     title={`${version.behind} Commit(s) hinter main`}
                   >
-                    {isMerging ? 'Merge...' : `Main reinmergen (${version.behind})`}
+                    {isMerging ? 'Wird aktualisiert...' : `Feature updaten (${version.behind})`}
                   </button>
                 )}
               </div>
