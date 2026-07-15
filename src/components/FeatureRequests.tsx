@@ -16,6 +16,10 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
   const [error, setError] = useState<string | null>(null);
   const [continuePrompts, setContinuePrompts] = useState<Record<number, string>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [loadingAction, setLoadingAction] = useState<{ id: number; type: 'merge' | 'mergeFromMain' | 'continue' | 'delete' } | null>(null);
+
+  const isLoading = (id: number, type: 'merge' | 'mergeFromMain' | 'continue' | 'delete') =>
+    loadingAction?.id === id && loadingAction?.type === type;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,41 +79,54 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
   }, [request, load]);
 
   async function handleMerge(id: number) {
+    setLoadingAction({ id, type: 'merge' });
     const { error: reqError } = await request(
       `/api/ai/feature-requests/${id}/merge`,
       { method: 'POST' },
       false,
     );
+    setLoadingAction(null);
     if (reqError) {
       setError(reqError);
+    } else {
+      load();
     }
   }
 
   async function handleMergeFromMain(id: number) {
+    setLoadingAction({ id, type: 'mergeFromMain' });
     const { error: reqError } = await request(
       `/api/ai/feature-requests/${id}/merge-from-main`,
       { method: 'POST' },
       false,
     );
+    setLoadingAction(null);
     if (reqError) {
       setError(reqError);
+    } else {
+      load();
     }
   }
 
   async function handleDeleteConfirm(id: number) {
     setDeleteId(null);
+    setLoadingAction({ id, type: 'delete' });
     const { error: reqError } = await request(
       `/api/ai/feature-requests/${id}`,
       { method: 'DELETE' },
       false,
     );
+    setLoadingAction(null);
     if (reqError) {
       setError(reqError);
+    } else {
+      load();
     }
   }
 
   async function handleContinue(id: number) {
     const prompt = continuePrompts[id] || '';
+    setLoadingAction({ id, type: 'continue' });
     const { error: reqError } = await request(
       `/api/ai/feature-requests/${id}/continue`,
       {
@@ -119,10 +136,12 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
       },
       false,
     );
+    setLoadingAction(null);
     if (reqError) {
       setError(reqError);
     } else {
       setContinuePrompts((prev) => ({ ...prev, [id]: '' }));
+      load();
     }
   }
 
@@ -175,34 +194,38 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
               {isAdmin && req.status === 'preview_ready' && (
                 <button
                   onClick={() => handleMerge(req.id)}
-                  className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold text-sm"
+                  disabled={isLoading(req.id, 'merge')}
+                  className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold text-sm disabled:opacity-50"
                 >
-                  Akzeptieren
+                  {isLoading(req.id, 'merge') ? 'Wird akzeptiert...' : 'Akzeptieren'}
                 </button>
               )}
               {req.status === 'preview_ready' && req.behind && req.behind > 0 && (
                 <button
                   onClick={() => handleMergeFromMain(req.id)}
-                  className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 font-semibold text-sm"
+                  disabled={isLoading(req.id, 'mergeFromMain')}
+                  className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 font-semibold text-sm disabled:opacity-50"
                   title={`${req.behind} Commit(s) hinter main`}
                 >
-                  Main reinmergen ({req.behind})
+                  {isLoading(req.id, 'mergeFromMain') ? 'Wird gemergt...' : `Main reinmergen (${req.behind})`}
                 </button>
               )}
               {isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running' && (
                 <button
                   onClick={() => handleContinue(req.id)}
-                  className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm"
+                  disabled={isLoading(req.id, 'continue')}
+                  className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm disabled:opacity-50"
                 >
-                  Session fortsetzen
+                  {isLoading(req.id, 'continue') ? 'Wird fortgesetzt...' : 'Session fortsetzen'}
                 </button>
               )}
               {isAdmin && (
                 <button
                   onClick={() => setDeleteId(req.id)}
-                  className="px-3 py-1 rounded bg-[var(--danger)] text-white text-sm"
+                  disabled={isLoading(req.id, 'delete')}
+                  className="px-3 py-1 rounded bg-[var(--danger)] text-white text-sm disabled:opacity-50"
                 >
-                  Löschen
+                  {isLoading(req.id, 'delete') ? 'Wird gelöscht...' : 'Löschen'}
                 </button>
               )}
             </div>
@@ -246,6 +269,7 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
           confirmLabel="Löschen"
           cancelLabel="Abbrechen"
           variant="danger"
+          loading={deleteId !== null && isLoading(deleteId, 'delete')}
           onConfirm={() => handleDeleteConfirm(deleteId)}
           onCancel={() => setDeleteId(null)}
         >
