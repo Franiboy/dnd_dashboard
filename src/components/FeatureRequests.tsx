@@ -313,14 +313,14 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
                   {isLoading(req.id, 'merge') ? 'Wird akzeptiert...' : 'Akzeptieren'}
                 </button>
               )}
-              {req.status === 'preview_ready' && !!req.behind && (
+              {!!req.behind && (req.status === 'preview_ready' || req.status === 'running') && (
                 <button
                   onClick={() => handleMergeFromMain(req.id)}
-                  disabled={isLoading(req.id, 'mergeFromMain')}
+                  disabled={req.status === 'running'}
                   className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 font-semibold text-sm disabled:opacity-50"
                   title={`${req.behind} Commit(s) hinter main`}
                 >
-                  {isLoading(req.id, 'mergeFromMain') ? 'Wird aktualisiert...' : `Feature updaten (${req.behind})`}
+                  {req.status === 'running' ? 'Wird aktualisiert...' : `Feature updaten (${req.behind})`}
                 </button>
               )}
 
