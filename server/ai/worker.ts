@@ -742,13 +742,11 @@ export function mergeAndPushFeatureRequest(id: number): { success: boolean; erro
       }
     }
 
-    updateFeatureRequest(id, {
-      status: 'merged',
-      previewUrl: null,
-      previewPort: null,
-      previewPid: null,
-    });
-    return { success: true };
+    const cleanup = cleanupFeatureRequest(id);
+    if (cleanup.success) {
+      notifyFeatureRequestsUpdated();
+    }
+    return cleanup;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { success: false, error: message };
