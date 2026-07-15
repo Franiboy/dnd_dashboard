@@ -194,7 +194,8 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
               {isAdmin && req.status === 'preview_ready' && (
                 <button
                   onClick={() => handleMerge(req.id)}
-                  disabled={isLoading(req.id, 'merge')}
+                  disabled={isLoading(req.id, 'merge') || !!req.behind}
+                  title={req.behind ? 'Bitte zuerst Main reinmergen' : undefined}
                   className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold text-sm disabled:opacity-50"
                 >
                   {isLoading(req.id, 'merge') ? 'Wird akzeptiert...' : 'Akzeptieren'}
