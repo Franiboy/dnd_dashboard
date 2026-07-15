@@ -35,7 +35,6 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
   }, []);
 
   useEffect(() => {
-    if (version?.branch !== 'main') return;
     if (!user.isAdmin && !user.canAccessPreviews) return;
 
     fetch('/api/ai/previews', { credentials: 'include' })
@@ -46,7 +45,7 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
       .catch(() => {
         // Previews are optional; failing silently is fine
       });
-  }, [version, user.isAdmin, user.canAccessPreviews]);
+  }, [user.isAdmin, user.canAccessPreviews]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -87,6 +86,13 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
   }
 
   const isMain = version?.branch === 'main';
+  const currentPreviewId = version?.previewFeatureRequestId ?? null;
+  const otherPreviews = isMain
+    ? previews
+    : previews.filter((p) => p.id !== currentPreviewId);
+  const showPreviewsDropdown =
+    (user.isAdmin || user.canAccessPreviews) &&
+    (isMain ? otherPreviews.length > 0 : otherPreviews.length > 0 || !!version?.mainServerUrl);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -112,7 +118,7 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                     Feature Request
                   </Link>
                 )}
-                {isMain && previews.length > 0 && (user.isAdmin || user.canAccessPreviews) && (
+                {showPreviewsDropdown && (
                   <div className="relative" ref={dropdownRef}>
                     <button
                       onClick={() => setPreviewsOpen((open) => !open)}
@@ -126,7 +132,16 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                     </button>
                     {previewsOpen && (
                       <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-56 rounded-lg border border-[var(--border)] bg-[var(--panel)] shadow-lg z-50 max-h-60 overflow-auto">
-                        {previews.map((preview) => (
+                        {!isMain && version.mainServerUrl && (
+                          <a
+                            href={version.mainServerUrl}
+                            className="block px-3 py-2 text-xs font-semibold text-[var(--accent)] hover:bg-slate-700/50 border-b border-[var(--border)]"
+                            title="Zurück zu main"
+                          >
+                            Main
+                          </a>
+                        )}
+                        {otherPreviews.map((preview) => (
                           <a
                             key={preview.id}
                             href={preview.previewUrl || '#'}
@@ -138,18 +153,12 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                             #{preview.id} {preview.title}
                           </a>
                         ))}
+                        {!isMain && otherPreviews.length === 0 && !version.mainServerUrl && (
+                          <span className="block px-3 py-2 text-xs text-slate-500">Keine weiteren Previews</span>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-                {!isMain && version.mainServerUrl && (
-                  <a
-                    href={version.mainServerUrl}
-                    className="inline-flex items-center px-2 py-1 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-semibold shadow hover:brightness-110 transition"
-                    title="Zurück zu main"
-                  >
-                    Main
-                  </a>
                 )}
               </div>
               {!isMain && (
