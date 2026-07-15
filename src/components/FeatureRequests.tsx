@@ -177,7 +177,7 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
                   onClick={() => handleMerge(req.id)}
                   className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold text-sm"
                 >
-                  Merge & Push
+                  Akzeptieren
                 </button>
               )}
               {req.status === 'preview_ready' && req.behind && req.behind > 0 && (
