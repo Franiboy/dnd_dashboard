@@ -624,7 +624,7 @@ export async function mergeMainIntoFeatureBranch(
   branch: string,
   model: string,
   onLog?: (line: string) => void,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; usedAI?: boolean; error?: string }> {
   try {
     onLog?.(`Fetching origin...\n`);
     const fetchResult = await runCommand('git', ['fetch', 'origin'], { cwd: worktreePath, onLog });
@@ -649,7 +649,7 @@ export async function mergeMainIntoFeatureBranch(
         return { success: false, error: `Push failed: ${pushResult.output}` };
       }
       onLog?.(`Merge pushed to origin/${branch}\n`);
-      return { success: true };
+      return { success: true, usedAI: false };
     }
 
     if (hasUnmergedPaths(worktreePath)) {
@@ -687,7 +687,7 @@ export async function mergeMainIntoFeatureBranch(
         return { success: false, error: `Push failed: ${pushResult.output}` };
       }
       onLog?.(`Merge pushed to origin/${branch}\n`);
-      return { success: true };
+      return { success: true, usedAI: true };
     }
 
     return { success: false, error: `Merge dry-run failed: ${dryRun.output}` };
@@ -744,7 +744,11 @@ export function mergeFromMainForFeatureRequest(
       }
 
       logLine(id, `Merge successful. Rebuilding preview...\n`);
-      logLine(id, `Merge aus main mit Model ${model} durchgeführt\n`, 'summary');
+      if (mergeResult.usedAI) {
+        logLine(id, `KI (${model}) hat Merge-Konflikte gelöst und Merge aus main durchgeführt\n`, 'summary');
+      } else {
+        logLine(id, `Merge aus main durchgeführt\n`, 'summary');
+      }
 
       const buildResult = await runCommand('npm', ['run', 'build'], {
         cwd: request.worktreePath!,
