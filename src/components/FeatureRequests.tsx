@@ -208,18 +208,10 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
                   className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 font-semibold text-sm disabled:opacity-50"
                   title={`${req.behind} Commit(s) hinter main`}
                 >
-                  {isLoading(req.id, 'mergeFromMain') ? 'Wird gemergt...' : `Main reinmergen (${req.behind})`}
+                  {isLoading(req.id, 'mergeFromMain') ? 'Wird aktualisiert...' : `Feature updaten (${req.behind})`}
                 </button>
               )}
-              {isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running' && (
-                <button
-                  onClick={() => handleContinue(req.id)}
-                  disabled={isLoading(req.id, 'continue')}
-                  className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm disabled:opacity-50"
-                >
-                  {isLoading(req.id, 'continue') ? 'Wird fortgesetzt...' : 'Session fortsetzen'}
-                </button>
-              )}
+
               {isAdmin && (
                 <button
                   onClick={() => setDeleteId(req.id)}
@@ -242,6 +234,15 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
                 placeholder="Zusätzlicher Prompt zum Fortsetzen"
                 className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-[var(--panel)] text-sm text-[var(--text-h)]"
               />
+              {isAdmin && (
+                <button
+                  onClick={() => handleContinue(req.id)}
+                  disabled={isLoading(req.id, 'continue')}
+                  className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm disabled:opacity-50"
+                >
+                  {isLoading(req.id, 'continue') ? 'Wird fortgesetzt...' : 'Fortsetzen'}
+                </button>
+              )}
             </div>
           )}
           {req.previewUrl && (
