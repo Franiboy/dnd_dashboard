@@ -344,7 +344,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     return (
       <div className="h-full flex flex-col">
         <div className="text-sm font-semibold text-[var(--text-h)] mb-2">{req.title}</div>
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-hidden">
           {renderTerminal(req, true)}
         </div>
       </div>
