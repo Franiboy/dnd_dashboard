@@ -248,64 +248,80 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     if (req.logs.length === 0 && (!canContinue || req.status === 'running')) {
       return null;
     }
+    const filterButtons = (
+      <div className="flex gap-1 p-2 border-b border-[var(--border)] bg-[var(--panel)]">
+        {(['all', 'summary', 'ki', 'changes', 'system'] as const).map((filter) => (
+          <button
+            key={filter}
+            onClick={() => setLogFilter((prev) => ({ ...prev, [req.id]: filter }))}
+            className={`px-2 py-0.5 rounded text-xs font-semibold ${
+              (logFilter[req.id] || 'all') === filter
+                ? 'bg-[var(--accent)] text-slate-900'
+                : 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
+            }`}
+          >
+            {filter === 'all' ? 'Alle' : filter === 'summary' ? 'Zusammenfassung' : filter === 'ki' ? 'KI' : filter === 'changes' ? 'Änderungen' : 'System'}
+          </button>
+        ))}
+      </div>
+    );
+    const logContent = (
+      <pre
+        ref={(el) => { if (el) logsRefs.current.set(req.id, el); }}
+        className={`p-2 text-xs text-slate-300 overflow-auto whitespace-pre-wrap ${isCompact ? 'flex-1 min-h-0' : 'max-h-96'}`}
+      >
+        {filterLogs(req.logs, logFilter[req.id] || 'all').map((entry, idx) => (
+          <span
+            key={idx}
+            dangerouslySetInnerHTML={{
+              __html: ansiConvert.toHtml(entry.text),
+            }}
+          />
+        ))}
+      </pre>
+    );
+    const continueInput = canContinue && (req.sessionId || req.sessionTitle) && req.status !== 'running' && (
+      <div className="flex gap-2 p-2 border-t border-[var(--border)] bg-[var(--panel)]">
+        <input
+          type="text"
+          value={continuePrompts[req.id] || ''}
+          onChange={(e) =>
+            setContinuePrompts((prev) => ({ ...prev, [req.id]: e.target.value }))
+          }
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && continuePrompts[req.id]?.trim()) {
+              handleContinue(req.id);
+            }
+          }}
+          placeholder="Prompt eingeben..."
+          className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-black/20 text-sm text-[var(--text-h)]"
+        />
+        <button
+          onClick={() => handleContinue(req.id)}
+          disabled={isLoading(req.id, 'continue') || !continuePrompts[req.id]?.trim()}
+          className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm disabled:opacity-50"
+        >
+          {isLoading(req.id, 'continue') ? 'Wird fortgesetzt...' : 'Fortsetzen'}
+        </button>
+      </div>
+    );
+
+    const body = (
+      <div className={`rounded border border-[var(--border)] bg-black/30 overflow-hidden ${isCompact ? 'h-full flex flex-col' : 'mt-2'}`}>
+        {filterButtons}
+        {logContent}
+        {continueInput}
+      </div>
+    );
+
+    if (isCompact) {
+      return body;
+    }
+
     return (
       <details className="mt-2" open>
         <summary className="text-xs text-slate-500 cursor-pointer">Terminal</summary>
-        <div className="mt-2 rounded border border-[var(--border)] bg-black/30 overflow-hidden">
-          <div className="flex gap-1 p-2 border-b border-[var(--border)] bg-[var(--panel)]">
-            {(['all', 'summary', 'ki', 'changes', 'system'] as const).map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setLogFilter((prev) => ({ ...prev, [req.id]: filter }))}
-                className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                  (logFilter[req.id] || 'all') === filter
-                    ? 'bg-[var(--accent)] text-slate-900'
-                    : 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
-                }`}
-              >
-                {filter === 'all' ? 'Alle' : filter === 'summary' ? 'Zusammenfassung' : filter === 'ki' ? 'KI' : filter === 'changes' ? 'Änderungen' : 'System'}
-              </button>
-            ))}
-          </div>
-          <pre
-            ref={(el) => { if (el) logsRefs.current.set(req.id, el); }}
-            className={`p-2 text-xs text-slate-300 overflow-auto whitespace-pre-wrap ${isCompact ? 'h-full max-h-full' : 'max-h-96'}`}
-          >
-            {filterLogs(req.logs, logFilter[req.id] || 'all').map((entry, idx) => (
-              <span
-                key={idx}
-                dangerouslySetInnerHTML={{
-                  __html: ansiConvert.toHtml(entry.text),
-                }}
-              />
-            ))}
-          </pre>
-          {canContinue && (req.sessionId || req.sessionTitle) && req.status !== 'running' && (
-            <div className="flex gap-2 p-2 border-t border-[var(--border)] bg-[var(--panel)]">
-              <input
-                type="text"
-                value={continuePrompts[req.id] || ''}
-                onChange={(e) =>
-                  setContinuePrompts((prev) => ({ ...prev, [req.id]: e.target.value }))
-                }
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && continuePrompts[req.id]?.trim()) {
-                    handleContinue(req.id);
-                  }
-                }}
-                placeholder="Prompt eingeben..."
-                className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-black/20 text-sm text-[var(--text-h)]"
-              />
-              <button
-                onClick={() => handleContinue(req.id)}
-                disabled={isLoading(req.id, 'continue') || !continuePrompts[req.id]?.trim()}
-                className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm disabled:opacity-50"
-              >
-                {isLoading(req.id, 'continue') ? 'Wird fortgesetzt...' : 'Fortsetzen'}
-              </button>
-            </div>
-          )}
-        </div>
+        {body}
       </details>
     );
   }
