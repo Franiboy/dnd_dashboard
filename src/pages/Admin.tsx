@@ -61,7 +61,7 @@ export function Admin({ currentUser }: AdminProps) {
   const isInitialAdmin = (u: SafeUser) => u.username === 'admin';
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-full p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-[var(--text-h)]">Administration</h1>
         <Link to="/" className="text-slate-400 hover:text-[var(--text-h)]">← Zurück</Link>
