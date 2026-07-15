@@ -202,10 +202,10 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
           </button>
         </div>
       </header>
-      <div className="flex flex-1 overflow-hidden">
-        <main className="flex-1 overflow-auto">{children}</main>
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <main className="flex-1 min-h-0 overflow-auto">{children}</main>
         {!isMain && currentPreviewId != null && (
-          <aside className="w-96 h-full flex flex-col border-l border-[var(--border)] bg-[var(--panel)] p-4 hidden lg:block">
+          <aside className="w-96 h-full min-h-0 flex flex-col border-l border-[var(--border)] bg-[var(--panel)] p-4 hidden lg:block">
             <h3 className="text-sm font-semibold text-[var(--text-h)] mb-2">KI-Terminal</h3>
             <div className="flex-1 min-h-0 overflow-hidden">
               <FeatureRequests
