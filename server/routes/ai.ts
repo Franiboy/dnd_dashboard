@@ -170,7 +170,7 @@ router.post('/feature-requests/:id/merge-from-main', authMiddleware, requirePrev
 });
 
 // Admin: merge and push the feature request
-router.post('/feature-requests/:id/merge', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+router.post('/feature-requests/:id/merge', authMiddleware, requireAdmin, async (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
     return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
   }
@@ -181,7 +181,7 @@ router.post('/feature-requests/:id/merge', authMiddleware, requireAdmin, (req: A
     return res.status(400).json({ error: 'Feature Request ist nicht bereit zum Mergen' });
   }
 
-  const result = mergeAndPushFeatureRequest(id);
+  const result = await mergeAndPushFeatureRequest(id);
   if (result.success) {
     res.json({ ok: true });
   } else {
