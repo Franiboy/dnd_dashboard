@@ -160,6 +160,16 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                     )}
                   </div>
                 )}
+                {!isMain && canMergeFromMain && (
+                  <button
+                    onClick={handleMergeFromMain}
+                    disabled={isMerging}
+                    className="inline-flex items-center px-2 py-1 rounded-full bg-[var(--danger)] text-white text-xs font-semibold hover:brightness-110 disabled:opacity-50"
+                    title={`${version.behind} Commit(s) hinter main`}
+                  >
+                    {isMerging ? 'Merge...' : `Main reinmergen (${version.behind})`}
+                  </button>
+                )}
               </div>
               {!isMain && (
                 <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-[var(--warning)] text-slate-900 font-semibold mt-1">
@@ -167,16 +177,6 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                   {version.ahead > 0 ? ` +${version.ahead}` : ''}
                   {version.behind > 0 ? ` -${version.behind}` : ''}
                 </span>
-              )}
-              {canMergeFromMain && (
-                <button
-                  onClick={handleMergeFromMain}
-                  disabled={isMerging}
-                  className="mt-1 px-2 py-0.5 rounded-full bg-[var(--danger)] text-white text-[10px] font-semibold hover:brightness-110 disabled:opacity-50"
-                  title={`${version.behind} Commit(s) hinter main`}
-                >
-                  {isMerging ? 'Merge...' : `Main reinmergen (${version.behind})`}
-                </button>
               )}
             </div>
           )}
