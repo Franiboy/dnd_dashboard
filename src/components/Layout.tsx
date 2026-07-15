@@ -97,7 +97,7 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="grid grid-cols-3 items-center px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
+      <header className="grid grid-cols-3 items-center px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)] overflow-hidden">
         <div className="flex items-center gap-3 font-semibold text-[var(--text-h)]">
           {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
           <span>{user.displayName}</span>
@@ -205,13 +205,15 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 overflow-auto">{children}</main>
         {!isMain && currentPreviewId != null && (
-          <aside className="w-96 border-l border-[var(--border)] bg-[var(--panel)] p-4 overflow-y-auto hidden lg:block">
+          <aside className="w-96 h-full flex flex-col border-l border-[var(--border)] bg-[var(--panel)] p-4 hidden lg:block">
             <h3 className="text-sm font-semibold text-[var(--text-h)] mb-2">KI-Terminal</h3>
-            <FeatureRequests
-              currentUser={user}
-              featureRequestId={currentPreviewId}
-              compact
-            />
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <FeatureRequests
+                currentUser={user}
+                featureRequestId={currentPreviewId}
+                compact
+              />
+            </div>
           </aside>
         )}
       </div>
