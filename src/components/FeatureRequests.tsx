@@ -21,8 +21,10 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
   const [continuePrompts, setContinuePrompts] = useState<Record<number, string>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [loadingAction, setLoadingAction] = useState<{ id: number; type: 'merge' | 'mergeFromMain' | 'continue' | 'delete' } | null>(null);
-  const [logFilter, setLogFilter] = useState<Record<number, 'all' | 'ki' | 'changes' | 'system' | 'summary'>>();
+  const [logFilter, setLogFilter] = useState<Record<number, 'all' | 'ki' | 'changes' | 'system' | 'summary'>>({});
+  const [scrollPositions, setScrollPositions] = useState<Record<number, Record<string, number>>>({});
   const logsRefs = useRef<Map<number, HTMLPreElement>>(new Map());
+  const previousFilterRef = useRef<Record<number, 'all' | 'ki' | 'changes' | 'system' | 'summary'>>({});
 
   const isLoading = (id: number, type: 'merge' | 'mergeFromMain' | 'continue' | 'delete') =>
     loadingAction?.id === id && loadingAction?.type === type;
@@ -49,9 +51,39 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     requests.forEach((req) => {
       const pre = logsRefs.current.get(req.id);
       if (!pre) return;
+      const filter = logFilter[req.id] || 'all';
       pre.scrollTop = pre.scrollHeight;
+      setScrollPositions((prev) => ({
+        ...prev,
+        [req.id]: { ...prev[req.id], [filter]: pre.scrollTop },
+      }));
     });
-  }, [requests]);
+  }, [requests, logFilter]);
+
+  useEffect(() => {
+    requests.forEach((req) => {
+      const pre = logsRefs.current.get(req.id);
+      if (!pre) return;
+      const previousFilter = previousFilterRef.current[req.id] || 'all';
+      const currentFilter = logFilter[req.id] || 'all';
+      if (previousFilter !== currentFilter) {
+        setScrollPositions((prev) => ({
+          ...prev,
+          [req.id]: { ...prev[req.id], [previousFilter]: pre.scrollTop },
+        }));
+      }
+    });
+
+    requests.forEach((req) => {
+      const pre = logsRefs.current.get(req.id);
+      if (!pre) return;
+      const currentFilter = logFilter[req.id] || 'all';
+      const saved = scrollPositions[req.id]?.[currentFilter];
+      pre.scrollTop = saved !== undefined ? saved : pre.scrollHeight;
+    });
+
+    previousFilterRef.current = { ...logFilter };
+  }, [logFilter, requests, scrollPositions]);
 
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -214,7 +246,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
                 key={filter}
                 onClick={() => setLogFilter((prev) => ({ ...prev, [req.id]: filter }))}
                 className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                  (logFilter?.[req.id] || 'all') === filter
+                  (logFilter[req.id] || 'all') === filter
                     ? 'bg-[var(--accent)] text-slate-900'
                     : 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
                 }`}
@@ -227,7 +259,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
             ref={(el) => { if (el) logsRefs.current.set(req.id, el); }}
             className={`p-2 text-xs text-slate-300 overflow-auto whitespace-pre-wrap ${isCompact ? 'h-full max-h-full' : 'max-h-96'}`}
           >
-            {filterLogs(req.logs, logFilter?.[req.id] || 'all').map((entry, idx) => (
+            {filterLogs(req.logs, logFilter[req.id] || 'all').map((entry, idx) => (
               <span
                 key={idx}
                 dangerouslySetInnerHTML={{
