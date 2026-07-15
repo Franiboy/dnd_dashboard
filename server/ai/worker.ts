@@ -43,6 +43,7 @@ export async function startPreviewServer(
   worktreePath: string,
   previewProtocol: string,
   previewHostname: string,
+  mainServerUrl?: string,
 ): Promise<{ previewPort: number; previewUrl: string; previewPid: number } | null> {
   const previewPort = await findFreePort(PREVIEW_PORT_BASE);
   const previewDbPath = `dnd_preview_${id}.db`;
@@ -51,7 +52,8 @@ export async function startPreviewServer(
   if (existsSync(mainDbPath)) {
     copyFileSync(mainDbPath, previewDbFullPath);
   }
-  const mainServerUrl =
+  const resolvedMainServerUrl =
+    mainServerUrl ||
     process.env.MAIN_SERVER_URL ||
     buildPreviewUrl(previewProtocol, previewHostname, Number(process.env.PORT || 3001));
   const previewEnv = {
@@ -61,7 +63,7 @@ export async function startPreviewServer(
     DB_PATH: previewDbPath,
     PREVIEW_MODE: 'true',
     PREVIEW_FEATURE_REQUEST_ID: String(id),
-    MAIN_SERVER_URL: mainServerUrl,
+    MAIN_SERVER_URL: resolvedMainServerUrl,
   };
   const previewProcess = spawn('npm', ['start'], {
     cwd: worktreePath,
@@ -250,6 +252,7 @@ export function startFeatureRequest(
   id: number,
   previewProtocol: string,
   previewHostname: string,
+  mainServerUrl?: string,
 ): void {
   const request = getFeatureRequestById(id);
   if (!request) return;
@@ -365,7 +368,7 @@ export function startFeatureRequest(
         // add failed or commit failed
       }
 
-      await startPreviewServer(id, worktreePath, previewProtocol, previewHostname);
+      await startPreviewServer(id, worktreePath, previewProtocol, previewHostname, mainServerUrl);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logLine(id, `Worker error: ${message}\n`);
@@ -412,6 +415,7 @@ export function continueFeatureRequest(
   prompt: string,
   previewProtocol: string,
   previewHostname: string,
+  mainServerUrl?: string,
 ): void {
   const request = getFeatureRequestById(id);
   if (!request) return;
@@ -493,7 +497,7 @@ export function continueFeatureRequest(
         // add failed or commit failed
       }
 
-      await startPreviewServer(id, worktreePath, previewProtocol, previewHostname);
+      await startPreviewServer(id, worktreePath, previewProtocol, previewHostname, mainServerUrl);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logLine(id, `Worker continue error: ${message}\n`);
@@ -632,6 +636,7 @@ export function mergeFromMainForFeatureRequest(
   id: number,
   previewProtocol: string,
   previewHostname: string,
+  mainServerUrl?: string,
 ): void {
   const request = getFeatureRequestById(id);
   if (!request) return;
@@ -681,7 +686,7 @@ export function mergeFromMainForFeatureRequest(
         return;
       }
 
-      await startPreviewServer(id, request.worktreePath!, previewProtocol, previewHostname);
+      await startPreviewServer(id, request.worktreePath!, previewProtocol, previewHostname, mainServerUrl);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logLine(id, `Merge from main error: ${message}\n`);

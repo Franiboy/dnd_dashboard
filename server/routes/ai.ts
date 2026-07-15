@@ -30,7 +30,9 @@ router.post('/feature-requests', authMiddleware, requireAdmin, (req: AuthRequest
   // Start AI worker in background
   const protocol = req.protocol;
   const hostname = req.hostname;
-  startFeatureRequest(request.id, protocol, hostname);
+  const mainServerHost = req.get('host') || hostname;
+  const mainServerUrl = `${protocol}://${mainServerHost}`;
+  startFeatureRequest(request.id, protocol, hostname, mainServerUrl);
 
   res.status(201).json({ ok: true, request });
 });
@@ -87,7 +89,9 @@ router.post('/feature-requests/:id/continue', authMiddleware, requireAdmin, (req
       ? prompt.trim()
       : 'Continue implementing the feature. Run "npm run build" when done.';
 
-  continueFeatureRequest(id, continuePrompt, req.protocol, req.hostname);
+  const mainServerHost = req.get('host') || req.hostname;
+  const mainServerUrl = `${req.protocol}://${mainServerHost}`;
+  continueFeatureRequest(id, continuePrompt, req.protocol, req.hostname, mainServerUrl);
   res.json({ ok: true });
 });
 
@@ -119,7 +123,9 @@ router.post('/feature-requests/:id/merge-from-main', authMiddleware, requirePrev
   if (request.status !== 'preview_ready') {
     return res.status(400).json({ error: 'Feature Request ist nicht bereit' });
   }
-  mergeFromMainForFeatureRequest(id, req.protocol, req.hostname);
+  const mainServerHost = req.get('host') || req.hostname;
+  const mainServerUrl = `${req.protocol}://${mainServerHost}`;
+  mergeFromMainForFeatureRequest(id, req.protocol, req.hostname, mainServerUrl);
   res.json({ ok: true });
 });
 
