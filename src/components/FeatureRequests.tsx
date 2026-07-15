@@ -313,7 +313,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
                   {isLoading(req.id, 'merge') ? 'Wird akzeptiert...' : 'Akzeptieren'}
                 </button>
               )}
-              {req.status === 'preview_ready' && req.behind && req.behind > 0 && (
+              {req.status === 'preview_ready' && !!req.behind && (
                 <button
                   onClick={() => handleMergeFromMain(req.id)}
                   disabled={isLoading(req.id, 'mergeFromMain')}
