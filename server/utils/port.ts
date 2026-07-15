@@ -31,3 +31,16 @@ export function findFreePort(startPort: number = PREVIEW_PORT_BASE): Promise<num
     tryNext();
   });
 }
+
+export function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      server.close(() => resolve(err.code === 'EADDRINUSE'));
+    });
+    server.once('listening', () => {
+      server.close(() => resolve(false));
+    });
+    server.listen(port);
+  });
+}
