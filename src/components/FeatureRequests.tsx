@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { ConfirmDialog } from './ConfirmDialog';
-import type { FeatureRequest } from '../../shared/types';
-
-interface VersionInfo {
-  mainVersion: number;
-  currentVersion: number;
-  branch: string;
-  ahead: number;
-  aiEnabled: boolean;
-}
+import type { FeatureRequest, VersionInfo } from '../../shared/types';
 
 export function FeatureRequests() {
   const { request } = useApi();
@@ -72,6 +64,19 @@ export function FeatureRequests() {
   async function handleMerge(id: number) {
     const { error: reqError } = await request(
       `/api/ai/feature-requests/${id}/merge`,
+      { method: 'POST' },
+      false,
+    );
+    if (reqError) {
+      setError(reqError);
+    } else {
+      load();
+    }
+  }
+
+  async function handleMergeFromMain(id: number) {
+    const { error: reqError } = await request(
+      `/api/ai/feature-requests/${id}/merge-from-main`,
       { method: 'POST' },
       false,
     );
@@ -167,6 +172,15 @@ export function FeatureRequests() {
                   className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold text-sm"
                 >
                   Merge & Push
+                </button>
+              )}
+              {req.status === 'preview_ready' && req.behind && req.behind > 0 && (
+                <button
+                  onClick={() => handleMergeFromMain(req.id)}
+                  className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 font-semibold text-sm"
+                  title={`${req.behind} Commit(s) hinter main`}
+                >
+                  Main reinmergen ({req.behind})
                 </button>
               )}
               {(req.sessionId || req.sessionTitle) && req.status !== 'running' && (
