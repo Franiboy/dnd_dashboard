@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { ConfirmDialog } from './ConfirmDialog';
+import Convert from 'ansi-to-html';
 import type { FeatureRequest, SafeUser, VersionInfo } from '../../shared/types';
 
 interface FeatureRequestsProps {
@@ -10,6 +11,7 @@ interface FeatureRequestsProps {
 export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
   const { request } = useApi();
   const isAdmin = !!currentUser?.isAdmin;
+  const ansiConvert = useRef(new Convert({ escapeXML: true })).current;
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [requests, setRequests] = useState<FeatureRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,10 +28,7 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
     requests.forEach((req) => {
       const pre = logsRefs.current.get(req.id);
       if (!pre) return;
-      const isAtBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 10;
-      if (isAtBottom) {
-        pre.scrollTop = pre.scrollHeight;
-      }
+      pre.scrollTop = pre.scrollHeight;
     });
   }, [requests]);
 
@@ -235,28 +234,6 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
               )}
             </div>
           </div>
-          {(req.sessionId || req.sessionTitle) && req.status !== 'running' && (
-            <div className="mt-2 flex gap-2">
-              <input
-                type="text"
-                value={continuePrompts[req.id] || ''}
-                onChange={(e) =>
-                  setContinuePrompts((prev) => ({ ...prev, [req.id]: e.target.value }))
-                }
-                placeholder="Zusätzlicher Prompt zum Fortsetzen"
-                className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-[var(--panel)] text-sm text-[var(--text-h)]"
-              />
-              {isAdmin && (
-                <button
-                  onClick={() => handleContinue(req.id)}
-                  disabled={isLoading(req.id, 'continue')}
-                  className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm disabled:opacity-50"
-                >
-                  {isLoading(req.id, 'continue') ? 'Wird fortgesetzt...' : 'Fortsetzen'}
-                </button>
-              )}
-            </div>
-          )}
           {req.previewUrl && (
             <a
               href={req.previewUrl}
@@ -267,15 +244,43 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
               Vorschau: {req.previewUrl}
             </a>
           )}
-      {req.logs && (
-            <details className="mt-2">
-              <summary className="text-xs text-slate-500 cursor-pointer">Logs</summary>
-              <pre
-                ref={(el) => { if (el) logsRefs.current.set(req.id, el); }}
-                className="mt-2 p-2 bg-black/30 rounded text-xs text-slate-300 overflow-auto max-h-48"
-              >
-                {req.logs}
-              </pre>
+          {(req.logs || (isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running')) && (
+            <details className="mt-2" open>
+              <summary className="text-xs text-slate-500 cursor-pointer">Terminal</summary>
+              <div className="mt-2 rounded border border-[var(--border)] bg-black/30 overflow-hidden">
+                <pre
+                  ref={(el) => { if (el) logsRefs.current.set(req.id, el); }}
+                  className="p-2 text-xs text-slate-300 overflow-auto max-h-48 whitespace-pre-wrap"
+                  dangerouslySetInnerHTML={{
+                    __html: req.logs ? ansiConvert.toHtml(req.logs) : 'Noch keine Logs.',
+                  }}
+                />
+                {isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running' && (
+                  <div className="flex gap-2 p-2 border-t border-[var(--border)] bg-[var(--panel)]">
+                    <input
+                      type="text"
+                      value={continuePrompts[req.id] || ''}
+                      onChange={(e) =>
+                        setContinuePrompts((prev) => ({ ...prev, [req.id]: e.target.value }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && continuePrompts[req.id]?.trim()) {
+                          handleContinue(req.id);
+                        }
+                      }}
+                      placeholder="Prompt eingeben..."
+                      className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-black/20 text-sm text-[var(--text-h)]"
+                    />
+                    <button
+                      onClick={() => handleContinue(req.id)}
+                      disabled={isLoading(req.id, 'continue') || !continuePrompts[req.id]?.trim()}
+                      className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm disabled:opacity-50"
+                    >
+                      {isLoading(req.id, 'continue') ? 'Wird fortgesetzt...' : 'Fortsetzen'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </details>
           )}
         </div>
