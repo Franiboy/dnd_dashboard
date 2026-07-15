@@ -25,9 +25,12 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
   const [scrollPositions, setScrollPositions] = useState<Record<number, Record<string, number>>>({});
   const logsRefs = useRef<Map<number, HTMLPreElement>>(new Map());
   const previousFilterRef = useRef<Record<number, 'all' | 'ki' | 'changes' | 'system' | 'summary'>>({});
+  const logFilterRef = useRef(logFilter);
 
   const isLoading = (id: number, type: 'merge' | 'mergeFromMain' | 'continue' | 'delete') =>
     loadingAction?.id === id && loadingAction?.type === type;
+
+  logFilterRef.current = logFilter;
 
   function filterLogs(
     entries: LogEntry[],
@@ -59,14 +62,14 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     requests.forEach((req) => {
       const pre = logsRefs.current.get(req.id);
       if (!pre) return;
-      const filter = logFilter[req.id] || 'all';
+      const filter = logFilterRef.current[req.id] || 'all';
       pre.scrollTop = pre.scrollHeight;
       setScrollPositions((prev) => ({
         ...prev,
         [req.id]: { ...prev[req.id], [filter]: 0 },
       }));
     });
-  }, [requests, logFilter]);
+  }, [requests]);
 
   useEffect(() => {
     requests.forEach((req) => {
