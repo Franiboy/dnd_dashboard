@@ -251,7 +251,8 @@ export function getFeatureRequestBehind(worktreePath: string | null, branch: str
   if (!worktreePath || !existsSync(worktreePath) || !branch || branch === 'main' || branch === 'unknown') {
     return 0;
   }
-  const output = gitOutput('rev-list --count HEAD..main', { cwd: worktreePath });
+  const output = gitOutput('rev-list --count HEAD..origin/main', { cwd: worktreePath })
+    ?? gitOutput('rev-list --count HEAD..main', { cwd: worktreePath });
   if (!output) return 0;
   const count = parseInt(output, 10);
   return isNaN(count) ? 0 : count;
