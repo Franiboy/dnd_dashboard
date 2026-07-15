@@ -48,8 +48,8 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     });
   }, [requests]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     const { data, error: reqError } = await request<{ requests: FeatureRequest[] }>(
       '/api/ai/feature-requests',
       undefined,
@@ -61,7 +61,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     } else if (reqError) {
       setError(reqError);
     }
-    setLoading(false);
+    if (showLoading) setLoading(false);
   }, [request]);
 
   useEffect(() => {
@@ -116,7 +116,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     if (reqError) {
       setError(reqError);
     } else {
-      load();
+      load(false);
     }
   }
 
@@ -131,7 +131,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     if (reqError) {
       setError(reqError);
     } else {
-      load();
+      load(false);
     }
   }
 
@@ -147,7 +147,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     if (reqError) {
       setError(reqError);
     } else {
-      load();
+      load(false);
     }
   }
 
@@ -168,7 +168,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
       setError(reqError);
     } else {
       setContinuePrompts((prev) => ({ ...prev, [id]: '' }));
-      load();
+      load(false);
     }
   }
 
