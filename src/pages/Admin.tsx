@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
@@ -15,21 +15,24 @@ export function Admin({ currentUser }: AdminProps) {
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUsers = useCallback(async () => {
-    const { data, error: fetchError } = await request<SafeUser[]>('/api/admin/users', { credentials: 'include' }, false);
-    if (data) {
-      setUsers(data);
-      setError(null);
-    } else if (fetchError) {
-      setError(fetchError);
-    }
-  }, [request]);
-
   useEffect(() => {
-    fetchUsers();
-    const interval = setInterval(fetchUsers, 5000);
-    return () => clearInterval(interval);
-  }, [fetchUsers]);
+    const source = new EventSource('/api/admin/users/events', { withCredentials: true });
+    source.addEventListener('users', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (Array.isArray(data)) {
+          setUsers(data);
+          setError(null);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    });
+    source.addEventListener('error', () => {
+      // Connection errors are handled silently; the browser reconnects automatically
+    });
+    return () => source.close();
+  }, []);
 
   useEffect(() => {
     if (error) showError(error);
@@ -42,7 +45,7 @@ export function Admin({ currentUser }: AdminProps) {
       body: body ? JSON.stringify(body) : undefined,
       credentials: 'include',
     });
-    if (!actionError) fetchUsers();
+    if (actionError) setError(actionError);
   };
 
   const deleteU = async (id: string) => {
@@ -51,7 +54,7 @@ export function Admin({ currentUser }: AdminProps) {
       method: 'DELETE',
       credentials: 'include',
     });
-    if (!deleteError) fetchUsers();
+    if (deleteError) setError(deleteError);
   };
 
   const isOwn = (u: SafeUser) => u.id === currentUser.id;
@@ -65,9 +68,10 @@ export function Admin({ currentUser }: AdminProps) {
       </div>
 
       <div className="mb-6">
-        <FeatureRequests />
+        <FeatureRequests currentUser={currentUser} />
       </div>
 
+      {currentUser.isAdmin && (
       <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 overflow-auto">
         <table className="w-full text-left text-sm">
           <thead>
@@ -148,6 +152,7 @@ export function Admin({ currentUser }: AdminProps) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
