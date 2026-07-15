@@ -186,8 +186,13 @@ async function suggestBranchName(
   return `feature/${id}`;
 }
 
+function stripAnsiCodes(line: string): string {
+  return line.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
 function logLine(id: number, line: string): void {
-  appendFeatureRequestLogs(id, line);
+  appendFeatureRequestLogs(id, stripAnsiCodes(line));
+  notifyFeatureRequestsUpdated();
 }
 
 function runCommand(
