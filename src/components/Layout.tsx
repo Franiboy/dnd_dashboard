@@ -96,7 +96,7 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
     (isMain ? otherPreviews.length > 0 : otherPreviews.length > 0 || !!version?.mainServerUrl);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <header className="grid grid-cols-3 items-center px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)] overflow-hidden">
         <div className="flex items-center gap-3 font-semibold text-[var(--text-h)]">
           {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
