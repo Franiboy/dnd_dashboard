@@ -35,7 +35,7 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
 
   useEffect(() => {
     let isMounted = true;
-    let interval: ReturnType<typeof setInterval> | null = null;
+    let source: EventSource | null = null;
 
     async function init() {
       const { data: version } = await request<VersionInfo>('/api/version', undefined, false);
@@ -50,19 +50,27 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
       setAiEnabled(true);
       await load();
 
-      interval = setInterval(() => {
-        request<{ requests: FeatureRequest[] }>('/api/ai/feature-requests', undefined, false).then(
-          ({ data }) => {
-            if (data && isMounted) setRequests(data.requests || []);
-          },
-        );
-      }, 5000);
+      source = new EventSource('/api/ai/feature-requests/events', { withCredentials: true });
+      source.addEventListener('requests', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && Array.isArray(data.requests) && isMounted) {
+            setRequests(data.requests);
+            setError(null);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      });
+      source.addEventListener('error', () => {
+        // Connection errors are handled silently; the browser reconnects automatically
+      });
     }
 
     init();
     return () => {
       isMounted = false;
-      if (interval) clearInterval(interval);
+      if (source) source.close();
     };
   }, [request, load]);
 
@@ -74,8 +82,6 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
     );
     if (reqError) {
       setError(reqError);
-    } else {
-      load();
     }
   }
 
@@ -87,8 +93,6 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
     );
     if (reqError) {
       setError(reqError);
-    } else {
-      load();
     }
   }
 
@@ -101,8 +105,6 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
     );
     if (reqError) {
       setError(reqError);
-    } else {
-      load();
     }
   }
 
@@ -121,7 +123,6 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
       setError(reqError);
     } else {
       setContinuePrompts((prev) => ({ ...prev, [id]: '' }));
-      load();
     }
   }
 
