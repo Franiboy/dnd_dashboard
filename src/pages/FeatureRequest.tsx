@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
+import { useError } from '../hooks/useError';
 import type { VersionInfo } from '../../shared/types';
 
 export function FeatureRequest() {
   const { request } = useApi();
+  const { showSuccess } = useError();
+  const navigate = useNavigate();
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -33,6 +37,8 @@ export function FeatureRequest() {
       setSubmitted(true);
       setTitle('');
       setDescription('');
+      showSuccess('Feature-Request wurde gestartet.');
+      navigate('/admin');
     }
   }
 
