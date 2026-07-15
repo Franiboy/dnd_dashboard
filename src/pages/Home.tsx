@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 
 export function Home() {
   return (
-    <div className="min-h-screen p-6 flex flex-col items-center justify-center">
+    <div className="min-h-full p-6 flex flex-col items-center justify-center">
       <h1 className="text-5xl font-bold text-[var(--text-h)] mb-4">DnD Dashboard</h1>
       <p className="text-xl text-slate-400 mb-12">Wähle einen Bereich</p>
       <div className="grid gap-6 w-full max-w-2xl">
