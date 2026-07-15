@@ -794,7 +794,8 @@ export function mergeAndPushFeatureRequest(id: number): { success: boolean; erro
 
     const mainMergePath = createUniquePath(resolve(join(process.cwd(), '..', 'dnd_dashboard-main-merge')));
     execGit('worktree prune', { cwd: process.cwd() });
-    execGit(`worktree add -f ${mainMergePath} main`, { cwd: process.cwd() });
+    execGit('fetch origin', { cwd: process.cwd() });
+    execGit(`worktree add -f -B main ${mainMergePath} origin/main`, { cwd: process.cwd() });
 
     try {
       execGit(`merge --no-ff ${request.branch} -m "Merge AI feature request #${id}"`, {
