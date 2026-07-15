@@ -1,5 +1,23 @@
-import type { FeatureRequest } from '../../shared/types.js';
+import type { FeatureRequest, LogEntry } from '../../shared/types.js';
 import { db } from '../database.js';
+
+function parseLogs(raw: unknown): LogEntry[] {
+  if (Array.isArray(raw)) return raw as LogEntry[];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as LogEntry[];
+    } catch {
+      // legacy plain text log
+      return [{ type: 'system', text: raw, timestamp: new Date().toISOString() }];
+    }
+  }
+  return [];
+}
+
+function serializeLogs(logs: LogEntry[]): string {
+  return JSON.stringify(logs);
+}
 
 function rowToFeatureRequest(row: Record<string, unknown>): FeatureRequest {
   return {
@@ -15,7 +33,7 @@ function rowToFeatureRequest(row: Record<string, unknown>): FeatureRequest {
     previewPid: row.previewPid as number | null,
     sessionTitle: row.sessionTitle as string | null,
     sessionId: row.sessionId as string | null,
-    logs: row.logs as string,
+    logs: parseLogs(row.logs),
     createdAt: row.createdAt as string,
     updatedAt: row.updatedAt as string,
   };
@@ -32,7 +50,7 @@ export function createFeatureRequest(
       `INSERT INTO feature_requests (requestedBy, title, description, status, logs, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(requestedBy, title, description, 'pending', '', now, now);
+    .run(requestedBy, title, description, 'pending', '[]', now, now);
   return getFeatureRequestById(Number(result.lastInsertRowid))!;
 }
 
@@ -63,7 +81,11 @@ export function updateFeatureRequest(
   for (const [key, value] of Object.entries(updates)) {
     if (key === 'id' || key === 'createdAt') continue;
     fields.push(`${key} = ?`);
-    values.push(value);
+    if (key === 'logs' && Array.isArray(value)) {
+      values.push(serializeLogs(value as LogEntry[]));
+    } else {
+      values.push(value);
+    }
   }
   fields.push('updatedAt = ?');
   values.push(now);
@@ -73,11 +95,15 @@ export function updateFeatureRequest(
 }
 
 export function appendFeatureRequestLogs(id: number, log: string): void {
+  appendFeatureRequestLogEntry(id, { type: 'system', text: log, timestamp: new Date().toISOString() });
+}
+
+export function appendFeatureRequestLogEntry(id: number, entry: LogEntry): void {
   const existing = getFeatureRequestById(id);
   if (!existing) return;
-  const updated = existing.logs + log;
+  const updated = [...existing.logs, entry];
   db.prepare('UPDATE feature_requests SET logs = ?, updatedAt = ? WHERE id = ?').run(
-    updated,
+    serializeLogs(updated),
     new Date().toISOString(),
     id,
   );
