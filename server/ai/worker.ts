@@ -275,16 +275,14 @@ export function startFeatureRequest(
     branch,
     worktreePath,
     sessionTitle,
-    logs: `Starting AI feature request #${id}...\nModel: ${model}\nBranch: ${branch}\nWorktree: ${worktreePath}\nSession title: ${sessionTitle}\n`,
+    logs: `Starting AI feature request #${id}...\nModel: ${model}\nSession title: ${sessionTitle}\n`,
   });
 
   (async () => {
     try {
       execGit('worktree prune', { cwd: process.cwd() });
 
-      logLine(id, `Creating git worktree and branch ${branch}...\n`);
       execGit(`worktree add -f -B ${branch} ${worktreePath} main`, { cwd: process.cwd() });
-      logLine(id, `Worktree created at ${worktreePath}\n`);
 
       logLine(id, `Analyzing feature request for a descriptive branch name...\n`);
       const suggestedBranch = await suggestBranchName(id, request.title, request.description, worktreePath, model);
@@ -301,14 +299,13 @@ export function startFeatureRequest(
           branch = suggestedBranch;
           worktreePath = newWorktreePath;
           updateFeatureRequest(id, { branch, worktreePath });
-          logLine(id, `Renamed worktree to ${worktreePath} and branch to ${branch}\n`);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logLine(id, `Branch rename failed, keeping ${branch}: ${message}\n`);
         }
-      } else {
-        logLine(id, `Using default branch name: ${branch}\n`);
       }
+
+      logLine(id, `Created worktree ${worktreePath} on branch ${branch}\n`);
 
       const mainEnv = join(process.cwd(), '.env');
       const worktreeEnv = join(worktreePath, '.env');
