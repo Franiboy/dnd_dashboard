@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { ConfirmDialog } from './ConfirmDialog';
-import type { FeatureRequest, VersionInfo } from '../../shared/types';
+import type { FeatureRequest, SafeUser, VersionInfo } from '../../shared/types';
 
-export function FeatureRequests() {
+interface FeatureRequestsProps {
+  currentUser?: SafeUser;
+}
+
+export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
   const { request } = useApi();
+  const isAdmin = !!currentUser?.isAdmin;
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [requests, setRequests] = useState<FeatureRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,7 +171,7 @@ export function FeatureRequests() {
               )}
             </div>
             <div className="flex flex-col gap-2 items-end">
-              {req.status === 'preview_ready' && (
+              {isAdmin && req.status === 'preview_ready' && (
                 <button
                   onClick={() => handleMerge(req.id)}
                   className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold text-sm"
@@ -183,7 +188,7 @@ export function FeatureRequests() {
                   Main reinmergen ({req.behind})
                 </button>
               )}
-              {(req.sessionId || req.sessionTitle) && req.status !== 'running' && (
+              {isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running' && (
                 <button
                   onClick={() => handleContinue(req.id)}
                   className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm"
@@ -191,12 +196,14 @@ export function FeatureRequests() {
                   Session fortsetzen
                 </button>
               )}
-              <button
-                onClick={() => setDeleteId(req.id)}
-                className="px-3 py-1 rounded bg-[var(--danger)] text-white text-sm"
-              >
-                Löschen
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setDeleteId(req.id)}
+                  className="px-3 py-1 rounded bg-[var(--danger)] text-white text-sm"
+                >
+                  Löschen
+                </button>
+              )}
             </div>
           </div>
           {(req.sessionId || req.sessionTitle) && req.status !== 'running' && (

@@ -48,8 +48,8 @@ router.get('/previews', authMiddleware, requirePreviewAccess, (req: AuthRequest,
   res.json({ previews });
 });
 
-// Admin: list all feature requests
-router.get('/feature-requests', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+// Admin or preview users: list all feature requests
+router.get('/feature-requests', authMiddleware, requirePreviewAccess, (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
     return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
   }
