@@ -812,17 +812,21 @@ function removeWorktree(worktreePath: string) {
 
 function deleteLocalBranch(branch: string) {
   try {
+    const exists = gitOutput(`branch --list ${branch}`, { cwd: process.cwd() });
+    if (!exists) return;
     execGit(`branch -D ${branch}`, { cwd: process.cwd() });
   } catch {
-    // ignore if branch does not exist
+    // ignore if branch does not exist or cannot be deleted
   }
 }
 
 function deleteRemoteBranch(branch: string) {
   try {
+    const remoteRef = gitOutput(`ls-remote --heads origin refs/heads/${branch}`, { cwd: process.cwd() });
+    if (!remoteRef || remoteRef.trim().length === 0) return;
     execGit(`push origin --delete ${branch}`, { cwd: process.cwd(), timeout: 60000 });
   } catch {
-    // ignore if remote branch does not exist
+    // ignore if remote branch does not exist or cannot be deleted
   }
 }
 
