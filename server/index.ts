@@ -15,7 +15,7 @@ import { setupSocket } from './socket.js';
 import { previewAuthMiddleware } from './auth.js';
 import { getVersion } from './version.js';
 import { runMigrations } from './migrations.js';
-import { recoverPreviewServers } from './ai/worker.js';
+import { recoverPreviewServers, startFeatureRequestBehindWatcher } from './ai/worker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,6 +79,8 @@ if (process.env.NODE_ENV === 'production') {
 
 setupSocket(io, PREVIEW_MODE);
 
+const stopBehindWatcher = startFeatureRequestBehindWatcher();
+
 http.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
@@ -89,6 +91,7 @@ function shutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`\n${signal} received, shutting down gracefully...`);
+  stopBehindWatcher();
 
   // Force close after 1.5s even if sockets are still open
   const forceExit = setTimeout(() => {
