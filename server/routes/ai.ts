@@ -35,6 +35,17 @@ router.post('/feature-requests', authMiddleware, requireAdmin, (req: AuthRequest
   res.status(201).json({ ok: true, request });
 });
 
+// Preview users: list all preview_ready feature requests with URLs
+router.get('/previews', authMiddleware, requirePreviewAccess, (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
+  }
+  const previews = listFeatureRequests()
+    .filter((r) => r.status === 'preview_ready' && r.previewUrl)
+    .map((r) => ({ id: r.id, title: r.title, previewUrl: r.previewUrl }));
+  res.json({ previews });
+});
+
 // Admin: list all feature requests
 router.get('/feature-requests', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
