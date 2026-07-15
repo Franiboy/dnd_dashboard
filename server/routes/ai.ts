@@ -110,8 +110,8 @@ router.get('/feature-requests/:id', authMiddleware, requireAdmin, (req: AuthRequ
   res.json({ request });
 });
 
-// Admin: continue an existing OpenCode session for the feature request
-router.post('/feature-requests/:id/continue', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+// Admin or preview users: continue an existing OpenCode session for the feature request
+router.post('/feature-requests/:id/continue', authMiddleware, requirePreviewAccess, (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
     return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
   }

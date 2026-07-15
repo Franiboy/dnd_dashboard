@@ -6,9 +6,11 @@ import type { FeatureRequest, LogEntry, SafeUser, VersionInfo } from '../../shar
 
 interface FeatureRequestsProps {
   currentUser?: SafeUser;
+  featureRequestId?: number;
+  compact?: boolean;
 }
 
-export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
+export function FeatureRequests({ currentUser, featureRequestId, compact }: FeatureRequestsProps) {
   const { request } = useApi();
   const isAdmin = !!currentUser?.isAdmin;
   const ansiConvert = useRef(new Convert({ escapeXML: true })).current;
@@ -187,6 +189,78 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
     }
   }
 
+  const canContinue = isAdmin || !!currentUser?.canAccessPreviews;
+
+  const displayRequests = featureRequestId
+    ? requests.filter((r) => r.id === featureRequestId)
+    : requests;
+
+  function renderTerminal(req: FeatureRequest, isCompact = false) {
+    if (req.logs.length === 0 && (!canContinue || req.status === 'running')) {
+      return null;
+    }
+    return (
+      <details className="mt-2" open>
+        <summary className="text-xs text-slate-500 cursor-pointer">Terminal</summary>
+        <div className="mt-2 rounded border border-[var(--border)] bg-black/30 overflow-hidden">
+          <div className="flex gap-1 p-2 border-b border-[var(--border)] bg-[var(--panel)]">
+            {(['all', 'ki', 'changes', 'system'] as const).map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setLogFilter((prev) => ({ ...prev, [req.id]: filter }))}
+                className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                  (logFilter?.[req.id] || 'all') === filter
+                    ? 'bg-[var(--accent)] text-slate-900'
+                    : 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
+                }`}
+              >
+                {filter === 'all' ? 'Alle' : filter === 'ki' ? 'KI' : filter === 'changes' ? 'Änderungen' : 'System'}
+              </button>
+            ))}
+          </div>
+          <pre
+            ref={(el) => { if (el) logsRefs.current.set(req.id, el); }}
+            className={`p-2 text-xs text-slate-300 overflow-auto whitespace-pre-wrap ${isCompact ? 'h-full max-h-full' : 'max-h-96'}`}
+          >
+            {filterLogs(req.logs, logFilter?.[req.id] || 'all').map((entry, idx) => (
+              <span
+                key={idx}
+                dangerouslySetInnerHTML={{
+                  __html: ansiConvert.toHtml(entry.text),
+                }}
+              />
+            ))}
+          </pre>
+          {canContinue && (req.sessionId || req.sessionTitle) && req.status !== 'running' && (
+            <div className="flex gap-2 p-2 border-t border-[var(--border)] bg-[var(--panel)]">
+              <input
+                type="text"
+                value={continuePrompts[req.id] || ''}
+                onChange={(e) =>
+                  setContinuePrompts((prev) => ({ ...prev, [req.id]: e.target.value }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && continuePrompts[req.id]?.trim()) {
+                    handleContinue(req.id);
+                  }
+                }}
+                placeholder="Prompt eingeben..."
+                className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-black/20 text-sm text-[var(--text-h)]"
+              />
+              <button
+                onClick={() => handleContinue(req.id)}
+                disabled={isLoading(req.id, 'continue') || !continuePrompts[req.id]?.trim()}
+                className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm disabled:opacity-50"
+              >
+                {isLoading(req.id, 'continue') ? 'Wird fortgesetzt...' : 'Fortsetzen'}
+              </button>
+            </div>
+          )}
+        </div>
+      </details>
+    );
+  }
+
   if (aiEnabled === null || loading) {
     return <div className="text-slate-400">Lade KI-Feature-Requests...</div>;
   }
@@ -199,12 +273,25 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
     );
   }
 
+  if (compact) {
+    const req = displayRequests[0];
+    if (!req) return <div className="text-slate-400">Kein Feature-Request vorhanden.</div>;
+    return (
+      <div className="h-full flex flex-col">
+        <div className="text-sm font-semibold text-[var(--text-h)] mb-2">{req.title}</div>
+        <div className="flex-1 overflow-auto">
+          {renderTerminal(req, true)}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-bold text-[var(--text-h)]">KI-Feature-Requests</h2>
       {error && <div className="p-3 rounded bg-red-900/30 text-red-400 border border-red-700">{error}</div>}
-      {requests.length === 0 && <p className="text-slate-400">Keine Feature-Requests vorhanden.</p>}
-      {requests.map((req) => (
+      {displayRequests.length === 0 && <p className="text-slate-400">Keine Feature-Requests vorhanden.</p>}
+      {displayRequests.map((req) => (
         <div key={req.id} className="p-4 rounded border border-[var(--border)] bg-[var(--panel)]">
           <div className="flex justify-between items-start">
             <div>
@@ -258,66 +345,7 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
               Vorschau: {req.previewUrl}
             </a>
           )}
-          {(req.logs.length > 0 || (isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running')) && (
-            <details className="mt-2" open>
-              <summary className="text-xs text-slate-500 cursor-pointer">Terminal</summary>
-              <div className="mt-2 rounded border border-[var(--border)] bg-black/30 overflow-hidden">
-                <div className="flex gap-1 p-2 border-b border-[var(--border)] bg-[var(--panel)]">
-                  {(['all', 'ki', 'changes', 'system'] as const).map((filter) => (
-                    <button
-                      key={filter}
-                      onClick={() => setLogFilter((prev) => ({ ...prev, [req.id]: filter }))}
-                      className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                        (logFilter?.[req.id] || 'all') === filter
-                          ? 'bg-[var(--accent)] text-slate-900'
-                          : 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
-                      }`}
-                    >
-                      {filter === 'all' ? 'Alle' : filter === 'ki' ? 'KI' : filter === 'changes' ? 'Änderungen' : 'System'}
-                    </button>
-                  ))}
-                </div>
-                <pre
-                  ref={(el) => { if (el) logsRefs.current.set(req.id, el); }}
-                  className="p-2 text-xs text-slate-300 overflow-auto max-h-96 whitespace-pre-wrap"
-                >
-                  {filterLogs(req.logs, logFilter?.[req.id] || 'all').map((entry, idx) => (
-                    <span
-                      key={idx}
-                      dangerouslySetInnerHTML={{
-                        __html: ansiConvert.toHtml(entry.text),
-                      }}
-                    />
-                  ))}
-                </pre>
-                {isAdmin && (req.sessionId || req.sessionTitle) && req.status !== 'running' && (
-                  <div className="flex gap-2 p-2 border-t border-[var(--border)] bg-[var(--panel)]">
-                    <input
-                      type="text"
-                      value={continuePrompts[req.id] || ''}
-                      onChange={(e) =>
-                        setContinuePrompts((prev) => ({ ...prev, [req.id]: e.target.value }))
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && continuePrompts[req.id]?.trim()) {
-                          handleContinue(req.id);
-                        }
-                      }}
-                      placeholder="Prompt eingeben..."
-                      className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-black/20 text-sm text-[var(--text-h)]"
-                    />
-                    <button
-                      onClick={() => handleContinue(req.id)}
-                      disabled={isLoading(req.id, 'continue') || !continuePrompts[req.id]?.trim()}
-                      className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm disabled:opacity-50"
-                    >
-                      {isLoading(req.id, 'continue') ? 'Wird fortgesetzt...' : 'Fortsetzen'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </details>
-          )}
+          {renderTerminal(req)}
         </div>
       ))}
       {deleteId !== null && (
