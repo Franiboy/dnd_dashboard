@@ -251,11 +251,39 @@ export function getFeatureRequestBehind(worktreePath: string | null, branch: str
   if (!worktreePath || !existsSync(worktreePath) || !branch || branch === 'main' || branch === 'unknown') {
     return 0;
   }
+  try {
+    execSync('git fetch origin', { cwd: worktreePath, encoding: 'utf-8', timeout: 30000 });
+  } catch {
+    // ignore fetch errors
+  }
   const output = gitOutput('rev-list --count HEAD..origin/main', { cwd: worktreePath })
     ?? gitOutput('rev-list --count HEAD..main', { cwd: worktreePath });
   if (!output) return 0;
   const count = parseInt(output, 10);
   return isNaN(count) ? 0 : count;
+}
+
+export function startFeatureRequestBehindWatcher(intervalMs = 10000): () => void {
+  let lastBehind = new Map<number, number>();
+
+  function tick() {
+    let changed = false;
+    for (const request of listFeatureRequests()) {
+      if (request.status !== 'preview_ready' || !request.worktreePath) continue;
+      const behind = getFeatureRequestBehind(request.worktreePath, request.branch);
+      if (lastBehind.get(request.id) !== behind) {
+        lastBehind.set(request.id, behind);
+        changed = true;
+      }
+    }
+    if (changed) {
+      notifyFeatureRequestsUpdated();
+    }
+  }
+
+  tick();
+  const interval = setInterval(tick, intervalMs);
+  return () => clearInterval(interval);
 }
 
 function createUniquePath(basePath: string): string {
