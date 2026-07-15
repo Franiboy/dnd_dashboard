@@ -264,6 +264,7 @@ export function getFeatureRequestBehind(worktreePath: string | null, branch: str
 }
 
 export function startFeatureRequestBehindWatcher(intervalMs = 10000): () => void {
+  // Watches preview_ready worktrees and pushes SSE updates when behind count changes.
   let lastBehind = new Map<number, number>();
 
   function tick() {
