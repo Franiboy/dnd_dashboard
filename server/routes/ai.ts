@@ -1,7 +1,8 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { authMiddleware, requireAdmin, requirePreviewAccess, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
 import { startFeatureRequest, continueFeatureRequest, mergeAndPushFeatureRequest, mergeFromMainForFeatureRequest, getFeatureRequestBehind, cleanupFeatureRequest } from '../ai/worker.js';
+import { onFeatureRequestsUpdated, notifyFeatureRequestsUpdated } from '../ai/events.js';
 import {
   createFeatureRequest,
   getFeatureRequestById,
@@ -9,6 +10,26 @@ import {
 } from '../repositories/featureRequests.js';
 
 const router = Router();
+const sseClients = new Set<Response>();
+
+onFeatureRequestsUpdated(() => {
+  const requests = listFeatureRequests().map((r) => ({
+    ...r,
+    behind: getFeatureRequestBehind(r.worktreePath, r.branch),
+  }));
+  const data = JSON.stringify({ requests });
+  sseClients.forEach((client) => {
+    client.write(`event: requests\n`);
+    client.write(`data: ${data}\n\n`);
+  });
+});
+
+function buildFeatureRequestsResponse() {
+  return listFeatureRequests().map((r) => ({
+    ...r,
+    behind: getFeatureRequestBehind(r.worktreePath, r.branch),
+  }));
+}
 
 // Only admins can submit a feature request
 router.post('/feature-requests', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
@@ -33,6 +54,7 @@ router.post('/feature-requests', authMiddleware, requireAdmin, (req: AuthRequest
   const mainServerHost = req.get('host') || hostname;
   const mainServerUrl = `${protocol}://${mainServerHost}`;
   startFeatureRequest(request.id, protocol, hostname, mainServerUrl);
+  notifyFeatureRequestsUpdated();
 
   res.status(201).json({ ok: true, request });
 });
@@ -53,11 +75,28 @@ router.get('/feature-requests', authMiddleware, requirePreviewAccess, (req: Auth
   if (!isAiEnabled()) {
     return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
   }
-  const requests = listFeatureRequests().map((r) => ({
-    ...r,
-    behind: getFeatureRequestBehind(r.worktreePath, r.branch),
-  }));
-  res.json({ requests });
+  res.json({ requests: buildFeatureRequestsResponse() });
+});
+
+// Admin or preview users: SSE for feature request updates
+router.get('/feature-requests/events', authMiddleware, requirePreviewAccess, (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
+  }
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const requests = buildFeatureRequestsResponse();
+  res.write(`event: requests\n`);
+  res.write(`data: ${JSON.stringify({ requests })}\n\n`);
+
+  sseClients.add(res);
+
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
 });
 
 // Admin: get a single feature request
@@ -106,6 +145,7 @@ router.delete('/feature-requests/:id', authMiddleware, requireAdmin, (req: AuthR
 
   const result = cleanupFeatureRequest(id);
   if (result.success) {
+    notifyFeatureRequestsUpdated();
     res.json({ ok: true });
   } else {
     res.status(500).json({ error: result.error || 'Löschen fehlgeschlagen' });
