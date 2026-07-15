@@ -21,13 +21,16 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
   const [continuePrompts, setContinuePrompts] = useState<Record<number, string>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [loadingAction, setLoadingAction] = useState<{ id: number; type: 'merge' | 'mergeFromMain' | 'continue' | 'delete' } | null>(null);
-  const [logFilter, setLogFilter] = useState<Record<number, 'all' | 'ki' | 'changes' | 'system'>>();
+  const [logFilter, setLogFilter] = useState<Record<number, 'all' | 'ki' | 'changes' | 'system' | 'summary'>>();
   const logsRefs = useRef<Map<number, HTMLPreElement>>(new Map());
 
   const isLoading = (id: number, type: 'merge' | 'mergeFromMain' | 'continue' | 'delete') =>
     loadingAction?.id === id && loadingAction?.type === type;
 
-  function filterLogs(entries: LogEntry[], filter: 'all' | 'ki' | 'changes' | 'system'): LogEntry[] {
+  function filterLogs(
+    entries: LogEntry[],
+    filter: 'all' | 'ki' | 'changes' | 'system' | 'summary',
+  ): LogEntry[] {
     switch (filter) {
       case 'ki':
         return entries.filter((e) => e.type === 'prompt' || e.type === 'ai');
@@ -35,6 +38,8 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
         return entries.filter((e) => e.type === 'diff');
       case 'system':
         return entries.filter((e) => e.type === 'system' || e.type === 'build' || e.type === 'error');
+      case 'summary':
+        return entries.filter((e) => e.type === 'summary');
       default:
         return entries;
     }
@@ -204,7 +209,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
         <summary className="text-xs text-slate-500 cursor-pointer">Terminal</summary>
         <div className="mt-2 rounded border border-[var(--border)] bg-black/30 overflow-hidden">
           <div className="flex gap-1 p-2 border-b border-[var(--border)] bg-[var(--panel)]">
-            {(['all', 'ki', 'changes', 'system'] as const).map((filter) => (
+            {(['all', 'summary', 'ki', 'changes', 'system'] as const).map((filter) => (
               <button
                 key={filter}
                 onClick={() => setLogFilter((prev) => ({ ...prev, [req.id]: filter }))}
@@ -214,7 +219,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
                     : 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
                 }`}
               >
-                {filter === 'all' ? 'Alle' : filter === 'ki' ? 'KI' : filter === 'changes' ? 'Änderungen' : 'System'}
+                {filter === 'all' ? 'Alle' : filter === 'summary' ? 'Zusammenfassung' : filter === 'ki' ? 'KI' : filter === 'changes' ? 'Änderungen' : 'System'}
               </button>
             ))}
           </div>
