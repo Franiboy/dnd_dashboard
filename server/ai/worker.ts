@@ -722,13 +722,7 @@ export function mergeFromMainForFeatureRequest(
 
   (async () => {
     try {
-      if (request.previewPid) {
-        try {
-          process.kill(request.previewPid, 'SIGTERM');
-        } catch {
-          // ignore
-        }
-      }
+      await killPreviewServer(request.previewPid, request.previewPort);
 
       const mergeResult = await mergeMainIntoFeatureBranch(
         request.worktreePath!,
@@ -770,19 +764,13 @@ export function mergeFromMainForFeatureRequest(
   })();
 }
 
-export function mergeAndPushFeatureRequest(id: number): { success: boolean; error?: string } {
+export async function mergeAndPushFeatureRequest(id: number): Promise<{ success: boolean; error?: string }> {
   const request = getFeatureRequestById(id);
   if (!request) return { success: false, error: 'Feature request not found' };
   if (!request.branch) return { success: false, error: 'No branch to merge' };
 
   try {
-    if (request.previewPid) {
-      try {
-        process.kill(request.previewPid, 'SIGTERM');
-      } catch {
-        // ignore
-      }
-    }
+    await killPreviewServer(request.previewPid, request.previewPort);
 
     if (request.worktreePath) {
       try {
@@ -880,6 +868,15 @@ function killProcessesByPort(port: number | null) {
       // ignore
     }
   }, 2000);
+}
+
+async function killPreviewServer(pid: number | null, port: number | null): Promise<void> {
+  if (pid) {
+    killProcess(pid);
+    killProcessGroup(pid);
+  }
+  killProcessesByPort(port);
+  await new Promise((resolve) => setTimeout(resolve, 2500));
 }
 
 function killProcessesInWorktree(worktreePath: string) {
