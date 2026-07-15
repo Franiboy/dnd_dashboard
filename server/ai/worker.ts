@@ -832,6 +832,13 @@ function killProcess(pid: number) {
   } catch {
     // ignore
   }
+  setTimeout(() => {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // ignore
+    }
+  }, 2000);
 }
 
 function killProcessGroup(pid: number) {
@@ -840,17 +847,34 @@ function killProcessGroup(pid: number) {
   } catch {
     // ignore
   }
+  setTimeout(() => {
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      // ignore
+    }
+  }, 2000);
 }
 
 function killProcessesByPort(port: number | null) {
   if (!port) return;
+  const targetPort = port;
   try {
-    execSync(`lsof -t -i :${port} 2>/dev/null | xargs kill -9 2>/dev/null || true`, {
+    execSync(`lsof -t -i :${targetPort} 2>/dev/null | xargs kill -TERM 2>/dev/null || true`, {
       timeout: 10000,
     });
   } catch {
     // ignore
   }
+  setTimeout(() => {
+    try {
+      execSync(`lsof -t -i :${targetPort} 2>/dev/null | xargs kill -9 2>/dev/null || true`, {
+        timeout: 10000,
+      });
+    } catch {
+      // ignore
+    }
+  }, 2000);
 }
 
 function killProcessesInWorktree(worktreePath: string) {
