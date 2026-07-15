@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { ConfirmDialog } from './ConfirmDialog';
 import type { FeatureRequest, SafeUser, VersionInfo } from '../../shared/types';
@@ -17,9 +17,21 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
   const [continuePrompts, setContinuePrompts] = useState<Record<number, string>>({});
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [loadingAction, setLoadingAction] = useState<{ id: number; type: 'merge' | 'mergeFromMain' | 'continue' | 'delete' } | null>(null);
+  const logsRefs = useRef<Map<number, HTMLPreElement>>(new Map());
 
   const isLoading = (id: number, type: 'merge' | 'mergeFromMain' | 'continue' | 'delete') =>
     loadingAction?.id === id && loadingAction?.type === type;
+
+  useEffect(() => {
+    requests.forEach((req) => {
+      const pre = logsRefs.current.get(req.id);
+      if (!pre) return;
+      const isAtBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 10;
+      if (isAtBottom) {
+        pre.scrollTop = pre.scrollHeight;
+      }
+    });
+  }, [requests]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -258,7 +270,10 @@ export function FeatureRequests({ currentUser }: FeatureRequestsProps) {
       {req.logs && (
             <details className="mt-2">
               <summary className="text-xs text-slate-500 cursor-pointer">Logs</summary>
-              <pre className="mt-2 p-2 bg-black/30 rounded text-xs text-slate-300 overflow-auto max-h-48">
+              <pre
+                ref={(el) => { if (el) logsRefs.current.set(req.id, el); }}
+                className="mt-2 p-2 bg-black/30 rounded text-xs text-slate-300 overflow-auto max-h-48"
+              >
                 {req.logs}
               </pre>
             </details>
