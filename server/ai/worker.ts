@@ -56,6 +56,7 @@ async function startPreviewServer(
     PORT: String(previewPort),
     NODE_ENV: 'production',
     DB_PATH: previewDbPath,
+    PREVIEW_MODE: 'true',
   };
   const previewProcess = spawn('npm', ['start'], {
     cwd: worktreePath,
