@@ -95,6 +95,7 @@ export async function startPreviewServer(
 
   const previewUrl = buildPreviewUrl(previewProtocol, previewHostname, previewPort);
   logLine(id, `Preview server started on ${previewUrl} (PID ${previewPid})\n`);
+  logLine(id, `Preview gestartet unter ${previewUrl}\n`, 'summary');
 
   updateFeatureRequest(id, {
     status: 'preview_ready',
@@ -319,7 +320,10 @@ export function startFeatureRequest(
     branch,
     worktreePath,
     sessionTitle,
-    logs: [{ type: 'system', text: `Starting AI feature request #${id}...\nModel: ${model}\nSession title: ${sessionTitle}\n`, timestamp: now }],
+    logs: [
+      { type: 'summary', text: `Feature Request #${id} gestartet mit Model ${model}\n`, timestamp: now },
+      { type: 'system', text: `Starting AI feature request #${id}...\nModel: ${model}\nSession title: ${sessionTitle}\n`, timestamp: now },
+    ],
   });
 
   (async () => {
@@ -392,6 +396,7 @@ export function startFeatureRequest(
       }
 
       logLine(id, `OpenCode finished. Building preview...\n`);
+      logLine(id, `KI mit Model ${model} hat die Aufgabe bearbeitet\n`, 'summary');
 
       const buildResult = await runCommand('npm', ['run', 'build'], {
         cwd: worktreePath,
@@ -404,6 +409,7 @@ export function startFeatureRequest(
         return;
       }
 
+      logLine(id, `Build erfolgreich\n`, 'summary');
       logLine(id, `Committing changes in worktree...\n`);
       try {
         execGit('add -A', { cwd: worktreePath });
@@ -479,7 +485,11 @@ export function continueFeatureRequest(
   updateFeatureRequest(id, {
     status: 'running',
     sessionTitle,
-    logs: [...(request.logs || []), { type: 'system', text: `Continuing AI session for feature request #${id}...\n`, timestamp: continueNow }],
+    logs: [
+      ...(request.logs || []),
+      { type: 'summary', text: `Fortsetzung gestartet mit Model ${model}\n`, timestamp: continueNow },
+      { type: 'system', text: `Continuing AI session for feature request #${id}...\n`, timestamp: continueNow },
+    ],
   });
 
   (async () => {
@@ -524,6 +534,7 @@ export function continueFeatureRequest(
       }
 
       logLine(id, `OpenCode continue finished. Building preview...\n`);
+      logLine(id, `KI hat Fortsetzung bearbeitet\n`, 'summary');
 
       const buildResult = await runCommand('npm', ['run', 'build'], {
         cwd: worktreePath,
@@ -536,6 +547,7 @@ export function continueFeatureRequest(
         return;
       }
 
+      logLine(id, `Build erfolgreich\n`, 'summary');
       logLine(id, `Committing changes in worktree...\n`);
       try {
         execGit('add -A', { cwd: worktreePath });
@@ -701,7 +713,11 @@ export function mergeFromMainForFeatureRequest(
   const mergeNow = new Date().toISOString();
   updateFeatureRequest(id, {
     status: 'running',
-    logs: [...(request.logs || []), { type: 'system', text: `Merging main into ${request.branch}...\n`, timestamp: mergeNow }],
+    logs: [
+      ...(request.logs || []),
+      { type: 'summary', text: `Merge aus main gestartet\n`, timestamp: mergeNow },
+      { type: 'system', text: `Merging main into ${request.branch}...\n`, timestamp: mergeNow },
+    ],
   });
 
   (async () => {
@@ -728,6 +744,7 @@ export function mergeFromMainForFeatureRequest(
       }
 
       logLine(id, `Merge successful. Rebuilding preview...\n`);
+      logLine(id, `Merge aus main mit Model ${model} durchgeführt\n`, 'summary');
 
       const buildResult = await runCommand('npm', ['run', 'build'], {
         cwd: request.worktreePath!,
@@ -781,6 +798,7 @@ export function mergeAndPushFeatureRequest(id: number): { success: boolean; erro
         timeout: 60000,
       });
       execGit('push origin main', { cwd: mainMergePath, timeout: 60000 });
+      logLine(id, `Feature in main gemergt und gepusht\n`, 'summary');
     } finally {
       try {
         execGit(`worktree remove --force ${mainMergePath}`, { cwd: process.cwd() });

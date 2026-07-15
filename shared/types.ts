@@ -61,7 +61,7 @@ export interface SafeUser {
   canAccessPreviews: boolean;
 }
 
-export type LogType = 'system' | 'prompt' | 'ai' | 'build' | 'diff' | 'error';
+export type LogType = 'system' | 'prompt' | 'ai' | 'build' | 'diff' | 'error' | 'summary';
 
 export interface LogEntry {
   type: LogType;
