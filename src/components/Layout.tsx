@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { FeatureRequests } from './FeatureRequests';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 
 interface PreviewItem {
@@ -201,7 +202,19 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
           </button>
         </div>
       </header>
-      <main className="flex-1">{children}</main>
+      <div className="flex flex-1 overflow-hidden">
+        <main className="flex-1 overflow-auto">{children}</main>
+        {!isMain && currentPreviewId != null && (
+          <aside className="w-96 border-l border-[var(--border)] bg-[var(--panel)] p-4 overflow-y-auto hidden lg:block">
+            <h3 className="text-sm font-semibold text-[var(--text-h)] mb-2">KI-Terminal</h3>
+            <FeatureRequests
+              currentUser={user}
+              featureRequestId={currentPreviewId}
+              compact
+            />
+          </aside>
+        )}
+      </div>
     </div>
   );
 }
