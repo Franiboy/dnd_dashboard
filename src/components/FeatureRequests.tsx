@@ -310,7 +310,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     );
 
     const body = (
-      <div className={`rounded border border-[var(--border)] bg-black/30 overflow-hidden ${isCompact ? 'h-full flex flex-col' : 'mt-2'}`}>
+      <div className={`rounded border border-[var(--border)] bg-black/30 overflow-hidden ${isCompact ? 'flex-1 min-h-0 flex flex-col' : 'mt-2'}`}>
         {filterButtons}
         {logContent}
         {continueInput}
@@ -347,7 +347,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     return (
       <div className="h-full flex flex-col">
         <div className="text-sm font-semibold text-[var(--text-h)] mb-2">{req.title}</div>
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {renderTerminal(req, true)}
         </div>
       </div>
