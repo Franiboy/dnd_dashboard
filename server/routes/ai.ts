@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
+import { authMiddleware, requireAdmin, requirePreviewAccess, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
-import { startFeatureRequest, continueFeatureRequest, mergeAndPushFeatureRequest, cleanupFeatureRequest } from '../ai/worker.js';
+import { startFeatureRequest, continueFeatureRequest, mergeAndPushFeatureRequest, mergeFromMainForFeatureRequest, getFeatureRequestBehind, cleanupFeatureRequest } from '../ai/worker.js';
 import {
   createFeatureRequest,
   getFeatureRequestById,
@@ -40,7 +40,11 @@ router.get('/feature-requests', authMiddleware, requireAdmin, (req: AuthRequest,
   if (!isAiEnabled()) {
     return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
   }
-  res.json({ requests: listFeatureRequests() });
+  const requests = listFeatureRequests().map((r) => ({
+    ...r,
+    behind: getFeatureRequestBehind(r.worktreePath, r.branch),
+  }));
+  res.json({ requests });
 });
 
 // Admin: get a single feature request
@@ -91,6 +95,21 @@ router.delete('/feature-requests/:id', authMiddleware, requireAdmin, (req: AuthR
   } else {
     res.status(500).json({ error: result.error || 'Löschen fehlgeschlagen' });
   }
+});
+
+// Admin: merge origin/main into the feature request branch and rebuild the preview
+router.post('/feature-requests/:id/merge-from-main', authMiddleware, requirePreviewAccess, (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
+  }
+  const id = Number(req.params.id);
+  const request = getFeatureRequestById(id);
+  if (!request) return res.status(404).json({ error: 'Feature Request nicht gefunden' });
+  if (request.status !== 'preview_ready') {
+    return res.status(400).json({ error: 'Feature Request ist nicht bereit' });
+  }
+  mergeFromMainForFeatureRequest(id, req.protocol, req.hostname);
+  res.json({ ok: true });
 });
 
 // Admin: merge and push the feature request
