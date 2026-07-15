@@ -47,6 +47,14 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     }
   }
 
+  function getDistanceFromBottom(pre: HTMLPreElement): number {
+    return Math.max(0, pre.scrollHeight - pre.scrollTop - pre.clientHeight);
+  }
+
+  function applyDistanceFromBottom(pre: HTMLPreElement, distance: number) {
+    pre.scrollTop = pre.scrollHeight - pre.clientHeight - distance;
+  }
+
   useEffect(() => {
     requests.forEach((req) => {
       const pre = logsRefs.current.get(req.id);
@@ -55,7 +63,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
       pre.scrollTop = pre.scrollHeight;
       setScrollPositions((prev) => ({
         ...prev,
-        [req.id]: { ...prev[req.id], [filter]: pre.scrollTop },
+        [req.id]: { ...prev[req.id], [filter]: 0 },
       }));
     });
   }, [requests, logFilter]);
@@ -69,7 +77,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
       if (previousFilter !== currentFilter) {
         setScrollPositions((prev) => ({
           ...prev,
-          [req.id]: { ...prev[req.id], [previousFilter]: pre.scrollTop },
+          [req.id]: { ...prev[req.id], [previousFilter]: getDistanceFromBottom(pre) },
         }));
       }
     });
@@ -79,7 +87,11 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
       if (!pre) return;
       const currentFilter = logFilter[req.id] || 'all';
       const saved = scrollPositions[req.id]?.[currentFilter];
-      pre.scrollTop = saved !== undefined ? saved : pre.scrollHeight;
+      if (saved !== undefined) {
+        applyDistanceFromBottom(pre, saved);
+      } else {
+        pre.scrollTop = pre.scrollHeight;
+      }
     });
 
     previousFilterRef.current = { ...logFilter };
