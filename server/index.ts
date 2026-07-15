@@ -14,6 +14,7 @@ import authRouter from './routes/auth.js';
 import { setupSocket } from './socket.js';
 import { getVersion } from './version.js';
 import { runMigrations } from './migrations.js';
+import { recoverPreviewServers } from './ai/worker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +43,11 @@ app.use('/api', (req, res, next) => {
 // Run schema migrations and ensure admin user exists at startup
 runMigrations();
 ensureAdminUser();
+
+// Restart preview servers for feature requests that were preview_ready before a server restart
+recoverPreviewServers().catch((err) => {
+  console.error('Failed to recover preview servers:', err);
+});
 
 app.get('/api/version', (req, res) => {
   res.json(getVersion());
