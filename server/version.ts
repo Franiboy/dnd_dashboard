@@ -60,17 +60,17 @@ function getCurrentVersion(): number {
 }
 
 function getMainVersion(): number {
-  const out = runGit('rev-list --count main');
+  const out = runGit('rev-list --count origin/main') ?? runGit('rev-list --count main');
   return out ? parseInt(out, 10) : 0;
 }
 
 function getAhead(): number {
-  const out = runGit('rev-list --count main..HEAD');
+  const out = runGit('rev-list --count origin/main..HEAD') ?? runGit('rev-list --count main..HEAD');
   return out ? parseInt(out, 10) : 0;
 }
 
 function getBehind(): number {
-  const out = runGit('rev-list --count HEAD..main');
+  const out = runGit('rev-list --count HEAD..origin/main') ?? runGit('rev-list --count HEAD..main');
   return out ? parseInt(out, 10) : 0;
 }
 
