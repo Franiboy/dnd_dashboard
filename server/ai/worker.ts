@@ -742,6 +742,14 @@ export function mergeAndPushFeatureRequest(id: number): { success: boolean; erro
       }
     }
 
+    // Pull the just-pushed merge commit into the local main worktree
+    try {
+      execGit('pull origin main --ff-only', { cwd: process.cwd(), timeout: 60000 });
+    } catch {
+      // If the local main worktree has uncommitted changes, the ff-only pull may fail.
+      // The remote main already has the merge, so we do not fail the whole operation.
+    }
+
     const cleanup = cleanupFeatureRequest(id);
     if (cleanup.success) {
       notifyFeatureRequestsUpdated();
