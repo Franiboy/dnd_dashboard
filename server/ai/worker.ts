@@ -1,12 +1,13 @@
 import { spawn, execSync } from 'node:child_process';
 import { existsSync, copyFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { findFreePort } from '../utils/port.js';
+import { findFreePort, isPortInUse } from '../utils/port.js';
 import { runOpenCode, findOpenCodeSessionId } from './opencode.js';
 import {
   updateFeatureRequest,
   appendFeatureRequestLogs,
   getFeatureRequestById,
+  listFeatureRequests,
   deleteFeatureRequest,
 } from '../repositories/featureRequests.js';
 
@@ -15,6 +16,78 @@ const WORKTREE_PREFIX = 'dnd_dashboard-preview-';
 
 function buildPreviewUrl(protocol: string, hostname: string, port: number): string {
   return `${protocol}://${hostname}:${port}`;
+}
+
+function parsePreviewUrl(url: string | null): { protocol: string; hostname: string } | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return { protocol: parsed.protocol.replace(':', ''), hostname: parsed.hostname };
+  } catch {
+    return null;
+  }
+}
+
+function isProcessAlive(pid: number | null): boolean {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function startPreviewServer(
+  id: number,
+  worktreePath: string,
+  previewProtocol: string,
+  previewHostname: string,
+): Promise<{ previewPort: number; previewUrl: string; previewPid: number } | null> {
+  const previewPort = await findFreePort(PREVIEW_PORT_BASE);
+  const previewDbPath = `dnd_preview_${id}.db`;
+  const mainDbPath = process.env.DB_PATH || 'dnd.db';
+  const previewDbFullPath = join(worktreePath, previewDbPath);
+  if (existsSync(mainDbPath)) {
+    copyFileSync(mainDbPath, previewDbFullPath);
+  }
+  const previewEnv = {
+    ...process.env,
+    PORT: String(previewPort),
+    NODE_ENV: 'production',
+    DB_PATH: previewDbPath,
+  };
+  const previewProcess = spawn('npm', ['start'], {
+    cwd: worktreePath,
+    stdio: 'pipe',
+    env: previewEnv,
+    detached: true,
+  });
+
+  previewProcess.stdout?.on('data', (data) => logLine(id, `[preview] ${data}`));
+  previewProcess.stderr?.on('data', (data) => logLine(id, `[preview] ${data}`));
+  previewProcess.on('error', (err) => {
+    logLine(id, `Preview server error: ${err.message}\n`);
+    updateFeatureRequest(id, { status: 'failed' });
+  });
+
+  const previewPid = previewProcess.pid;
+  if (!previewPid) {
+    logLine(id, 'Preview server failed to spawn\n');
+    return null;
+  }
+
+  const previewUrl = buildPreviewUrl(previewProtocol, previewHostname, previewPort);
+  logLine(id, `Preview server started on ${previewUrl} (PID ${previewPid})\n`);
+
+  updateFeatureRequest(id, {
+    status: 'preview_ready',
+    previewPort,
+    previewUrl,
+    previewPid,
+  });
+
+  return { previewPort, previewUrl, previewPid };
 }
 
 function buildPrompt(title: string, description: string, branch: string): string {
@@ -268,48 +341,46 @@ export function startFeatureRequest(
         // add failed or commit failed
       }
 
-      const previewPort = await findFreePort(PREVIEW_PORT_BASE);
-      const previewDbPath = `dnd_preview_${id}.db`;
-      const mainDbPath = process.env.DB_PATH || 'dnd.db';
-      const previewDbFullPath = join(worktreePath, previewDbPath);
-      if (existsSync(mainDbPath)) {
-        copyFileSync(mainDbPath, previewDbFullPath);
-      }
-      const previewEnv = {
-        ...process.env,
-        PORT: String(previewPort),
-        NODE_ENV: 'production',
-        DB_PATH: previewDbPath,
-      };
-      const previewProcess = spawn('npm', ['start'], {
-        cwd: worktreePath,
-        stdio: 'pipe',
-        env: previewEnv,
-        detached: true,
-      });
-
-      previewProcess.stdout?.on('data', (data) => logLine(id, `[preview] ${data}`));
-      previewProcess.stderr?.on('data', (data) => logLine(id, `[preview] ${data}`));
-      previewProcess.on('error', (err) => {
-        logLine(id, `Preview server error: ${err.message}\n`);
-        updateFeatureRequest(id, { status: 'failed' });
-      });
-
-      const previewUrl = buildPreviewUrl(previewProtocol, previewHostname, previewPort);
-      logLine(id, `Preview server started on ${previewUrl} (PID ${previewProcess.pid})\n`);
-
-      updateFeatureRequest(id, {
-        status: 'preview_ready',
-        previewPort,
-        previewUrl,
-        previewPid: previewProcess.pid ?? null,
-      });
+      await startPreviewServer(id, worktreePath, previewProtocol, previewHostname);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logLine(id, `Worker error: ${message}\n`);
       updateFeatureRequest(id, { status: 'failed' });
     }
   })();
+}
+
+export async function recoverPreviewServers(): Promise<void> {
+  const requests = listFeatureRequests().filter((r) => r.status === 'preview_ready');
+  if (requests.length === 0) return;
+
+  console.log(`Recovering ${requests.length} preview_ready feature request(s)...`);
+
+  for (const request of requests) {
+    const id = request.id;
+    const worktreePath = request.worktreePath;
+
+    if (!worktreePath || !existsSync(worktreePath)) {
+      logLine(id, `Startup recovery: worktree missing at ${worktreePath}\n`);
+      updateFeatureRequest(id, { status: 'failed' });
+      continue;
+    }
+
+    const parsed = parsePreviewUrl(request.previewUrl);
+    const previewProtocol = parsed?.protocol || 'http';
+    const previewHostname = parsed?.hostname || 'localhost';
+
+    const processAlive = isProcessAlive(request.previewPid);
+    const portInUse = request.previewPort ? await isPortInUse(request.previewPort) : false;
+
+    if (processAlive && portInUse) {
+      logLine(id, `Startup recovery: preview server still running at ${request.previewUrl}\n`);
+      continue;
+    }
+
+    logLine(id, `Startup recovery: restarting preview server for worktree ${worktreePath}\n`);
+    await startPreviewServer(id, worktreePath, previewProtocol, previewHostname);
+  }
 }
 
 export function continueFeatureRequest(
@@ -398,42 +469,7 @@ export function continueFeatureRequest(
         // add failed or commit failed
       }
 
-      const previewPort = await findFreePort(PREVIEW_PORT_BASE);
-      const previewDbPath = `dnd_preview_${id}.db`;
-      const mainDbPath = process.env.DB_PATH || 'dnd.db';
-      const previewDbFullPath = join(worktreePath, previewDbPath);
-      if (existsSync(mainDbPath)) {
-        copyFileSync(mainDbPath, previewDbFullPath);
-      }
-      const previewEnv = {
-        ...process.env,
-        PORT: String(previewPort),
-        NODE_ENV: 'production',
-        DB_PATH: previewDbPath,
-      };
-      const previewProcess = spawn('npm', ['start'], {
-        cwd: worktreePath,
-        stdio: 'pipe',
-        env: previewEnv,
-        detached: true,
-      });
-
-      previewProcess.stdout?.on('data', (data) => logLine(id, `[preview] ${data}`));
-      previewProcess.stderr?.on('data', (data) => logLine(id, `[preview] ${data}`));
-      previewProcess.on('error', (err) => {
-        logLine(id, `Preview server error: ${err.message}\n`);
-        updateFeatureRequest(id, { status: 'failed' });
-      });
-
-      const previewUrl = buildPreviewUrl(previewProtocol, previewHostname, previewPort);
-      logLine(id, `Preview server started on ${previewUrl} (PID ${previewProcess.pid})\n`);
-
-      updateFeatureRequest(id, {
-        status: 'preview_ready',
-        previewPort,
-        previewUrl,
-        previewPid: previewProcess.pid ?? null,
-      });
+      await startPreviewServer(id, worktreePath, previewProtocol, previewHostname);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logLine(id, `Worker continue error: ${message}\n`);
