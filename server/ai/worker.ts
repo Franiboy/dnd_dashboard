@@ -3,13 +3,20 @@ import { existsSync, copyFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { findFreePort, isPortInUse } from '../utils/port.js';
 import { runOpenCode, findOpenCodeSessionId } from './opencode.js';
+import { notifyFeatureRequestsUpdated } from './events.js';
 import {
-  updateFeatureRequest,
+  updateFeatureRequest as updateFeatureRequestRaw,
   appendFeatureRequestLogs,
   getFeatureRequestById,
   listFeatureRequests,
   deleteFeatureRequest,
 } from '../repositories/featureRequests.js';
+
+function updateFeatureRequest(id: number, updates: Parameters<typeof updateFeatureRequestRaw>[1]) {
+  const result = updateFeatureRequestRaw(id, updates);
+  notifyFeatureRequestsUpdated();
+  return result;
+}
 
 const PREVIEW_PORT_BASE = 4000;
 const WORKTREE_PREFIX = 'dnd_dashboard-preview-';

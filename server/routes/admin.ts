@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import {
   deleteUser,
@@ -9,6 +9,16 @@ import {
   setUserApproved,
   setUserPreviewAccess,
 } from '../users.js';
+
+const sseClients = new Set<Response>();
+
+function notifyUserUpdate() {
+  const data = JSON.stringify(getAllUsers());
+  sseClients.forEach((client) => {
+    client.write(`event: users\n`);
+    client.write(`data: ${data}\n\n`);
+  });
+}
 
 function checkAdminAction(req: AuthRequest, targetId: string): { ok: true } | { ok: false; error: string } {
   const target = findUserById(targetId);
@@ -24,12 +34,30 @@ router.get('/users', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   res.json(getAllUsers());
 });
 
+router.get('/users/events', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Send initial list
+  res.write(`event: users\n`);
+  res.write(`data: ${JSON.stringify(getAllUsers())}\n\n`);
+
+  sseClients.add(res);
+
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
+});
+
 router.post('/users/:id/approve', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const targetId = req.params.id as string;
   const check = checkAdminAction(req, targetId);
   if (!check.ok) return res.status(403).json({ error: check.error });
   const user = setUserApproved(targetId, true);
   if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  notifyUserUpdate();
   res.json(user);
 });
 
@@ -39,6 +67,7 @@ router.post('/users/:id/reject', authMiddleware, requireAdmin, (req: AuthRequest
   if (!check.ok) return res.status(403).json({ error: check.error });
   const user = setUserApproved(targetId, false);
   if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  notifyUserUpdate();
   res.json(user);
 });
 
@@ -49,6 +78,7 @@ router.post('/users/:id/admin', authMiddleware, requireAdmin, (req: AuthRequest,
   const { isAdmin } = req.body;
   const user = setUserAdmin(targetId, isAdmin);
   if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  notifyUserUpdate();
   res.json(user);
 });
 
@@ -59,6 +89,7 @@ router.post('/users/:id/preview-access', authMiddleware, requireAdmin, (req: Aut
   const { canAccessPreviews } = req.body;
   const user = setUserPreviewAccess(targetId, canAccessPreviews);
   if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  notifyUserUpdate();
   res.json(user);
 });
 
@@ -68,6 +99,7 @@ router.delete('/users/:id', authMiddleware, requireAdmin, (req: AuthRequest, res
   if (!check.ok) return res.status(403).json({ error: check.error });
   const success = deleteUser(targetId);
   if (!success) return res.status(404).json({ error: 'User nicht gefunden' });
+  notifyUserUpdate();
   res.json({ ok: true });
 });
 
