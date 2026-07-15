@@ -65,9 +65,10 @@ export function Admin({ currentUser }: AdminProps) {
       </div>
 
       <div className="mb-6">
-        <FeatureRequests />
+        <FeatureRequests currentUser={currentUser} />
       </div>
 
+      {currentUser.isAdmin && (
       <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 overflow-auto">
         <table className="w-full text-left text-sm">
           <thead>
@@ -148,6 +149,7 @@ export function Admin({ currentUser }: AdminProps) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
