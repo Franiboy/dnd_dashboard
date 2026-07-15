@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
 import { Button } from './Button';
-import type { SafeUser } from '../../shared/types';
+import type { SafeUser, VersionInfo } from '../../shared/types';
 
 interface LayoutProps {
   user: SafeUser;
@@ -9,16 +8,9 @@ interface LayoutProps {
   children: ReactNode;
 }
 
-interface VersionInfo {
-  mainVersion: number;
-  currentVersion: number;
-  branch: string;
-  ahead: number;
-  aiEnabled: boolean;
-}
-
 export function Layout({ user, onLogout, children }: LayoutProps) {
   const [version, setVersion] = useState<VersionInfo | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
 
   useEffect(() => {
     fetch('/api/version')
@@ -32,6 +24,32 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
         // Version is optional; failing silently is fine
       });
   }, []);
+
+  const canMergeFromMain =
+    version &&
+    version.branch !== 'main' &&
+    version.behind > 0 &&
+    version.mainServerUrl &&
+    version.previewFeatureRequestId != null;
+
+  async function handleMergeFromMain() {
+    if (!version?.mainServerUrl || version.previewFeatureRequestId == null) return;
+    setIsMerging(true);
+    try {
+      const res = await fetch(
+        `${version.mainServerUrl}/api/ai/feature-requests/${version.previewFeatureRequestId}/merge-from-main`,
+        { method: 'POST', credentials: 'include' },
+      );
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        console.error('Merge from main failed:', payload.error || 'Unknown error');
+      }
+    } catch (err) {
+      console.error('Merge from main error:', err);
+    } finally {
+      setIsMerging(false);
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -49,20 +67,32 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                   v.{version.mainVersion}
                 </span>
                 {user.isAdmin && version.branch === 'main' && version.aiEnabled && (
-                  <Link
+                  <Button
+                    as="a"
                     to="/feature-request"
-                    className="inline-flex items-center px-2 py-1 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-semibold shadow hover:brightness-110 transition"
-                    title="Feature Request"
+                    variant="accent"
+                    className="!px-2 !py-1 !rounded-full !text-xs !font-semibold"
                   >
                     Feature Request
-                  </Link>
+                  </Button>
                 )}
               </div>
               {version.branch !== 'main' && (
                 <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-[var(--warning)] text-slate-900 font-semibold mt-1">
                   {version.branch}
                   {version.ahead > 0 ? ` +${version.ahead}` : ''}
+                  {version.behind > 0 ? ` -${version.behind}` : ''}
                 </span>
+              )}
+              {canMergeFromMain && (
+                <button
+                  onClick={handleMergeFromMain}
+                  disabled={isMerging}
+                  className="mt-1 px-2 py-0.5 rounded-full bg-[var(--danger)] text-white text-[10px] font-semibold hover:brightness-110 disabled:opacity-50"
+                  title={`${version.behind} Commit(s) hinter main`}
+                >
+                  {isMerging ? 'Merge...' : `Main reinmergen (${version.behind})`}
+                </button>
               )}
             </div>
           )}

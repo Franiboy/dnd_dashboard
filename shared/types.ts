@@ -45,6 +45,7 @@ export interface User {
   avatarUrl: string | null;
   isAdmin: boolean;
   isApproved: boolean;
+  canAccessPreviews: boolean;
   failedLoginAttempts: number;
   lockedUntil: string | null;
   createdAt: string;
@@ -57,6 +58,7 @@ export interface SafeUser {
   avatarUrl: string | null;
   isAdmin: boolean;
   isApproved: boolean;
+  canAccessPreviews: boolean;
 }
 
 export interface FeatureRequest {
@@ -73,8 +75,20 @@ export interface FeatureRequest {
   sessionTitle: string | null;
   sessionId: string | null;
   logs: string;
+  behind?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface VersionInfo {
+  mainVersion: number;
+  currentVersion: number;
+  branch: string;
+  ahead: number;
+  behind: number;
+  aiEnabled: boolean;
+  previewFeatureRequestId?: number | null;
+  mainServerUrl?: string | null;
 }
 
 export interface ClientToServerEvents {
