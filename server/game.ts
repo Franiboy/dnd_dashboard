@@ -93,11 +93,12 @@ export function removeTask(taskId: string): BingoGame {
   return game;
 }
 
-export function joinPlayer(name: string, userId?: string): { game: BingoGame; playerId: string } {
+export function joinPlayer(name: string, userId?: string, avatarUrl?: string | null): { game: BingoGame; playerId: string } {
   const id = createId();
   const player: Player = {
     id,
     userId,
+    avatarUrl,
     name: name.trim(),
     status: 'lobby',
     board: createEmptyBoard(game.gridSize),

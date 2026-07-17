@@ -4,6 +4,7 @@ import type { Socket } from '../types';
 import { useApi } from '../hooks/useApi';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Toggle } from './Toggle';
+import { UserInline } from './UserInline';
 
 interface TaskStatusProps {
   game: BingoGame;
@@ -51,11 +52,6 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
     setPendingTask(null);
   };
 
-  const assignedNames = (userIds?: string[]) => {
-    if (!userIds || userIds.length === 0) return '';
-    return userIds.map((id) => users.find((u) => u.id === id)?.displayName || id).join(', ');
-  };
-
   const pendingTaskData = pendingTask ? taskMap.get(pendingTask.id) : null;
 
   return (
@@ -74,8 +70,9 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
             <span className={confirmedBy ? 'text-[var(--accent)]' : 'text-[var(--text-h)]'}>
               {task.text}
               {task.isPrivate && (
-                <span className="ml-2 text-xs text-slate-400" title={`Privat – ${assignedNames(task.assignedTo)}`}>
-                  🔒 {assignedNames(task.assignedTo)}
+                <span className="ml-2 inline-flex items-center gap-1 text-xs text-slate-400">
+                  <span>🔒</span>
+                  <UserInline users={users} userIds={task.assignedTo} />
                 </span>
               )}
             </span>
