@@ -16,7 +16,7 @@ import {
   unconfirmTask,
   unlockBoard,
   updateBoard,
-  updateTaskAssignments,
+  updateTask,
 } from './game.js';
 import { findUserById } from './users.js';
 
@@ -99,11 +99,10 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       broadcastState();
     });
 
-    socket.on('updateTaskAssignments', ({ taskId, assignedTo }) => {
+    socket.on('updateTask', ({ taskId, text, isPrivate, assignedTo }) => {
       if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können Aufgaben bearbeiten.');
-      if (!Array.isArray(assignedTo)) return socket.emit('error', 'Ungültige Daten.');
       try {
-        updateTaskAssignments(taskId, assignedTo);
+        updateTask(taskId, { text, isPrivate, assignedTo });
         broadcastState();
       } catch (e: any) {
         socket.emit('error', e.message);

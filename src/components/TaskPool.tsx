@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { BingoGame, SafeUser } from '../../shared/types';
+import type { BingoGame, SafeUser, Task } from '../../shared/types';
 import type { Socket } from '../types';
 import { useApi } from '../hooks/useApi';
 import { Loading } from './Loading';
@@ -24,7 +24,9 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
   const [assignedTo, setAssignedTo] = useState<string[]>([]);
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
-  const [editingTask, setEditingTask] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [editingIsPrivate, setEditingIsPrivate] = useState(false);
   const [editingAssignedTo, setEditingAssignedTo] = useState<string[]>([]);
   const isAdmin = !!currentUser?.isAdmin;
   const ownerId = currentUser?.id;
@@ -56,24 +58,33 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
     socket?.emit('removeTask', id);
   };
 
-  const startEdit = (taskId: string, currentAssignedTo?: string[]) => {
-    setEditingTask(taskId);
-    setEditingAssignedTo(currentAssignedTo ?? []);
+  const startEdit = (task: Task) => {
+    setEditingTask(task);
+    setEditingText(task.text);
+    setEditingIsPrivate(!!task.isPrivate);
+    setEditingAssignedTo(task.assignedTo ?? []);
   };
 
   const cancelEdit = () => {
     setEditingTask(null);
+    setEditingText('');
+    setEditingIsPrivate(false);
     setEditingAssignedTo([]);
   };
 
   const saveEdit = () => {
     if (!editingTask || !socket) return;
-    socket.emit('updateTaskAssignments', { taskId: editingTask, assignedTo: editingAssignedTo });
+    socket.emit('updateTask', {
+      taskId: editingTask.id,
+      text: editingText.trim(),
+      isPrivate: editingIsPrivate,
+      assignedTo: editingIsPrivate ? editingAssignedTo : [],
+    });
     setEditingTask(null);
+    setEditingText('');
+    setEditingIsPrivate(false);
     setEditingAssignedTo([]);
   };
-
-  const editingTaskData = editingTask ? game.tasks.find((t) => t.id === editingTask) : null;
 
   return (
     <div className={`h-full flex flex-col ${className || ''}`}>
@@ -113,7 +124,7 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
                     users={assignableUsers}
                     selected={assignedTo}
                     onChange={setAssignedTo}
-                    disabledIds={!currentUser?.isInitialAdmin ? [ownerId] : []}
+                    disabledIds={!currentUser?.isInitialAdmin && ownerId ? [ownerId] : []}
                     title="Zugewiesen an (mehrere möglich):"
                     emptyMessage="Keine Benutzer verfügbar."
                   />
@@ -146,16 +157,14 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
                 </span>
               )}
             </span>
-            {isSetup && (
+            {isSetup && isAdmin && (
               <div className="flex items-center gap-3">
-                {task.isPrivate && (
-                  <button
-                    onClick={() => startEdit(task.id, task.assignedTo)}
-                    className="text-slate-400 hover:text-[var(--text-h)] text-sm"
-                  >
-                    Bearbeiten
-                  </button>
-                )}
+                <button
+                  onClick={() => startEdit(task)}
+                  className="text-slate-400 hover:text-[var(--text-h)] text-sm"
+                >
+                  Bearbeiten
+                </button>
                 <button onClick={() => remove(task.id)} className="text-[var(--danger)] hover:text-red-300 text-sm">
                   Entfernen
                 </button>
@@ -165,10 +174,10 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
         ))}
       </ul>
 
-      {editingTask && editingTaskData && (
+      {editingTask && (
         <Modal
           isOpen
-          title={`Zuweisung bearbeiten: ${editingTaskData.text}`}
+          title="Aufgabe bearbeiten"
           onClose={cancelEdit}
           actions={
             <>
@@ -180,7 +189,7 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
               </button>
               <button
                 onClick={saveEdit}
-                disabled={editingAssignedTo.length === 0}
+                disabled={!editingText.trim() || (editingIsPrivate && editingAssignedTo.length === 0)}
                 className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
               >
                 Speichern
@@ -188,14 +197,36 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
             </>
           }
         >
-          <UserCheckboxList
-            users={assignableUsers}
-            selected={editingAssignedTo}
-            onChange={setEditingAssignedTo}
-            disabledIds={[]}
-            title="Zugewiesen an (mehrere möglich):"
-            emptyMessage="Keine Benutzer verfügbar."
-          />
+          <div className="flex flex-col gap-4">
+            <input
+              value={editingText}
+              onChange={(e) => setEditingText(e.target.value)}
+              placeholder="Aufgabentext..."
+              className="w-full px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            />
+            <Toggle
+              checked={editingIsPrivate}
+              onChange={(checked) => {
+                setEditingIsPrivate(checked);
+                if (!checked) setEditingAssignedTo([]);
+              }}
+              label="Private Aufgabe"
+            />
+            {editingIsPrivate && (
+              usersLoading ? (
+                <Loading text="Benutzer laden..." size="sm" />
+              ) : (
+                <UserCheckboxList
+                  users={assignableUsers}
+                  selected={editingAssignedTo}
+                  onChange={setEditingAssignedTo}
+                  disabledIds={[]}
+                  title="Zugewiesen an (mehrere möglich):"
+                  emptyMessage="Keine Benutzer verfügbar."
+                />
+              )
+            )}
+          </div>
         </Modal>
       )}
     </div>
