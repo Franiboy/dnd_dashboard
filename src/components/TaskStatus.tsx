@@ -22,8 +22,8 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
 
   useEffect(() => {
     setUsersLoading(true);
-    request<{ users: SafeUser[] }>('/api/admin/users').then(({ data }) => {
-      if (data?.users) setUsers(data.users);
+    request<SafeUser[]>('/api/admin/users').then(({ data }) => {
+      setUsers(data ?? []);
       setUsersLoading(false);
     });
   }, [request]);

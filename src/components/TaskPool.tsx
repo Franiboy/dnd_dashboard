@@ -29,8 +29,8 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
   useEffect(() => {
     if (!isAdmin) return;
     setUsersLoading(true);
-    request<{ users: SafeUser[] }>('/api/admin/users').then(({ data }) => {
-      if (data?.users) setUsers(data.users);
+    request<SafeUser[]>('/api/admin/users').then(({ data }) => {
+      setUsers(data ?? []);
       setUsersLoading(false);
     });
   }, [isAdmin, request]);
