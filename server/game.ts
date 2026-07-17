@@ -42,22 +42,33 @@ function createEmptyBoard(size: number): Cell[][] {
   return board;
 }
 
-function isValidBoard(board: Cell[][], size: number): boolean {
+function isValidBoard(board: Cell[][], size: number, userId?: string): boolean {
   if (!Array.isArray(board) || board.length !== size) return false;
-  const taskIds = new Set(game.tasks.map((t) => t.id));
   for (let r = 0; r < size; r++) {
     const row = board[r];
     if (!Array.isArray(row) || row.length !== size) return false;
     for (let c = 0; c < size; c++) {
       const cell = row[c];
-      if (cell.taskId !== null && !taskIds.has(cell.taskId)) return false;
+      if (cell.taskId === null) continue;
+      const task = game.tasks.find((t) => t.id === cell.taskId);
+      if (!task) return false;
+      if (task.isPrivate && (!userId || !task.assignedTo?.includes(userId))) return false;
     }
   }
   return true;
 }
 
-export function addTask(text: string): BingoGame {
-  game.tasks.push({ id: createId(), text: text.trim(), createdAt: new Date().toISOString() });
+export function addTask(
+  text: string,
+  { isPrivate = false, assignedTo = [] }: { isPrivate?: boolean; assignedTo?: string[] } = {},
+): BingoGame {
+  game.tasks.push({
+    id: createId(),
+    text: text.trim(),
+    createdAt: new Date().toISOString(),
+    isPrivate,
+    assignedTo,
+  });
   persist();
   return game;
 }
@@ -82,10 +93,11 @@ export function removeTask(taskId: string): BingoGame {
   return game;
 }
 
-export function joinPlayer(name: string): { game: BingoGame; playerId: string } {
+export function joinPlayer(name: string, userId?: string): { game: BingoGame; playerId: string } {
   const id = createId();
   const player: Player = {
     id,
+    userId,
     name: name.trim(),
     status: 'lobby',
     board: createEmptyBoard(game.gridSize),
@@ -145,7 +157,10 @@ export function startGame(): BingoGame {
     throw new Error('Alle Spieler müssen ihr Board einlocken.');
   }
   const invalidBoard = onlinePlayers.find(
-    (p) => !p.board || !isValidBoard(p.board, game.gridSize) || p.board.some((row) => row.some((cell) => !cell.taskId))
+    (p) =>
+      !p.board ||
+      !isValidBoard(p.board, game.gridSize, p.userId) ||
+      p.board.some((row) => row.some((cell) => !cell.taskId))
   );
   if (invalidBoard) {
     throw new Error('Nicht alle Boards sind vollständig ausgefüllt.');
@@ -163,7 +178,7 @@ export function updateBoard(playerId: string, board: Cell[][]): BingoGame {
   if (!player) throw new Error('Spieler nicht gefunden.');
   if (game.status !== 'setup') throw new Error('Board kann nur vor Spielstart bearbeitet werden.');
   if (player.locked) throw new Error('Board ist gesperrt. Entsperre es, um Änderungen vorzunehmen.');
-  if (!isValidBoard(board, game.gridSize)) throw new Error('Ungültiges Board.');
+  if (!isValidBoard(board, game.gridSize, player.userId)) throw new Error('Ungültiges Board.');
   player.board = board;
   persist();
   return game;
@@ -173,7 +188,7 @@ export function lockBoard(playerId: string): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
   if (!player) throw new Error('Spieler nicht gefunden.');
   if (game.status !== 'setup') throw new Error('Board kann nur vor Spielstart eingelockt werden.');
-  if (!player.board || !isValidBoard(player.board, game.gridSize)) {
+  if (!player.board || !isValidBoard(player.board, game.gridSize, player.userId)) {
     throw new Error('Board ist ungültig.');
   }
   if (player.board.some((row) => row.some((cell) => !cell.taskId))) {

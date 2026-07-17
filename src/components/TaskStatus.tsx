@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import type { BingoGame } from '../../shared/types';
+import { useEffect, useState } from 'react';
+import type { BingoGame, SafeUser } from '../../shared/types';
 import type { Socket } from '../types';
+import { useApi } from '../hooks/useApi';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Toggle } from './Toggle';
 
 interface TaskStatusProps {
   game: BingoGame;
@@ -9,19 +11,30 @@ interface TaskStatusProps {
 }
 
 export function TaskStatus({ game, socket }: TaskStatusProps) {
+  const { request } = useApi();
   const [pendingTask, setPendingTask] = useState<{ id: string; action: 'confirm' | 'unconfirm' } | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [users, setUsers] = useState<SafeUser[]>([]);
   const taskMap = new Map(game.tasks.map((t) => [t.id, t]));
 
-  const taskStatus = game.tasks.map((task) => {
-    const confirmedCell = game.players
-      .flatMap((p) => p.board ?? [])
-      .flat()
-      .find((cell) => cell.taskId === task.id && cell.confirmedBy);
-    return {
-      task,
-      confirmedBy: confirmedCell?.confirmedBy || null,
-    };
-  });
+  useEffect(() => {
+    request<{ users: SafeUser[] }>('/api/admin/users').then(({ data }) => {
+      if (data?.users) setUsers(data.users);
+    });
+  }, [request]);
+
+  const taskStatus = game.tasks
+    .filter((task) => showHidden || !task.isPrivate)
+    .map((task) => {
+      const confirmedCell = game.players
+        .flatMap((p) => p.board ?? [])
+        .flat()
+        .find((cell) => cell.taskId === task.id && cell.confirmedBy);
+      return {
+        task,
+        confirmedBy: confirmedCell?.confirmedBy || null,
+      };
+    });
 
   const handleClick = (taskId: string, confirmedBy: string | null) => {
     if (game.status !== 'playing' || !socket) return;
@@ -36,6 +49,11 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
       socket.emit('unconfirmTask', pendingTask.id);
     }
     setPendingTask(null);
+  };
+
+  const assignedNames = (userIds?: string[]) => {
+    if (!userIds || userIds.length === 0) return '';
+    return userIds.map((id) => users.find((u) => u.id === id)?.displayName || id).join(', ');
   };
 
   const pendingTaskData = pendingTask ? taskMap.get(pendingTask.id) : null;
@@ -53,13 +71,28 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
               confirmedBy ? 'bg-[var(--accent-dim)]' : 'bg-slate-900/50'
             }`}
           >
-            <span className={confirmedBy ? 'text-[var(--accent)]' : 'text-[var(--text-h)]'}>{task.text}</span>
+            <span className={confirmedBy ? 'text-[var(--accent)]' : 'text-[var(--text-h)]'}>
+              {task.text}
+              {task.isPrivate && (
+                <span className="ml-2 text-xs text-slate-400" title={`Privat – ${assignedNames(task.assignedTo)}`}>
+                  🔒 {assignedNames(task.assignedTo)}
+                </span>
+              )}
+            </span>
             <span className={`text-sm font-semibold ${confirmedBy ? 'text-[var(--accent)]' : 'text-slate-500'}`}>
               {confirmedBy ? `✓ ${confirmedBy}` : 'Offen'}
             </span>
           </li>
         ))}
       </ul>
+
+      <div className="mt-4">
+        <Toggle
+          checked={showHidden}
+          onChange={setShowHidden}
+          label="Versteckte Aufgaben anzeigen"
+        />
+      </div>
 
       {pendingTaskData && pendingTask && (
         <ConfirmDialog

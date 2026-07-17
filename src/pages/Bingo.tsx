@@ -96,6 +96,7 @@ export function Bingo({ token, user }: BingoProps) {
               socket={socket}
               isSetup={isSetup}
               listClassName="max-h-96"
+              currentUser={user}
             />
           </div>
         )}
