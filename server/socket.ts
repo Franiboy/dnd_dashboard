@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io';
-import type { ClientToServerEvents, ServerToClientEvents } from '../shared/types.js';
+import type { ClientToServerEvents, ServerToClientEvents, User } from '../shared/types.js';
 import { getToken, verifyToken } from './auth.js';
 import {
   addTask,
@@ -22,6 +22,24 @@ import { findUserById } from './users.js';
 export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvents>, requirePreviewAccess = false) {
   const socketPlayerMap = new Map<string, string>();
 
+  function getGameForUser(user: User) {
+    const current = getGame();
+    if (user.isAdmin) return current;
+    return { ...current, tasks: current.tasks.filter((t) => !t.isPrivate || t.assignedTo?.includes(user.id)) };
+  }
+
+  function broadcastState() {
+    const current = getGame();
+    for (const socket of io.sockets.sockets.values()) {
+      const socketUser = (socket as any).user as User | undefined;
+      if (!socketUser) continue;
+      socket.emit(
+        'state',
+        socketUser.isAdmin ? current : { ...current, tasks: current.tasks.filter((t) => !t.isPrivate || t.assignedTo?.includes(socketUser.id)) },
+      );
+    }
+  }
+
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token || getToken(socket.handshake as any);
     if (!token) return next(new Error('Unauthorized'));
@@ -37,8 +55,8 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
   });
 
   io.on('connection', (socket) => {
-    const user = (socket as any).user;
-    socket.emit('state', getGame());
+    const user = (socket as any).user as User;
+    socket.emit('state', getGameForUser(user));
 
     socket.on('join', () => {
       const displayName = user?.displayName;
@@ -49,29 +67,38 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       if (existing) {
         socketPlayerMap.set(socket.id, existing.id);
         socket.emit('joined', existing.id);
-        const updatedGame = setPlayerOnline(existing.id, true);
-        return io.emit('state', updatedGame);
+        setPlayerOnline(existing.id, true);
+        broadcastState();
+        return;
       }
 
-      const { game: nextGame, playerId } = joinPlayer(displayName);
+      const { playerId } = joinPlayer(displayName, user.id);
       socketPlayerMap.set(socket.id, playerId);
       socket.emit('joined', playerId);
-      io.emit('state', nextGame);
+      broadcastState();
     });
 
-    socket.on('addTask', (text) => {
-      if (!text.trim()) return socket.emit('error', 'Text fehlt.');
-      io.emit('state', addTask(text));
+    socket.on('addTask', (payload) => {
+      const raw = payload as any;
+      const text = typeof raw === 'string' ? raw : raw?.text;
+      const isPrivate = typeof raw === 'string' ? false : !!raw?.isPrivate;
+      const assignedTo = Array.isArray(raw?.assignedTo) ? raw.assignedTo : [];
+      if (!text?.trim()) return socket.emit('error', 'Text fehlt.');
+      if (isPrivate && assignedTo.length === 0) return socket.emit('error', 'Private Aufgaben müssen mindestens einer Person zugewiesen werden.');
+      addTask(text, { isPrivate, assignedTo });
+      broadcastState();
     });
 
     socket.on('removeTask', (taskId) => {
-      io.emit('state', removeTask(taskId));
+      removeTask(taskId);
+      broadcastState();
     });
 
     socket.on('setGridSize', (gridSize) => {
       if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können die Feldgröße ändern.');
       try {
-        io.emit('state', setGridSize(gridSize));
+        setGridSize(gridSize);
+        broadcastState();
       } catch (e: any) {
         socket.emit('error', e.message);
       }
@@ -80,7 +107,8 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
     socket.on('startGame', () => {
       if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel starten.');
       try {
-        io.emit('state', startGame());
+        startGame();
+        broadcastState();
       } catch (e: any) {
         socket.emit('error', e.message);
       }
@@ -90,7 +118,8 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const playerId = socketPlayerMap.get(socket.id);
       if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
       try {
-        io.emit('state', updateBoard(playerId, board));
+        updateBoard(playerId, board);
+        broadcastState();
       } catch (e: any) {
         socket.emit('error', e.message);
       }
@@ -100,7 +129,8 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const playerId = socketPlayerMap.get(socket.id);
       if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
       try {
-        io.emit('state', lockBoard(playerId));
+        lockBoard(playerId);
+        broadcastState();
       } catch (e: any) {
         socket.emit('error', e.message);
       }
@@ -110,7 +140,8 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const playerId = socketPlayerMap.get(socket.id);
       if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
       try {
-        io.emit('state', unlockBoard(playerId));
+        unlockBoard(playerId);
+        broadcastState();
       } catch (e: any) {
         socket.emit('error', e.message);
       }
@@ -120,13 +151,13 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const playerId = socketPlayerMap.get(socket.id);
       if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
       const beforeBingo = new Set(getGame().players.filter((p) => p.status === 'bingo').map((p) => p.id));
-      const game = confirmTask(playerId, taskId);
-      game.players.forEach((p) => {
+      confirmTask(playerId, taskId);
+      getGame().players.forEach((p) => {
         if (p.status === 'bingo' && !beforeBingo.has(p.id)) {
           io.emit('bingo', p.name);
         }
       });
-      io.emit('state', game);
+      broadcastState();
     });
 
     socket.on('confirmTaskFor', ({ playerId, taskId }) => {
@@ -134,31 +165,34 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const current = getGame();
       const source = sourceId ? current.players.find((p) => p.id === sourceId) : undefined;
       const beforeBingo = new Set(current.players.filter((p) => p.status === 'bingo').map((p) => p.id));
-      const nextGame = confirmTaskFor(playerId, taskId, source?.name || 'Unbekannt');
-      nextGame.players.forEach((p) => {
+      confirmTaskFor(playerId, taskId, source?.name || 'Unbekannt');
+      getGame().players.forEach((p) => {
         if (p.status === 'bingo' && !beforeBingo.has(p.id)) {
           io.emit('bingo', p.name);
         }
       });
-      io.emit('state', nextGame);
+      broadcastState();
     });
 
     socket.on('unconfirmTask', (taskId) => {
       const playerId = socketPlayerMap.get(socket.id);
       if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
-      io.emit('state', unconfirmTask(taskId));
+      unconfirmTask(taskId);
+      broadcastState();
     });
 
     socket.on('resetGame', () => {
       if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel zurücksetzen.');
-      io.emit('state', finishAndResetGame());
+      finishAndResetGame();
+      broadcastState();
     });
 
     socket.on('disconnect', () => {
       const playerId = socketPlayerMap.get(socket.id);
       socketPlayerMap.delete(socket.id);
       if (playerId) {
-        io.emit('state', setPlayerOnline(playerId, false));
+        setPlayerOnline(playerId, false);
+        broadcastState();
       }
     });
   });

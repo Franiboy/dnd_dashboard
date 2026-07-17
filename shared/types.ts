@@ -2,6 +2,8 @@ export interface Task {
   id: string;
   text: string;
   createdAt: string;
+  isPrivate?: boolean;
+  assignedTo?: string[];
 }
 
 export interface Cell {
@@ -11,6 +13,7 @@ export interface Cell {
 
 export interface Player {
   id: string;
+  userId?: string;
   name: string;
   status: 'lobby' | 'playing' | 'bingo';
   board: Cell[][] | null;
@@ -101,7 +104,7 @@ export interface VersionInfo {
 
 export interface ClientToServerEvents {
   join: () => void;
-  addTask: (text: string) => void;
+  addTask: (payload: { text: string; isPrivate?: boolean; assignedTo?: string[] }) => void;
   removeTask: (taskId: string) => void;
   setGridSize: (gridSize: number) => void;
   startGame: () => void;
