@@ -1,6 +1,9 @@
-import { useState } from 'react';
-import type { BingoGame } from '../../shared/types';
+import { useEffect, useState } from 'react';
+import type { BingoGame, SafeUser } from '../../shared/types';
 import type { Socket } from '../types';
+import { useApi } from '../hooks/useApi';
+import { Toggle } from './Toggle';
+import { UserCheckboxList } from './UserCheckboxList';
 
 interface TaskPoolProps {
   game: BingoGame;
@@ -8,39 +11,90 @@ interface TaskPoolProps {
   isSetup: boolean;
   className?: string;
   listClassName?: string;
+  currentUser?: SafeUser | null;
 }
 
-export function TaskPool({ game, socket, isSetup, className, listClassName }: TaskPoolProps) {
+export function TaskPool({ game, socket, isSetup, className, listClassName, currentUser }: TaskPoolProps) {
+  const { request } = useApi();
   const [text, setText] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [assignedTo, setAssignedTo] = useState<string[]>([]);
+  const [users, setUsers] = useState<SafeUser[]>([]);
+  const isAdmin = !!currentUser?.isAdmin;
+  const ownerId = currentUser?.id;
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    request<{ users: SafeUser[] }>('/api/admin/users').then(({ data }) => {
+      if (data?.users) setUsers(data.users);
+    });
+  }, [isAdmin, request]);
 
   const add = () => {
     if (!text.trim() || !socket) return;
-    socket.emit('addTask', text.trim());
+    if (isPrivate && (!ownerId || assignedTo.length === 0)) return;
+    socket.emit('addTask', {
+      text: text.trim(),
+      isPrivate,
+      assignedTo: isPrivate ? assignedTo : [],
+    });
     setText('');
+    setIsPrivate(false);
+    setAssignedTo([]);
   };
 
   const remove = (id: string) => {
     socket?.emit('removeTask', id);
   };
 
+  const assignedNames = (userIds?: string[]) => {
+    if (!userIds || userIds.length === 0) return '';
+    return userIds.map((id) => users.find((u) => u.id === id)?.displayName || id).join(', ');
+  };
+
   return (
     <div className={`bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 ${className || ''}`}>
       <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Aufgaben-Pool</h2>
       {isSetup && (
-        <div className="flex gap-2 mb-4">
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && add()}
-            placeholder="Neue Aufgabe..."
-            className="flex-1 px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-          />
-          <button
-            onClick={add}
-            className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
-          >
-            Hinzufügen
-          </button>
+        <div className="flex flex-col gap-3 mb-4">
+          <div className="flex gap-2">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && add()}
+              placeholder="Neue Aufgabe..."
+              className="flex-1 px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            />
+            <button
+              onClick={add}
+              disabled={!text.trim() || (isPrivate && assignedTo.length === 0)}
+              className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
+            >
+              Hinzufügen
+            </button>
+          </div>
+          {isAdmin && (
+            <div className="flex flex-col gap-2 p-3 rounded bg-slate-900/30 border border-[var(--border)]">
+              <Toggle
+                checked={isPrivate}
+                onChange={(checked) => {
+                  setIsPrivate(checked);
+                  setAssignedTo(checked && ownerId ? [ownerId] : []);
+                }}
+                label="Private Aufgabe"
+              />
+              {isPrivate && ownerId && (
+                <UserCheckboxList
+                  users={users}
+                  selected={assignedTo}
+                  onChange={setAssignedTo}
+                  disabledIds={[ownerId]}
+                  title="Zugewiesen an (mehrere möglich):"
+                  emptyMessage="Keine Benutzer geladen."
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
       <ul className={`space-y-2 overflow-auto ${listClassName || 'max-h-64'}`}>
@@ -57,12 +111,16 @@ export function TaskPool({ game, socket, isSetup, className, listClassName }: Ta
               isSetup ? 'cursor-grab active:cursor-grabbing' : ''
             }`}
           >
-            <span className="text-[var(--text-h)]">{task.text}</span>
+            <span className="text-[var(--text-h)]">
+              {task.text}
+              {task.isPrivate && (
+                <span className="ml-2 text-xs text-slate-400" title={`Privat – ${assignedNames(task.assignedTo)}`}>
+                  🔒 {assignedNames(task.assignedTo)}
+                </span>
+              )}
+            </span>
             {isSetup && (
-              <button
-                onClick={() => remove(task.id)}
-                className="text-[var(--danger)] hover:text-red-300 text-sm"
-              >
+              <button onClick={() => remove(task.id)} className="text-[var(--danger)] hover:text-red-300 text-sm">
                 Entfernen
               </button>
             )}

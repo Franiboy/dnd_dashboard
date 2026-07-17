@@ -41,6 +41,11 @@ export function BingoGrid({ game, socket, playerId }: BingoGridProps) {
 
     if (payload?.type === 'task' && payload.taskId) {
       const taskId = payload.taskId;
+      const task = taskMap.get(taskId);
+      if (task?.isPrivate && (!player?.userId || !task.assignedTo?.includes(player.userId))) {
+        setDraggedCell(null);
+        return;
+      }
       // Remove the task from any other cell to avoid duplicates within the board
       for (let i = 0; i < newBoard.length; i++) {
         for (let j = 0; j < newBoard[i].length; j++) {

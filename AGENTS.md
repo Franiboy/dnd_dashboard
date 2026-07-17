@@ -127,6 +127,8 @@ DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
 ## Bingo-Spielablauf
 
 1. **Setup-Phase:** Admins fügen Aufgaben hinzu und wählen die Feldgröße (3–5).
+   Private Aufgaben können mehreren Spielern zugewiesen werden; sie sind für
+   andere Spieler und für Admins ohne den „Show Hidden“-Schalter nicht sichtbar.
 2. **Beitreten:** Spieler betreten über `join` mit ihrem Discord-Anzeigenamen.
 3. **Brett füllen:** Jeder Spieler zieht Aufgaben aus dem Pool auf sein Brett.
 4. **Einlocken:** Sobald das Brett vollständig ist, sperrt der Spieler es.
@@ -151,7 +153,8 @@ DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
 **Client → Server (`ClientToServerEvents`):**
 
 - `join` – Spiel beitreten
-- `addTask` / `removeTask` – Aufgaben verwalten
+- `addTask` – Aufgabe hinzufügen (`{ text, isPrivate?, assignedTo?: string[] }`)
+- `removeTask` – Aufgabe entfernen
 - `setGridSize` – Feldgröße ändern (Admin, nur Setup)
 - `startGame` – Spiel starten (Admin, nur Setup)
 - `updateBoard` / `lockBoard` / `unlockBoard` – Brett bearbeiten
