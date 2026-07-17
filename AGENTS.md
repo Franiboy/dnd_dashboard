@@ -1,7 +1,7 @@
 # AGENTS.md – D&D Dashboard
 
 Diese Datei beschreibt das Projekt, wichtige Konventionen und Arbeitsregeln für
-Assistenten/Entwickler. **Letzte Aktualisierung:** 2026-07-14.
+Assistenten/Entwickler. **Letzte Aktualisierung:** 2026-07-17.
 
 ## Projektübersicht
 
@@ -11,7 +11,7 @@ passwortgeschützten Bingo-Modus.
 - **Frontend:** React, Vite, TypeScript, Tailwind CSS
 - **Backend:** Node.js, Express, SQLite (better-sqlite3), Socket.io
 - **Auth:** JWT (Cookie + Auth-Header), bcrypt, Discord OAuth2
-- **Echtzeit:** Socket.io
+- **Echtzeit:** Socket.io (Bingo), SSE (Admin-Benutzerliste, Feature-Requests)
 - **Module-System:** ESM (`"type": "module"` in `package.json`)
 
 ## Wichtige Befehle
@@ -46,8 +46,9 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - `server/repositories/games.ts` – SQLite-Spielstand-Speicherung (JSON in `games`-Tabelle)
 - `server/game.ts` – Bingo-Spiel-Logik, Persistenz, Bingo-Prüfung
 - `server/routes/auth.ts` – Auth-/Login-/State-API-Routen
-- `server/routes/admin.ts` – Admin-API-Routen
-- `server/socket.ts` – Socket.io-Event-Handler
+- `server/routes/admin.ts` – Admin-API-Routen inkl. SSE-Stream für Benutzer-Updates
+- `server/routes/ai.ts` – KI-/Feature-Request-API-Routen inkl. SSE-Stream für Feature-Request-Updates
+- `server/socket.ts` – Socket.io-Event-Handler für das Bingo
 - `server/version.ts` – Liest die aktuelle Git-Commit-Nummer aus
 - `shared/types.ts` – Gemeinsame TypeScript-Typen für Frontend und Backend
 - `src/App.tsx` – React-App-Einstieg mit Router
@@ -157,6 +158,40 @@ DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
 - `confirmTask` / `unconfirmTask` – Aufgaben bestätigen/zurücksetzen
 - `confirmTaskFor` – Aufgabe für anderen Spieler bestätigen (z. B. Admin)
 - `resetGame` – Spiel beenden und zurücksetzen (Admin)
+
+## Server-Sent Events (SSE)
+
+Neben Socket.io für das Bingo werden einige Zustands-Updates über **Server-Sent Events** ausgeliefert. Das Muster ist überall gleich:
+
+1. Der Client öffnet einen `EventSource`-Stream zu einem `GET /api/.../events`-Endpunkt.
+2. Der Server hält die `Response` in einem `Set<Response>` (`sseClients`).
+3. Mutierende Endpunkte (`POST`, `DELETE`, …) ändern den Zustand und rufen eine `notify...()`-Funktion auf, die den aktuellen Zustand an alle offenen Streams pusht.
+4. Der Client empfängt den Zustand über `addEventListener('<event>', ...)` und aktualisiert sein UI. Verbindungsabbrüche werden vom Browser automatisch wiederverbunden.
+
+### Bestehende SSE-Endpunkte
+
+- `GET /api/admin/users/events` (Admin)
+  - Event-Name: `users`
+  - Payload: `SafeUser[]`
+  - Initialer Push und Updates nach Freigabe, Sperre, Admin-/Preview-Rechten oder Löschen.
+  - Implementiert in `server/routes/admin.ts`
+  - Client: `src/pages/Admin.tsx`
+
+- `GET /api/ai/feature-requests/events` (Admin oder Preview-User, nur wenn AI aktiviert)
+  - Event-Name: `requests`
+  - Payload: `{ requests: FeatureRequest[] }`
+  - Initialer Push und Updates bei Änderungen an Feature-Requests.
+  - Implementiert in `server/routes/ai.ts`
+  - Client: `src/components/FeatureRequests.tsx`
+
+### Konventionen für neue SSE-Streams
+
+- Endpunkt: `GET /api/<bereich>/events`, mit `authMiddleware` und ggf. `requireAdmin` / `requirePreviewAccess` schützen.
+- Header setzen: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`.
+- Initialen Zustand sofort schreiben.
+- `req.on('close', ...)` abonnieren, um die `Response` aus `sseClients` zu entfernen.
+- Der Client verwendet `new EventSource('/api/<bereich>/events', { withCredentials: true })`, damit der `httpOnly`-JWT-Cookie mitgesendet wird.
+- Befehle/Änderungen vom Client laufen weiterhin über separate `fetch`/`POST`-Aufrufe, nicht über den SSE-Stream.
 
 ## Bekannte Edge Cases
 
