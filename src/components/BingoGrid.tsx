@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { BingoGame, Cell } from '../../shared/types';
 import type { Socket } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -15,6 +15,23 @@ export function BingoGrid({ game, socket, playerId, className }: BingoGridProps)
   const board = player?.board;
   const [draggedCell, setDraggedCell] = useState<{ r: number; c: number } | null>(null);
   const [pendingTask, setPendingTask] = useState<{ id: string; action: 'confirm' | 'unconfirm' } | null>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [squareSize, setSquareSize] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = gridContainerRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setSquareSize(Math.min(rect.width, rect.height));
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const taskMap = new Map(game.tasks.map((t) => [t.id, t]));
   const isDrafting = game.status === 'setup';
@@ -107,56 +124,75 @@ export function BingoGrid({ game, socket, playerId, className }: BingoGridProps)
   return (
     <div className={`flex flex-col ${className || ''}`}>
       <div
-        className="grid gap-2 mx-auto flex-1 min-h-0 overflow-auto content-start items-start"
-        style={{
-          gridTemplateColumns: `repeat(${board.length}, minmax(0, 1fr))`,
-        }}
+        ref={gridContainerRef}
+        className="flex-1 min-h-0 flex items-center justify-center overflow-hidden"
       >
-        {board.map((row, r) =>
-          row.map((cell, c) => {
-            const task = cell.taskId ? taskMap.get(cell.taskId) : null;
-            const isDragging = draggedCell?.r === r && draggedCell?.c === c;
-            const isEmpty = !cell.taskId;
-            return (
-              <div
-                key={`${r}-${c}`}
-                draggable={canEdit && !isEmpty}
-                onDragStart={(e) => {
-                  if (!canEdit || isEmpty) return;
-                  e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'cell', r, c }));
-                  setDraggedCell({ r, c });
-                }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => handleDrop(e, r, c)}
-                onDragEnd={() => setDraggedCell(null)}
-                onClick={() => openTaskAction(cell.taskId, !!cell.confirmedBy)}
-                title={task?.text || (canEdit && isEmpty ? 'Leeres Feld' : '')}
-                className={`
-                  relative p-3 aspect-square min-h-0 overflow-hidden rounded-xl border flex flex-col items-center justify-center text-center gap-2
-                  transition select-none break-words
-                  ${cell.confirmedBy ? 'bg-[var(--accent-dim)] border-[var(--accent)]' : 'bg-slate-900 border-[var(--border)]'}
-                  ${canEdit ? 'cursor-move' : 'cursor-default'}
-                  ${isDragging ? 'opacity-50' : 'opacity-100'}
-                `}
-              >
-                {task ? (
-                  <span className={`text-sm leading-tight ${cell.confirmedBy ? 'text-[var(--accent)]' : 'text-[var(--text-h)]'}`}>
-                    {task.text}
-                  </span>
-                ) : (
-                  <span className="text-slate-600 text-sm">{canEdit ? '+' : '?'}</span>
-                )}
-                {cell.confirmedBy && (
-                  <span className="text-xs text-[var(--accent)] mt-1 font-semibold">
-                    ✓ {cell.confirmedBy}
-                  </span>
-                )}
-              </div>
-            );
-          })
-        )}
+        <div
+          style={{ width: squareSize, height: squareSize }}
+          className="max-w-full max-h-full"
+        >
+          <div
+            className="grid gap-2 w-full h-full"
+            style={{
+              gridTemplateColumns: `repeat(${board.length}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${board.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {board.map((row, r) =>
+              row.map((cell, c) => {
+                const task = cell.taskId ? taskMap.get(cell.taskId) : null;
+                const isDragging = draggedCell?.r === r && draggedCell?.c === c;
+                const isEmpty = !cell.taskId;
+                return (
+                  <div
+                    key={`${r}-${c}`}
+                    draggable={canEdit && !isEmpty}
+                    onDragStart={(e) => {
+                      if (!canEdit || isEmpty) return;
+                      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'cell', r, c }));
+                      setDraggedCell({ r, c });
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => handleDrop(e, r, c)}
+                    onDragEnd={() => setDraggedCell(null)}
+                    onClick={() => openTaskAction(cell.taskId, !!cell.confirmedBy)}
+                    title={task?.text || (canEdit && isEmpty ? 'Leeres Feld' : '')}
+                    className={`
+                      relative p-2 min-h-0 min-w-0 overflow-hidden rounded-xl border flex flex-col items-center justify-center text-center gap-1
+                      transition select-none break-words
+                      ${cell.confirmedBy ? 'bg-[var(--accent-dim)] border-[var(--accent)]' : 'bg-slate-900 border-[var(--border)]'}
+                      ${canEdit ? 'cursor-move' : 'cursor-default'}
+                      ${isDragging ? 'opacity-50' : 'opacity-100'}
+                    `}
+                  >
+                    {task ? (
+                      <span
+                        className={`text-sm leading-tight ${cell.confirmedBy ? 'text-[var(--accent)]' : 'text-[var(--text-h)]'}`}
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {task.text}
+                      </span>
+                    ) : (
+                      <span className="text-slate-600 text-sm">{canEdit ? '+' : '?'}</span>
+                    )}
+                    {cell.confirmedBy && (
+                      <span className="text-xs text-[var(--accent)] mt-1 font-semibold truncate max-w-full">
+                        ✓ {cell.confirmedBy}
+                      </span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
-      <p className="text-center text-slate-500 text-sm mt-4">
+      <p className="text-center text-slate-500 text-sm mt-4 shrink-0">
         {canEdit
           ? 'Ziehe Aufgaben per Drag & Drop auf die Felder. Ziehe Felder, um sie zu tauschen.'
           : game.status === 'setup' && player?.locked
