@@ -35,6 +35,7 @@ export function toSafeUser(user: User): SafeUser {
     isAdmin: user.isAdmin,
     isApproved: user.isApproved,
     canAccessPreviews: user.canAccessPreviews,
+    isInitialAdmin: isInitialAdmin(user),
   };
 }
 

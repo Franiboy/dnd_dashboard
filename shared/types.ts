@@ -63,6 +63,7 @@ export interface SafeUser {
   isAdmin: boolean;
   isApproved: boolean;
   canAccessPreviews: boolean;
+  isInitialAdmin: boolean;
 }
 
 export type LogType = 'system' | 'prompt' | 'ai' | 'build' | 'diff' | 'error' | 'summary';
