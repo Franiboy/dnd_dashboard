@@ -108,7 +108,7 @@ export interface ClientToServerEvents {
   join: () => void;
   addTask: (payload: { text: string; isPrivate?: boolean; assignedTo?: string[] }) => void;
   removeTask: (taskId: string) => void;
-  updateTaskAssignments: (payload: { taskId: string; assignedTo: string[] }) => void;
+  updateTask: (payload: { taskId: string; text?: string; isPrivate?: boolean; assignedTo?: string[] }) => void;
   setGridSize: (gridSize: number) => void;
   startGame: () => void;
   updateBoard: (board: Cell[][]) => void;
