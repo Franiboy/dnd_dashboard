@@ -8,9 +8,10 @@ interface BingoGridProps {
   socket: Socket | null;
   playerId: string | null;
   className?: string;
+  onDragStateChange?: (dragging: boolean) => void;
 }
 
-export function BingoGrid({ game, socket, playerId, className }: BingoGridProps) {
+export function BingoGrid({ game, socket, playerId, className, onDragStateChange }: BingoGridProps) {
   const player = game.players.find((p) => p.id === playerId);
   const board = player?.board;
   const [draggedCell, setDraggedCell] = useState<{ r: number; c: number } | null>(null);
@@ -21,7 +22,8 @@ export function BingoGrid({ game, socket, playerId, className }: BingoGridProps)
 
   useEffect(() => {
     if (!draggedCell) setIsOverDelete(false);
-  }, [draggedCell]);
+    onDragStateChange?.(!!draggedCell);
+  }, [draggedCell, onDragStateChange]);
 
   useLayoutEffect(() => {
     const el = gridContainerRef.current;
@@ -218,19 +220,21 @@ export function BingoGrid({ game, socket, playerId, className }: BingoGridProps)
           }}
           onDragLeave={() => setIsOverDelete(false)}
           onDrop={handleDeleteDrop}
-          className={`mt-4 shrink-0 h-14 rounded-xl border-2 border-dashed flex items-center justify-center text-sm transition select-none
+          className={`mt-auto shrink-0 h-14 rounded-xl border-2 border-dashed flex items-center justify-center text-sm transition select-none
             ${isOverDelete ? 'bg-red-900/40 border-red-500 text-red-500' : 'bg-red-900/20 border-[var(--danger)] text-[var(--danger)]'}`}
         >
           Aufgabe hierher ziehen zum Entfernen
         </div>
       )}
-      <p className="text-center text-slate-500 text-sm mt-4 shrink-0">
-        {canEdit
-          ? 'Ziehe Aufgaben auf die Felder, Felder zum Tauschen, oder auf das Löschfeld zum Entfernen.'
-          : game.status === 'setup' && player?.locked
-          ? 'Board ist eingelockt. Warte auf Spielstart.'
-          : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
-      </p>
+      {!draggedCell && (
+        <p className="text-center text-slate-500 text-sm mt-4 shrink-0">
+          {canEdit
+            ? 'Ziehe Aufgaben auf die Felder, Felder zum Tauschen, oder auf das Löschfeld zum Entfernen.'
+            : game.status === 'setup' && player?.locked
+            ? 'Board ist eingelockt. Warte auf Spielstart.'
+            : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
+        </p>
+      )}
 
       {pendingTaskData && pendingTask && (
         <ConfirmDialog
