@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { SafeUser } from '../../shared/types';
+import { Avatar } from './Avatar';
 
 interface UserCheckboxListProps {
   users: SafeUser[];
@@ -40,8 +41,6 @@ export function UserCheckboxList({
     }
   };
 
-  const initials = (name: string) => name.charAt(0).toUpperCase();
-
   return (
     <div className={`bg-slate-900/30 border border-[var(--border)] rounded-lg p-3 ${className || ''}`}>
       {title && <p className="text-xs text-slate-400 mb-2">{title}</p>}
@@ -79,13 +78,7 @@ export function UserCheckboxList({
                 >
                   {isSelected && <span className="text-slate-900 text-xs font-bold">✓</span>}
                 </span>
-                {u.avatarUrl ? (
-                  <img src={u.avatarUrl} alt="" className="w-6 h-6 rounded-full bg-slate-800" />
-                ) : (
-                  <span className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[10px] text-slate-400">
-                    {initials(u.displayName)}
-                  </span>
-                )}
+                <Avatar src={u.avatarUrl} name={u.displayName} className="w-6 h-6" />
                 <span className="flex-1 text-[var(--text-h)]">{u.displayName}</span>
                 {isDisabled && <span className="text-xs text-slate-500">(Du)</span>}
               </button>
@@ -103,6 +96,7 @@ export function UserCheckboxList({
                 key={id}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-medium"
               >
+                <Avatar src={user.avatarUrl} name={user.displayName} className="w-4 h-4" />
                 {user.displayName}
                 {!disabledSet.has(id) && (
                   <button
