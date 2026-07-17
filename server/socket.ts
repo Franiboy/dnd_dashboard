@@ -65,6 +65,10 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const currentGame = getGame();
       const existing = currentGame.players.find((p) => p.name === displayName);
       if (existing) {
+        if (user.id && !existing.userId) existing.userId = user.id;
+        if (user.avatarUrl !== undefined && existing.avatarUrl !== user.avatarUrl) {
+          existing.avatarUrl = user.avatarUrl;
+        }
         socketPlayerMap.set(socket.id, existing.id);
         socket.emit('joined', existing.id);
         setPlayerOnline(existing.id, true);

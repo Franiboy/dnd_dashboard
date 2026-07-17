@@ -27,9 +27,19 @@ const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'http://localhost:5173/auth/discord';
 
-function getDiscordAvatarUrl(discordId: string, avatar: string | null): string | null {
-  if (!avatar) return null;
-  return `https://cdn.discordapp.com/avatars/${discordId}/${avatar}.png`;
+function getDiscordAvatarUrl(
+  discordId: string,
+  avatar: string | null,
+  discriminator: string | null = null,
+): string {
+  if (avatar) {
+    return `https://cdn.discordapp.com/avatars/${discordId}/${avatar}.png`;
+  }
+  const index =
+    discriminator && discriminator !== '0'
+      ? parseInt(discriminator, 10) % 5
+      : Number(BigInt(discordId) % 6n);
+  return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
 }
 
 const router = Router();
@@ -87,7 +97,7 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     const discordUser = await userResponse.json();
 
     let user = findUserByDiscordId(discordUser.id);
-    const avatarUrl = getDiscordAvatarUrl(discordUser.id, discordUser.avatar);
+    const avatarUrl = getDiscordAvatarUrl(discordUser.id, discordUser.avatar, discordUser.discriminator);
     const displayName = discordUser.global_name || discordUser.username;
     const username = discordUser.username;
 
