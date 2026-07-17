@@ -73,6 +73,17 @@ export function addTask(
   return game;
 }
 
+export function updateTaskAssignments(taskId: string, assignedTo: string[]): BingoGame {
+  const task = game.tasks.find((t) => t.id === taskId);
+  if (!task) throw new Error('Aufgabe nicht gefunden.');
+  if (assignedTo.length === 0) throw new Error('Private Aufgaben müssen mindestens einer Person zugewiesen werden.');
+  if (game.status !== 'setup') throw new Error('Aufgaben können nur vor Spielstart bearbeitet werden.');
+  task.isPrivate = true;
+  task.assignedTo = assignedTo;
+  persist();
+  return game;
+}
+
 export function removeTask(taskId: string): BingoGame {
   game.tasks = game.tasks.filter((t) => t.id !== taskId);
   game.players.forEach((p) => {
