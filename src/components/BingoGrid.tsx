@@ -14,6 +14,7 @@ export function BingoGrid({ game, socket, playerId, className }: BingoGridProps)
   const player = game.players.find((p) => p.id === playerId);
   const board = player?.board;
   const [draggedCell, setDraggedCell] = useState<{ r: number; c: number } | null>(null);
+  const [isOverDelete, setIsOverDelete] = useState(false);
   const [pendingTask, setPendingTask] = useState<{ id: string; action: 'confirm' | 'unconfirm' } | null>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [squareSize, setSquareSize] = useState(0);
@@ -84,6 +85,19 @@ export function BingoGrid({ game, socket, playerId, className }: BingoGridProps)
       newBoard[r][c] = temp;
     }
 
+    updateBoard(newBoard);
+    setDraggedCell(null);
+  };
+
+  const handleDeleteDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsOverDelete(false);
+    if (!canEdit || !board || !draggedCell) {
+      setDraggedCell(null);
+      return;
+    }
+    const newBoard = board.map((row) => row.map((cell) => ({ ...cell })));
+    newBoard[draggedCell.r][draggedCell.c] = { ...newBoard[draggedCell.r][draggedCell.c], taskId: null };
     updateBoard(newBoard);
     setDraggedCell(null);
   };
@@ -192,9 +206,23 @@ export function BingoGrid({ game, socket, playerId, className }: BingoGridProps)
           </div>
         </div>
       </div>
+      {canEdit && (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsOverDelete(true);
+          }}
+          onDragLeave={() => setIsOverDelete(false)}
+          onDrop={handleDeleteDrop}
+          className={`mt-4 shrink-0 h-14 rounded-xl border-2 border-dashed flex items-center justify-center text-sm transition select-none
+            ${isOverDelete ? 'border-[var(--danger)] text-[var(--danger)] bg-red-900/20' : 'border-slate-600 text-slate-500 bg-slate-900/30'}`}
+        >
+          Aufgabe hierher ziehen zum Entfernen
+        </div>
+      )}
       <p className="text-center text-slate-500 text-sm mt-4 shrink-0">
         {canEdit
-          ? 'Ziehe Aufgaben per Drag & Drop auf die Felder. Ziehe Felder, um sie zu tauschen.'
+          ? 'Ziehe Aufgaben auf die Felder, Felder zum Tauschen, oder auf das Löschfeld zum Entfernen.'
           : game.status === 'setup' && player?.locked
           ? 'Board ist eingelockt. Warte auf Spielstart.'
           : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
