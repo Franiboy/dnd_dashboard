@@ -24,7 +24,7 @@ const app = express();
 app.set('trust proxy', 1);
 const http = createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
-  cors: { origin: '*' },
+  cors: { origin: true, credentials: true },
 });
 
 const PORT = process.env.PORT || 3001;
