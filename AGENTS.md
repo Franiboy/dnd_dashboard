@@ -58,7 +58,8 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - `src/hooks/useError.ts` – Zugriff auf den globalen Fehler-Context
 - `src/contexts/ErrorContext.ts` / `ErrorProvider.tsx` – Globaler Fehler-/Toast-Context
 - `src/pages/` – Seiten: Login, AdminLogin, AuthCallback, Home, Bingo, Admin, FeatureRequest
-- `src/components/` – Wiederverwendbare Komponenten (Layout, ProtectedRoute, ConfirmDialog, Toast)
+- `src/components/` – Wiederverwendbare Komponenten (Layout, ProtectedRoute, ConfirmDialog, Toast,
+  HeaderAction, BackButton, Modal, Loading, Avatar, GridPanel, BingoDashboard)
 - `src/types.ts` – Frontend-Typ-Alias für den Socket.io-Client
 - `vite.config.ts` – Vite-Konfiguration mit Proxy und Tailwind
 

@@ -53,10 +53,9 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
   };
 
   return (
-    <div className={`bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 ${className || ''}`}>
-      <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Aufgaben-Pool</h2>
+    <div className={`h-full flex flex-col ${className || ''}`}>
       {isSetup && (
-        <div className="flex flex-col gap-3 mb-4">
+        <div className="flex flex-col gap-3 mb-2">
           <div className="flex gap-2">
             <input
               value={text}
@@ -101,7 +100,7 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
           )}
         </div>
       )}
-      <ul className={`space-y-2 overflow-auto ${listClassName || 'max-h-64'}`}>
+      <ul className={`flex-1 min-h-0 space-y-2 overflow-auto ${listClassName || ''}`}>
         {game.tasks.length === 0 && <li className="text-slate-500 italic">Noch keine Aufgaben.</li>}
         {game.tasks.map((task) => (
           <li

@@ -1,12 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BackButton } from '../components/BackButton';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Loading } from '../components/Loading';
-import type { Player, SafeUser } from '../../shared/types';
+import { BingoDashboard } from '../components/BingoDashboard';
+import type { SafeUser } from '../../shared/types';
 import { useSocket } from '../hooks/useSocket';
-import { TaskPool } from '../components/TaskPool';
-import { PlayerList } from '../components/PlayerList';
-import { BingoGrid } from '../components/BingoGrid';
-import { TaskStatus } from '../components/TaskStatus';
 
 function playBingoSound() {
   try {
@@ -34,6 +32,8 @@ interface BingoProps {
 
 export function Bingo({ token, user }: BingoProps) {
   const { game, socket, playerId, bingo } = useSocket(token, user);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [layoutResetKey, setLayoutResetKey] = useState(0);
 
   useEffect(() => {
     if (bingo) playBingoSound();
@@ -47,73 +47,34 @@ export function Bingo({ token, user }: BingoProps) {
     );
   }
 
-  const start = () => {
-    socket?.emit('startGame');
-  };
-
-  const reset = () => {
-    if (confirm('Neue Runde starten? Aufgaben bleiben erhalten, die Bretter werden zurückgesetzt.')) {
-      socket?.emit('resetGame');
-    }
-  };
-
   const isSetup = game.status === 'setup';
   const isPlaying = game.status === 'playing';
-  const player = game.players.find((p) => p.id === playerId) as Player | undefined;
+  const player = game.players.find((p) => p.id === playerId);
   const needsJoin = !player;
   const isAdmin = user?.isAdmin || false;
+  const storageKey = user ? `bingo-layout-${user.id}` : '';
 
-  const lockButton = player && isSetup && (
-    <button
-      onClick={() => socket?.emit(player.locked ? 'unlockBoard' : 'lockBoard')}
-      className={`px-6 py-2 rounded font-semibold transition ${
-        player.locked
-          ? 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
-          : 'bg-[var(--accent)] text-slate-900 hover:bg-green-400'
-      }`}
-    >
-      {player.locked ? 'Entsperren' : 'Einlocken'}
-    </button>
-  );
-
-  const boardPanel = player && (
-    <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 mb-8">
-      <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Dein Bingo-Feld</h2>
-      <div className="flex flex-col lg:flex-row gap-6">
-        <div className="flex-1">
-          <BingoGrid game={game} socket={socket} playerId={playerId} />
-          {isSetup && <div className="flex justify-center mt-4">{lockButton}</div>}
-          {isPlaying && isAdmin && (
-            <div className="flex flex-wrap gap-4 mt-6">
-              <button
-                onClick={reset}
-                className="px-6 py-2 rounded bg-[var(--danger)] text-white font-semibold hover:bg-red-400 transition"
-              >
-                Beenden & neue Runde
-              </button>
-            </div>
-          )}
-        </div>
-        {isSetup && (
-          <div className="lg:w-1/3">
-            <TaskPool
-              game={game}
-              socket={socket}
-              isSetup={isSetup}
-              listClassName="max-h-96"
-              currentUser={user}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  const handleResetLayout = () => {
+    if (storageKey) localStorage.removeItem(storageKey);
+    setResetDialogOpen(false);
+    setLayoutResetKey((k) => k + 1);
+  };
 
   return (
-    <div className="min-h-full p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="h-full flex flex-col p-6">
+      <div className="flex items-center justify-between mb-4">
         <h1 className="text-3xl font-bold text-[var(--text-h)]">Bingo</h1>
-        <BackButton />
+        <div className="flex items-center gap-3">
+          {user && (
+            <button
+              onClick={() => setResetDialogOpen(true)}
+              className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
+            >
+              UI zurücksetzen
+            </button>
+          )}
+          <BackButton />
+        </div>
       </div>
 
       {bingo && (
@@ -125,57 +86,35 @@ export function Bingo({ token, user }: BingoProps) {
       )}
 
       {needsJoin ? (
-        <div className="flex items-center justify-center p-6">
+        <div className="flex items-center justify-center flex-1 min-h-0">
           <Loading text="Trete dem Spiel bei..." />
         </div>
       ) : (
-        <>
-          <div className="mb-8">
-            <PlayerList game={game} playerId={playerId} />
-          </div>
+        <BingoDashboard
+          key={layoutResetKey}
+          game={game}
+          socket={socket}
+          playerId={playerId}
+          player={player}
+          user={user!}
+          isAdmin={isAdmin}
+          isSetup={isSetup}
+          isPlaying={isPlaying}
+        />
+      )}
 
-          {(isSetup || isPlaying) && boardPanel}
-
-          {isPlaying && isAdmin && <TaskStatus game={game} socket={socket} />}
-
-          {isSetup && (
-            <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 mb-8">
-              {isAdmin ? (
-                <>
-                  <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Spiel starten</h2>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <label className="text-slate-400">Feldgröße:</label>
-                    <select
-                      value={game.gridSize}
-                      onChange={(e) => socket?.emit('setGridSize', parseInt(e.target.value))}
-                      className="px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)]"
-                    >
-                      <option value={3}>3x3</option>
-                      <option value={4}>4x4</option>
-                      <option value={5}>5x5</option>
-                    </select>
-                    <button
-                      onClick={start}
-                      className="px-6 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
-                    >
-                      Spiel starten
-                    </button>
-                    <span className="text-slate-500 text-sm">
-                      {game.tasks.length} Aufgaben, mindestens {game.gridSize * game.gridSize} nötig.
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h2 className="text-xl font-semibold text-[var(--text-h)] mb-2">Warte auf Spielstart</h2>
-                  <p className="text-slate-400">Vergiss nicht, dein Board einzulocken, sobald du fertig bist.</p>
-                </>
-              )}
-            </div>
-          )}
-
-
-        </>
+      {resetDialogOpen && (
+        <ConfirmDialog
+          title="UI-Layout zurücksetzen?"
+          confirmLabel="Zurücksetzen"
+          variant="danger"
+          onConfirm={handleResetLayout}
+          onCancel={() => setResetDialogOpen(false)}
+        >
+          <p>
+            Das gespeicherte Bingo-Dashboard-Layout wird auf das Standard-Layout zurückgesetzt.
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );

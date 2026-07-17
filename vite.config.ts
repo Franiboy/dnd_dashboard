@@ -3,8 +3,12 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(mode === 'production' ? 'production' : 'development'),
+    'process.env.DRAGGABLE_DEBUG': 'undefined',
+  },
   server: {
     proxy: {
       '/api': {
@@ -18,4 +22,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

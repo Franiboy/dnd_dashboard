@@ -59,12 +59,13 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
   const pendingTaskData = pendingTask ? taskMap.get(pendingTask.id) : null;
 
   return (
-    <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 mb-8">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-[var(--text-h)]">Aufgaben-Status</h2>
-        {usersLoading && <Loading text="Benutzer laden..." size="sm" />}
-      </div>
-      <ul className="space-y-2">
+    <div className="h-full flex flex-col">
+      {usersLoading && (
+        <div className="mb-2">
+          <Loading text="Benutzer laden..." size="sm" />
+        </div>
+      )}
+      <ul className="flex-1 min-h-0 space-y-2 overflow-auto">
         {taskStatus.length === 0 && <li className="text-slate-500 italic">Noch keine Aufgaben.</li>}
         {taskStatus.map(({ task, confirmedBy }) => (
           <li
@@ -90,7 +91,7 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
         ))}
       </ul>
 
-      <div className="mt-4">
+      <div className="mt-2">
         <Toggle
           checked={showHidden}
           onChange={setShowHidden}

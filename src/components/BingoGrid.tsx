@@ -7,9 +7,10 @@ interface BingoGridProps {
   game: BingoGame;
   socket: Socket | null;
   playerId: string | null;
+  className?: string;
 }
 
-export function BingoGrid({ game, socket, playerId }: BingoGridProps) {
+export function BingoGrid({ game, socket, playerId, className }: BingoGridProps) {
   const player = game.players.find((p) => p.id === playerId);
   const board = player?.board;
   const [draggedCell, setDraggedCell] = useState<{ r: number; c: number } | null>(null);
@@ -104,9 +105,9 @@ export function BingoGrid({ game, socket, playerId }: BingoGridProps) {
   const pendingTaskData = pendingTask ? taskMap.get(pendingTask.id) : null;
 
   return (
-    <div className="overflow-auto">
+    <div className={`flex flex-col ${className || ''}`}>
       <div
-        className="grid gap-2 mx-auto"
+        className="grid gap-2 mx-auto flex-1 min-h-0 overflow-auto content-start items-start"
         style={{
           gridTemplateColumns: `repeat(${board.length}, minmax(0, 1fr))`,
         }}
@@ -131,8 +132,8 @@ export function BingoGrid({ game, socket, playerId }: BingoGridProps) {
                 onClick={() => openTaskAction(cell.taskId, !!cell.confirmedBy)}
                 title={task?.text || (canEdit && isEmpty ? 'Leeres Feld' : '')}
                 className={`
-                  relative p-3 min-h-[110px] rounded-xl border flex flex-col items-center justify-center text-center gap-2
-                  transition select-none
+                  relative p-3 aspect-square min-h-0 overflow-hidden rounded-xl border flex flex-col items-center justify-center text-center gap-2
+                  transition select-none break-words
                   ${cell.confirmedBy ? 'bg-[var(--accent-dim)] border-[var(--accent)]' : 'bg-slate-900 border-[var(--border)]'}
                   ${canEdit ? 'cursor-move' : 'cursor-default'}
                   ${isDragging ? 'opacity-50' : 'opacity-100'}
