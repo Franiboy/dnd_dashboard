@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { BingoGame, SafeUser } from '../../shared/types';
 import type { Socket } from '../types';
 import { useApi } from '../hooks/useApi';
+import { Loading } from './Loading';
 import { Toggle } from './Toggle';
 import { UserCheckboxList } from './UserCheckboxList';
 import { UserInline } from './UserInline';
@@ -21,13 +22,16 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
   const [isPrivate, setIsPrivate] = useState(false);
   const [assignedTo, setAssignedTo] = useState<string[]>([]);
   const [users, setUsers] = useState<SafeUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
   const isAdmin = !!currentUser?.isAdmin;
   const ownerId = currentUser?.id;
 
   useEffect(() => {
     if (!isAdmin) return;
+    setUsersLoading(true);
     request<{ users: SafeUser[] }>('/api/admin/users').then(({ data }) => {
       if (data?.users) setUsers(data.users);
+      setUsersLoading(false);
     });
   }, [isAdmin, request]);
 
@@ -80,14 +84,18 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
                 label="Private Aufgabe"
               />
               {isPrivate && ownerId && (
-                <UserCheckboxList
-                  users={users}
-                  selected={assignedTo}
-                  onChange={setAssignedTo}
-                  disabledIds={[ownerId]}
-                  title="Zugewiesen an (mehrere möglich):"
-                  emptyMessage="Keine Benutzer geladen."
-                />
+                usersLoading ? (
+                  <Loading text="Benutzer laden..." size="sm" />
+                ) : (
+                  <UserCheckboxList
+                    users={users}
+                    selected={assignedTo}
+                    onChange={setAssignedTo}
+                    disabledIds={[ownerId]}
+                    title="Zugewiesen an (mehrere möglich):"
+                    emptyMessage="Keine Benutzer geladen."
+                  />
+                )
               )}
             </div>
           )}

@@ -1,6 +1,6 @@
-import { Link } from 'react-router-dom';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { FeatureRequests } from './FeatureRequests';
+import { HeaderAction } from './HeaderAction';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 
 interface PreviewItem {
@@ -46,6 +46,25 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
       .catch(() => {
         // Previews are optional; failing silently is fine
       });
+
+    const source = new EventSource('/api/ai/feature-requests/events', { withCredentials: true });
+    source.addEventListener('requests', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data && Array.isArray(data.requests)) {
+          const list = (data.requests as { id: number; title: string; previewUrl: string | null; status: string }[])
+            .filter((r) => r.status === 'preview_ready' && r.previewUrl)
+            .map((r) => ({ id: r.id, title: r.title, previewUrl: r.previewUrl }));
+          setPreviews(list);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    });
+    source.addEventListener('error', () => {
+      // Connection errors are handled silently; the browser reconnects automatically
+    });
+    return () => source.close();
   }, [user.isAdmin, user.canAccessPreviews]);
 
   useEffect(() => {
@@ -95,9 +114,32 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
     (user.isAdmin || user.canAccessPreviews) &&
     (isMain ? otherPreviews.length > 0 : otherPreviews.length > 0 || !!version?.mainServerUrl);
 
+  const adminIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+    </svg>
+  );
+
+  const featureIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+      <path d="M2 17l10 5 10-5" />
+      <path d="M2 12l10 5 10-5" />
+    </svg>
+  );
+
+  const logoutIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  );
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <header className="grid grid-cols-3 items-center px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)] overflow-hidden">
+      <header className="relative z-10 grid grid-cols-3 items-center px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
         <div className="flex items-center gap-3 font-semibold text-[var(--text-h)]">
           {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
           <span>{user.displayName}</span>
@@ -110,15 +152,6 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
                 <span className="text-2xl font-black font-mono text-[var(--text-h)] drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] transition-transform duration-200 hover:scale-110">
                   v.{version.mainVersion}
                 </span>
-                {user.isAdmin && isMain && version.aiEnabled && (
-                  <Link
-                    to="/feature-request"
-                    className="inline-flex items-center px-2 py-1 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-semibold shadow hover:brightness-110 transition"
-                    title="Feature Request"
-                  >
-                    Feature Request
-                  </Link>
-                )}
                 {showPreviewsDropdown && (
                   <div className="relative" ref={dropdownRef}>
                     <button
@@ -183,23 +216,20 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
           )}
         </div>
 
-        <div className="flex justify-end gap-4">
-          {user.isAdmin && (
-            <Link to="/admin" className="text-slate-400 hover:text-[var(--text-h)]">
-              Admin
-            </Link>
+        <div className="flex justify-end flex-wrap gap-2">
+          {isMain && version?.aiEnabled && (
+            <HeaderAction to="/feature-request" icon={featureIcon} variant="accent" title="Feature Request">
+              Feature Request
+            </HeaderAction>
           )}
-          <button
-            onClick={onLogout}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--danger)]/20 text-[var(--danger)] hover:bg-[var(--danger)]/30 transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
+          {user.isAdmin && (
+            <HeaderAction to="/admin" icon={adminIcon} title="Administration">
+              Admin
+            </HeaderAction>
+          )}
+          <HeaderAction onClick={onLogout} icon={logoutIcon} variant="danger">
             Logout
-          </button>
+          </HeaderAction>
         </div>
       </header>
       <div className="flex flex-1 min-h-0 overflow-hidden">

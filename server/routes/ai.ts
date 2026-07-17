@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { authMiddleware, requireAdmin, requirePreviewAccess, type AuthRequest } from '../auth.js';
+import { authMiddleware, requireAdmin, requireApproved, requirePreviewAccess, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
 import { startFeatureRequest, continueFeatureRequest, mergeAndPushFeatureRequest, mergeFromMainForFeatureRequest, getFeatureRequestBehind, cleanupFeatureRequest } from '../ai/worker.js';
 import { onFeatureRequestsUpdated, notifyFeatureRequestsUpdated } from '../ai/events.js';
@@ -31,8 +31,8 @@ function buildFeatureRequestsResponse() {
   }));
 }
 
-// Only admins can submit a feature request
-router.post('/feature-requests', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+// Approved users can submit a feature request
+router.post('/feature-requests', authMiddleware, requireApproved, (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
     return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
   }
@@ -70,16 +70,16 @@ router.get('/previews', authMiddleware, requirePreviewAccess, (req: AuthRequest,
   res.json({ previews });
 });
 
-// Admin or preview users: list all feature requests
-router.get('/feature-requests', authMiddleware, requirePreviewAccess, (req: AuthRequest, res) => {
+// Approved users: list all feature requests
+router.get('/feature-requests', authMiddleware, requireApproved, (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
     return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
   }
   res.json({ requests: buildFeatureRequestsResponse() });
 });
 
-// Admin or preview users: SSE for feature request updates
-router.get('/feature-requests/events', authMiddleware, requirePreviewAccess, (req: AuthRequest, res) => {
+// Approved users: SSE for feature request updates
+router.get('/feature-requests/events', authMiddleware, requireApproved, (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
     return res.status(503).json({ error: 'AI Feature ist nicht konfiguriert' });
   }
