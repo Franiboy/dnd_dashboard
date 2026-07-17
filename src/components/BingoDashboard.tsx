@@ -38,7 +38,6 @@ function getDefaultItem(key: string): LayoutItem {
 export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, isSetup, isPlaying }: BingoDashboardProps) {
   const storageKey = `bingo-layout-${user.id}`;
   const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
-  const [isDraggingCell, setIsDraggingCell] = useState(false);
 
   const visibleKeys = useMemo(() => {
     const keys: string[] = ['players', 'board'];
@@ -100,6 +99,20 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
     </button>
   );
 
+  const boardControls = (
+    <>
+      {lockButton}
+      {isPlaying && isAdmin && (
+        <button
+          onClick={reset}
+          className="px-6 py-2 rounded bg-[var(--danger)] text-white font-semibold hover:bg-red-400 transition"
+        >
+          Beenden & neue Runde
+        </button>
+      )}
+    </>
+  );
+
   const items = [
     <div key="players">
       <GridPanel title="Spieler">
@@ -114,21 +127,8 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
             socket={socket}
             playerId={playerId}
             className="flex-1 min-h-0"
-            onDragStateChange={setIsDraggingCell}
+            controls={boardControls}
           />
-          {!isDraggingCell && (
-            <div className="flex justify-center flex-wrap gap-3 mt-3 shrink-0">
-              {lockButton}
-              {isPlaying && isAdmin && (
-                <button
-                  onClick={reset}
-                  className="px-6 py-2 rounded bg-[var(--danger)] text-white font-semibold hover:bg-red-400 transition"
-                >
-                  Beenden & neue Runde
-                </button>
-              )}
-            </div>
-          )}
         </div>
       </GridPanel>
     </div>,
