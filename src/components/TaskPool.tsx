@@ -25,6 +25,7 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
   const [usersLoading, setUsersLoading] = useState(false);
   const isAdmin = !!currentUser?.isAdmin;
   const ownerId = currentUser?.id;
+  const assignableUsers = users.filter((u) => !u.isAdmin);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -78,21 +79,21 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
                 checked={isPrivate}
                 onChange={(checked) => {
                   setIsPrivate(checked);
-                  setAssignedTo(checked && ownerId ? [ownerId] : []);
+                  setAssignedTo(checked && ownerId && !currentUser?.isAdmin ? [ownerId] : []);
                 }}
                 label="Private Aufgabe"
               />
-              {isPrivate && ownerId && (
+              {isPrivate && (
                 usersLoading ? (
                   <Loading text="Benutzer laden..." size="sm" />
                 ) : (
                   <UserCheckboxList
-                    users={users}
+                    users={assignableUsers}
                     selected={assignedTo}
                     onChange={setAssignedTo}
-                    disabledIds={[ownerId]}
+                    disabledIds={[]}
                     title="Zugewiesen an (mehrere möglich):"
-                    emptyMessage="Keine Benutzer geladen."
+                    emptyMessage="Keine Benutzer verfügbar."
                   />
                 )
               )}
