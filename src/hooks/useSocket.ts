@@ -3,7 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { useError } from './useError';
 import type { BingoGame, ClientToServerEvents, ServerToClientEvents, SafeUser } from '../../shared/types';
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || '';
 
 export function useSocket(token: string | null, user: SafeUser | null) {
   const { showError } = useError();
