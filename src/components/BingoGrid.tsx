@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { BingoGame, Cell } from '../../shared/types';
 import type { Socket } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -18,6 +18,10 @@ export function BingoGrid({ game, socket, playerId, className }: BingoGridProps)
   const [pendingTask, setPendingTask] = useState<{ id: string; action: 'confirm' | 'unconfirm' } | null>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [squareSize, setSquareSize] = useState(0);
+
+  useEffect(() => {
+    if (!draggedCell) setIsOverDelete(false);
+  }, [draggedCell]);
 
   useLayoutEffect(() => {
     const el = gridContainerRef.current;
@@ -206,7 +210,7 @@ export function BingoGrid({ game, socket, playerId, className }: BingoGridProps)
           </div>
         </div>
       </div>
-      {canEdit && (
+      {canEdit && draggedCell && (
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -215,7 +219,7 @@ export function BingoGrid({ game, socket, playerId, className }: BingoGridProps)
           onDragLeave={() => setIsOverDelete(false)}
           onDrop={handleDeleteDrop}
           className={`mt-4 shrink-0 h-14 rounded-xl border-2 border-dashed flex items-center justify-center text-sm transition select-none
-            ${isOverDelete ? 'border-[var(--danger)] text-[var(--danger)] bg-red-900/20' : 'border-slate-600 text-slate-500 bg-slate-900/30'}`}
+            ${isOverDelete ? 'bg-red-900/40 border-red-500 text-red-500' : 'bg-red-900/20 border-[var(--danger)] text-[var(--danger)]'}`}
         >
           Aufgabe hierher ziehen zum Entfernen
         </div>
