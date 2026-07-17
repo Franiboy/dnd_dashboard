@@ -46,11 +46,6 @@ app.use('/api', (req, res, next) => {
 runMigrations();
 ensureAdminUser();
 
-// Restart preview servers for feature requests that were preview_ready before a server restart
-recoverPreviewServers().catch((err) => {
-  console.error('Failed to recover preview servers:', err);
-});
-
 // In preview mode, all routes (API + static SPA) require an authenticated user
 // with admin or preview access. Login endpoints are not exposed on previews.
 if (PREVIEW_MODE) {
@@ -83,6 +78,12 @@ const stopBehindWatcher = startFeatureRequestBehindWatcher();
 
 http.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+
+  // Restart preview servers for feature requests that were preview_ready before a server restart.
+  // This runs after the server is listening so the main API is already reachable.
+  recoverPreviewServers().catch((err) => {
+    console.error('Failed to recover preview servers:', err);
+  });
 });
 
 let isShuttingDown = false;
