@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { BackButton } from '../components/BackButton';
+import { Loading } from '../components/Loading';
 import { PasswordInput } from '../components/PasswordInput';
 
 interface AdminLoginProps {
@@ -10,11 +12,14 @@ interface AdminLoginProps {
 export function AdminLogin({ onLogin, error }: AdminLoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     const ok = await onLogin(username.trim(), password);
+    setLoading(false);
     if (ok) navigate('/');
   };
 
@@ -42,16 +47,16 @@ export function AdminLogin({ onLogin, error }: AdminLoginProps) {
         {error && <p className="text-[var(--danger)] text-sm mb-4">{error}</p>}
         <button
           type="submit"
-          className="w-full py-3 rounded-lg bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
+          disabled={loading}
+          className="w-full py-3 rounded-lg bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
         >
-          Einloggen
+          {loading ? (
+            <Loading text="" size="sm" className="justify-center" />
+          ) : (
+            'Einloggen'
+          )}
         </button>
-        <Link
-          to="/"
-          className="block text-center mt-3 text-slate-400 hover:text-[var(--text-h)]"
-        >
-          Zurück
-        </Link>
+        <BackButton className="w-full justify-center mt-3" />
       </form>
     </div>
   );

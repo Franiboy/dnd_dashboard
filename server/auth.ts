@@ -132,6 +132,14 @@ export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction
   next();
 }
 
+export function requireApproved(req: AuthRequest, res: Response, next: NextFunction): void {
+  if (!req.user?.isApproved && !req.user?.isAdmin) {
+    res.status(403).json({ error: 'Forbidden: Account not approved' });
+    return;
+  }
+  next();
+}
+
 export function requirePreviewAccess(req: AuthRequest, res: Response, next: NextFunction): void {
   if (!req.user?.isAdmin && !req.user?.canAccessPreviews) {
     res.status(403).json({ error: 'Forbidden: Preview access required' });

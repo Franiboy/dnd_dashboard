@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Loading } from './Loading';
 import type { SafeUser } from '../../shared/types';
 
 interface PendingApprovalProps {
@@ -25,7 +26,7 @@ export function PendingApproval({ user, onCheckApproved, onLogout }: PendingAppr
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 shadow-xl text-center">
-        <div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <Loading size="lg" className="justify-center mb-4" />
         {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-16 h-16 rounded-full mx-auto mb-4" />}
         <h2 className="text-xl font-semibold text-[var(--text-h)] mb-2">Warte auf Freigabe</h2>
         <p className="text-slate-400 mb-4">{message}</p>

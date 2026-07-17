@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Loading } from '../components/Loading';
 
 interface LoginProps {
   onDiscordLogin: () => Promise<string | null>;
@@ -10,12 +11,16 @@ export function Login({ onDiscordLogin, error }: LoginProps) {
   const [localError, setLocalError] = useState<string | null>(null);
   const [clickCount, setClickCount] = useState(0);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleDiscord = async () => {
     setLocalError(null);
+    setLoading(true);
     const url = await onDiscordLogin();
     if (url) {
       window.location.href = url;
+    } else {
+      setLoading(false);
     }
   };
 
@@ -41,9 +46,14 @@ export function Login({ onDiscordLogin, error }: LoginProps) {
 
         <button
           onClick={handleDiscord}
-          className="w-full py-3 rounded-lg bg-[#5865F2] text-white font-semibold hover:bg-[#4752C4] transition mb-3"
+          disabled={loading}
+          className="w-full py-3 rounded-lg bg-[#5865F2] text-white font-semibold hover:bg-[#4752C4] transition mb-3 disabled:opacity-50"
         >
-          Mit Discord anmelden
+          {loading ? (
+            <Loading text="Weiterleitung..." size="sm" className="justify-center text-white" />
+          ) : (
+            'Mit Discord anmelden'
+          )}
         </button>
 
         {showAdmin && (

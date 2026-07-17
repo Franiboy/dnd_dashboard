@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { BackButton } from '../components/BackButton';
+import { Loading } from '../components/Loading';
 import type { Player, SafeUser } from '../../shared/types';
 import { useSocket } from '../hooks/useSocket';
 import { TaskPool } from '../components/TaskPool';
@@ -39,7 +40,11 @@ export function Bingo({ token, user }: BingoProps) {
   }, [bingo]);
 
   if (!game) {
-    return <div className="p-6 text-center text-slate-400">Lade...</div>;
+    return (
+      <div className="min-h-full flex items-center justify-center p-6">
+        <Loading size="lg" />
+      </div>
+    );
   }
 
   const start = () => {
@@ -108,7 +113,7 @@ export function Bingo({ token, user }: BingoProps) {
     <div className="min-h-full p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-[var(--text-h)]">Bingo</h1>
-        <Link to="/" className="text-slate-400 hover:text-[var(--text-h)]">← Zurück</Link>
+        <BackButton />
       </div>
 
       {bingo && (
@@ -120,7 +125,9 @@ export function Bingo({ token, user }: BingoProps) {
       )}
 
       {needsJoin ? (
-        <div className="text-center text-slate-400">Trete dem Spiel bei...</div>
+        <div className="flex items-center justify-center p-6">
+          <Loading text="Trete dem Spiel bei..." />
+        </div>
       ) : (
         <>
           <div className="mb-8">

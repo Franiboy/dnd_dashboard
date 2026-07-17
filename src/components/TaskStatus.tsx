@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { BingoGame, SafeUser } from '../../shared/types';
 import type { Socket } from '../types';
 import { useApi } from '../hooks/useApi';
+import { Loading } from './Loading';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Toggle } from './Toggle';
 import { UserInline } from './UserInline';
@@ -16,11 +17,14 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
   const [pendingTask, setPendingTask] = useState<{ id: string; action: 'confirm' | 'unconfirm' } | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [users, setUsers] = useState<SafeUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
   const taskMap = new Map(game.tasks.map((t) => [t.id, t]));
 
   useEffect(() => {
+    setUsersLoading(true);
     request<{ users: SafeUser[] }>('/api/admin/users').then(({ data }) => {
       if (data?.users) setUsers(data.users);
+      setUsersLoading(false);
     });
   }, [request]);
 
@@ -56,7 +60,10 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
 
   return (
     <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 mb-8">
-      <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Aufgaben-Status</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold text-[var(--text-h)]">Aufgaben-Status</h2>
+        {usersLoading && <Loading text="Benutzer laden..." size="sm" />}
+      </div>
       <ul className="space-y-2">
         {taskStatus.length === 0 && <li className="text-slate-500 italic">Noch keine Aufgaben.</li>}
         {taskStatus.map(({ task, confirmedBy }) => (

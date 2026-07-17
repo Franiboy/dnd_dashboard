@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
-import { FeatureRequests } from '../components/FeatureRequests';
+import { BackButton } from '../components/BackButton';
+import { Loading } from '../components/Loading';
 import type { SafeUser } from '../../shared/types';
 
 interface AdminProps {
@@ -13,7 +13,12 @@ export function Admin({ currentUser }: AdminProps) {
   const { request } = useApi();
   const { showError } = useError();
   const [users, setUsers] = useState<SafeUser[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<{ id: string; endpoint: string } | null>(null);
+
+  const isActionLoading = (id: string, endpoint: string) =>
+    actionLoading?.id === id && actionLoading?.endpoint === endpoint;
 
   useEffect(() => {
     const source = new EventSource('/api/admin/users/events', { withCredentials: true });
@@ -22,6 +27,7 @@ export function Admin({ currentUser }: AdminProps) {
         const data = JSON.parse(event.data);
         if (Array.isArray(data)) {
           setUsers(data);
+          setLoading(false);
           setError(null);
         }
       } catch {
@@ -39,21 +45,25 @@ export function Admin({ currentUser }: AdminProps) {
   }, [error, showError]);
 
   const action = async (id: string, endpoint: string, body?: object) => {
+    setActionLoading({ id, endpoint });
     const { error: actionError } = await request(`/api/admin/users/${id}${endpoint}`, {
       method: 'POST',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
       credentials: 'include',
     });
+    setActionLoading(null);
     if (actionError) setError(actionError);
   };
 
   const deleteU = async (id: string) => {
     if (!confirm('Wirklich löschen?')) return;
+    setActionLoading({ id, endpoint: '/delete' });
     const { error: deleteError } = await request(`/api/admin/users/${id}`, {
       method: 'DELETE',
       credentials: 'include',
     });
+    setActionLoading(null);
     if (deleteError) setError(deleteError);
   };
 
@@ -64,15 +74,16 @@ export function Admin({ currentUser }: AdminProps) {
     <div className="min-h-full p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-[var(--text-h)]">Administration</h1>
-        <Link to="/" className="text-slate-400 hover:text-[var(--text-h)]">← Zurück</Link>
-      </div>
-
-      <div className="mb-6">
-        <FeatureRequests currentUser={currentUser} />
+        <BackButton />
       </div>
 
       {currentUser.isAdmin && (
       <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 overflow-auto">
+        {loading ? (
+          <Loading text="Verbinde..." />
+        ) : users.length === 0 ? (
+          <p className="text-slate-400">Keine Benutzer vorhanden.</p>
+        ) : (
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-[var(--border)]">
@@ -108,38 +119,63 @@ export function Admin({ currentUser }: AdminProps) {
                       {!u.isApproved && (
                         <button
                           onClick={() => action(u.id, '/approve')}
-                          className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 text-xs font-semibold"
+                          disabled={isActionLoading(u.id, '/approve')}
+                          className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 text-xs font-semibold disabled:opacity-50"
                         >
-                          Freigeben
+                          {isActionLoading(u.id, '/approve') ? (
+                            <Loading text="" size="sm" />
+                          ) : (
+                            'Freigeben'
+                          )}
                         </button>
                       )}
                       {u.isApproved && (
                         <button
                           onClick={() => action(u.id, '/reject')}
-                          className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 text-xs font-semibold"
+                          disabled={isActionLoading(u.id, '/reject')}
+                          className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 text-xs font-semibold disabled:opacity-50"
                         >
-                          Sperren
+                          {isActionLoading(u.id, '/reject') ? (
+                            <Loading text="" size="sm" />
+                          ) : (
+                            'Sperren'
+                          )}
                         </button>
                       )}
                       <button
                         onClick={() => action(u.id, '/admin', { isAdmin: !u.isAdmin })}
-                        className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs"
+                        disabled={isActionLoading(u.id, '/admin')}
+                        className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
                       >
-                        {u.isAdmin ? 'Admin entfernen' : 'Zum Admin'}
+                        {isActionLoading(u.id, '/admin') ? (
+                          <Loading text="" size="sm" />
+                        ) : (
+                          u.isAdmin ? 'Admin entfernen' : 'Zum Admin'
+                        )}
                       </button>
                       {!u.isAdmin && (
                         <button
                           onClick={() => action(u.id, '/preview-access', { canAccessPreviews: !u.canAccessPreviews })}
-                          className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs"
+                          disabled={isActionLoading(u.id, '/preview-access')}
+                          className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
                         >
-                          {u.canAccessPreviews ? 'Preview sperren' : 'Preview erlauben'}
+                          {isActionLoading(u.id, '/preview-access') ? (
+                            <Loading text="" size="sm" />
+                          ) : (
+                            u.canAccessPreviews ? 'Preview sperren' : 'Preview erlauben'
+                          )}
                         </button>
                       )}
                       <button
                         onClick={() => deleteU(u.id)}
-                        className="px-3 py-1 rounded bg-[var(--danger)] text-white text-xs"
+                        disabled={isActionLoading(u.id, '/delete')}
+                        className="px-3 py-1 rounded bg-[var(--danger)] text-white text-xs disabled:opacity-50"
                       >
-                        Löschen
+                        {isActionLoading(u.id, '/delete') ? (
+                          <Loading text="" size="sm" />
+                        ) : (
+                          'Löschen'
+                        )}
                       </button>
                     </>
                   )}
@@ -151,6 +187,7 @@ export function Admin({ currentUser }: AdminProps) {
             ))}
           </tbody>
         </table>
+      )}
       </div>
       )}
     </div>
