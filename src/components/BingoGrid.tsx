@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { BingoGame, Cell } from '../../shared/types';
 import type { Socket } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -8,10 +8,10 @@ interface BingoGridProps {
   socket: Socket | null;
   playerId: string | null;
   className?: string;
-  onDragStateChange?: (dragging: boolean) => void;
+  controls?: ReactNode;
 }
 
-export function BingoGrid({ game, socket, playerId, className, onDragStateChange }: BingoGridProps) {
+export function BingoGrid({ game, socket, playerId, className, controls }: BingoGridProps) {
   const player = game.players.find((p) => p.id === playerId);
   const board = player?.board;
   const [draggedCell, setDraggedCell] = useState<{ r: number; c: number } | null>(null);
@@ -22,8 +22,7 @@ export function BingoGrid({ game, socket, playerId, className, onDragStateChange
 
   useEffect(() => {
     if (!draggedCell) setIsOverDelete(false);
-    onDragStateChange?.(!!draggedCell);
-  }, [draggedCell, onDragStateChange]);
+  }, [draggedCell]);
 
   useLayoutEffect(() => {
     const el = gridContainerRef.current;
@@ -212,29 +211,45 @@ export function BingoGrid({ game, socket, playerId, className, onDragStateChange
           </div>
         </div>
       </div>
-      {canEdit && draggedCell && (
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsOverDelete(true);
-          }}
-          onDragLeave={() => setIsOverDelete(false)}
-          onDrop={handleDeleteDrop}
-          className={`mt-auto shrink-0 h-14 rounded-xl border-2 border-dashed flex items-center justify-center text-sm transition select-none
-            ${isOverDelete ? 'bg-red-900/40 border-red-500 text-red-500' : 'bg-red-900/20 border-[var(--danger)] text-[var(--danger)]'}`}
-        >
-          Aufgabe hierher ziehen zum Entfernen
-        </div>
-      )}
-      {!draggedCell && (
-        <p className="text-center text-slate-500 text-sm mt-4 shrink-0">
-          {canEdit
-            ? 'Ziehe Aufgaben auf die Felder, Felder zum Tauschen, oder auf das Löschfeld zum Entfernen.'
-            : game.status === 'setup' && player?.locked
-            ? 'Board ist eingelockt. Warte auf Spielstart.'
-            : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
-        </p>
-      )}
+      <div className="shrink-0 h-28 flex flex-col justify-between mt-3">
+        {canEdit && draggedCell ? (
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsOverDelete(true);
+            }}
+            onDragLeave={() => setIsOverDelete(false)}
+            onDrop={handleDeleteDrop}
+            className={`h-full rounded-xl border-2 border-dashed flex items-center justify-center text-sm transition select-none
+              ${isOverDelete ? 'bg-red-900/40 border-red-500 text-red-500' : 'bg-red-900/20 border-[var(--danger)] text-[var(--danger)]'}`}
+          >
+            Aufgabe hierher ziehen zum Entfernen
+          </div>
+        ) : (
+          <>
+            <p
+              className="text-center text-slate-500 text-xs leading-tight px-2"
+              style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {canEdit
+                ? 'Ziehe Aufgaben auf die Felder, Felder zum Tauschen, oder hierher zum Entfernen.'
+                : game.status === 'setup' && player?.locked
+                ? 'Board ist eingelockt. Warte auf Spielstart.'
+                : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
+            </p>
+            {controls && (
+              <div className="flex flex-col items-center gap-2 shrink-0">
+                {controls}
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {pendingTaskData && pendingTask && (
         <ConfirmDialog
