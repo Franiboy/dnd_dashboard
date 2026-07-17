@@ -14,6 +14,7 @@ export interface Cell {
 export interface Player {
   id: string;
   userId?: string;
+  avatarUrl?: string | null;
   name: string;
   status: 'lobby' | 'playing' | 'bingo';
   board: Cell[][] | null;

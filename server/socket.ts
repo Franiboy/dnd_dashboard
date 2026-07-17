@@ -72,7 +72,7 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
         return;
       }
 
-      const { playerId } = joinPlayer(displayName, user.id);
+      const { playerId } = joinPlayer(displayName, user.id, user.avatarUrl);
       socketPlayerMap.set(socket.id, playerId);
       socket.emit('joined', playerId);
       broadcastState();

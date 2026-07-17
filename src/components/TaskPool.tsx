@@ -4,6 +4,7 @@ import type { Socket } from '../types';
 import { useApi } from '../hooks/useApi';
 import { Toggle } from './Toggle';
 import { UserCheckboxList } from './UserCheckboxList';
+import { UserInline } from './UserInline';
 
 interface TaskPoolProps {
   game: BingoGame;
@@ -45,11 +46,6 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
 
   const remove = (id: string) => {
     socket?.emit('removeTask', id);
-  };
-
-  const assignedNames = (userIds?: string[]) => {
-    if (!userIds || userIds.length === 0) return '';
-    return userIds.map((id) => users.find((u) => u.id === id)?.displayName || id).join(', ');
   };
 
   return (
@@ -114,8 +110,9 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
             <span className="text-[var(--text-h)]">
               {task.text}
               {task.isPrivate && (
-                <span className="ml-2 text-xs text-slate-400" title={`Privat – ${assignedNames(task.assignedTo)}`}>
-                  🔒 {assignedNames(task.assignedTo)}
+                <span className="ml-2 inline-flex items-center gap-1 text-xs text-slate-400">
+                  <span>🔒</span>
+                  <UserInline users={users} userIds={task.assignedTo} />
                 </span>
               )}
             </span>

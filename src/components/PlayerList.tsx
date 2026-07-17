@@ -1,4 +1,5 @@
 import type { BingoGame } from '../../shared/types';
+import { Avatar } from './Avatar';
 
 interface PlayerListProps {
   game: BingoGame;
@@ -19,7 +20,8 @@ export function PlayerList({ game, playerId }: PlayerListProps) {
               p.id === playerId ? 'border-[var(--accent)]' : 'border-[var(--border)]'
             }`}
           >
-            <span className="text-[var(--text-h)] font-medium">
+            <span className="flex items-center gap-2 text-[var(--text-h)] font-medium">
+              <Avatar src={p.avatarUrl} name={p.name} className="w-7 h-7" />
               {p.name} {p.id === playerId && '(Du)'}
             </span>
             <span className="flex items-center gap-2">
