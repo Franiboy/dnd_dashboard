@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
+import { Loading } from './components/Loading';
 import { useAuth } from './hooks/useAuth';
 import { useError } from './hooks/useError';
 import { Layout } from './components/Layout';
@@ -53,7 +54,11 @@ function App() {
   const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved } = useAuth();
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-slate-400">Lade...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loading size="lg" />
+      </div>
+    );
   }
 
   if (!user) {
@@ -86,13 +91,13 @@ function App() {
     <BrowserRouter>
       <Layout user={user} onLogout={logout}>
         <Routes>
-          <Route path="/admin" element={<ProtectedRoute user={user} adminOrPreview><Admin currentUser={user} /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute user={user} adminOnly><Admin currentUser={user} /></ProtectedRoute>} />
           {isInitialAdmin ? (
             <Route path="*" element={<Navigate to="/admin" />} />
           ) : (
             <>
               <Route path="/" element={<Home />} />
-              <Route path="/feature-request" element={<ProtectedRoute user={user} adminOnly><FeatureRequest /></ProtectedRoute>} />
+              <Route path="/feature-request" element={<ProtectedRoute user={user}><FeatureRequest currentUser={user} /></ProtectedRoute>} />
               <Route path="/bingo" element={<ProtectedRoute user={user}><Bingo token={token} user={user} /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/" />} />
             </>

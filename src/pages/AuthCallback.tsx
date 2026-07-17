@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Loading } from '../components/Loading';
 
 interface AuthCallbackProps {
   onCallback: (code: string) => Promise<{ ok: boolean; message?: string }>;
@@ -60,7 +61,7 @@ export function AuthCallback({ onCallback, onCheckApproved }: AuthCallbackProps)
       <div className="max-w-md w-full bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 shadow-xl text-center">
         {waiting ? (
           <>
-            <div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <Loading size="lg" className="justify-center mb-4" />
             <h2 className="text-xl font-semibold text-[var(--text-h)] mb-2">Warte auf Freigabe</h2>
             <p className="text-slate-400 mb-4">{status}</p>
             <p className="text-sm text-slate-500">
@@ -69,7 +70,7 @@ export function AuthCallback({ onCallback, onCheckApproved }: AuthCallbackProps)
           </>
         ) : (
           <>
-            <div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <Loading size="lg" className="justify-center mb-4" />
             <p className="text-slate-400">{status}</p>
           </>
         )}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Loading } from './Loading';
 import Convert from 'ansi-to-html';
 import type { FeatureRequest, LogEntry, SafeUser, VersionInfo } from '../../shared/types';
 
@@ -304,7 +305,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
           disabled={isLoading(req.id, 'continue') || !continuePrompts[req.id]?.trim()}
           className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-sm disabled:opacity-50"
         >
-          {isLoading(req.id, 'continue') ? 'Wird fortgesetzt...' : 'Fortsetzen'}
+          {isLoading(req.id, 'continue') ? <Loading text="" size="sm" /> : 'Fortsetzen'}
         </button>
       </div>
     );
@@ -322,7 +323,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
     }
 
     return (
-      <details className="mt-2" open>
+      <details className="mt-2">
         <summary className="text-xs text-slate-500 cursor-pointer">Terminal</summary>
         {body}
       </details>
@@ -330,7 +331,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
   }
 
   if (aiEnabled === null || loading) {
-    return <div className="text-slate-400">Lade KI-Feature-Requests...</div>;
+    return <Loading text="KI-Feature-Requests laden..." />;
   }
 
   if (!aiEnabled) {
@@ -378,7 +379,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
                   title={req.behind ? 'Bitte zuerst Main reinmergen' : undefined}
                   className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold text-sm disabled:opacity-50"
                 >
-                  {isLoading(req.id, 'merge') ? 'Wird akzeptiert...' : 'Akzeptieren'}
+                  {isLoading(req.id, 'merge') ? <Loading text="" size="sm" /> : 'Akzeptieren'}
                 </button>
               )}
               {!!req.behind && (req.status === 'preview_ready' || req.status === 'running') && (
@@ -388,7 +389,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
                   className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 font-semibold text-sm disabled:opacity-50"
                   title={`${req.behind} Commit(s) hinter main`}
                 >
-                  {req.status === 'running' ? 'Wird aktualisiert...' : `Feature updaten (${req.behind})`}
+                  {req.status === 'running' ? <Loading text="" size="sm" /> : `Feature updaten (${req.behind})`}
                 </button>
               )}
 
@@ -398,7 +399,7 @@ export function FeatureRequests({ currentUser, featureRequestId, compact }: Feat
                   disabled={isLoading(req.id, 'delete')}
                   className="px-3 py-1 rounded bg-[var(--danger)] text-white text-sm disabled:opacity-50"
                 >
-                  {isLoading(req.id, 'delete') ? 'Wird gelöscht...' : 'Löschen'}
+                  {isLoading(req.id, 'delete') ? <Loading text="" size="sm" /> : 'Löschen'}
                 </button>
               )}
             </div>

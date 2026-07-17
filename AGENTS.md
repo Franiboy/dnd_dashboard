@@ -57,7 +57,7 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - `src/hooks/useApi.ts` – `fetch`-Wrapper mit automatischer Fehler-Toast-Anzeige
 - `src/hooks/useError.ts` – Zugriff auf den globalen Fehler-Context
 - `src/contexts/ErrorContext.ts` / `ErrorProvider.tsx` – Globaler Fehler-/Toast-Context
-- `src/pages/` – Seiten: Login, AdminLogin, AuthCallback, Home, Bingo, Admin
+- `src/pages/` – Seiten: Login, AdminLogin, AuthCallback, Home, Bingo, Admin, FeatureRequest
 - `src/components/` – Wiederverwendbare Komponenten (Layout, ProtectedRoute, ConfirmDialog, Toast)
 - `src/types.ts` – Frontend-Typ-Alias für den Socket.io-Client
 - `vite.config.ts` – Vite-Konfiguration mit Proxy und Tailwind
@@ -123,6 +123,10 @@ DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
 - Promoted Admins können wie normale Spieler am Bingo teilnehmen.
 - Der Ursprungsadmin `admin` darf Bingo nicht als Spieler beitreten.
 - Admins können Spieler freigeben/sperren, Admin-Rechte vergeben/entziehen und Benutzer löschen.
+- `/admin` ist nur für Admins zugänglich und zeigt die Benutzerverwaltung.
+- `/feature-request` ist für alle freigegebenen Benutzer zugänglich. Admins und
+  Preview-Berechtigte können dort Requests akzeptieren, aktualisieren oder löschen.
+- `/bingo` ist für alle freigegebenen Benutzer zugänglich.
 
 ## Bingo-Spielablauf
 
