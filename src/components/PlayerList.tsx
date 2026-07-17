@@ -4,14 +4,14 @@ import { Avatar } from './Avatar';
 interface PlayerListProps {
   game: BingoGame;
   playerId: string | null;
+  className?: string;
 }
 
-export function PlayerList({ game, playerId }: PlayerListProps) {
+export function PlayerList({ game, playerId, className }: PlayerListProps) {
   const onlinePlayers = game.players.filter((p) => p.online);
   return (
-    <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5">
-      <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Spieler</h2>
-      <ul className="space-y-2">
+    <div className={`h-full flex flex-col ${className || ''}`}>
+      <ul className="flex-1 min-h-0 overflow-auto space-y-2">
         {onlinePlayers.length === 0 && <li className="text-slate-500 italic">Noch keine Spieler.</li>}
         {onlinePlayers.map((p) => (
           <li

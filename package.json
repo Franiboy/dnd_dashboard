@@ -30,6 +30,9 @@
     "jsonwebtoken": "^9.0.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-draggable": "^4.5.0",
+    "react-grid-layout": "^2.2.3",
+    "react-resizable": "^3.2.0",
     "react-router-dom": "^7.18.1",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3"
