@@ -191,6 +191,15 @@ function handleSpeakingStart(guild: Guild, userId: string): void {
       user.currentSegmentLength += samples;
     } catch (err) {
       console.error(`Opus decode error for ${user.displayName}:`, err);
+      // Replace the decoder in case its internal state is corrupted, so
+      // subsequent packets have a chance to decode successfully instead of
+      // repeating the same failure and eventually crashing the process.
+      try {
+        destroyOpusDecoder(user.decoder);
+      } catch {
+        // ignore
+      }
+      user.decoder = createOpusDecoder(CHANNELS);
     }
   });
 
