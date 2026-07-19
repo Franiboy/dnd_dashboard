@@ -69,10 +69,32 @@ export async function getVoiceChannels(): Promise<RecordingChannel[]> {
     // ignore fetch errors, use cache
   }
 
-  const channels = guild.channels.cache
-    .filter((channel) => channel.isVoiceBased())
-    .map((channel) => ({ id: channel.id, name: channel.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const voiceChannels = guild.channels.cache.filter((channel) => channel.isVoiceBased());
+  const channels: RecordingChannel[] = [];
+
+  for (const channel of voiceChannels.values()) {
+    const voiceStates = guild.voiceStates.cache.filter((state) => state.channelId === channel.id);
+    if (voiceStates.size === 0) continue;
+
+    const participants: string[] = [];
+    for (const state of voiceStates.values()) {
+      let member = state.member ?? guild.members.cache.get(state.id);
+      if (!member) {
+        try {
+          member = await guild.members.fetch(state.id);
+        } catch {
+          // member not fetchable, fallback below
+        }
+      }
+      const displayName = member?.displayName ?? member?.user.username ?? client.users.cache.get(state.id)?.username ?? state.id;
+      participants.push(displayName);
+    }
+
+    participants.sort((a, b) => a.localeCompare(b));
+    channels.push({ id: channel.id, name: channel.name, participants });
+  }
+
+  channels.sort((a, b) => a.name.localeCompare(b.name));
 
   cachedChannels = channels;
   channelsCachedAt = Date.now();
