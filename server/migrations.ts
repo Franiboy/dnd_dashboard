@@ -143,6 +143,23 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    name: 'create_diary_entries_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS diary_entries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          rewritten_content TEXT,
+          entry_date TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export function runMigrations() {

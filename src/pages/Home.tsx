@@ -23,6 +23,13 @@ export function Home() {
       <p className="text-xl text-slate-400 mb-12">Wähle einen Bereich</p>
       <div className="grid gap-6 w-full max-w-2xl">
         <Link
+          to="/diary"
+          className="group block bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--accent)] transition"
+        >
+          <h2 className="text-2xl font-semibold text-[var(--text-h)] group-hover:text-[var(--accent)] transition">Tagebuch</h2>
+          <p className="text-slate-400 mt-2">Persönliche Notizen pro Spieler hinterlegen und mit der KI überarbeiten lassen.</p>
+        </Link>
+        <Link
           to="/bingo"
           className="group block bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--accent)] transition"
         >
