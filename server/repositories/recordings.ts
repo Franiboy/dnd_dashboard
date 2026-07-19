@@ -50,11 +50,18 @@ export function getSessionById(id: number): RecordingSession | null {
 }
 
 export function listSessions(): RecordingSession[] {
-  return db
+  const rows = db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error FROM recording_sessions ORDER BY started_at DESC',
+      `SELECT 
+        s.id, s.name, s.status, s.guild_id as guildId, s.channel_id as channelId, 
+        s.created_by as createdBy, s.started_at as startedAt, s.stopped_at as stoppedAt, 
+        s.directory, s.transcript, s.error,
+        COALESCE((SELECT COUNT(*) FROM recording_files f WHERE f.session_id = s.id AND f.wav_path IS NOT NULL), 0) as hasWavFiles
+      FROM recording_sessions s
+      ORDER BY started_at DESC`,
     )
-    .all() as RecordingSession[];
+    .all() as (Omit<RecordingSession, 'hasWavFiles'> & { hasWavFiles: number })[];
+  return rows.map((row) => ({ ...row, hasWavFiles: !!row.hasWavFiles }));
 }
 
 export function listPendingTranscriptionSessions(): RecordingSession[] {
