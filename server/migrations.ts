@@ -153,11 +153,19 @@ const migrations: Migration[] = [
           title TEXT NOT NULL,
           content TEXT NOT NULL,
           rewritten_content TEXT,
-          entry_date TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         );
       `);
+    },
+  },
+  {
+    name: 'remove_diary_entry_date',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(diary_entries)').all() as { name: string }[];
+      if (columns.some((c) => c.name === 'entry_date')) {
+        db.exec('ALTER TABLE diary_entries DROP COLUMN entry_date');
+      }
     },
   },
 ];

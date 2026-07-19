@@ -9,7 +9,10 @@ import type { DiaryEntry, VersionInfo } from '../../shared/types';
 interface DiaryFormData {
   title: string;
   content: string;
-  entryDate: string;
+}
+
+function getDayFromCreatedAt(createdAt: string): string {
+  return createdAt.slice(0, 10);
 }
 
 function formatDateLabel(dateString: string): string {
@@ -18,16 +21,12 @@ function formatDateLabel(dateString: string): string {
   return date.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-function today(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 function groupByDay(entries: DiaryEntry[]): Record<string, DiaryEntry[]> {
   const groups: Record<string, DiaryEntry[]> = {};
   for (const entry of entries) {
-    if (!groups[entry.entryDate]) groups[entry.entryDate] = [];
-    groups[entry.entryDate].push(entry);
+    const day = getDayFromCreatedAt(entry.createdAt);
+    if (!groups[day]) groups[day] = [];
+    groups[day].push(entry);
   }
   return groups;
 }
@@ -41,7 +40,7 @@ export function Diary() {
   const [working, setWorking] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState<DiaryFormData>({ title: '', content: '', entryDate: today() });
+  const [form, setForm] = useState<DiaryFormData>({ title: '', content: '' });
   const [formError, setFormError] = useState<string | null>(null);
 
   const loadEntries = useCallback(async () => {
@@ -68,10 +67,10 @@ export function Diary() {
 
   function resetForm(entry?: DiaryEntry) {
     if (entry) {
-      setForm({ title: entry.title, content: entry.content, entryDate: entry.entryDate });
+      setForm({ title: entry.title, content: entry.content });
       setEditingId(entry.id);
     } else {
-      setForm({ title: '', content: '', entryDate: today() });
+      setForm({ title: '', content: '' });
       setEditingId(null);
     }
     setFormError(null);
@@ -97,8 +96,8 @@ export function Diary() {
     e.preventDefault();
     setFormError(null);
 
-    if (!form.title.trim() || !form.content.trim() || !form.entryDate) {
-      setFormError('Titel, Inhalt und Datum sind erforderlich');
+    if (!form.title.trim() || !form.content.trim()) {
+      setFormError('Titel und Inhalt sind erforderlich');
       return;
     }
 
@@ -313,17 +312,6 @@ export function Diary() {
           </div>
         )}
         <form id="diary-form" onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Datum</label>
-            <input
-              type="date"
-              value={form.entryDate}
-              onChange={(e) => setForm((prev) => ({ ...prev, entryDate: e.target.value }))}
-              required
-              disabled={working}
-              className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            />
-          </div>
           <div>
             <label className="block text-sm text-slate-400 mb-1">Titel</label>
             <input
