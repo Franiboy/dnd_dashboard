@@ -141,7 +141,7 @@ function sanitizeBranchName(raw: string, fallbackId: number): string {
 
   // Ensure valid git branch characters and reasonable length.
   slug = slug
-    .replace(/[^a-z0-9\/_-]/g, '-')
+    .replace(/[^a-z0-9/_-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 

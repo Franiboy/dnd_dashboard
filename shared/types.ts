@@ -155,3 +155,14 @@ export interface RecordingChannel {
   name: string;
   participants: string[];
 }
+
+export interface DiaryEntry {
+  id: number;
+  userId: string;
+  title: string;
+  content: string;
+  rewrittenContent: string | null;
+  entryDate: string;
+  createdAt: string;
+  updatedAt: string;
+}
