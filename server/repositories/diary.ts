@@ -7,6 +7,7 @@ function rowToDiaryEntry(row: Record<string, unknown>): DiaryEntry {
     userId: row.user_id as string,
     title: row.title as string,
     content: row.content as string,
+    summary: (row.summary as string | null | undefined) ?? null,
     rewrittenContent: (row.rewritten_content as string | null | undefined) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -17,13 +18,14 @@ export function createDiaryEntry(
   userId: string,
   title: string,
   content: string,
+  summary?: string | null,
 ): DiaryEntry {
   const now = new Date().toISOString();
   const result = db
     .prepare(
-      'INSERT INTO diary_entries (user_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO diary_entries (user_id, title, content, summary, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
     )
-    .run(userId, title.trim(), content.trim(), now, now);
+    .run(userId, title.trim(), content.trim(), summary ? summary.trim() : null, now, now);
   return getDiaryEntryById(Number(result.lastInsertRowid))!;
 }
 
@@ -46,7 +48,7 @@ export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
 
 export function updateDiaryEntry(
   id: number,
-  updates: Partial<Pick<DiaryEntry, 'title' | 'content' | 'rewrittenContent'>>,
+  updates: Partial<Pick<DiaryEntry, 'title' | 'content' | 'summary' | 'rewrittenContent'>>,
 ): DiaryEntry | null {
   const existing = getDiaryEntryById(id);
   if (!existing) return null;
@@ -61,6 +63,10 @@ export function updateDiaryEntry(
   if (updates.content !== undefined) {
     fields.push('content = ?');
     values.push(updates.content.trim());
+  }
+  if (updates.summary !== undefined) {
+    fields.push('summary = ?');
+    values.push(updates.summary ? updates.summary.trim() : null);
   }
   if (updates.rewrittenContent !== undefined) {
     fields.push('rewritten_content = ?');

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
-import { rewriteTextWithAi } from '../ai/rewrite.js';
+import { rewriteTextWithAi, summarizeTextWithAi } from '../ai/rewrite.js';
 import {
   createDiaryEntry,
   getDiaryEntryById,
@@ -10,9 +10,17 @@ import {
   deleteDiaryEntry,
 } from '../repositories/diary.js';
 
+const SUMMARY_MAX_LENGTH = 500;
+
 const router = Router();
 
 router.use(authMiddleware, requireApproved);
+
+function isSummaryValid(summary: unknown): summary is string | null {
+  if (summary === null || summary === undefined) return true;
+  if (typeof summary !== 'string') return false;
+  return summary.length <= SUMMARY_MAX_LENGTH;
+}
 
 router.get('/entries', (req: AuthRequest, res) => {
   if (!req.user) {
@@ -29,7 +37,7 @@ router.post('/entries', (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, content } = req.body;
+  const { title, content, summary } = req.body;
   if (!title || typeof title !== 'string' || !title.trim()) {
     res.status(400).json({ error: 'Titel ist erforderlich' });
     return;
@@ -38,8 +46,12 @@ router.post('/entries', (req: AuthRequest, res) => {
     res.status(400).json({ error: 'Inhalt ist erforderlich' });
     return;
   }
+  if (!isSummaryValid(summary)) {
+    res.status(400).json({ error: `Zusammenfassung darf maximal ${SUMMARY_MAX_LENGTH} Zeichen haben` });
+    return;
+  }
 
-  const entry = createDiaryEntry(req.user.id, title, content);
+  const entry = createDiaryEntry(req.user.id, title, content, summary);
   res.status(201).json({ entry });
 });
 
@@ -71,7 +83,7 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, content, rewrittenContent } = req.body;
+  const { title, content, summary, rewrittenContent } = req.body;
   const updates: Parameters<typeof updateDiaryEntry>[1] = {};
 
   if (title !== undefined) {
@@ -87,6 +99,13 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
       return;
     }
     updates.content = content;
+  }
+  if (summary !== undefined) {
+    if (!isSummaryValid(summary)) {
+      res.status(400).json({ error: `Zusammenfassung darf maximal ${SUMMARY_MAX_LENGTH} Zeichen haben` });
+      return;
+    }
+    updates.summary = summary;
   }
   if (rewrittenContent !== undefined) {
     updates.rewrittenContent = typeof rewrittenContent === 'string' ? rewrittenContent : null;
@@ -142,6 +161,38 @@ router.post('/entries/:id/rewrite', async (req: AuthRequest, res) => {
   }
 
   const entry = updateDiaryEntry(id, { rewrittenContent: rewritten });
+  if (!entry) {
+    res.status(500).json({ error: 'Speichern fehlgeschlagen' });
+    return;
+  }
+  res.json({ entry });
+});
+
+router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
+  if (!req.user) {
+    res.status(403).json({ error: 'Nicht autorisiert' });
+    return;
+  }
+
+  if (!isAiEnabled()) {
+    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  const existing = getDiaryEntryById(id);
+  if (!existing || existing.userId !== req.user.id) {
+    res.status(404).json({ error: 'Eintrag nicht gefunden' });
+    return;
+  }
+
+  const summary = await summarizeTextWithAi(existing.content);
+  if (summary === null) {
+    res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
+    return;
+  }
+
+  const entry = updateDiaryEntry(id, { summary: summary.slice(0, SUMMARY_MAX_LENGTH) });
   if (!entry) {
     res.status(500).json({ error: 'Speichern fehlgeschlagen' });
     return;
