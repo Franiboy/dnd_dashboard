@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
+import { BackButton } from '../components/BackButton';
 import { useApi } from '../hooks/useApi';
 import type { RecordingChannel, RecordingSession, VersionInfo } from '../../shared/types';
 
@@ -162,7 +163,10 @@ export function Recordings() {
 
   return (
     <div className="min-h-full p-6 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold text-[var(--text-h)] mb-6">Aufnahmen</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold text-[var(--text-h)]">Aufnahmen</h1>
+        <BackButton />
+      </div>
 
       {!status?.bot.enabled && (
         <div className="mb-6 p-4 rounded-lg bg-[var(--warning)]/20 text-[var(--text-h)]">
