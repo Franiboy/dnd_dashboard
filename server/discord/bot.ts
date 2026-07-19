@@ -29,7 +29,7 @@ export function startBot(): void {
   }
 
   if (!isOpusAvailable()) {
-    console.warn('opusscript is not installed; voice recording will not work.');
+    console.warn('@discordjs/opus is not installed; voice recording will not work.');
   }
 
   ensureDir(RECORDINGS_DIR);
