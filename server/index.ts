@@ -11,11 +11,13 @@ import { ensureAdminUser } from './users.js';
 import adminRouter from './routes/admin.js';
 import aiRouter from './routes/ai.js';
 import authRouter from './routes/auth.js';
+import recordingsRouter from './routes/recordings.js';
 import { setupSocket } from './socket.js';
 import { previewAuthMiddleware } from './auth.js';
 import { getVersion } from './version.js';
 import { runMigrations } from './migrations.js';
 import { recoverPreviewServers, startFeatureRequestBehindWatcher } from './ai/worker.js';
+import { startBot } from './discord/bot.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +47,7 @@ app.use('/api', (req, res, next) => {
 // Run schema migrations and ensure admin user exists at startup
 runMigrations();
 ensureAdminUser();
+startBot();
 
 // In preview mode, all routes (API + static SPA) require an authenticated user
 // with admin or preview access. Login endpoints are not exposed on previews.
@@ -59,6 +62,7 @@ app.get('/api/version', (req, res) => {
 app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/recordings', recordingsRouter);
 
 // Serve static files in production and fall back to index.html for all non-API routes
 const distDir = path.join(__dirname, '..', '..', 'dist');
