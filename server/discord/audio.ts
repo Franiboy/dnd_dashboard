@@ -2,31 +2,36 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, openSync, c
 import { rm, stat, writeFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
-import OpusScript from 'opusscript';
+import { OpusEncoder as NativeOpusEncoder } from '@discordjs/opus';
 
 export interface PcmSegment {
   startSample: number;
   length: number;
 }
 
+export interface OpusDecoder {
+  decode(packet: Buffer): Buffer;
+}
+
 export function isOpusAvailable(): boolean {
   try {
-    return OpusScript !== undefined;
+    return NativeOpusEncoder !== undefined;
   } catch {
     return false;
   }
 }
 
-export function createOpusDecoder(channels = 2): InstanceType<typeof OpusScript> {
-  return new OpusScript(48000, channels, OpusScript.Application.AUDIO);
+export function createOpusDecoder(channels = 2): OpusDecoder {
+  return new NativeOpusEncoder(48000, channels);
 }
 
-export function decodeOpusPacket(decoder: InstanceType<typeof OpusScript>, packet: Buffer): Buffer {
+export function decodeOpusPacket(decoder: OpusDecoder, packet: Buffer): Buffer {
   return decoder.decode(packet);
 }
 
-export function destroyOpusDecoder(decoder: InstanceType<typeof OpusScript>): void {
-  decoder.delete();
+export function destroyOpusDecoder(decoder: OpusDecoder): void {
+  // Native C++ binding is GC'd automatically; nothing to release explicitly.
+  void decoder;
 }
 
 export function ensureDir(dir: string): void {
