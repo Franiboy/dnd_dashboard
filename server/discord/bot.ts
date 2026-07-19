@@ -1,7 +1,9 @@
 import { Client, GatewayIntentBits, type VoiceBasedChannel } from 'discord.js';
-import { isOpusAvailable, makeSessionDir, ensureDir } from './audio.js';
+import { readdir, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { isOpusAvailable, makeSessionDir, ensureDir, writeWavFromPcm } from './audio.js';
 import { startRecording, stopRecording, isRecording, getActiveRecording } from './recorder.js';
-import { createSession, getSessionById, updateSession } from '../repositories/recordings.js';
+import { createSession, getSessionById, updateSession, getFilesBySessionId, createFile, updateFile } from '../repositories/recordings.js';
 
 import type { RecordingChannel, RecordingSession } from '../../shared/types.js';
 import { BOT_TOKEN, GUILD_ID, RECORDINGS_DIR, isRecordingFeatureEnabled } from './config.js';
@@ -144,7 +146,13 @@ export async function beginRecording(
   const directory = makeSessionDir(RECORDINGS_DIR, session.id);
   updateSession(session.id, { directory });
 
-  await startRecording(guild, channel, session.id, directory);
+  await startRecording(guild, channel, session.id, directory, async (disconnectedSessionId) => {
+    try {
+      await finishRecording(disconnectedSessionId);
+    } catch (err) {
+      console.error(`Failed to finish recording after disconnect for session ${disconnectedSessionId}:`, err);
+    }
+  });
 
   emitStatusUpdated();
   emitSessionsUpdated();
@@ -152,9 +160,89 @@ export async function beginRecording(
   return getSessionById(session.id)!;
 }
 
+async function recoverRecording(sessionId: number): Promise<RecordingSession> {
+  const session = getSessionById(sessionId);
+  if (!session) {
+    throw new Error('Aufnahme nicht gefunden');
+  }
+  if (session.status !== 'recording') {
+    return session;
+  }
+
+  const directory = session.directory;
+  if (!directory) {
+    updateSession(sessionId, { status: 'error', error: 'Kein Aufnahmeverzeichnis hinterlegt.' });
+    emitSessionsUpdated();
+    throw new Error('Kein Aufnahmeverzeichnis hinterlegt');
+  }
+
+  ensureDir(directory);
+
+  const SAMPLE_RATE = 48000;
+  const CHANNELS = 2;
+  const BIT_DEPTH = 16;
+  const bytesPerSecond = (SAMPLE_RATE * CHANNELS * BIT_DEPTH) / 8;
+
+  const dbFiles = getFilesBySessionId(sessionId);
+  const recovered: { id: number; wavPath: string; duration: number }[] = [];
+
+  for (const file of dbFiles) {
+    if (file.wavPath) continue;
+    try {
+      await stat(file.pcmPath);
+    } catch {
+      continue;
+    }
+    const wavPath = file.pcmPath.replace(/\.pcm$/, '.wav');
+    await writeWavFromPcm(file.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
+    const fileStat = await stat(wavPath);
+    const duration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
+    updateFile(file.id, { wavPath, duration });
+    recovered.push({ id: file.id, wavPath, duration });
+  }
+
+  let filesOnDisk: string[] = [];
+  try {
+    filesOnDisk = await readdir(directory);
+  } catch {
+    filesOnDisk = [];
+  }
+  const knownPcmPaths = new Set(dbFiles.map((f) => f.pcmPath));
+  for (const fileName of filesOnDisk) {
+    if (!fileName.endsWith('.pcm')) continue;
+    const pcmPath = join(directory, fileName);
+    if (knownPcmPaths.has(pcmPath)) continue;
+    const match = fileName.match(/^user-(.+)\.pcm$/);
+    const userId = match ? match[1] : fileName.replace(/\.pcm$/, '');
+    const fileRow = createFile({ sessionId, userId, displayName: userId, pcmPath });
+    const wavPath = pcmPath.replace(/\.pcm$/, '.wav');
+    await writeWavFromPcm(pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
+    const fileStat = await stat(wavPath);
+    const duration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
+    updateFile(fileRow.id, { wavPath, duration });
+    recovered.push({ id: fileRow.id, wavPath, duration });
+  }
+
+  const stoppedAt = new Date().toISOString();
+  if (recovered.length === 0) {
+    updateSession(sessionId, { status: 'error', stoppedAt, error: 'Aufnahme wurde unterbrochen; keine Audio-Daten gefunden.' });
+    emitSessionsUpdated();
+    throw new Error('Aufnahme wurde unterbrochen; keine Audio-Daten gefunden');
+  }
+
+  updateSession(sessionId, { status: 'pending_transcription', stoppedAt });
+  emitStatusUpdated();
+  emitSessionsUpdated();
+
+  return getSessionById(sessionId)!;
+}
+
 export async function finishRecording(sessionId: number): Promise<RecordingSession> {
   const rec = getActiveRecording();
-  if (!rec || rec.sessionId !== sessionId) {
+  if (!rec) {
+    return recoverRecording(sessionId);
+  }
+  if (rec.sessionId !== sessionId) {
     throw new Error('Diese Session ist nicht aktiv');
   }
 

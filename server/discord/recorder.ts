@@ -37,6 +37,7 @@ interface ActiveRecording {
   users: Map<string, ActiveUser>;
   stopping: boolean;
   startTime: bigint;
+  onDisconnect?: (sessionId: number) => void;
 }
 
 let activeRecording: ActiveRecording | null = null;
@@ -66,6 +67,7 @@ export async function startRecording(
   channel: VoiceBasedChannel,
   sessionId: number,
   directory: string,
+  onDisconnect?: (sessionId: number) => void,
 ): Promise<void> {
   if (activeRecording) {
     throw new Error('Es läuft bereits eine Aufnahme');
@@ -95,7 +97,27 @@ export async function startRecording(
     users: new Map(),
     stopping: false,
     startTime: process.hrtime.bigint(),
+    onDisconnect,
   };
+
+  connection.on('stateChange', (oldState, newState) => {
+    console.log(
+      `Voice connection state changed from ${oldState.status} to ${newState.status}` +
+        ('reason' in newState && newState.reason ? ` (reason: ${newState.reason})` : ''),
+    );
+    if (!activeRecording || activeRecording.stopping) return;
+    if (
+      newState.status === VoiceConnectionStatus.Disconnected ||
+      newState.status === VoiceConnectionStatus.Destroyed
+    ) {
+      activeRecording.stopping = true;
+      try {
+        activeRecording.onDisconnect?.(activeRecording.sessionId);
+      } catch (err) {
+        console.error('Disconnect callback failed:', err);
+      }
+    }
+  });
 
   connection.receiver.speaking.on('start', (userId) => {
     try {
@@ -188,6 +210,9 @@ export async function stopRecording(): Promise<RecordingFile[]> {
   const rec = activeRecording;
   if (!rec) {
     throw new Error('Es läuft keine Aufnahme');
+  }
+  if (rec.stopping) {
+    return [];
   }
 
   rec.stopping = true;
