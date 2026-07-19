@@ -162,7 +162,6 @@ export interface DiaryEntry {
   title: string;
   content: string;
   rewrittenContent: string | null;
-  entryDate: string;
   createdAt: string;
   updatedAt: string;
 }

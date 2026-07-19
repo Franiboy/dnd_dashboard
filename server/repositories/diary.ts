@@ -8,7 +8,6 @@ function rowToDiaryEntry(row: Record<string, unknown>): DiaryEntry {
     title: row.title as string,
     content: row.content as string,
     rewrittenContent: (row.rewritten_content as string | null | undefined) ?? null,
-    entryDate: row.entry_date as string,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -18,14 +17,13 @@ export function createDiaryEntry(
   userId: string,
   title: string,
   content: string,
-  entryDate: string,
 ): DiaryEntry {
   const now = new Date().toISOString();
   const result = db
     .prepare(
-      'INSERT INTO diary_entries (user_id, title, content, entry_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO diary_entries (user_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
     )
-    .run(userId, title.trim(), content.trim(), entryDate, now, now);
+    .run(userId, title.trim(), content.trim(), now, now);
   return getDiaryEntryById(Number(result.lastInsertRowid))!;
 }
 
@@ -40,7 +38,7 @@ export function getDiaryEntryById(id: number): DiaryEntry | null {
 export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
   const rows = db
     .prepare(
-      'SELECT * FROM diary_entries WHERE user_id = ? ORDER BY entry_date DESC, created_at DESC',
+      'SELECT * FROM diary_entries WHERE user_id = ? ORDER BY created_at DESC',
     )
     .all(userId) as Record<string, unknown>[];
   return rows.map(rowToDiaryEntry);
@@ -48,7 +46,7 @@ export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
 
 export function updateDiaryEntry(
   id: number,
-  updates: Partial<Pick<DiaryEntry, 'title' | 'content' | 'rewrittenContent' | 'entryDate'>>,
+  updates: Partial<Pick<DiaryEntry, 'title' | 'content' | 'rewrittenContent'>>,
 ): DiaryEntry | null {
   const existing = getDiaryEntryById(id);
   if (!existing) return null;
@@ -67,10 +65,6 @@ export function updateDiaryEntry(
   if (updates.rewrittenContent !== undefined) {
     fields.push('rewritten_content = ?');
     values.push(updates.rewrittenContent ? updates.rewrittenContent.trim() : null);
-  }
-  if (updates.entryDate !== undefined) {
-    fields.push('entry_date = ?');
-    values.push(updates.entryDate);
   }
 
   if (fields.length === 0) return existing;
