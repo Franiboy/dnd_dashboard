@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
 import { Button } from '../components/Button';
@@ -44,19 +44,12 @@ const quillModules = {
 
 const quillFormats = ['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet'];
 
-const PREVIEW_LENGTH = 200;
+const MAX_HEIGHT = 192;
 
 function stripHtml(html: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   return doc.body.textContent || '';
-}
-
-function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  const cut = text.slice(0, maxLength);
-  const lastSpace = cut.lastIndexOf(' ');
-  return `${lastSpace > 0 ? cut.slice(0, lastSpace) : cut}…`;
 }
 
 export function Diary() {
@@ -72,6 +65,10 @@ export function Diary() {
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedContent, setExpandedContent] = useState<Set<number>>(new Set());
   const [expandedRewritten, setExpandedRewritten] = useState<Set<number>>(new Set());
+  const [needsExpandContent, setNeedsExpandContent] = useState<Set<number>>(new Set());
+  const [needsExpandRewritten, setNeedsExpandRewritten] = useState<Set<number>>(new Set());
+  const contentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const rewrittenRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const loadEntries = useCallback(async () => {
     const { data, error } = await request<{ entries: DiaryEntry[] }>('/api/diary/entries');
@@ -91,6 +88,19 @@ export function Diary() {
     });
     loadEntries();
   }, [request, loadEntries]);
+
+  useEffect(() => {
+    const contentSet = new Set<number>();
+    const rewrittenSet = new Set<number>();
+    contentRefs.current.forEach((el: HTMLDivElement, id: number) => {
+      if (el.scrollHeight > MAX_HEIGHT) contentSet.add(id);
+    });
+    rewrittenRefs.current.forEach((el: HTMLDivElement, id: number) => {
+      if (el.scrollHeight > MAX_HEIGHT) rewrittenSet.add(id);
+    });
+    setNeedsExpandContent(contentSet);
+    setNeedsExpandRewritten(rewrittenSet);
+  }, [entries, expandedContent, expandedRewritten]);
 
   const grouped = useMemo(() => groupByDay(entries), [entries]);
   const sortedDays = useMemo(() => Object.keys(grouped).sort().reverse(), [grouped]);
@@ -144,7 +154,7 @@ export function Diary() {
     e.preventDefault();
     setFormError(null);
 
-    const plainText = form.content.replace(/<[^>]+>/g, '').trim();
+    const plainText = stripHtml(form.content).trim();
     if (!form.title.trim() || !plainText) {
       setFormError('Titel und Inhalt sind erforderlich');
       return;
@@ -331,32 +341,20 @@ export function Diary() {
                     </div>
                   </div>
 
-                  {(() => {
-                    const plain = stripHtml(entry.content);
-                    const isLong = plain.length > PREVIEW_LENGTH;
-                    const expanded = expandedContent.has(entry.id);
-                    return (
-                      <>
-                        {expanded || !isLong ? (
-                          <div
-                            className="text-slate-300 diary-content mb-4"
-                            dangerouslySetInnerHTML={{ __html: entry.content }}
-                          />
-                        ) : (
-                          <p className="text-slate-300 mb-4">{truncateText(plain, PREVIEW_LENGTH)}</p>
-                        )}
-                        {isLong && (
-                          <button
-                            type="button"
-                            onClick={() => toggleContent(entry.id)}
-                            className="text-sm text-[var(--accent)] hover:underline mb-4"
-                          >
-                            {expanded ? 'Weniger anzeigen' : 'Mehr anzeigen'}
-                          </button>
-                        )}
-                      </>
-                    );
-                  })()}
+                  <div
+                    ref={(el) => { if (el) contentRefs.current.set(entry.id, el); }}
+                    className={`text-slate-300 diary-content mb-4 ${expandedContent.has(entry.id) ? '' : 'max-h-48 overflow-hidden'}`}
+                    dangerouslySetInnerHTML={{ __html: entry.content }}
+                  />
+                  {needsExpandContent.has(entry.id) && (
+                    <button
+                      type="button"
+                      onClick={() => toggleContent(entry.id)}
+                      className="text-sm text-[var(--accent)] hover:underline mb-4"
+                    >
+                      {expandedContent.has(entry.id) ? 'Weniger anzeigen' : 'Mehr anzeigen'}
+                    </button>
+                  )}
 
                   {entry.rewrittenContent && (
                     <div className="rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 p-4">
@@ -379,26 +377,21 @@ export function Diary() {
                           </Button>
                         </div>
                       </div>
-                      {(() => {
-                        const isLong = entry.rewrittenContent.length > PREVIEW_LENGTH;
-                        const expanded = expandedRewritten.has(entry.id);
-                        return (
-                          <>
-                            <div className="text-slate-300 whitespace-pre-wrap">
-                              {expanded || !isLong ? entry.rewrittenContent : truncateText(entry.rewrittenContent, PREVIEW_LENGTH)}
-                            </div>
-                            {isLong && (
-                              <button
-                                type="button"
-                                onClick={() => toggleRewritten(entry.id)}
-                                className="text-sm text-[var(--accent)] hover:underline mt-2"
-                              >
-                                {expanded ? 'Weniger anzeigen' : 'Mehr anzeigen'}
-                              </button>
-                            )}
-                          </>
-                        );
-                      })()}
+                      <div
+                        ref={(el) => { if (el) rewrittenRefs.current.set(entry.id, el); }}
+                        className={`text-slate-300 whitespace-pre-wrap ${expandedRewritten.has(entry.id) ? '' : 'max-h-48 overflow-hidden'}`}
+                      >
+                        {entry.rewrittenContent}
+                      </div>
+                      {needsExpandRewritten.has(entry.id) && (
+                        <button
+                          type="button"
+                          onClick={() => toggleRewritten(entry.id)}
+                          className="text-sm text-[var(--accent)] hover:underline mt-2"
+                        >
+                          {expandedRewritten.has(entry.id) ? 'Weniger anzeigen' : 'Mehr anzeigen'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </article>
