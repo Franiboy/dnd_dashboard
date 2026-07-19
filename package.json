@@ -19,6 +19,7 @@
     "test:server": "DB_PATH=dnd_test.db npm run server"
   },
   "dependencies": {
+    "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.2",
     "ansi-to-html": "^0.7.2",
     "bcrypt": "^6.0.0",
@@ -31,7 +32,6 @@
     "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
     "libsodium-wrappers": "^0.8.4",
-    "opusscript": "^0.1.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-draggable": "^4.5.0",
