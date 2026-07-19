@@ -100,6 +100,7 @@ export interface VersionInfo {
   ahead: number;
   behind: number;
   aiEnabled: boolean;
+  recordingEnabled?: boolean;
   previewFeatureRequestId?: number | null;
   mainServerUrl?: string | null;
 }
