@@ -117,3 +117,10 @@ button {
 .ql-picker-options {
   background: var(--panel);
 }
+
+.ql-editor {
+  max-height: 300px;
+  min-height: 120px;
+  overflow-y: auto;
+  background: var(--bg);
+}
