@@ -35,6 +35,10 @@ function getDefaultItem(key: string): LayoutItem {
   return DEFAULT_LAYOUT.find((l) => l.i === key) || { i: key, x: 0, y: 0, w: 3, h: 4 };
 }
 
+function getAvailableTaskCount(game: BingoGame, userId?: string): number {
+  return game.tasks.filter((t) => !t.isPrivate || (userId && t.assignedTo?.includes(userId))).length;
+}
+
 export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, isSetup, isPlaying }: BingoDashboardProps) {
   const storageKey = `bingo-layout-${user.id}`;
   const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
@@ -85,6 +89,18 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
       socket?.emit('resetGame');
     }
   };
+
+  const needed = game.gridSize * game.gridSize;
+  const onlinePlayers = game.players.filter((p) => p.online);
+  const playerAvailableCounts = onlinePlayers.map((p) => ({
+    name: p.name,
+    count: getAvailableTaskCount(game, p.userId ?? undefined),
+  }));
+  const sortedByCount = [...playerAvailableCounts].sort((a, b) => a.count - b.count);
+  const bottleneck = sortedByCount[0];
+  const totalEnough = game.tasks.length >= needed;
+  const everyoneEnough = playerAvailableCounts.length > 0 && playerAvailableCounts.every((p) => p.count >= needed);
+  const canStartByTasks = totalEnough && everyoneEnough;
 
   const lockButton = player && isSetup && (
     <button
@@ -164,12 +180,29 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
               </select>
               <button
                 onClick={start}
-                className="px-6 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition"
+                disabled={!canStartByTasks}
+                className="px-6 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
               >
                 Spiel starten
               </button>
-              <span className="text-slate-500 text-sm">
-                {game.tasks.length} Aufgaben, mindestens {game.gridSize * game.gridSize} nötig.
+              <span className={`text-sm ${canStartByTasks ? 'text-slate-500' : 'text-[var(--danger)]'}`}>
+                {!totalEnough ? (
+                  <>
+                    {game.tasks.length} Aufgaben, mindestens {needed} nötig.
+                  </>
+                ) : playerAvailableCounts.length === 0 ? (
+                  <>
+                    {game.tasks.length} Aufgaben, mindestens {needed} pro Spieler nötig.
+                  </>
+                ) : bottleneck && bottleneck.count < needed ? (
+                  <>
+                    {bottleneck.name} hat nur {bottleneck.count} von {needed} Aufgaben verfügbar.
+                  </>
+                ) : (
+                  <>
+                    {game.tasks.length} Aufgaben, jeder Spieler hat mindestens {needed} verfügbar.
+                  </>
+                )}
               </span>
             </div>
           ) : (
