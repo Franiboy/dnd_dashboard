@@ -4,6 +4,7 @@ import { join, basename, extname } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { updateFile, updateSession, getSessionById } from '../repositories/recordings.js';
 import { emitSessionsUpdated } from './recordingsEvents.js';
+import { deleteSessionAudioFiles } from './files.js';
 import type { RecordingFile } from '../../shared/types.js';
 
 const WHISPER_COMMAND = process.env.WHISPER_COMMAND || 'whisper';
@@ -141,10 +142,18 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
     return;
   }
 
-  const transcript = buildTranscript(allSegments);
-  const transcriptPath = join(session.directory, 'transcript.txt');
-  await writeFile(transcriptPath, transcript);
+  try {
+    const transcript = buildTranscript(allSegments);
+    const transcriptPath = join(session.directory, 'transcript.txt');
+    await writeFile(transcriptPath, transcript);
 
-  updateSession(sessionId, { status: 'completed', transcript });
-  emitSessionsUpdated();
+    updateSession(sessionId, { status: 'completed', transcript });
+    emitSessionsUpdated();
+
+    await deleteSessionAudioFiles(sessionId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    updateSession(sessionId, { status: 'error', error: `Transkript erstellt, aber Audio-Löschung fehlgeschlagen: ${message}` });
+    emitSessionsUpdated();
+  }
 }

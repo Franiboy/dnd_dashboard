@@ -126,15 +126,6 @@ export function Recordings() {
     setWorking(false);
   }
 
-  async function deleteAudioFiles(sessionId: number) {
-    if (!window.confirm('Audio-Dateien wirklich löschen? Das Transkript bleibt erhalten.')) {
-      return;
-    }
-    setWorking(true);
-    await request<{ message: string }>(`/api/recordings/${sessionId}/files`, { method: 'DELETE' });
-    setWorking(false);
-  }
-
   async function toggleTranscript(sessionId: number) {
     if (visibleTranscripts.has(sessionId)) {
       setVisibleTranscripts((prev) => {
@@ -266,11 +257,6 @@ export function Recordings() {
                     onClick={() => toggleTranscript(session.id)}
                   >
                     {visibleTranscripts.has(session.id) ? 'Transkript ausblenden' : 'Transkript anzeigen'}
-                  </Button>
-                )}
-                {(session.status === 'completed' || session.status === 'error') && session.hasWavFiles && (
-                  <Button variant="danger" disabled={working} onClick={() => deleteAudioFiles(session.id)}>
-                    Audio löschen
                   </Button>
                 )}
               </div>
