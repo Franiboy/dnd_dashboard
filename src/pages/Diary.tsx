@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
 import { Button } from '../components/Button';
@@ -8,9 +8,12 @@ import ReactQuill from 'react-quill-new';
 import type { DiaryEntry, VersionInfo } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
+const SUMMARY_MAX_LENGTH = 500;
+
 interface DiaryFormData {
   title: string;
   content: string;
+  summary: string;
 }
 
 function getDayFromCreatedAt(createdAt: string): string {
@@ -33,6 +36,12 @@ function groupByDay(entries: DiaryEntry[]): Record<string, DiaryEntry[]> {
   return groups;
 }
 
+function stripHtml(html: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  return doc.body.textContent || '';
+}
+
 const quillModules = {
   toolbar: [
     [{ header: [1, 2, false] }],
@@ -44,14 +53,6 @@ const quillModules = {
 
 const quillFormats = ['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet'];
 
-const MAX_HEIGHT = 192;
-
-function stripHtml(html: string): string {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  return doc.body.textContent || '';
-}
-
 export function Diary() {
   const { request } = useApi();
   const { showSuccess } = useError();
@@ -61,14 +62,8 @@ export function Diary() {
   const [working, setWorking] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState<DiaryFormData>({ title: '', content: '' });
+  const [form, setForm] = useState<DiaryFormData>({ title: '', content: '', summary: '' });
   const [formError, setFormError] = useState<string | null>(null);
-  const [expandedContent, setExpandedContent] = useState<Set<number>>(new Set());
-  const [expandedRewritten, setExpandedRewritten] = useState<Set<number>>(new Set());
-  const [needsExpandContent, setNeedsExpandContent] = useState<Set<number>>(new Set());
-  const [needsExpandRewritten, setNeedsExpandRewritten] = useState<Set<number>>(new Set());
-  const contentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const rewrittenRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const loadEntries = useCallback(async () => {
     const { data, error } = await request<{ entries: DiaryEntry[] }>('/api/diary/entries');
@@ -89,28 +84,15 @@ export function Diary() {
     loadEntries();
   }, [request, loadEntries]);
 
-  useEffect(() => {
-    const contentSet = new Set<number>();
-    const rewrittenSet = new Set<number>();
-    contentRefs.current.forEach((el: HTMLDivElement, id: number) => {
-      if (el.scrollHeight > MAX_HEIGHT) contentSet.add(id);
-    });
-    rewrittenRefs.current.forEach((el: HTMLDivElement, id: number) => {
-      if (el.scrollHeight > MAX_HEIGHT) rewrittenSet.add(id);
-    });
-    setNeedsExpandContent(contentSet);
-    setNeedsExpandRewritten(rewrittenSet);
-  }, [entries, expandedContent, expandedRewritten]);
-
   const grouped = useMemo(() => groupByDay(entries), [entries]);
   const sortedDays = useMemo(() => Object.keys(grouped).sort().reverse(), [grouped]);
 
   function resetForm(entry?: DiaryEntry) {
     if (entry) {
-      setForm({ title: entry.title, content: entry.content });
+      setForm({ title: entry.title, content: entry.content, summary: entry.summary || '' });
       setEditingId(entry.id);
     } else {
-      setForm({ title: '', content: '' });
+      setForm({ title: '', content: '', summary: '' });
       setEditingId(null);
     }
     setFormError(null);
@@ -124,24 +106,6 @@ export function Diary() {
   function openEdit(entry: DiaryEntry) {
     resetForm(entry);
     setIsModalOpen(true);
-  }
-
-  function toggleContent(id: number) {
-    setExpandedContent((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleRewritten(id: number) {
-    setExpandedRewritten((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
   function closeModal() {
@@ -160,6 +124,12 @@ export function Diary() {
       return;
     }
 
+    const payload = {
+      title: form.title,
+      content: form.content,
+      summary: form.summary.trim() || null,
+    };
+
     setWorking(true);
 
     let res;
@@ -167,13 +137,13 @@ export function Diary() {
       res = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${editingId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
     } else {
       res = await request<{ entry: DiaryEntry }>('/api/diary/entries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
     }
 
@@ -217,6 +187,20 @@ export function Diary() {
     if (data) {
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
       showSuccess('KI-Version erstellt.');
+    } else if (error) {
+      setFormError(error);
+    }
+  }
+
+  async function handleGenerateSummary(entry: DiaryEntry) {
+    setWorking(true);
+    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}/summarize`, {
+      method: 'POST',
+    });
+    setWorking(false);
+    if (data) {
+      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      showSuccess('Zusammenfassung erstellt.');
     } else if (error) {
       setFormError(error);
     }
@@ -267,7 +251,7 @@ export function Diary() {
       <button
         type="submit"
         form="diary-form"
-        disabled={working || !form.title.trim() || !form.content.replace(/<[^>]+>/g, '').trim()}
+        disabled={working || !form.title.trim() || !stripHtml(form.content).trim()}
         className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
       >
         {working ? <Loading text="" size="sm" /> : editingId !== null ? 'Speichern' : 'Erstellen'}
@@ -314,13 +298,22 @@ export function Diary() {
                     <h3 className="text-lg font-semibold text-[var(--text-h)]">{entry.title}</h3>
                     <div className="flex flex-wrap gap-2 justify-end">
                       {aiEnabled && (
-                        <Button
-                          variant="secondary"
-                          onClick={() => handleRewrite(entry)}
-                          disabled={working}
-                        >
-                          KI umschreiben
-                        </Button>
+                        <>
+                          <Button
+                            variant="secondary"
+                            onClick={() => handleRewrite(entry)}
+                            disabled={working}
+                          >
+                            KI umschreiben
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => handleGenerateSummary(entry)}
+                            disabled={working}
+                          >
+                            KI Zusammenfassung
+                          </Button>
+                        </>
                       )}
                       <Button
                         variant="secondary"
@@ -341,20 +334,17 @@ export function Diary() {
                     </div>
                   </div>
 
+                  {entry.summary && (
+                    <div className="mb-3 p-3 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/20">
+                      <p className="text-sm font-semibold text-[var(--accent)] mb-1">Zusammenfassung</p>
+                      <p className="text-slate-300 text-sm whitespace-pre-wrap">{entry.summary}</p>
+                    </div>
+                  )}
+
                   <div
-                    ref={(el) => { if (el) contentRefs.current.set(entry.id, el); }}
-                    className={`text-slate-300 diary-content mb-4 ${expandedContent.has(entry.id) ? '' : 'max-h-48 overflow-hidden'}`}
+                    className="text-slate-300 diary-content mb-4"
                     dangerouslySetInnerHTML={{ __html: entry.content }}
                   />
-                  {needsExpandContent.has(entry.id) && (
-                    <button
-                      type="button"
-                      onClick={() => toggleContent(entry.id)}
-                      className="text-sm text-[var(--accent)] hover:underline mb-4"
-                    >
-                      {expandedContent.has(entry.id) ? 'Weniger anzeigen' : 'Mehr anzeigen'}
-                    </button>
-                  )}
 
                   {entry.rewrittenContent && (
                     <div className="rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 p-4">
@@ -377,21 +367,7 @@ export function Diary() {
                           </Button>
                         </div>
                       </div>
-                      <div
-                        ref={(el) => { if (el) rewrittenRefs.current.set(entry.id, el); }}
-                        className={`text-slate-300 whitespace-pre-wrap ${expandedRewritten.has(entry.id) ? '' : 'max-h-48 overflow-hidden'}`}
-                      >
-                        {entry.rewrittenContent}
-                      </div>
-                      {needsExpandRewritten.has(entry.id) && (
-                        <button
-                          type="button"
-                          onClick={() => toggleRewritten(entry.id)}
-                          className="text-sm text-[var(--accent)] hover:underline mt-2"
-                        >
-                          {expandedRewritten.has(entry.id) ? 'Weniger anzeigen' : 'Mehr anzeigen'}
-                        </button>
-                      )}
+                      <div className="text-slate-300 whitespace-pre-wrap">{entry.rewrittenContent}</div>
                     </div>
                   )}
                 </article>
@@ -429,6 +405,24 @@ export function Diary() {
               formats={quillFormats}
               readOnly={working}
               className="bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)]"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">
+              Zusammenfassung ({form.summary.length}/{SUMMARY_MAX_LENGTH})
+            </label>
+            <textarea
+              value={form.summary}
+              onChange={(e) => {
+                if (e.target.value.length <= SUMMARY_MAX_LENGTH) {
+                  setForm((prev) => ({ ...prev, summary: e.target.value }));
+                }
+              }}
+              disabled={working}
+              rows={3}
+              maxLength={SUMMARY_MAX_LENGTH}
+              placeholder="Kurze Zusammenfassung (optional)"
+              className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-y"
             />
           </div>
         </form>

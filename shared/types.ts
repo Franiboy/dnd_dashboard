@@ -161,6 +161,7 @@ export interface DiaryEntry {
   userId: string;
   title: string;
   content: string;
+  summary: string | null;
   rewrittenContent: string | null;
   createdAt: string;
   updatedAt: string;

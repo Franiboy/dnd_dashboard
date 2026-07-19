@@ -152,6 +152,7 @@ const migrations: Migration[] = [
           user_id TEXT NOT NULL,
           title TEXT NOT NULL,
           content TEXT NOT NULL,
+          summary TEXT,
           rewritten_content TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -165,6 +166,15 @@ const migrations: Migration[] = [
       const columns = db.prepare('PRAGMA table_info(diary_entries)').all() as { name: string }[];
       if (columns.some((c) => c.name === 'entry_date')) {
         db.exec('ALTER TABLE diary_entries DROP COLUMN entry_date');
+      }
+    },
+  },
+  {
+    name: 'add_diary_summary',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(diary_entries)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'summary')) {
+        db.exec('ALTER TABLE diary_entries ADD COLUMN summary TEXT');
       }
     },
   },
