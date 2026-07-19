@@ -4,7 +4,9 @@ import { useError } from '../hooks/useError';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
+import ReactQuill from 'react-quill-new';
 import type { DiaryEntry, VersionInfo } from '../../shared/types';
+import 'react-quill-new/dist/quill.snow.css';
 
 interface DiaryFormData {
   title: string;
@@ -30,6 +32,17 @@ function groupByDay(entries: DiaryEntry[]): Record<string, DiaryEntry[]> {
   }
   return groups;
 }
+
+const quillModules = {
+  toolbar: [
+    [{ header: [1, 2, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['clean'],
+  ],
+};
+
+const quillFormats = ['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet'];
 
 export function Diary() {
   const { request } = useApi();
@@ -96,7 +109,8 @@ export function Diary() {
     e.preventDefault();
     setFormError(null);
 
-    if (!form.title.trim() || !form.content.trim()) {
+    const plainText = form.content.replace(/<[^>]+>/g, '').trim();
+    if (!form.title.trim() || !plainText) {
       setFormError('Titel und Inhalt sind erforderlich');
       return;
     }
@@ -208,7 +222,7 @@ export function Diary() {
       <button
         type="submit"
         form="diary-form"
-        disabled={working || !form.title.trim() || !form.content.trim()}
+        disabled={working || !form.title.trim() || !form.content.replace(/<[^>]+>/g, '').trim()}
         className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
       >
         {working ? <Loading text="" size="sm" /> : editingId !== null ? 'Speichern' : 'Erstellen'}
@@ -272,7 +286,10 @@ export function Diary() {
                     </div>
                   </div>
 
-                  <div className="text-slate-300 whitespace-pre-wrap mb-4">{entry.content}</div>
+                  <div
+                    className="text-slate-300 diary-content mb-4"
+                    dangerouslySetInnerHTML={{ __html: entry.content }}
+                  />
 
                   {entry.rewrittenContent && (
                     <div className="rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 p-4">
@@ -325,13 +342,14 @@ export function Diary() {
           </div>
           <div>
             <label className="block text-sm text-slate-400 mb-1">Inhalt</label>
-            <textarea
+            <ReactQuill
+              theme="snow"
               value={form.content}
-              onChange={(e) => setForm((prev) => ({ ...prev, content: e.target.value }))}
-              rows={8}
-              required
-              disabled={working}
-              className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              onChange={(value) => setForm((prev) => ({ ...prev, content: value }))}
+              modules={quillModules}
+              formats={quillFormats}
+              readOnly={working}
+              className="bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)]"
             />
           </div>
         </form>
