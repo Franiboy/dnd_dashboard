@@ -55,12 +55,12 @@ export function listSessions(): RecordingSession[] {
       `SELECT 
         s.id, s.name, s.status, s.guild_id as guildId, s.channel_id as channelId, 
         s.created_by as createdBy, s.started_at as startedAt, s.stopped_at as stoppedAt, 
-        s.directory, s.transcript, s.error,
+        s.directory, NULL as transcript, s.error,
         COALESCE((SELECT COUNT(*) FROM recording_files f WHERE f.session_id = s.id AND f.wav_path IS NOT NULL), 0) as hasWavFiles
       FROM recording_sessions s
       ORDER BY started_at DESC`,
     )
-    .all() as (Omit<RecordingSession, 'hasWavFiles'> & { hasWavFiles: number })[];
+    .all() as (Omit<RecordingSession, 'hasWavFiles' | 'transcript'> & { hasWavFiles: number; transcript: null })[];
   return rows.map((row) => ({ ...row, hasWavFiles: !!row.hasWavFiles }));
 }
 

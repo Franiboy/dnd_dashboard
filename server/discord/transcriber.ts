@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { join, basename, extname } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { updateFile, updateSession, getSessionById } from '../repositories/recordings.js';
+import { emitSessionsUpdated } from './recordingsEvents.js';
 import type { RecordingFile } from '../../shared/types.js';
 
 const WHISPER_COMMAND = process.env.WHISPER_COMMAND || 'whisper';
@@ -113,6 +114,7 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
   if (!session) return;
 
   updateSession(sessionId, { status: 'processing', error: null });
+  emitSessionsUpdated();
 
   const allSegments: TranscriptSegment[] = [];
   const errors: string[] = [];
@@ -135,6 +137,7 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
 
   if (allSegments.length === 0) {
     updateSession(sessionId, { status: 'error', error: errors.join('; ') || 'Transkription lieferte keine Ergebnisse' });
+    emitSessionsUpdated();
     return;
   }
 
@@ -143,4 +146,5 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
   await writeFile(transcriptPath, transcript);
 
   updateSession(sessionId, { status: 'completed', transcript });
+  emitSessionsUpdated();
 }

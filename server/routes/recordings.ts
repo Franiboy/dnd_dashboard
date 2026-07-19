@@ -3,10 +3,39 @@ import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getBotStatus, getVoiceChannels, beginRecording, finishRecording, getActiveRecording } from '../discord/bot.js';
 import { runTranscription } from '../discord/transcriber.js';
 import { isRecordingFeatureEnabled } from '../discord/config.js';
+import { onSessionsUpdated, onStatusUpdated } from '../discord/recordingsEvents.js';
 import { getSessionById, listSessions, getFilesBySessionId } from '../repositories/recordings.js';
 import { deleteSessionAudioFiles } from '../discord/files.js';
 
 const router = Router();
+const sseClients = new Set<Response>();
+
+function sendStatusToClient(client: Response): void {
+  const data = JSON.stringify({ bot: getBotStatus(), active: getActiveRecording() });
+  client.write(`event: status\ndata: ${data}\n\n`);
+}
+
+function sendSessionsToClient(client: Response): void {
+  const data = JSON.stringify({ sessions: listSessions() });
+  client.write(`event: sessions\ndata: ${data}\n\n`);
+}
+
+function broadcastStatus(): void {
+  const data = JSON.stringify({ bot: getBotStatus(), active: getActiveRecording() });
+  sseClients.forEach((client) => {
+    client.write(`event: status\ndata: ${data}\n\n`);
+  });
+}
+
+function broadcastSessions(): void {
+  const data = JSON.stringify({ sessions: listSessions() });
+  sseClients.forEach((client) => {
+    client.write(`event: sessions\ndata: ${data}\n\n`);
+  });
+}
+
+onStatusUpdated(() => broadcastStatus());
+onSessionsUpdated(() => broadcastSessions());
 
 function requireRecordingFeature(_req: AuthRequest, res: Response, next: NextFunction): void {
   if (!isRecordingFeatureEnabled()) {
@@ -17,6 +46,28 @@ function requireRecordingFeature(_req: AuthRequest, res: Response, next: NextFun
 }
 
 router.use(authMiddleware, requireAdmin, requireRecordingFeature);
+
+router.get('/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.status(200);
+  res.flushHeaders();
+
+  sendStatusToClient(res);
+  sendSessionsToClient(res);
+
+  sseClients.add(res);
+
+  const cleanup = () => {
+    sseClients.delete(res);
+  };
+
+  req.on('close', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
+});
 
 router.get('/status', (_req, res) => {
   res.json({ bot: getBotStatus(), active: getActiveRecording() });
