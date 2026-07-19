@@ -51,3 +51,69 @@ button {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent);
 }
+
+.diary-content h1,
+.diary-content h2 {
+  color: var(--text-h);
+  margin: 0.75rem 0 0.5rem;
+}
+
+.diary-content p {
+  margin: 0.5rem 0;
+}
+
+.diary-content ul,
+.diary-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.diary-content ul {
+  list-style-type: disc;
+}
+
+.diary-content ol {
+  list-style-type: decimal;
+}
+
+.diary-content a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.ql-toolbar {
+  background: var(--panel);
+  border-color: var(--border) !important;
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+.ql-container {
+  background: var(--bg);
+  border-color: var(--border) !important;
+  border-bottom-left-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.ql-editor.ql-blank::before {
+  color: #94a3b8;
+}
+
+.ql-picker-label,
+.ql-picker-options {
+  color: var(--text);
+}
+
+.ql-stroke {
+  stroke: var(--text) !important;
+}
+
+.ql-fill {
+  fill: var(--text) !important;
+}
+
+.ql-picker-options {
+  background: var(--panel);
+}
