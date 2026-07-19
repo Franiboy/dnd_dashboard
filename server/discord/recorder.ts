@@ -1,25 +1,31 @@
 import { joinVoiceChannel, EndBehaviorType, VoiceConnectionStatus, entersState } from '@discordjs/voice';
 import type { AudioReceiveStream, VoiceConnection } from '@discordjs/voice';
 import type { Guild, VoiceBasedChannel } from 'discord.js';
-import { createWriteStream, type WriteStream } from 'node:fs';
+import { openSync, closeSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
-import { createOpusDecoder, decodeOpusPacket, destroyOpusDecoder, writeWavFromPcm, removePcmFile } from './audio.js';
+import { createOpusDecoder, decodeOpusPacket, destroyOpusDecoder, writeWavFromPcm, removePcmFile, type PcmSegment } from './audio.js';
 import { createFile, updateFile } from '../repositories/recordings.js';
 import type { RecordingFile } from '../../shared/types.js';
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 2;
 const BIT_DEPTH = 16;
+const BYTES_PER_SAMPLE = (CHANNELS * BIT_DEPTH) / 8;
+const JITTER_MS = 50;
+const JITTER_SAMPLES = Math.ceil((JITTER_MS * SAMPLE_RATE) / 1000);
 
 interface ActiveUser {
   userId: string;
   displayName: string;
   fileId: number;
   pcmPath: string;
-  stream: WriteStream;
+  fd: number;
   decoder: ReturnType<typeof createOpusDecoder>;
   subscribed: boolean;
   audioStream?: AudioReceiveStream;
+  currentSegmentStart: number | null;
+  currentSegmentLength: number;
+  segments: PcmSegment[];
 }
 
 interface ActiveRecording {
@@ -30,6 +36,7 @@ interface ActiveRecording {
   directory: string;
   users: Map<string, ActiveUser>;
   stopping: boolean;
+  startTime: bigint;
 }
 
 let activeRecording: ActiveRecording | null = null;
@@ -87,6 +94,7 @@ export async function startRecording(
     directory,
     users: new Map(),
     stopping: false,
+    startTime: process.hrtime.bigint(),
   };
 
   connection.receiver.speaking.on('start', (userId) => {
@@ -106,7 +114,7 @@ function handleSpeakingStart(guild: Guild, userId: string): void {
   if (!user) {
     const displayName = getDisplayName(guild, userId);
     const pcmPath = join(rec.directory, `user-${userId}.pcm`);
-    const stream = createWriteStream(pcmPath, { flags: 'a' });
+    const fd = openSync(pcmPath, 'w');
     const decoder = createOpusDecoder(CHANNELS);
     const fileRow = createFile({
       sessionId: rec.sessionId,
@@ -119,9 +127,12 @@ function handleSpeakingStart(guild: Guild, userId: string): void {
       displayName,
       fileId: fileRow.id,
       pcmPath,
-      stream,
+      fd,
       decoder,
       subscribed: false,
+      currentSegmentStart: null,
+      currentSegmentLength: 0,
+      segments: [],
     };
     rec.users.set(userId, user);
   }
@@ -137,8 +148,25 @@ function handleSpeakingStart(guild: Guild, userId: string): void {
   audioStream.on('data', (chunk: Buffer) => {
     if (!activeRecording || activeRecording.stopping) return;
     try {
+      const elapsedMs = Number(process.hrtime.bigint() - activeRecording.startTime) / 1_000_000;
+      const currentSample = Math.floor((elapsedMs * SAMPLE_RATE) / 1000);
       const pcm = decodeOpusPacket(user.decoder, chunk);
-      user.stream.write(pcm);
+      const samples = pcm.length / BYTES_PER_SAMPLE;
+
+      if (user.currentSegmentStart === null) {
+        user.currentSegmentStart = currentSample;
+        user.currentSegmentLength = 0;
+      } else {
+        const expectedSample = user.currentSegmentStart + user.currentSegmentLength;
+        if (currentSample > expectedSample + JITTER_SAMPLES) {
+          user.segments.push({ startSample: user.currentSegmentStart, length: user.currentSegmentLength });
+          user.currentSegmentStart = currentSample;
+          user.currentSegmentLength = 0;
+        }
+      }
+
+      writeSync(user.fd, pcm);
+      user.currentSegmentLength += samples;
     } catch (err) {
       console.error(`Opus decode error for ${user.displayName}:`, err);
     }
@@ -169,7 +197,6 @@ export async function stopRecording(): Promise<RecordingFile[]> {
   const files: RecordingFile[] = [];
 
   for (const user of rec.users.values()) {
-    // Wait for the audio stream to finish if it is still active.
     if (user.audioStream && !user.audioStream.destroyed) {
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(resolve, 500);
@@ -182,11 +209,15 @@ export async function stopRecording(): Promise<RecordingFile[]> {
       });
     }
 
-    await new Promise<void>((resolve) => user.stream.end(() => resolve()));
+    if (user.currentSegmentStart !== null && user.currentSegmentLength > 0) {
+      user.segments.push({ startSample: user.currentSegmentStart, length: user.currentSegmentLength });
+    }
+
+    closeSync(user.fd);
     destroyOpusDecoder(user.decoder);
 
     const wavPath = user.pcmPath.replace(/\.pcm$/, '.wav');
-    await writeWavFromPcm(user.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
+    await writeWavFromPcm(user.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH, user.segments);
     await removePcmFile(user.pcmPath);
 
     const fileStat = await import('node:fs/promises').then((m) => m.stat(wavPath));

@@ -1,8 +1,13 @@
-import { createReadStream, createWriteStream, existsSync, mkdirSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, openSync, closeSync, readSync, writeSync } from 'node:fs';
 import { rm, stat, writeFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
 import OpusScript from 'opusscript';
+
+export interface PcmSegment {
+  startSample: number;
+  length: number;
+}
 
 export function isOpusAvailable(): boolean {
   try {
@@ -56,16 +61,74 @@ export async function writeWavFromPcm(
   sampleRate = 48000,
   channels = 2,
   bitDepth = 16,
+  segments?: PcmSegment[],
 ): Promise<void> {
-  const fileStat = await stat(pcmPath);
-  const header = buildWavHeader(fileStat.size, sampleRate, channels, bitDepth);
+  const bytesPerSample = (channels * bitDepth) / 8;
+  let dataLength: number;
 
+  if (segments && segments.length > 0) {
+    const last = segments[segments.length - 1];
+    dataLength = (last.startSample + last.length) * bytesPerSample;
+  } else {
+    const fileStat = await stat(pcmPath);
+    dataLength = fileStat.size;
+  }
+
+  const header = buildWavHeader(dataLength, sampleRate, channels, bitDepth);
   await writeFile(wavPath, header);
 
-  const reader = createReadStream(pcmPath);
-  const writer = createWriteStream(wavPath, { flags: 'a' });
+  if (!segments || segments.length === 0) {
+    const reader = createReadStream(pcmPath);
+    const writer = createWriteStream(wavPath, { flags: 'a' });
+    await pipeline(reader, writer);
+    return;
+  }
 
-  await pipeline(reader, writer);
+  const pcmFd = openSync(pcmPath, 'r');
+  const wavFd = openSync(wavPath, 'r+');
+
+  try {
+    const wavDataStart = 44;
+    const CHUNK = 64 * 1024;
+    const silenceChunk = Buffer.alloc(CHUNK, 0);
+    const tempChunk = Buffer.alloc(CHUNK);
+
+    let samplesWritten = 0;
+    let pcmOffset = 0;
+
+    for (const segment of segments) {
+      if (segment.startSample > samplesWritten) {
+        const silenceSamples = segment.startSample - samplesWritten;
+        let pos = wavDataStart + samplesWritten * bytesPerSample;
+        let remaining = silenceSamples * bytesPerSample;
+        while (remaining > 0) {
+          const size = Math.min(remaining, silenceChunk.length);
+          writeSync(wavFd, silenceChunk, 0, size, pos);
+          pos += size;
+          remaining -= size;
+        }
+        samplesWritten = segment.startSample;
+      }
+
+      let pos = wavDataStart + segment.startSample * bytesPerSample;
+      const segmentBytes = segment.length * bytesPerSample;
+      let remaining = segmentBytes;
+      while (remaining > 0) {
+        const size = Math.min(remaining, tempChunk.length);
+        const bytesRead = readSync(pcmFd, tempChunk, 0, size, pcmOffset);
+        if (bytesRead === 0) break;
+        writeSync(wavFd, tempChunk, 0, bytesRead, pos);
+        pos += bytesRead;
+        pcmOffset += bytesRead;
+        remaining -= bytesRead;
+      }
+
+      samplesWritten = segment.startSample + segment.length;
+    }
+  } finally {
+    closeSync(pcmFd);
+    closeSync(wavFd);
+  }
 }
 
 export async function removePcmFile(pcmPath: string): Promise<void> {
