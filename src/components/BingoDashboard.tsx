@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { GridLayout, useContainerWidth } from 'react-grid-layout';
 import type { Layout, LayoutItem } from 'react-grid-layout';
 import type { BingoGame, Player, SafeUser } from '../../shared/types';
@@ -25,7 +25,7 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
   { i: 'board', x: 3, y: 0, w: 6, h: 8, minW: 3, minH: 4 },
   { i: 'taskPool', x: 9, y: 0, w: 3, h: 8, minW: 2, minH: 3 },
   { i: 'gameControls', x: 0, y: 4, w: 3, h: 3, minW: 2, minH: 2 },
-  { i: 'taskStatus', x: 9, y: 8, w: 3, h: 4, minW: 2, minH: 2 },
+  { i: 'taskStatus', x: 9, y: 0, w: 3, h: 4, minW: 2, minH: 2 },
 ];
 
 const MARGIN = [16, 16] as const;
@@ -54,33 +54,35 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
     return keys;
   }, [isSetup, isPlaying, isAdmin]);
 
-  const [layout, setLayout] = useState<Layout>(() => {
-    let saved: LayoutItem[] = [];
+  const [savedLayout, setSavedLayout] = useState<Layout>(() => {
     try {
       const raw = localStorage.getItem(storageKey);
-      if (raw) saved = JSON.parse(raw);
+      if (raw) return JSON.parse(raw);
     } catch {
       // ignore
     }
-    const map = new Map(saved.map((l) => [l.i, l]));
-    return visibleKeys.map((key) => map.get(key) || getDefaultItem(key));
+    return DEFAULT_LAYOUT;
   });
 
-  useEffect(() => {
-    const map = new Map(layout.map((l) => [l.i, l]));
-    const next = visibleKeys.map((key) => map.get(key) || getDefaultItem(key));
-    setLayout(next);
-  }, [visibleKeys]);
+  const layout = useMemo(() => {
+    const map = new Map(savedLayout.map((l) => [l.i, l]));
+    return visibleKeys.map((key) => map.get(key) || getDefaultItem(key));
+  }, [savedLayout, visibleKeys]);
 
   const handleLayoutChange = (newLayout: Layout) => {
-    const visibleSet = new Set(visibleKeys);
-    const filtered = newLayout.filter((l) => visibleSet.has(l.i));
-    setLayout(filtered);
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(filtered));
-    } catch {
-      // ignore
-    }
+    setSavedLayout((prev) => {
+      const map = new Map(prev.map((l) => [l.i, l]));
+      for (const item of newLayout) {
+        map.set(item.i, item);
+      }
+      const next = Array.from(map.values());
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
   };
 
   const start = () => socket?.emit('startGame');
