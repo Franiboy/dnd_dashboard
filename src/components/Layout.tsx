@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AppSwitcher } from './AppSwitcher';
 import { FeatureRequests } from './FeatureRequests';
 import { HeaderAction } from './HeaderAction';
 import type { SafeUser, VersionInfo } from '../../shared/types';
@@ -114,21 +115,6 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
     (user.isAdmin || user.canAccessPreviews) &&
     (isMain ? otherPreviews.length > 0 : otherPreviews.length > 0 || !!version?.mainServerUrl);
 
-  const adminIcon = (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <path d="M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
-    </svg>
-  );
-
-  const featureIcon = (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2L2 7l10 5 10-5-10-5z" />
-      <path d="M2 17l10 5 10-5" />
-      <path d="M2 12l10 5 10-5" />
-    </svg>
-  );
-
   const logoutIcon = (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -217,16 +203,7 @@ export function Layout({ user, onLogout, children }: LayoutProps) {
         </div>
 
         <div className="flex justify-end flex-wrap gap-2">
-          {isMain && version?.aiEnabled && (
-            <HeaderAction to="/feature-request" icon={featureIcon} variant="accent" title="Feature Request">
-              Feature Request
-            </HeaderAction>
-          )}
-          {user.isAdmin && (
-            <HeaderAction to="/admin" icon={adminIcon} title="Administration">
-              Admin
-            </HeaderAction>
-          )}
+          <AppSwitcher user={user} version={version} />
           <HeaderAction onClick={onLogout} icon={logoutIcon} variant="danger">
             Logout
           </HeaderAction>
