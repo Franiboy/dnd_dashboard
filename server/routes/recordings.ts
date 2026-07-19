@@ -5,7 +5,6 @@ import { runTranscription } from '../discord/transcriber.js';
 import { isRecordingFeatureEnabled } from '../discord/config.js';
 import { onSessionsUpdated, onStatusUpdated } from '../discord/recordingsEvents.js';
 import { getSessionById, listSessions, getFilesBySessionId } from '../repositories/recordings.js';
-import { deleteSessionAudioFiles } from '../discord/files.js';
 
 const router = Router();
 const sseClients = new Set<Response>();
@@ -154,26 +153,6 @@ router.post('/:id/transcribe', (req, res) => {
   });
 
   res.json({ message: 'Transkription wird im Hintergrund gestartet' });
-});
-
-router.delete('/:id/files', async (req, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
-  if (session.status !== 'completed' && session.status !== 'error') {
-    res.status(400).json({ error: 'Audio-Dateien können nur nach abgeschlossener oder fehlgeschlagener Transkription gelöscht werden' });
-    return;
-  }
-
-  try {
-    const deleted = await deleteSessionAudioFiles(id);
-    res.json({ message: `${deleted} Audio-Datei(en) gelöscht` });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
-  }
 });
 
 export default router;
