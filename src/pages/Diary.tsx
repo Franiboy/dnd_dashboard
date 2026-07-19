@@ -44,6 +44,21 @@ const quillModules = {
 
 const quillFormats = ['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet'];
 
+const PREVIEW_LENGTH = 200;
+
+function stripHtml(html: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  return doc.body.textContent || '';
+}
+
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  const cut = text.slice(0, maxLength);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${lastSpace > 0 ? cut.slice(0, lastSpace) : cut}…`;
+}
+
 export function Diary() {
   const { request } = useApi();
   const { showSuccess } = useError();
@@ -55,6 +70,8 @@ export function Diary() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<DiaryFormData>({ title: '', content: '' });
   const [formError, setFormError] = useState<string | null>(null);
+  const [expandedContent, setExpandedContent] = useState<Set<number>>(new Set());
+  const [expandedRewritten, setExpandedRewritten] = useState<Set<number>>(new Set());
 
   const loadEntries = useCallback(async () => {
     const { data, error } = await request<{ entries: DiaryEntry[] }>('/api/diary/entries');
@@ -97,6 +114,24 @@ export function Diary() {
   function openEdit(entry: DiaryEntry) {
     resetForm(entry);
     setIsModalOpen(true);
+  }
+
+  function toggleContent(id: number) {
+    setExpandedContent((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleRewritten(id: number) {
+    setExpandedRewritten((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   function closeModal() {
@@ -296,10 +331,32 @@ export function Diary() {
                     </div>
                   </div>
 
-                  <div
-                    className="text-slate-300 diary-content mb-4"
-                    dangerouslySetInnerHTML={{ __html: entry.content }}
-                  />
+                  {(() => {
+                    const plain = stripHtml(entry.content);
+                    const isLong = plain.length > PREVIEW_LENGTH;
+                    const expanded = expandedContent.has(entry.id);
+                    return (
+                      <>
+                        {expanded || !isLong ? (
+                          <div
+                            className="text-slate-300 diary-content mb-4"
+                            dangerouslySetInnerHTML={{ __html: entry.content }}
+                          />
+                        ) : (
+                          <p className="text-slate-300 mb-4">{truncateText(plain, PREVIEW_LENGTH)}</p>
+                        )}
+                        {isLong && (
+                          <button
+                            type="button"
+                            onClick={() => toggleContent(entry.id)}
+                            className="text-sm text-[var(--accent)] hover:underline mb-4"
+                          >
+                            {expanded ? 'Weniger anzeigen' : 'Mehr anzeigen'}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {entry.rewrittenContent && (
                     <div className="rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 p-4">
@@ -322,7 +379,26 @@ export function Diary() {
                           </Button>
                         </div>
                       </div>
-                      <div className="text-slate-300 whitespace-pre-wrap">{entry.rewrittenContent}</div>
+                      {(() => {
+                        const isLong = entry.rewrittenContent.length > PREVIEW_LENGTH;
+                        const expanded = expandedRewritten.has(entry.id);
+                        return (
+                          <>
+                            <div className="text-slate-300 whitespace-pre-wrap">
+                              {expanded || !isLong ? entry.rewrittenContent : truncateText(entry.rewrittenContent, PREVIEW_LENGTH)}
+                            </div>
+                            {isLong && (
+                              <button
+                                type="button"
+                                onClick={() => toggleRewritten(entry.id)}
+                                className="text-sm text-[var(--accent)] hover:underline mt-2"
+                              >
+                                {expanded ? 'Weniger anzeigen' : 'Mehr anzeigen'}
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
                 </article>
