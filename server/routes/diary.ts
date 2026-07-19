@@ -29,7 +29,7 @@ router.post('/entries', (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, content, entryDate } = req.body;
+  const { title, content } = req.body;
   if (!title || typeof title !== 'string' || !title.trim()) {
     res.status(400).json({ error: 'Titel ist erforderlich' });
     return;
@@ -38,12 +38,8 @@ router.post('/entries', (req: AuthRequest, res) => {
     res.status(400).json({ error: 'Inhalt ist erforderlich' });
     return;
   }
-  if (!entryDate || typeof entryDate !== 'string' || !entryDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    res.status(400).json({ error: 'Gültiges Datum im Format YYYY-MM-DD ist erforderlich' });
-    return;
-  }
 
-  const entry = createDiaryEntry(req.user.id, title, content, entryDate);
+  const entry = createDiaryEntry(req.user.id, title, content);
   res.status(201).json({ entry });
 });
 
@@ -75,7 +71,7 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, content, rewrittenContent, entryDate } = req.body;
+  const { title, content, rewrittenContent } = req.body;
   const updates: Parameters<typeof updateDiaryEntry>[1] = {};
 
   if (title !== undefined) {
@@ -94,13 +90,6 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
   }
   if (rewrittenContent !== undefined) {
     updates.rewrittenContent = typeof rewrittenContent === 'string' ? rewrittenContent : null;
-  }
-  if (entryDate !== undefined) {
-    if (typeof entryDate !== 'string' || !entryDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      res.status(400).json({ error: 'Gültiges Datum im Format YYYY-MM-DD ist erforderlich' });
-      return;
-    }
-    updates.entryDate = entryDate;
   }
 
   const entry = updateDiaryEntry(id, updates);
