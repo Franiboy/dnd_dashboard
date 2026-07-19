@@ -1,5 +1,6 @@
 import { unlink } from 'node:fs/promises';
 import { getFilesBySessionId, updateFile } from '../repositories/recordings.js';
+import { emitSessionsUpdated } from './recordingsEvents.js';
 
 export async function deleteSessionAudioFiles(sessionId: number): Promise<number> {
   const files = getFilesBySessionId(sessionId);
@@ -17,5 +18,6 @@ export async function deleteSessionAudioFiles(sessionId: number): Promise<number
     }
   }
 
+  emitSessionsUpdated();
   return deleted;
 }
