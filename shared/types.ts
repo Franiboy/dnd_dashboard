@@ -153,4 +153,5 @@ export interface RecordingSession {
 export interface RecordingChannel {
   id: string;
   name: string;
+  participants: string[];
 }

@@ -204,14 +204,23 @@ export function Recordings() {
             <select
               value={selectedChannel}
               onChange={(e) => setSelectedChannel(e.target.value)}
-              className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
+              disabled={channels.length === 0 || !status?.bot.ready}
+              className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
             >
-              <option value="">Bitte wählen</option>
-              {channels.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+              <option value="">
+                {channels.length === 0 ? 'Keine belegten Voice-Channels' : 'Bitte wählen'}
+              </option>
+              {channels.map((c) => {
+                const participantLabel =
+                  c.participants.length <= 3
+                    ? c.participants.join(', ')
+                    : `${c.participants.slice(0, 3).join(', ')} +${c.participants.length - 3}`;
+                return (
+                  <option key={c.id} value={c.id} title={c.participants.join(', ')}>
+                    {c.name} ({c.participants.length}) — {participantLabel}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <Button
