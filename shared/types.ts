@@ -121,7 +121,7 @@ export interface ClientToServerEvents {
   resetGame: () => void;
 }
 
-export type RecordingStatus = 'recording' | 'processing' | 'completed' | 'error';
+export type RecordingStatus = 'recording' | 'pending_transcription' | 'processing' | 'completed' | 'error';
 
 export interface RecordingFile {
   id: number;

@@ -112,6 +112,8 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
   const session = getSessionById(sessionId);
   if (!session) return;
 
+  updateSession(sessionId, { status: 'processing', error: null });
+
   const allSegments: TranscriptSegment[] = [];
   const errors: string[] = [];
 

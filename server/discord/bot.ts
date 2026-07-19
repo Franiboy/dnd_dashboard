@@ -2,7 +2,7 @@ import { Client, GatewayIntentBits, type VoiceBasedChannel } from 'discord.js';
 import { isOpusAvailable, makeSessionDir, ensureDir } from './audio.js';
 import { startRecording, stopRecording, isRecording, getActiveRecording } from './recorder.js';
 import { createSession, getSessionById, updateSession } from '../repositories/recordings.js';
-import { runTranscription } from './transcriber.js';
+
 import type { RecordingChannel, RecordingSession } from '../../shared/types.js';
 import { BOT_TOKEN, GUILD_ID, RECORDINGS_DIR, isRecordingFeatureEnabled } from './config.js';
 
@@ -132,15 +132,9 @@ export async function finishRecording(sessionId: number): Promise<RecordingSessi
     throw new Error('Diese Session ist nicht aktiv');
   }
 
-  const files = await stopRecording();
+  await stopRecording();
   const stoppedAt = new Date().toISOString();
-  updateSession(sessionId, { status: 'processing', stoppedAt });
-
-  // Start transcription in the background
-  runTranscription(sessionId, files).catch((err) => {
-    console.error('Transcription failed:', err);
-    updateSession(sessionId, { status: 'error', error: String(err) });
-  });
+  updateSession(sessionId, { status: 'pending_transcription', stoppedAt });
 
   return getSessionById(sessionId)!;
 }
