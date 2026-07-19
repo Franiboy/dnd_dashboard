@@ -2,7 +2,21 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, openSync, c
 import { rm, stat, writeFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
-import { OpusEncoder as NativeOpusEncoder } from '@discordjs/opus';
+import { createRequire } from 'node:module';
+
+// `@discordjs/opus` is a native C++ CommonJS module whose exports are resolved
+// dynamically via `module.exports = require(...)`. Node's ESM named-export
+// detection cannot see through this, so a static `import { OpusEncoder }` fails
+// at runtime. Load it via `createRequire` instead, which works reliably.
+const requireModule = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+const OpusModule = requireModule('@discordjs/opus') as {
+  OpusEncoder: new (sampleRate: number, channels: number) => {
+    encode(buf: Buffer): Buffer;
+    decode(buf: Buffer): Buffer;
+  };
+};
+const NativeOpusEncoder = OpusModule.OpusEncoder;
 
 export interface PcmSegment {
   startSample: number;
