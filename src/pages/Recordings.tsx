@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { useApi } from '../hooks/useApi';
@@ -9,6 +9,18 @@ interface StatusResponse {
   active: { sessionId: number; channelId: string } | null;
 }
 
+function generateDefaultSessionName(sessions: RecordingSession[]): string {
+  const base = `DnD Session ${new Date().toLocaleDateString('de-DE')}`;
+  const existingNames = new Set(sessions.map((s) => s.name.toLowerCase()));
+  let name = base;
+  let counter = 2;
+  while (existingNames.has(name.toLowerCase())) {
+    name = `${base} (${counter})`;
+    counter++;
+  }
+  return name;
+}
+
 export function Recordings() {
   const { request } = useApi();
   const [status, setStatus] = useState<StatusResponse | null>(null);
@@ -16,8 +28,31 @@ export function Recordings() {
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
   const [selectedChannel, setSelectedChannel] = useState('');
   const [sessionName, setSessionName] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const isAutoName = useRef(true);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+
+  const validateName = useCallback(
+    (name: string, currentSessions: RecordingSession[]): string | null => {
+      const trimmed = name.trim();
+      if (!trimmed) return 'Name ist erforderlich';
+      const exists = currentSessions.some((s) => s.name.toLowerCase() === trimmed.toLowerCase());
+      if (exists) return 'Es gibt bereits eine Session mit diesem Namen';
+      return null;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (isAutoName.current) {
+      const generated = generateDefaultSessionName(sessions);
+      setSessionName(generated);
+      setNameError(validateName(generated, sessions));
+    } else {
+      setNameError(validateName(sessionName, sessions));
+    }
+  }, [sessions, sessionName, validateName]);
 
   const loadAll = useCallback(async () => {
     const [statusData, channelsData, sessionsData] = await Promise.all([
@@ -38,7 +73,12 @@ export function Recordings() {
   }, [loadAll]);
 
   async function startRecording() {
-    if (!selectedChannel || !sessionName.trim()) return;
+    const error = validateName(sessionName, sessions);
+    if (error) {
+      setNameError(error);
+      return;
+    }
+    if (!selectedChannel) return;
     setWorking(true);
     const { data } = await request<{ session: RecordingSession }>('/api/recordings/start', {
       method: 'POST',
@@ -46,8 +86,11 @@ export function Recordings() {
       body: JSON.stringify({ channelId: selectedChannel, name: sessionName.trim() }),
     });
     if (data) {
-      setSessionName('');
       await loadAll();
+      isAutoName.current = true;
+      const newName = generateDefaultSessionName(sessions);
+      setSessionName(newName);
+      setNameError(validateName(newName, sessions));
     }
     setWorking(false);
   }
@@ -55,6 +98,13 @@ export function Recordings() {
   async function stopRecording(sessionId: number) {
     setWorking(true);
     await request<{ session: RecordingSession }>(`/api/recordings/${sessionId}/stop`, { method: 'POST' });
+    await loadAll();
+    setWorking(false);
+  }
+
+  async function startTranscriptionNow(sessionId: number) {
+    setWorking(true);
+    await request<{ message: string }>(`/api/recordings/${sessionId}/transcribe`, { method: 'POST' });
     await loadAll();
     setWorking(false);
   }
@@ -91,10 +141,16 @@ export function Recordings() {
             <input
               type="text"
               value={sessionName}
-              onChange={(e) => setSessionName(e.target.value)}
+              onChange={(e) => {
+                isAutoName.current = false;
+                setSessionName(e.target.value);
+              }}
               placeholder="DnD Session 19.07."
-              className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
+              className={`w-full bg-slate-800 border rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] ${
+                nameError ? 'border-[var(--danger)]' : 'border-[var(--border)]'
+              }`}
             />
+            {nameError && <p className="text-[var(--danger)] text-xs mt-1">{nameError}</p>}
           </div>
           <div className="flex-1 w-full">
             <label className="block text-sm text-slate-400 mb-1">Voice-Channel</label>
@@ -113,7 +169,7 @@ export function Recordings() {
           </div>
           <Button
             variant="accent"
-            disabled={working || !selectedChannel || !sessionName.trim() || !status?.bot.ready}
+            disabled={working || !selectedChannel || !sessionName.trim() || !!nameError || !status?.bot.ready}
             onClick={startRecording}
           >
             Aufnahme starten
@@ -141,6 +197,15 @@ export function Recordings() {
                   Stoppen
                 </Button>
               )}
+              {(session.status === 'pending_transcription' || session.status === 'error') && (
+                <Button
+                  variant="secondary"
+                  disabled={working}
+                  onClick={() => startTranscriptionNow(session.id)}
+                >
+                  {session.status === 'error' ? 'Transkription wiederholen' : 'Jetzt transkribieren'}
+                </Button>
+              )}
             </div>
 
             {session.status === 'completed' && session.transcript && (
@@ -149,6 +214,19 @@ export function Recordings() {
                 <pre className="bg-slate-900/50 rounded-lg p-4 text-sm text-slate-300 overflow-auto max-h-96 whitespace-pre-wrap">
                   {session.transcript}
                 </pre>
+              </div>
+            )}
+
+            {session.status === 'pending_transcription' && (
+              <div className="mt-4 p-3 rounded-lg bg-slate-700/50 text-slate-300 text-sm">
+                Wartet auf die nächtliche Transkription (läuft ca. um 2 Uhr).
+              </div>
+            )}
+
+            {session.status === 'processing' && (
+              <div className="mt-4 p-3 rounded-lg bg-[var(--accent)]/20 text-[var(--text-h)] text-sm flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
+                Transkription läuft gerade...
               </div>
             )}
 

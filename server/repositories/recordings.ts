@@ -57,6 +57,14 @@ export function listSessions(): RecordingSession[] {
     .all() as RecordingSession[];
 }
 
+export function listPendingTranscriptionSessions(): RecordingSession[] {
+  return db
+    .prepare(
+      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC",
+    )
+    .all() as RecordingSession[];
+}
+
 export function updateSession(
   id: number,
   updates: Partial<Pick<RecordingSession, 'status' | 'stoppedAt' | 'transcript' | 'error' | 'directory'>>,
