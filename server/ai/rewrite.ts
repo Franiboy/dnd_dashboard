@@ -1,7 +1,21 @@
 import { runOpenCode } from './opencode.js';
 
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export async function rewriteTextWithAi(text: string, model?: string): Promise<string | null> {
-  if (!text.trim()) return null;
+  const plainText = stripHtml(text);
+  if (!plainText) return null;
 
   const prompt = [
     'Rewrite the following diary entry in German. Improve grammar, style and clarity while preserving the original meaning and personal tone.',
@@ -9,7 +23,7 @@ export async function rewriteTextWithAi(text: string, model?: string): Promise<s
     'Keep it concise and natural.',
     '',
     'Diary entry:',
-    text,
+    plainText,
   ].join('\n');
 
   const result = await runOpenCode({
