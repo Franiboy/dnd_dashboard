@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { useApi } from '../hooks/useApi';
-import type { RecordingChannel, RecordingSession } from '../../shared/types';
+import type { RecordingChannel, RecordingSession, VersionInfo } from '../../shared/types';
 
 interface StatusResponse {
   bot: { ready: boolean; enabled: boolean };
@@ -32,6 +32,9 @@ export function Recordings() {
   const isAutoName = useRef(true);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const [loadedTranscripts, setLoadedTranscripts] = useState<Record<number, string | null>>({});
+  const [visibleTranscripts, setVisibleTranscripts] = useState<Set<number>>(new Set());
+  const [loadingTranscript, setLoadingTranscript] = useState<Set<number>>(new Set());
 
   const validateName = useCallback(
     (name: string, currentSessions: RecordingSession[]): string | null => {
@@ -54,23 +57,42 @@ export function Recordings() {
     }
   }, [sessions, sessionName, validateName]);
 
-  const loadAll = useCallback(async () => {
-    const [statusData, channelsData, sessionsData] = await Promise.all([
-      request<StatusResponse>('/api/recordings/status', {}, false),
-      request<{ channels: RecordingChannel[] }>('/api/recordings/channels', {}, false),
-      request<{ sessions: RecordingSession[] }>('/api/recordings', {}, false),
-    ]);
-    if (statusData.data) setStatus(statusData.data);
-    if (channelsData.data) setChannels(channelsData.data.channels);
-    if (sessionsData.data) setSessions(sessionsData.data.sessions);
-    setLoading(false);
-  }, [request]);
-
   useEffect(() => {
-    loadAll();
-    const interval = setInterval(loadAll, 3000);
-    return () => clearInterval(interval);
-  }, [loadAll]);
+    let eventSource: EventSource | null = null;
+
+    request<VersionInfo>('/api/version', {}, false).then(({ data: version }) => {
+      if (!version?.recordingEnabled) {
+        setLoading(false);
+        return;
+      }
+
+      request<{ channels: RecordingChannel[] }>('/api/recordings/channels', {}, false).then(({ data }) => {
+        if (data) setChannels(data.channels);
+      });
+
+      eventSource = new EventSource('/api/recordings/events', { withCredentials: true });
+
+      eventSource.addEventListener('status', (event) => {
+        const data = JSON.parse((event as MessageEvent).data) as StatusResponse;
+        setStatus(data);
+      });
+
+      eventSource.addEventListener('sessions', (event) => {
+        const data = JSON.parse((event as MessageEvent).data) as { sessions: RecordingSession[] };
+        setSessions(data.sessions);
+        setLoading(false);
+      });
+
+      eventSource.onerror = () => {
+        // EventSource reconnects automatically. On a fatal auth/config error
+        // the page should be redirected by ProtectedRoute, so we do nothing here.
+      };
+    });
+
+    return () => {
+      eventSource?.close();
+    };
+  }, [request]);
 
   async function startRecording() {
     const error = validateName(sessionName, sessions);
@@ -86,11 +108,8 @@ export function Recordings() {
       body: JSON.stringify({ channelId: selectedChannel, name: sessionName.trim() }),
     });
     if (data) {
-      await loadAll();
       isAutoName.current = true;
-      const newName = generateDefaultSessionName(sessions);
-      setSessionName(newName);
-      setNameError(validateName(newName, sessions));
+      setSessionName('');
     }
     setWorking(false);
   }
@@ -98,14 +117,12 @@ export function Recordings() {
   async function stopRecording(sessionId: number) {
     setWorking(true);
     await request<{ session: RecordingSession }>(`/api/recordings/${sessionId}/stop`, { method: 'POST' });
-    await loadAll();
     setWorking(false);
   }
 
   async function startTranscriptionNow(sessionId: number) {
     setWorking(true);
     await request<{ message: string }>(`/api/recordings/${sessionId}/transcribe`, { method: 'POST' });
-    await loadAll();
     setWorking(false);
   }
 
@@ -115,8 +132,33 @@ export function Recordings() {
     }
     setWorking(true);
     await request<{ message: string }>(`/api/recordings/${sessionId}/files`, { method: 'DELETE' });
-    await loadAll();
     setWorking(false);
+  }
+
+  async function toggleTranscript(sessionId: number) {
+    if (visibleTranscripts.has(sessionId)) {
+      setVisibleTranscripts((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+      return;
+    }
+
+    if (!(sessionId in loadedTranscripts)) {
+      setLoadingTranscript((prev) => new Set(prev).add(sessionId));
+      const { data } = await request<{ session: RecordingSession }>(`/api/recordings/${sessionId}`);
+      if (data) {
+        setLoadedTranscripts((prev) => ({ ...prev, [sessionId]: data.session.transcript }));
+      }
+      setLoadingTranscript((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+    }
+
+    setVisibleTranscripts((prev) => new Set(prev).add(sessionId));
   }
 
   if (loading) {
@@ -202,39 +244,37 @@ export function Recordings() {
                   {new Date(session.startedAt).toLocaleString('de-DE')} · Status: {session.status}
                 </p>
               </div>
-              {session.status === 'recording' && (
-                <Button variant="danger" disabled={working} onClick={() => stopRecording(session.id)}>
-                  Stoppen
-                </Button>
-              )}
-              {(session.status === 'pending_transcription' || session.status === 'error') && (
-                <Button
-                  variant="secondary"
-                  disabled={working}
-                  onClick={() => startTranscriptionNow(session.id)}
-                >
-                  {session.status === 'error' ? 'Transkription wiederholen' : 'Jetzt transkribieren'}
-                </Button>
-              )}
-              {session.hasWavFiles && (
-                <Button
-                  variant="danger"
-                  disabled={working}
-                  onClick={() => deleteAudioFiles(session.id)}
-                >
-                  Audio löschen
-                </Button>
-              )}
-            </div>
-
-            {session.status === 'completed' && session.transcript && (
-              <div className="mt-4">
-                <h4 className="text-sm font-semibold text-slate-300 mb-2">Transkript</h4>
-                <pre className="bg-slate-900/50 rounded-lg p-4 text-sm text-slate-300 overflow-auto max-h-96 whitespace-pre-wrap">
-                  {session.transcript}
-                </pre>
+              <div className="flex items-center gap-2">
+                {session.status === 'recording' && (
+                  <Button variant="danger" disabled={working} onClick={() => stopRecording(session.id)}>
+                    Stoppen
+                  </Button>
+                )}
+                {(session.status === 'pending_transcription' || session.status === 'error') && (
+                  <Button
+                    variant="secondary"
+                    disabled={working}
+                    onClick={() => startTranscriptionNow(session.id)}
+                  >
+                    {session.status === 'error' ? 'Transkription wiederholen' : 'Jetzt transkribieren'}
+                  </Button>
+                )}
+                {session.status === 'completed' && (
+                  <Button
+                    variant="secondary"
+                    disabled={loadingTranscript.has(session.id)}
+                    onClick={() => toggleTranscript(session.id)}
+                  >
+                    {visibleTranscripts.has(session.id) ? 'Transkript ausblenden' : 'Transkript anzeigen'}
+                  </Button>
+                )}
+                {(session.status === 'completed' || session.status === 'error') && session.hasWavFiles && (
+                  <Button variant="danger" disabled={working} onClick={() => deleteAudioFiles(session.id)}>
+                    Audio löschen
+                  </Button>
+                )}
               </div>
-            )}
+            </div>
 
             {session.status === 'pending_transcription' && (
               <div className="mt-4 p-3 rounded-lg bg-slate-700/50 text-slate-300 text-sm">
@@ -246,6 +286,19 @@ export function Recordings() {
               <div className="mt-4 p-3 rounded-lg bg-[var(--accent)]/20 text-[var(--text-h)] text-sm flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
                 Transkription läuft gerade...
+              </div>
+            )}
+
+            {visibleTranscripts.has(session.id) && (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-slate-300 mb-2">Transkript</h4>
+                {loadedTranscripts[session.id] ? (
+                  <pre className="bg-slate-900/50 rounded-lg p-4 text-sm text-slate-300 overflow-auto max-h-96 whitespace-pre-wrap">
+                    {loadedTranscripts[session.id]}
+                  </pre>
+                ) : (
+                  <p className="text-slate-400 text-sm">Noch kein Transkript verfügbar.</p>
+                )}
               </div>
             )}
 

@@ -5,6 +5,7 @@ import { createSession, getSessionById, updateSession } from '../repositories/re
 
 import type { RecordingChannel, RecordingSession } from '../../shared/types.js';
 import { BOT_TOKEN, GUILD_ID, RECORDINGS_DIR, isRecordingFeatureEnabled } from './config.js';
+import { emitSessionsUpdated, emitStatusUpdated } from './recordingsEvents.js';
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMembers],
@@ -123,6 +124,9 @@ export async function beginRecording(
 
   await startRecording(guild, channel, session.id, directory);
 
+  emitStatusUpdated();
+  emitSessionsUpdated();
+
   return getSessionById(session.id)!;
 }
 
@@ -135,6 +139,9 @@ export async function finishRecording(sessionId: number): Promise<RecordingSessi
   await stopRecording();
   const stoppedAt = new Date().toISOString();
   updateSession(sessionId, { status: 'pending_transcription', stoppedAt });
+
+  emitStatusUpdated();
+  emitSessionsUpdated();
 
   return getSessionById(sessionId)!;
 }
