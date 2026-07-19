@@ -4,10 +4,7 @@ import { startRecording, stopRecording, isRecording, getActiveRecording } from '
 import { createSession, getSessionById, updateSession } from '../repositories/recordings.js';
 import { runTranscription } from './transcriber.js';
 import type { RecordingChannel, RecordingSession } from '../../shared/types.js';
-
-const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-const GUILD_ID = process.env.DISCORD_GUILD_ID;
-const RECORDINGS_DIR = process.env.RECORDINGS_DIR || 'recordings';
+import { BOT_TOKEN, GUILD_ID, RECORDINGS_DIR, isRecordingFeatureEnabled } from './config.js';
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMembers],
@@ -19,11 +16,11 @@ let channelsCachedAt = 0;
 const CHANNEL_CACHE_TTL = 60_000;
 
 export function isBotEnabled(): boolean {
-  return !!BOT_TOKEN && !!GUILD_ID;
+  return isRecordingFeatureEnabled();
 }
 
 export function startBot(): void {
-  if (!isBotEnabled()) {
+  if (!isRecordingFeatureEnabled()) {
     console.log('Discord bot not configured; voice recording disabled.');
     return;
   }

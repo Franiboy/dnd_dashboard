@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { VersionInfo } from '../shared/types.js';
 import { isAiEnabled } from './ai/config.js';
+import { isRecordingFeatureEnabled } from './discord/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,6 +24,7 @@ function readVersionFromFile(): VersionInfo | null {
       return {
         ...data,
         aiEnabled: typeof data.aiEnabled === 'boolean' ? data.aiEnabled : isAiEnabled(),
+        recordingEnabled: typeof data.recordingEnabled === 'boolean' ? data.recordingEnabled : isRecordingFeatureEnabled(),
       } as VersionInfo;
     }
   } catch {
@@ -94,6 +96,7 @@ export function getVersion(): VersionInfo {
       ahead,
       behind,
       aiEnabled: isAiEnabled(),
+      recordingEnabled: isRecordingFeatureEnabled(),
       previewFeatureRequestId: previewInfo.previewFeatureRequestId,
       mainServerUrl: previewInfo.mainServerUrl,
     };
@@ -106,6 +109,7 @@ export function getVersion(): VersionInfo {
     ahead: 0,
     behind: 0,
     aiEnabled: false,
+    recordingEnabled: isRecordingFeatureEnabled(),
     previewFeatureRequestId: previewInfo.previewFeatureRequestId,
     mainServerUrl: previewInfo.mainServerUrl,
   };

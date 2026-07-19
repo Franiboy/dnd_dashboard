@@ -1,15 +1,26 @@
-import { Router } from 'express';
+import { Router, type Response, type NextFunction } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getBotStatus, getVoiceChannels, beginRecording, finishRecording, getActiveRecording } from '../discord/bot.js';
+import { isRecordingFeatureEnabled } from '../discord/config.js';
 import { getSessionById, listSessions, getFilesBySessionId } from '../repositories/recordings.js';
 
 const router = Router();
 
-router.get('/status', authMiddleware, requireAdmin, (_req, res) => {
+function requireRecordingFeature(_req: AuthRequest, res: Response, next: NextFunction): void {
+  if (!isRecordingFeatureEnabled()) {
+    res.status(503).json({ error: 'Aufnahme-Feature ist nicht konfiguriert' });
+    return;
+  }
+  next();
+}
+
+router.use(authMiddleware, requireAdmin, requireRecordingFeature);
+
+router.get('/status', (_req, res) => {
   res.json({ bot: getBotStatus(), active: getActiveRecording() });
 });
 
-router.get('/channels', authMiddleware, requireAdmin, async (_req, res) => {
+router.get('/channels', async (_req, res) => {
   try {
     const channels = await getVoiceChannels();
     res.json({ channels });
@@ -18,12 +29,12 @@ router.get('/channels', authMiddleware, requireAdmin, async (_req, res) => {
   }
 });
 
-router.get('/', authMiddleware, requireAdmin, (_req, res) => {
+router.get('/', (_req, res) => {
   const sessions = listSessions();
   res.json({ sessions });
 });
 
-router.get('/:id', authMiddleware, requireAdmin, (req, res) => {
+router.get('/:id', (req, res) => {
   const id = Number(req.params.id);
   const session = getSessionById(id);
   if (!session) {
@@ -34,7 +45,7 @@ router.get('/:id', authMiddleware, requireAdmin, (req, res) => {
   res.json({ session: { ...session, files } });
 });
 
-router.post('/start', authMiddleware, requireAdmin, async (req: AuthRequest, res) => {
+router.post('/start', async (req: AuthRequest, res) => {
   const { channelId, name } = req.body;
   if (!channelId || typeof channelId !== 'string') {
     res.status(400).json({ error: 'channelId ist erforderlich' });
@@ -57,7 +68,7 @@ router.post('/start', authMiddleware, requireAdmin, async (req: AuthRequest, res
   }
 });
 
-router.post('/:id/stop', authMiddleware, requireAdmin, async (req, res) => {
+router.post('/:id/stop', async (req, res) => {
   const id = Number(req.params.id);
   try {
     const session = await finishRecording(id);
