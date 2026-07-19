@@ -109,6 +109,16 @@ export function Recordings() {
     setWorking(false);
   }
 
+  async function deleteAudioFiles(sessionId: number) {
+    if (!window.confirm('Audio-Dateien wirklich löschen? Das Transkript bleibt erhalten.')) {
+      return;
+    }
+    setWorking(true);
+    await request<{ message: string }>(`/api/recordings/${sessionId}/files`, { method: 'DELETE' });
+    await loadAll();
+    setWorking(false);
+  }
+
   if (loading) {
     return (
       <div className="min-h-full flex items-center justify-center">
@@ -204,6 +214,15 @@ export function Recordings() {
                   onClick={() => startTranscriptionNow(session.id)}
                 >
                   {session.status === 'error' ? 'Transkription wiederholen' : 'Jetzt transkribieren'}
+                </Button>
+              )}
+              {session.hasWavFiles && (
+                <Button
+                  variant="danger"
+                  disabled={working}
+                  onClick={() => deleteAudioFiles(session.id)}
+                >
+                  Audio löschen
                 </Button>
               )}
             </div>

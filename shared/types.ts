@@ -146,6 +146,7 @@ export interface RecordingSession {
   directory: string;
   transcript: string | null;
   error: string | null;
+  hasWavFiles?: boolean;
   files?: RecordingFile[];
 }
 
