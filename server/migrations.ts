@@ -110,6 +110,39 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: 'create_recording_tables',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS recording_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'recording',
+          guild_id TEXT NOT NULL,
+          channel_id TEXT NOT NULL,
+          created_by TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          stopped_at TEXT,
+          directory TEXT NOT NULL,
+          transcript TEXT,
+          error TEXT
+        );
+      `);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS recording_files (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id INTEGER NOT NULL,
+          user_id TEXT NOT NULL,
+          display_name TEXT NOT NULL,
+          pcm_path TEXT NOT NULL,
+          wav_path TEXT,
+          duration REAL,
+          transcript_path TEXT,
+          FOREIGN KEY (session_id) REFERENCES recording_sessions(id) ON DELETE CASCADE
+        );
+      `);
+    },
+  },
 ];
 
 export function runMigrations() {

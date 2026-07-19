@@ -119,3 +119,36 @@ export interface ClientToServerEvents {
   unconfirmTask: (taskId: string) => void;
   resetGame: () => void;
 }
+
+export type RecordingStatus = 'recording' | 'processing' | 'completed' | 'error';
+
+export interface RecordingFile {
+  id: number;
+  sessionId: number;
+  userId: string;
+  displayName: string;
+  pcmPath: string;
+  wavPath: string | null;
+  duration: number | null;
+  transcriptPath: string | null;
+}
+
+export interface RecordingSession {
+  id: number;
+  name: string;
+  status: RecordingStatus;
+  guildId: string;
+  channelId: string;
+  createdBy: string;
+  startedAt: string;
+  stoppedAt: string | null;
+  directory: string;
+  transcript: string | null;
+  error: string | null;
+  files?: RecordingFile[];
+}
+
+export interface RecordingChannel {
+  id: string;
+  name: string;
+}
