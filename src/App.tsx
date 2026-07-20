@@ -12,7 +12,7 @@ import { AuthCallback } from './pages/AuthCallback';
 import { Home } from './pages/Home';
 import { Bingo } from './pages/Bingo';
 import { Admin } from './pages/Admin';
-import { Diary } from './pages/Diary';
+import { Diary as Notes } from './pages/Diary';
 import { FeatureRequest } from './pages/FeatureRequest';
 import { Recordings } from './pages/Recordings';
 
@@ -99,7 +99,7 @@ function App() {
           ) : (
             <>
               <Route path="/" element={<Home />} />
-              <Route path="/diary" element={<ProtectedRoute user={user}><Diary /></ProtectedRoute>} />
+              <Route path="/notizen" element={<ProtectedRoute user={user}><Notes /></ProtectedRoute>} />
               <Route path="/feature-request" element={<ProtectedRoute user={user}><FeatureRequest currentUser={user} /></ProtectedRoute>} />
               <Route path="/recordings" element={<ProtectedRoute user={user} adminOnly><Recordings /></ProtectedRoute>} />
               <Route path="/bingo" element={<ProtectedRoute user={user}><Bingo token={token} user={user} /></ProtectedRoute>} />
