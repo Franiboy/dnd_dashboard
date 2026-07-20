@@ -1,9 +1,7 @@
-import { useMemo, useState } from 'react';
-import { GridLayout, useContainerWidth } from 'react-grid-layout';
-import type { Layout, LayoutItem } from 'react-grid-layout';
 import type { BingoGame, Player, SafeUser } from '../../shared/types';
 import type { Socket } from '../types';
 import { BingoGrid } from './BingoGrid';
+import { DashboardLayout } from './DashboardLayout';
 import { GridPanel } from './GridPanel';
 import { PlayerList } from './PlayerList';
 import { TaskPool } from './TaskPool';
@@ -20,7 +18,7 @@ interface BingoDashboardProps {
   isPlaying: boolean;
 }
 
-const DEFAULT_LAYOUT: LayoutItem[] = [
+const DEFAULT_LAYOUT = [
   { i: 'players', x: 0, y: 0, w: 3, h: 4, minW: 2, minH: 2 },
   { i: 'board', x: 3, y: 0, w: 6, h: 8, minW: 3, minH: 4 },
   { i: 'taskPool', x: 9, y: 0, w: 3, h: 8, minW: 2, minH: 3 },
@@ -28,69 +26,12 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
   { i: 'taskStatus', x: 9, y: 0, w: 3, h: 4, minW: 2, minH: 2 },
 ];
 
-const MARGIN = [16, 16] as const;
-const PADDING = [0, 0] as const;
-
-function getDefaultItem(key: string): LayoutItem {
-  return DEFAULT_LAYOUT.find((l) => l.i === key) || { i: key, x: 0, y: 0, w: 3, h: 4 };
-}
-
 function getAvailableTaskCount(game: BingoGame, userId?: string): number {
   return game.tasks.filter((t) => !t.isPrivate || (userId && t.assignedTo?.includes(userId))).length;
 }
 
 export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, isSetup, isPlaying }: BingoDashboardProps) {
-  const storageKey = `bingo-layout-${user.id}`;
-  const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
-
-  const visibleKeys = useMemo(() => {
-    const keys: string[] = ['players', 'board'];
-    if (isSetup) {
-      keys.push('taskPool', 'gameControls');
-    }
-    if (isPlaying && isAdmin) {
-      keys.push('taskStatus');
-    }
-    return keys;
-  }, [isSetup, isPlaying, isAdmin]);
-
-  const [savedLayout, setSavedLayout] = useState<Layout>(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) return JSON.parse(raw);
-    } catch {
-      // ignore
-    }
-    return DEFAULT_LAYOUT;
-  });
-
-  const layout = useMemo(() => {
-    const map = new Map(savedLayout.map((l) => [l.i, l]));
-    return visibleKeys.map((key) => map.get(key) || getDefaultItem(key));
-  }, [savedLayout, visibleKeys]);
-
-  const handleLayoutChange = (newLayout: Layout) => {
-    setSavedLayout((prev) => {
-      const map = new Map(prev.map((l) => [l.i, l]));
-      for (const item of newLayout) {
-        map.set(item.i, item);
-      }
-      const next = Array.from(map.values());
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
-
-  const start = () => socket?.emit('startGame');
-  const reset = () => {
-    if (confirm('Neue Runde starten? Aufgaben bleiben erhalten, die Bretter werden zurückgesetzt.')) {
-      socket?.emit('resetGame');
-    }
-  };
+  const storageKey = `bingo-layout-v2-${user.id}`;
 
   const needed = game.gridSize * game.gridSize;
   const onlinePlayers = game.players.filter((p) => p.online);
@@ -103,6 +44,13 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
   const totalEnough = game.tasks.length >= needed;
   const everyoneEnough = playerAvailableCounts.length > 0 && playerAvailableCounts.every((p) => p.count >= needed);
   const canStartByTasks = totalEnough && everyoneEnough;
+
+  const start = () => socket?.emit('startGame');
+  const reset = () => {
+    if (confirm('Neue Runde starten? Aufgaben bleiben erhalten, die Bretter werden zurückgesetzt.')) {
+      socket?.emit('resetGame');
+    }
+  };
 
   const lockButton = player && isSetup && (
     <button
@@ -228,38 +176,12 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="h-full w-full"
-      style={{
-        backgroundImage: 'radial-gradient(var(--border) 1px, transparent 1px)',
-        backgroundSize: '20px 20px',
-      }}
+    <DashboardLayout
+      storageKey={storageKey}
+      defaultLayout={DEFAULT_LAYOUT}
+      className="bingo-dashboard"
     >
-      {mounted && (
-        <GridLayout
-          className="bingo-grid-layout"
-          width={width}
-          layout={layout}
-          gridConfig={{
-            cols: 12,
-            rowHeight: 60,
-            margin: MARGIN,
-            containerPadding: PADDING,
-            maxRows: Infinity,
-          }}
-          dragConfig={{
-            handle: '.grid-panel-header',
-          }}
-          resizeConfig={{
-            handles: ['se'],
-          }}
-          onLayoutChange={handleLayoutChange}
-          autoSize
-        >
-          {items}
-        </GridLayout>
-      )}
-    </div>
+      {items}
+    </DashboardLayout>
   );
 }

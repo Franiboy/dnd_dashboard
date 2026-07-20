@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BackButton } from '../components/BackButton';
-import { ConfirmDialog } from '../components/ConfirmDialog';
+import { DashboardHeader } from '../components/DashboardHeader';
 import { Loading } from '../components/Loading';
 import { BingoDashboard } from '../components/BingoDashboard';
 import type { SafeUser } from '../../shared/types';
@@ -32,7 +31,6 @@ interface BingoProps {
 
 export function Bingo({ token, user }: BingoProps) {
   const { game, socket, playerId, bingo } = useSocket(token, user);
-  const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [layoutResetKey, setLayoutResetKey] = useState(0);
 
   useEffect(() => {
@@ -52,30 +50,23 @@ export function Bingo({ token, user }: BingoProps) {
   const player = game.players.find((p) => p.id === playerId);
   const needsJoin = !player;
   const isAdmin = user?.isAdmin || false;
-  const storageKey = user ? `bingo-layout-${user.id}` : '';
+  const storageKey = user ? `bingo-layout-v2-${user.id}` : '';
 
   const handleResetLayout = () => {
     if (storageKey) localStorage.removeItem(storageKey);
-    setResetDialogOpen(false);
     setLayoutResetKey((k) => k + 1);
   };
 
   return (
     <div className="h-full flex flex-col p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-3xl font-bold text-[var(--text-h)]">Bingo</h1>
-        <div className="flex items-center gap-3">
-          {user && (
-            <button
-              onClick={() => setResetDialogOpen(true)}
-              className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
-            >
-              UI zurücksetzen
-            </button>
-          )}
-          <BackButton />
-        </div>
-      </div>
+      <DashboardHeader
+        title="Bingo"
+        onReset={user ? handleResetLayout : undefined}
+        resetConfirmTitle="UI-Layout zurücksetzen?"
+        resetConfirmMessage={
+          <p>Das gespeicherte Bingo-Dashboard-Layout wird auf das Standard-Layout zurückgesetzt.</p>
+        }
+      />
 
       {bingo && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
@@ -101,20 +92,6 @@ export function Bingo({ token, user }: BingoProps) {
           isSetup={isSetup}
           isPlaying={isPlaying}
         />
-      )}
-
-      {resetDialogOpen && (
-        <ConfirmDialog
-          title="UI-Layout zurücksetzen?"
-          confirmLabel="Zurücksetzen"
-          variant="danger"
-          onConfirm={handleResetLayout}
-          onCancel={() => setResetDialogOpen(false)}
-        >
-          <p>
-            Das gespeicherte Bingo-Dashboard-Layout wird auf das Standard-Layout zurückgesetzt.
-          </p>
-        </ConfirmDialog>
       )}
     </div>
   );

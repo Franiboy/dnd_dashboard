@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
 import { Button } from '../components/Button';
+import { DashboardHeader } from '../components/DashboardHeader';
+import { DashboardLayout } from '../components/DashboardLayout';
+import { GridPanel } from '../components/GridPanel';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
 import ReactQuill from 'react-quill-new';
@@ -13,26 +16,6 @@ const SUMMARY_MAX_LENGTH = 500;
 interface DiaryFormData {
   title: string;
   content: string;
-}
-
-function getDayFromCreatedAt(createdAt: string): string {
-  return createdAt.slice(0, 10);
-}
-
-function formatDateLabel(dateString: string): string {
-  const [year, month, day] = dateString.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
-  return date.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-}
-
-function groupByDay(entries: DiaryEntry[]): Record<string, DiaryEntry[]> {
-  const groups: Record<string, DiaryEntry[]> = {};
-  for (const entry of entries) {
-    const day = getDayFromCreatedAt(entry.createdAt);
-    if (!groups[day]) groups[day] = [];
-    groups[day].push(entry);
-  }
-  return groups;
 }
 
 function stripHtml(html: string): string {
@@ -69,6 +52,7 @@ export function Diary() {
   const [processingSummaryId, setProcessingSummaryId] = useState<number | null>(null);
   const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [aiOperation, setAiOperation] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
   const sseReadyRef = useRef(Promise.resolve());
 
   const loadEntries = useCallback(async () => {
@@ -116,8 +100,6 @@ export function Diary() {
     };
   }, []);
 
-  const grouped = useMemo(() => groupByDay(entries), [entries]);
-  const sortedDays = useMemo(() => Object.keys(grouped).sort().reverse(), [grouped]);
 
   function resetForm(entry?: DiaryEntry) {
     if (entry) {
@@ -144,6 +126,11 @@ export function Diary() {
     if (working) return;
     setIsModalOpen(false);
     resetForm();
+  }
+
+  function handleResetLayout() {
+    localStorage.removeItem('diary-layout-v2');
+    setResetKey((k) => k + 1);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -357,13 +344,8 @@ export function Diary() {
   }
 
   return (
-    <div className="min-h-full p-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-[var(--text-h)]">Tagebuch</h1>
-        <Button variant="accent" onClick={openCreate}>
-          Neuer Eintrag
-        </Button>
-      </div>
+    <div className="h-full flex flex-col p-6">
+      <DashboardHeader title="Notizen" onReset={handleResetLayout} />
 
       {aiStatus && (
         <div className="fixed bottom-4 right-4 bg-[var(--panel)] border border-[var(--border)] rounded-xl p-3 shadow-lg z-50 max-w-md">
@@ -375,20 +357,30 @@ export function Diary() {
         </div>
       )}
 
-      {entries.length === 0 && (
-        <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 text-center">
-          <p className="text-slate-400">Noch keine Tagebucheinträge vorhanden.</p>
-        </div>
-      )}
-
-      <div className="space-y-8">
-        {sortedDays.map((day) => (
-          <section key={day}>
-            <h2 className="text-xl font-semibold text-[var(--text-h)] mb-3 sticky top-0 bg-[var(--bg)]/90 backdrop-blur py-2 z-10">
-              {formatDateLabel(day)}
-            </h2>
-            <div className="space-y-4">
-              {grouped[day].map((entry) => (
+      <DashboardLayout
+        key={resetKey}
+        storageKey="diary-layout-v2"
+        defaultLayout={[{ i: 'diary', x: 0, y: 0, w: 12, h: 100, minW: 3, minH: 4 }]}
+        className="flex-1 min-h-0"
+        fitHeight
+      >
+        <div key="diary">
+          <GridPanel
+            title="Tagebuch"
+            actions={
+              <Button variant="accent" onClick={openCreate} className="text-xs px-2 py-1">
+                Neuer Eintrag
+              </Button>
+            }
+          >
+            <div className="flex-1 min-h-0 overflow-auto -m-4 p-4">
+              {entries.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <p className="text-slate-400">Noch keine Tagebucheinträge vorhanden.</p>
+                </div>
+              ) : (
+              <div className="space-y-4">
+              {entries.map((entry) => (
                 <article
                   key={entry.id}
                   className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5"
@@ -545,10 +537,12 @@ export function Diary() {
                   )}
                 </article>
               ))}
+              </div>
+              )}
             </div>
-          </section>
-        ))}
-      </div>
+          </GridPanel>
+        </div>
+      </DashboardLayout>
 
       <Modal
         isOpen={isModalOpen}
