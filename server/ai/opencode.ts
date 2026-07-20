@@ -53,22 +53,37 @@ export function runOpenCode({
     });
 
     let output = '';
+    let hasLog = false;
+
+    const log = (line: string) => {
+      hasLog = true;
+      onLog?.(line);
+    };
+
     child.stdout?.on('data', (data) => {
       const line = data.toString();
       output += line;
-      onLog?.(line);
+      log(line);
     });
     child.stderr?.on('data', (data) => {
       const line = data.toString();
       output += line;
-      onLog?.(line);
+      log(line);
     });
     child.on('error', (err) => {
-      output += `\nOpenCode spawn error: ${err.message}\n`;
+      const errorLine = `\nOpenCode spawn error: ${err.message}\n`;
+      output += errorLine;
+      log(errorLine);
       resolve({ success: false, output, exitCode: -1 });
     });
     child.on('close', (exitCode) => {
-      resolve({ success: exitCode === 0, output, exitCode: exitCode ?? 1 });
+      const success = exitCode === 0;
+      if (!success && !hasLog) {
+        const errorLine = `OpenCode exited with code ${exitCode ?? 'unknown'} and produced no output.`;
+        output += `\n${errorLine}\n`;
+        log(errorLine);
+      }
+      resolve({ success, output, exitCode: exitCode ?? 1 });
     });
   });
 }
