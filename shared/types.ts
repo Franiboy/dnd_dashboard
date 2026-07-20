@@ -163,6 +163,7 @@ export interface DiaryEntry {
   content: string;
   summary: string | null;
   rewrittenContent: string | null;
+  persons: string[];
   createdAt: string;
   updatedAt: string;
 }
