@@ -42,11 +42,13 @@ export async function summarizeTextWithAi(text: string, model?: string): Promise
     plainText,
   ].join('\n');
 
-  return runAiPrompt(
+  const raw = await runAiPrompt(
     prompt,
     `dnd-diary-summarize-${Date.now()}`,
     model || process.env.AI_CHEAP_MODEL,
   );
+  if (raw === null) return null;
+  return raw.replace(/\s+/g, ' ').trim();
 }
 
 async function runAiPrompt(prompt: string, title: string, model?: string): Promise<string | null> {
@@ -63,14 +65,27 @@ async function runAiPrompt(prompt: string, title: string, model?: string): Promi
   return extractRewriteOutput(result.output);
 }
 
+function stripAnsi(text: string): string {
+  return text.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+}
+
 function extractRewriteOutput(raw: string): string {
-  const trimmed = raw.trim();
+  let cleaned = stripAnsi(raw).trim();
 
   // If the model wrapped the output in a markdown code block, extract it.
-  const codeBlockMatch = trimmed.match(/```(?:\w+)?\n?([\s\S]*?)```/);
+  const codeBlockMatch = cleaned.match(/```(?:\w+)?\n?([\s\S]*?)```/);
   if (codeBlockMatch) {
-    return codeBlockMatch[1].trim();
+    cleaned = codeBlockMatch[1].trim();
   }
 
-  return trimmed;
+  // Filter out opencode status/progress lines (e.g. "> build · code-secure-local")
+  // and empty lines that remain after stripping ANSI escape sequences.
+  const lines = cleaned.split('\n').filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    if (/^\s*>\s+\S+\s*·\s*\S+/.test(trimmed)) return false;
+    return true;
+  });
+
+  return lines.join('\n').trim();
 }
