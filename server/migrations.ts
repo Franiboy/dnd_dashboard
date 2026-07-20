@@ -178,6 +178,26 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: 'create_persons_tables',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS persons (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL
+        );
+      `);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS diary_entry_persons (
+          diary_entry_id INTEGER NOT NULL,
+          person_id INTEGER NOT NULL,
+          PRIMARY KEY (diary_entry_id, person_id),
+          FOREIGN KEY (diary_entry_id) REFERENCES diary_entries(id) ON DELETE CASCADE,
+          FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE
+        );
+      `);
+    },
+  },
 ];
 
 export function runMigrations() {
