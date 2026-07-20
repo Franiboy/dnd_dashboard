@@ -31,13 +31,13 @@ router.get('/entries', (req: AuthRequest, res) => {
   res.json({ entries });
 });
 
-router.post('/entries', (req: AuthRequest, res) => {
+router.post('/entries', async (req: AuthRequest, res) => {
   if (!req.user) {
     res.status(403).json({ error: 'Nicht autorisiert' });
     return;
   }
 
-  const { title, content, summary } = req.body;
+  const { title, content } = req.body;
   if (!title || typeof title !== 'string' || !title.trim()) {
     res.status(400).json({ error: 'Titel ist erforderlich' });
     return;
@@ -46,12 +46,20 @@ router.post('/entries', (req: AuthRequest, res) => {
     res.status(400).json({ error: 'Inhalt ist erforderlich' });
     return;
   }
-  if (!isSummaryValid(summary)) {
-    res.status(400).json({ error: `Zusammenfassung darf maximal ${SUMMARY_MAX_LENGTH} Zeichen haben` });
-    return;
+
+  let entry = createDiaryEntry(req.user.id, title, content);
+  if (isAiEnabled()) {
+    try {
+      const summary = await summarizeTextWithAi(content);
+      if (summary !== null) {
+        const updated = updateDiaryEntry(entry.id, { summary: summary.slice(0, SUMMARY_MAX_LENGTH) });
+        if (updated) entry = updated;
+      }
+    } catch {
+      // Summary generation failed; the entry has already been created.
+    }
   }
 
-  const entry = createDiaryEntry(req.user.id, title, content, summary);
   res.status(201).json({ entry });
 });
 

@@ -124,3 +124,26 @@ button {
   overflow-y: auto;
   background: var(--bg);
 }
+
+.diary-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.diary-editor .ql-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.diary-editor .ql-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  height: auto;
+  overflow-y: auto;
+}

@@ -8,12 +8,9 @@ import ReactQuill from 'react-quill-new';
 import type { DiaryEntry, VersionInfo } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
-const SUMMARY_MAX_LENGTH = 500;
-
 interface DiaryFormData {
   title: string;
   content: string;
-  summary: string;
 }
 
 function getDayFromCreatedAt(createdAt: string): string {
@@ -62,7 +59,7 @@ export function Diary() {
   const [working, setWorking] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState<DiaryFormData>({ title: '', content: '', summary: '' });
+  const [form, setForm] = useState<DiaryFormData>({ title: '', content: '' });
   const [formError, setFormError] = useState<string | null>(null);
 
   const loadEntries = useCallback(async () => {
@@ -89,10 +86,10 @@ export function Diary() {
 
   function resetForm(entry?: DiaryEntry) {
     if (entry) {
-      setForm({ title: entry.title, content: entry.content, summary: entry.summary || '' });
+      setForm({ title: entry.title, content: entry.content });
       setEditingId(entry.id);
     } else {
-      setForm({ title: '', content: '', summary: '' });
+      setForm({ title: '', content: '' });
       setEditingId(null);
     }
     setFormError(null);
@@ -127,7 +124,6 @@ export function Diary() {
     const payload = {
       title: form.title,
       content: form.content,
-      summary: form.summary.trim() || null,
     };
 
     setWorking(true);
@@ -377,13 +373,20 @@ export function Diary() {
         ))}
       </div>
 
-      <Modal isOpen={isModalOpen} title={editingId !== null ? 'Eintrag bearbeiten' : 'Neuer Eintrag'} onClose={closeModal} actions={modalActions}>
+      <Modal
+        isOpen={isModalOpen}
+        title={editingId !== null ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}
+        onClose={closeModal}
+        actions={modalActions}
+        className="h-[85vh] flex flex-col"
+        contentClassName="flex-1 min-h-0 overflow-hidden flex flex-col"
+      >
         {formError && (
           <div className="mb-4 p-3 rounded bg-red-900/30 text-red-400 border border-red-700">
             {formError}
           </div>
         )}
-        <form id="diary-form" onSubmit={handleSubmit} className="space-y-4">
+        <form id="diary-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col space-y-4">
           <div>
             <label className="block text-sm text-slate-400 mb-1">Titel</label>
             <input
@@ -395,7 +398,7 @@ export function Diary() {
               className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
           </div>
-          <div>
+          <div className="flex-1 min-h-0 flex flex-col">
             <label className="block text-sm text-slate-400 mb-1">Inhalt</label>
             <ReactQuill
               theme="snow"
@@ -404,25 +407,7 @@ export function Diary() {
               modules={quillModules}
               formats={quillFormats}
               readOnly={working}
-              className="bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">
-              Zusammenfassung ({form.summary.length}/{SUMMARY_MAX_LENGTH})
-            </label>
-            <textarea
-              value={form.summary}
-              onChange={(e) => {
-                if (e.target.value.length <= SUMMARY_MAX_LENGTH) {
-                  setForm((prev) => ({ ...prev, summary: e.target.value }));
-                }
-              }}
-              disabled={working}
-              rows={3}
-              maxLength={SUMMARY_MAX_LENGTH}
-              placeholder="Kurze Zusammenfassung (optional)"
-              className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-y"
+              className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)] flex-1 min-h-0"
             />
           </div>
         </form>
