@@ -42,7 +42,11 @@ export async function summarizeTextWithAi(text: string, model?: string): Promise
     plainText,
   ].join('\n');
 
-  return runAiPrompt(prompt, `dnd-diary-summarize-${Date.now()}`, model);
+  return runAiPrompt(
+    prompt,
+    `dnd-diary-summarize-${Date.now()}`,
+    model || process.env.AI_CHEAP_MODEL,
+  );
 }
 
 async function runAiPrompt(prompt: string, title: string, model?: string): Promise<string | null> {
