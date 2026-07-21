@@ -30,6 +30,13 @@ export function Home() {
           <p className="text-slate-400 mt-2">Persönliche Notizen und Tagebucheinträge pro Spieler hinterlegen und mit der KI überarbeiten lassen.</p>
         </Link>
         <Link
+          to="/welt"
+          className="group block bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--accent)] transition"
+        >
+          <h2 className="text-2xl font-semibold text-[var(--text-h)] group-hover:text-[var(--accent)] transition">Welt</h2>
+          <p className="text-slate-400 mt-2">Übersicht aller bekannten Personen, Organisationen und Orte.</p>
+        </Link>
+        <Link
           to="/bingo"
           className="group block bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--accent)] transition"
         >

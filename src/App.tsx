@@ -15,6 +15,7 @@ import { Admin } from './pages/Admin';
 import { Diary as Notes } from './pages/Diary';
 import { FeatureRequest } from './pages/FeatureRequest';
 import { Recordings } from './pages/Recordings';
+import { World } from './pages/World';
 
 const PUBLIC_PATHS = ['/', '/admin-login', '/auth/discord'];
 
@@ -100,6 +101,7 @@ function App() {
             <>
               <Route path="/" element={<Home />} />
               <Route path="/notizen" element={<ProtectedRoute user={user}><Notes /></ProtectedRoute>} />
+              <Route path="/welt" element={<ProtectedRoute user={user}><World /></ProtectedRoute>} />
               <Route path="/feature-request" element={<ProtectedRoute user={user}><FeatureRequest currentUser={user} /></ProtectedRoute>} />
               <Route path="/recordings" element={<ProtectedRoute user={user} adminOnly><Recordings /></ProtectedRoute>} />
               <Route path="/bingo" element={<ProtectedRoute user={user}><Bingo token={token} user={user} /></ProtectedRoute>} />

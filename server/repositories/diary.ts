@@ -3,6 +3,18 @@ import type { DiaryEntities } from '../ai/rewrite.js';
 import { stripHtml } from '../ai/rewrite.js';
 import { db } from '../database.js';
 
+interface EntityConfig {
+  table: string;
+  linkTable: string;
+  column: string;
+}
+
+const entityConfig: Record<keyof DiaryEntities, EntityConfig> = {
+  persons: { table: 'persons', linkTable: 'diary_entry_persons', column: 'person_id' },
+  organizations: { table: 'organizations', linkTable: 'diary_entry_organizations', column: 'organization_id' },
+  locations: { table: 'locations', linkTable: 'diary_entry_locations', column: 'location_id' },
+};
+
 function rowToDiaryEntry(row: Record<string, unknown>, entities: DiaryEntities): DiaryEntry {
   return {
     id: row.id as number,
@@ -81,27 +93,78 @@ function getEntityNames(table: string): string[] {
   return rows.map((r) => r.name);
 }
 
+function getAliasEntries(
+  type: keyof DiaryEntities,
+): Map<string, { alias: string; canonical: string }> {
+  const rows = db
+    .prepare('SELECT alias, canonical FROM entity_aliases WHERE type = ?')
+    .all(type) as { alias: string; canonical: string }[];
+
+  const map = new Map<string, { alias: string; canonical: string }>();
+  for (const { alias, canonical } of rows) {
+    map.set(alias.toLowerCase(), { alias, canonical });
+  }
+  return map;
+}
+
+function resolveEntityName(name: string, type: keyof DiaryEntities): string {
+  const aliases = getAliasEntries(type);
+  let current = name.trim();
+  const seen = new Set<string>();
+
+  while (aliases.has(current.toLowerCase()) && !seen.has(current.toLowerCase())) {
+    seen.add(current.toLowerCase());
+    current = aliases.get(current.toLowerCase())!.canonical;
+  }
+
+  return current;
+}
+
 export function findExistingEntitiesInText(text: string): DiaryEntities {
   const plainText = stripHtml(text);
   const result: DiaryEntities = emptyEntities();
+  const blacklists = getBlacklists();
 
-  const detect = (table: string, key: keyof DiaryEntities) => {
-    const names = getEntityNames(table);
-    const seen = new Set<string>();
-    for (const name of names) {
-      if (name.length === 0) continue;
+  const detect = (type: keyof DiaryEntities) => {
+    const { table } = entityConfig[type];
+    const aliases = getAliasEntries(type);
+    const entityNames = new Set<string>(getEntityNames(table).map((name) => name.toLowerCase()));
+    const triggers = new Map<string, { name: string; canonical: string }>();
+
+    for (const name of getEntityNames(table)) {
       const lower = name.toLowerCase();
-      if (seen.has(lower)) continue;
+      if (!triggers.has(lower)) {
+        triggers.set(lower, { name, canonical: name });
+      }
+    }
+
+    for (const { alias, canonical } of aliases.values()) {
+      const lower = alias.toLowerCase();
+      if (!triggers.has(lower)) {
+        triggers.set(lower, { name: alias, canonical });
+      }
+    }
+
+    const seen = new Set<string>();
+    for (const { name, canonical } of triggers.values()) {
+      const canonicalResolved = resolveEntityName(canonical, type);
+      const canonicalLower = canonicalResolved.toLowerCase();
+      if (!entityNames.has(canonicalLower)) continue;
+      if (seen.has(canonicalLower)) continue;
+
+      const triggerLower = name.toLowerCase();
+      if (blacklists[type].has(triggerLower) || blacklists[type].has(canonicalLower)) continue;
+
       if (entityNameRegex(name).test(plainText)) {
-        result[key].push(name);
-        seen.add(lower);
+        result[type].push(canonicalResolved);
+        seen.add(canonicalLower);
       }
     }
   };
 
-  detect('persons', 'persons');
-  detect('organizations', 'organizations');
-  detect('locations', 'locations');
+  detect('persons');
+  detect('organizations');
+  detect('locations');
 
   return result;
 }
@@ -131,11 +194,77 @@ export function mergeEntities(
   };
 }
 
-function canonicalEntityName(name: string, entityTable: string): string {
-  const existing = db
-    .prepare(`SELECT name FROM ${entityTable} WHERE name = ? COLLATE NOCASE`)
-    .get(name) as { name: string } | undefined;
-  return existing?.name ?? name;
+type EntityBlacklists = Record<keyof DiaryEntities, Set<string>>;
+
+function getBlacklists(): EntityBlacklists {
+  const rows = db
+    .prepare('SELECT type, name FROM entity_blacklist')
+    .all() as { type: string; name: string }[];
+
+  const lists: EntityBlacklists = {
+    persons: new Set<string>(),
+    organizations: new Set<string>(),
+    locations: new Set<string>(),
+  };
+
+  for (const { type, name } of rows) {
+    if (type in lists) {
+      lists[type as keyof EntityBlacklists].add(name.toLowerCase());
+    }
+  }
+
+  return lists;
+}
+
+export function filterBlacklisted(entities: DiaryEntities): DiaryEntities {
+  const blacklists = getBlacklists();
+
+  return {
+    persons: entities.persons.filter((name) => !blacklists.persons.has(name.toLowerCase())),
+    organizations: entities.organizations.filter((name) => !blacklists.organizations.has(name.toLowerCase())),
+    locations: entities.locations.filter((name) => !blacklists.locations.has(name.toLowerCase())),
+  };
+}
+
+export function blacklistEntity(name: string, type: keyof DiaryEntities): void {
+  const normalized = name.trim();
+  if (normalized.length === 0) return;
+
+  const { table } = entityConfig[type];
+
+  const tx = db.transaction(() => {
+    db.prepare('INSERT OR IGNORE INTO entity_blacklist (type, name) VALUES (?, ?)').run(
+      type,
+      normalized,
+    );
+    db.prepare(`DELETE FROM ${table} WHERE name = ? COLLATE NOCASE`).run(normalized);
+    db.prepare('DELETE FROM entity_aliases WHERE type = ? AND (alias = ? OR canonical = ?)').run(
+      type,
+      normalized,
+      normalized,
+    );
+  });
+
+  tx();
+}
+
+function entityExistsInAnyType(
+  name: string,
+  excludeType?: keyof DiaryEntities,
+): { type: keyof DiaryEntities; name: string } | null {
+  const normalized = name.trim().toLowerCase();
+  if (normalized.length === 0) return null;
+
+  for (const type of ['persons', 'organizations', 'locations'] as const) {
+    if (type === excludeType) continue;
+    const { table } = entityConfig[type];
+    const row = db
+      .prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`)
+      .get(name) as { name: string } | undefined;
+    if (row) return { type, name: row.name };
+  }
+
+  return null;
 }
 
 function setLinkedEntities(
@@ -150,13 +279,30 @@ function setLinkedEntities(
   db.prepare(`DELETE FROM ${linkTable} WHERE diary_entry_id = ?`).run(entryId);
   if (normalized.length === 0) return;
 
+  const blacklists = getBlacklists();
+  const blacklistKey = entityTable as keyof DiaryEntities;
+  const blacklist = blacklists[blacklistKey];
+
   const insertEntity = db.prepare(`INSERT OR IGNORE INTO ${entityTable} (name) VALUES (?)`);
   const getEntity = db.prepare(`SELECT id FROM ${entityTable} WHERE name = ?`);
   const linkEntity = db.prepare(`INSERT INTO ${linkTable} (diary_entry_id, ${column}) VALUES (?, ?)`);
 
   const tx = db.transaction((targetId: number, namesToLink: string[]) => {
     for (const name of namesToLink) {
-      const canonical = canonicalEntityName(name, entityTable);
+      const originalLower = name.toLowerCase();
+      const aliasResolved = resolveEntityName(name, blacklistKey);
+      const existing = db
+        .prepare(`SELECT name FROM ${entityTable} WHERE name = ? COLLATE NOCASE`)
+        .get(aliasResolved) as { name: string } | undefined;
+
+      if (!existing && originalLower !== aliasResolved.toLowerCase()) continue;
+
+      const canonical = existing?.name ?? aliasResolved;
+      const canonicalLower = canonical.toLowerCase();
+
+      if (blacklist.has(originalLower) || blacklist.has(canonicalLower)) continue;
+      if (entityExistsInAnyType(canonical, blacklistKey)) continue;
+
       insertEntity.run(canonical);
       const entity = getEntity.get(canonical) as { id: number } | undefined;
       if (!entity) continue;
@@ -272,6 +418,174 @@ export function updateDiaryEntry(
 
   db.prepare(`UPDATE diary_entries SET ${fields.join(', ')} WHERE id = ?`).run(...values);
   return getDiaryEntryById(id);
+}
+
+export function finalizeEntities(entities: DiaryEntities): DiaryEntities {
+  const resolve = (items: string[], type: keyof DiaryEntities): string[] =>
+    items.map((name) => resolveEntityName(name, type));
+
+  const resolved: DiaryEntities = {
+    persons: resolve(entities.persons, 'persons'),
+    organizations: resolve(entities.organizations, 'organizations'),
+    locations: resolve(entities.locations, 'locations'),
+  };
+
+  return filterBlacklisted(mergeEntities(resolved, emptyEntities()));
+}
+
+function isEntityBlacklisted(name: string, type: keyof DiaryEntities): boolean {
+  return getBlacklists()[type].has(name.toLowerCase());
+}
+
+export function reclassifyEntity(
+  name: string,
+  fromType: keyof DiaryEntities,
+  toType: keyof DiaryEntities,
+): void {
+  const normalized = name.trim();
+  if (normalized.length === 0 || fromType === toType) return;
+
+  if (isEntityBlacklisted(normalized, toType)) return;
+
+  const from = entityConfig[fromType];
+  const to = entityConfig[toType];
+
+  const tx = db.transaction(() => {
+    const source = db
+      .prepare(`SELECT id FROM ${from.table} WHERE name = ? COLLATE NOCASE`)
+      .get(normalized) as { id: number } | undefined;
+    if (!source) return;
+
+    let targetId: number;
+    const existingTarget = db
+      .prepare(`SELECT id FROM ${to.table} WHERE name = ? COLLATE NOCASE`)
+      .get(normalized) as { id: number } | undefined;
+
+    if (existingTarget) {
+      targetId = existingTarget.id;
+    } else {
+      if (entityExistsInAnyType(normalized, fromType)) return;
+      targetId = Number(
+        db.prepare(`INSERT INTO ${to.table} (name) VALUES (?)`).run(normalized).lastInsertRowid,
+      );
+    }
+
+    const links = db
+      .prepare(`SELECT diary_entry_id FROM ${from.linkTable} WHERE ${from.column} = ?`)
+      .all(source.id) as { diary_entry_id: number }[];
+    const insertLink = db.prepare(
+      `INSERT OR IGNORE INTO ${to.linkTable} (diary_entry_id, ${to.column}) VALUES (?, ?)`,
+    );
+    for (const { diary_entry_id } of links) {
+      insertLink.run(diary_entry_id, targetId);
+    }
+
+    db.prepare(`DELETE FROM ${from.table} WHERE id = ?`).run(source.id);
+    db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?').run(fromType, normalized);
+
+    const aliases = db
+      .prepare('SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE')
+      .all(fromType, normalized) as { alias: string }[];
+    const insertAlias = db.prepare(
+      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)',
+    );
+    for (const { alias } of aliases) {
+      insertAlias.run(toType, alias, normalized);
+    }
+    db.prepare('DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE').run(
+      fromType,
+      normalized,
+    );
+  });
+
+  tx();
+}
+
+export function addEntityAlias(
+  type: keyof DiaryEntities,
+  alias: string,
+  canonical: string,
+): void {
+  const aliasNormalized = alias.trim();
+  const canonicalNormalized = canonical.trim();
+  if (
+    !aliasNormalized ||
+    !canonicalNormalized ||
+    aliasNormalized.toLowerCase() === canonicalNormalized.toLowerCase()
+  ) {
+    return;
+  }
+
+  if (isEntityBlacklisted(aliasNormalized, type) || isEntityBlacklisted(canonicalNormalized, type)) {
+    return;
+  }
+  if (entityExistsInAnyType(aliasNormalized, type)) return;
+  if (entityExistsInAnyType(canonicalNormalized, type)) return;
+
+  const { table, linkTable, column } = entityConfig[type];
+
+  const tx = db.transaction(() => {
+    const canonicalRow = db
+      .prepare(`SELECT id FROM ${table} WHERE name = ? COLLATE NOCASE`)
+      .get(canonicalNormalized) as { id: number } | undefined;
+    if (!canonicalRow) return;
+
+    const aliasRow = db
+      .prepare(`SELECT id FROM ${table} WHERE name = ? COLLATE NOCASE`)
+      .get(aliasNormalized) as { id: number } | undefined;
+    if (aliasRow) {
+      const links = db
+        .prepare(`SELECT diary_entry_id FROM ${linkTable} WHERE ${column} = ?`)
+        .all(aliasRow.id) as { diary_entry_id: number }[];
+      const insertLink = db.prepare(
+        `INSERT OR IGNORE INTO ${linkTable} (diary_entry_id, ${column}) VALUES (?, ?)`,
+      );
+      for (const { diary_entry_id } of links) {
+        insertLink.run(diary_entry_id, canonicalRow.id);
+      }
+      db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(aliasRow.id);
+    }
+
+    db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?').run(
+      type,
+      aliasNormalized,
+    );
+
+    db.prepare(
+      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)',
+    ).run(type, aliasNormalized, canonicalNormalized);
+  });
+
+  tx();
+}
+
+export function getBlacklistedEntities(): DiaryEntities {
+  const rows = db
+    .prepare('SELECT type, name FROM entity_blacklist ORDER BY name COLLATE NOCASE')
+    .all() as { type: string; name: string }[];
+
+  const result: DiaryEntities = {
+    persons: [],
+    organizations: [],
+    locations: [],
+  };
+
+  for (const { type, name } of rows) {
+    if (type in result) {
+      result[type as keyof DiaryEntities].push(name);
+    }
+  }
+
+  return result;
+}
+
+export function unblacklistEntity(name: string, type: keyof DiaryEntities): void {
+  const normalized = name.trim();
+  if (normalized.length === 0) return;
+  db.prepare('DELETE FROM entity_blacklist WHERE type = ? AND name = ? COLLATE NOCASE').run(
+    type,
+    normalized,
+  );
 }
 
 export function deleteDiaryEntry(id: number): void {
