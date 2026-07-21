@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -6,9 +6,9 @@ import { DashboardHeader } from '../components/DashboardHeader';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { GridPanel } from '../components/GridPanel';
 import { Loading } from '../components/Loading';
-import type { EntitiesResponse } from '../../shared/types';
+import { Modal } from '../components/Modal';
+import type { EntitiesResponse, EntityDetail, EntityType, EntityUpdatePayload } from '../../shared/types';
 
-type EntityType = keyof EntitiesResponse;
 type PanelView = 'entities' | 'blacklist';
 
 interface DragPayload {
@@ -42,6 +42,7 @@ interface EntityListProps {
   onDragStart: (name: string, type: EntityType) => void;
   onDragEnd: () => void;
   onRequestAction: (action: PendingAction) => void;
+  onClickItem: (name: string, type: EntityType) => void;
 }
 
 function parseDragPayload(e: React.DragEvent): DragPayload | null {
@@ -61,6 +62,7 @@ function EntityList({
   onDragStart,
   onDragEnd,
   onRequestAction,
+  onClickItem,
 }: EntityListProps) {
   const isReclassifyTarget = dragPayload && dragPayload.type !== type;
   const isOwnDrag = dragPayload && dragPayload.type === type;
@@ -120,13 +122,13 @@ function EntityList({
                 e.stopPropagation();
               }}
               onDrop={(e) => handleRowDrop(e, item)}
-              title="Ziehen: auf andere Liste = umwandeln, auf anderes Element = Synonym, unten = Blacklist"
+              onClick={() => onClickItem(item, type)}
+              title="Klicken zum Bearbeiten. Ziehen: auf andere Liste = umwandeln, auf anderes Element = Synonym, unten = Blacklist"
               className={`
                 flex items-center gap-2 px-3 py-2 rounded border text-[var(--text-h)] text-sm
                 cursor-grab active:cursor-grabbing select-none
                 bg-slate-900/50 border-[var(--border)] hover:border-[var(--accent)]
-                transition
-                ${isOwnDrag ? 'hover:bg-[var(--accent)]/10' : ''}
+                hover:bg-[var(--accent)]/10 transition
               `}
             >
               <svg
@@ -266,6 +268,228 @@ function ListIcon() {
   );
 }
 
+interface EntityEditDialogProps {
+  type: EntityType;
+  name: string;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProps) {
+  const { request } = useApi();
+  const { showSuccess, showError } = useError();
+  const [detail, setDetail] = useState<EntityDetail | null>(null);
+  const [canonical, setCanonical] = useState('');
+  const [aliases, setAliases] = useState<string[]>([]);
+  const [newAlias, setNewAlias] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const { data } = await request<EntityDetail>(
+        `/api/entities/detail?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`,
+      );
+      if (cancelled) return;
+      if (!data) {
+        setLoading(false);
+        return;
+      }
+      setDetail(data);
+      setCanonical(data.canonical);
+      setAliases(data.aliases);
+      setLoading(false);
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [request, type, name]);
+
+  function addAlias() {
+    const normalized = newAlias.trim();
+    if (!normalized) return;
+    if (normalized.toLowerCase() === canonical.trim().toLowerCase()) {
+      showError('Synonym darf nicht gleich dem Hauptnamen sein.');
+      return;
+    }
+    if (aliases.some((a) => a.toLowerCase() === normalized.toLowerCase())) {
+      showError('Dieses Synonym existiert bereits.');
+      return;
+    }
+    setAliases((prev) => [...prev, normalized]);
+    setNewAlias('');
+  }
+
+  function removeAlias(index: number) {
+    setAliases((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateAlias(index: number, value: string) {
+    setAliases((prev) => {
+      const copy = [...prev];
+      copy[index] = value;
+      return copy;
+    });
+  }
+
+  async function handleSave() {
+    const normalizedCanonical = canonical.trim();
+    if (!normalizedCanonical) {
+      showError('Hauptname ist erforderlich.');
+      return;
+    }
+
+    const normalizedAliases = [
+      ...new Set(
+        aliases
+          .map((a) => a.trim())
+          .filter((a) => a.length > 0 && a.toLowerCase() !== normalizedCanonical.toLowerCase()),
+      ),
+    ];
+
+    setSaving(true);
+    const { error } = await request('/api/entities/detail', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type,
+        oldName: detail?.canonical ?? name,
+        newName: normalizedCanonical,
+        aliases: normalizedAliases,
+      } as EntityUpdatePayload),
+    });
+    setSaving(false);
+
+    if (!error) {
+      showSuccess('Entität gespeichert.');
+      onSaved();
+      onClose();
+    }
+  }
+
+  return (
+    <Modal
+      isOpen
+      title={`${typeLabels[type]}: ${detail?.canonical ?? name}`}
+      onClose={onClose}
+      actions={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
+          >
+            Abbrechen
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || loading}
+            className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+          >
+            {saving ? 'Speichern...' : 'Speichern'}
+          </button>
+        </>
+      }
+    >
+      {loading ? (
+        <div className="py-8 flex justify-center">
+          <Loading size="md" />
+        </div>
+      ) : !detail ? (
+        <p className="text-slate-400">Entität konnte nicht geladen werden.</p>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
+              Hauptname
+            </label>
+            <input
+              type="text"
+              value={canonical}
+              onChange={(e) => setCanonical(e.target.value)}
+              className="w-full px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+              placeholder="Name"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Unter diesem Namen wird die {typeLabels[type]} in den Einträgen geführt.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
+              Synonyme
+            </label>
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {aliases.length === 0 ? (
+                <p className="text-slate-500 text-sm italic">Noch keine Synonyme vorhanden.</p>
+              ) : (
+                aliases.map((alias, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={alias}
+                      onChange={(e) => updateAlias(index, e.target.value)}
+                      className="flex-1 min-w-0 px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeAlias(index)}
+                      title="Synonym entfernen"
+                      className="p-2 rounded text-slate-500 hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 transition"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                type="text"
+                value={newAlias}
+                onChange={(e) => setNewAlias(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addAlias();
+                  }
+                }}
+                placeholder="Neues Synonym"
+                className="flex-1 min-w-0 px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={addAlias}
+                disabled={!newAlias.trim()}
+                className="px-3 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                Hinzufügen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function World() {
   const { request } = useApi();
   const { showSuccess } = useError();
@@ -281,6 +505,11 @@ export function World() {
     organizations: 'entities',
     locations: 'entities',
   });
+  const [selectedEntity, setSelectedEntity] = useState<{ name: string; type: EntityType } | null>(
+    null,
+  );
+  const canClickRef = useRef(true);
+  const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     const { data } = await request<EntitiesResponse>('/api/entities');
@@ -347,11 +576,26 @@ export function World() {
   }
 
   function handleDragStart(name: string, type: EntityType) {
+    if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+    canClickRef.current = false;
     setDragPayload({ name, type });
   }
 
   function handleDragEnd() {
+    if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+    clickTimeoutRef.current = setTimeout(() => {
+      canClickRef.current = true;
+    }, 200);
     setDragPayload(null);
+  }
+
+  function handleEntityClick(name: string, type: EntityType) {
+    if (!canClickRef.current) return;
+    setSelectedEntity({ name, type });
+  }
+
+  function handleCloseEdit() {
+    setSelectedEntity(null);
   }
 
   function handleRequestAction(action: PendingAction) {
@@ -471,6 +715,7 @@ export function World() {
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
               onRequestAction={handleRequestAction}
+              onClickItem={handleEntityClick}
             />
           )}
         </GridPanel>
@@ -509,6 +754,18 @@ export function World() {
         >
           <p>{actionDialogContent(pendingAction)}</p>
         </ConfirmDialog>
+      )}
+
+      {selectedEntity && (
+        <EntityEditDialog
+          type={selectedEntity.type}
+          name={selectedEntity.name}
+          onClose={handleCloseEdit}
+          onSaved={() => {
+            load();
+            loadBlacklists();
+          }}
+        />
       )}
     </div>
   );

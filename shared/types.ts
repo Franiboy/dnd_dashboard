@@ -172,8 +172,23 @@ export interface DiaryEntry {
   updatedAt: string;
 }
 
+export type EntityType = 'persons' | 'organizations' | 'locations';
+
 export interface EntitiesResponse {
   persons: string[];
   organizations: string[];
   locations: string[];
+}
+
+export interface EntityDetail {
+  type: EntityType;
+  canonical: string;
+  aliases: string[];
+}
+
+export interface EntityUpdatePayload {
+  type: EntityType;
+  oldName: string;
+  newName: string;
+  aliases: string[];
 }

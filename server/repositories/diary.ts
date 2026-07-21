@@ -591,6 +591,98 @@ export function addEntityAlias(
   tx();
 }
 
+export function getEntityDetail(
+  type: keyof DiaryEntities,
+  name: string,
+): { type: keyof DiaryEntities; canonical: string; aliases: string[] } | null {
+  const { table } = entityConfig[type];
+  const canonical = resolveEntityName(name.trim(), type);
+
+  const row = db
+    .prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`)
+    .get(canonical) as { name: string } | undefined;
+  if (!row) return null;
+
+  const aliasRows = db
+    .prepare(
+      'SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE ORDER BY alias COLLATE NOCASE',
+    )
+    .all(type, row.name) as { alias: string }[];
+
+  return {
+    type,
+    canonical: row.name,
+    aliases: aliasRows.map((a) => a.alias),
+  };
+}
+
+export function updateEntity(
+  type: keyof DiaryEntities,
+  oldName: string,
+  newName: string,
+  aliases: string[],
+): void {
+  const oldNormalized = oldName.trim();
+  const newNormalized = newName.trim();
+
+  if (!oldNormalized || !newNormalized) {
+    throw new Error('Name ist erforderlich');
+  }
+
+  const { table } = entityConfig[type];
+
+  const wantedAliases = [
+    ...new Set(
+      aliases
+        .map((a) => a.trim())
+        .filter((a) => a.length > 0 && a.toLowerCase() !== newNormalized.toLowerCase()),
+    ),
+  ];
+
+  const tx = db.transaction(() => {
+    const oldRow = db
+      .prepare(`SELECT id, name FROM ${table} WHERE name = ? COLLATE NOCASE`)
+      .get(oldNormalized) as { id: number; name: string } | undefined;
+    if (!oldRow) {
+      throw new Error('Entität nicht gefunden');
+    }
+
+    if (newNormalized !== oldRow.name) {
+      const existing = db
+        .prepare(`SELECT id FROM ${table} WHERE name = ? COLLATE NOCASE AND id != ?`)
+        .get(newNormalized, oldRow.id) as { id: number } | undefined;
+      if (existing) {
+        throw new Error('Name existiert bereits');
+      }
+      db.prepare(`UPDATE ${table} SET name = ? WHERE id = ?`).run(newNormalized, oldRow.id);
+      db.prepare(
+        'UPDATE entity_aliases SET canonical = ? WHERE type = ? AND canonical = ? COLLATE NOCASE',
+      ).run(newNormalized, type, oldRow.name);
+    }
+
+    db.prepare('DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE').run(
+      type,
+      newNormalized,
+    );
+
+    const insertAlias = db.prepare(
+      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)',
+    );
+    const deleteAlias = db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?');
+
+    for (const alias of wantedAliases) {
+      if (entityExistsInAnyType(alias)) {
+        throw new Error(`„${alias}“ ist bereits ein Hauptname`);
+      }
+
+      deleteAlias.run(type, alias);
+      insertAlias.run(type, alias, newNormalized);
+    }
+  });
+
+  tx();
+}
+
 export function getBlacklistedEntities(): DiaryEntities {
   const rows = db
     .prepare('SELECT type, name FROM entity_blacklist ORDER BY name COLLATE NOCASE')

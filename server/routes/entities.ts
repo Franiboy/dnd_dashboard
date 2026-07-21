@@ -7,8 +7,10 @@ import {
   blacklistEntity,
   finalizeEntities,
   getBlacklistedEntities,
+  getEntityDetail,
   reclassifyEntity,
   unblacklistEntity,
+  updateEntity,
 } from '../repositories/diary.js';
 
 const router = Router();
@@ -115,6 +117,55 @@ router.post('/alias', (req: AuthRequest, res) => {
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: 'Verknüpfen fehlgeschlagen' });
+  }
+});
+
+router.get('/detail', (req: AuthRequest, res) => {
+  const { type, name } = req.query;
+  if (!type || typeof type !== 'string' || !ENTITY_TYPES.includes(type as keyof DiaryEntities) || !name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+
+  try {
+    const detail = getEntityDetail(type as keyof DiaryEntities, name.trim());
+    if (!detail) {
+      res.status(404).json({ error: 'Entität nicht gefunden' });
+      return;
+    }
+    res.json(detail);
+  } catch {
+    res.status(500).json({ error: 'Laden fehlgeschlagen' });
+  }
+});
+
+router.put('/detail', (req: AuthRequest, res) => {
+  const { type, oldName, newName, aliases } = req.body;
+  if (
+    !type ||
+    !ENTITY_TYPES.includes(type) ||
+    !oldName ||
+    typeof oldName !== 'string' ||
+    !oldName.trim() ||
+    !newName ||
+    typeof newName !== 'string' ||
+    !newName.trim() ||
+    !Array.isArray(aliases)
+  ) {
+    res.status(400).json({ error: 'Gültige Daten sind erforderlich' });
+    return;
+  }
+
+  try {
+    updateEntity(
+      type,
+      oldName.trim(),
+      newName.trim(),
+      aliases.map((a: unknown) => String(a).trim()).filter(Boolean),
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Speichern fehlgeschlagen' });
   }
 });
 
