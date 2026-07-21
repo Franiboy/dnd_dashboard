@@ -169,3 +169,9 @@ export interface DiaryEntry {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface EntitiesResponse {
+  persons: string[];
+  organizations: string[];
+  locations: string[];
+}

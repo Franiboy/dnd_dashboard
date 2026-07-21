@@ -12,6 +12,7 @@ import adminRouter from './routes/admin.js';
 import aiRouter from './routes/ai.js';
 import authRouter from './routes/auth.js';
 import diaryRouter from './routes/diary.js';
+import entitiesRouter from './routes/entities.js';
 import recordingsRouter from './routes/recordings.js';
 import { setupSocket } from './socket.js';
 import { previewAuthMiddleware } from './auth.js';
@@ -66,6 +67,7 @@ app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/diary', diaryRouter);
+app.use('/api/entities', entitiesRouter);
 app.use('/api/recordings', recordingsRouter);
 
 // Serve static files in production and fall back to index.html for all non-API routes
