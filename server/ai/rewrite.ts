@@ -49,7 +49,14 @@ export async function rewriteTextWithAi(
   const title = `dnd-diary-${entryId}`;
   const mode = existingRewrittenContent ? 'improve' : 'rewrite';
 
-  log.info(`Starting ${mode} for entry ${entryId}, sessionId=${existingSessionId ?? 'none'}`);
+  const { findOpenCodeSessionId } = await import('./opencode.js');
+
+  // Reuse an existing session by title if we don't already have an ID.
+  // This prevents creating duplicate orphan sessions when --title is reused.
+  let sessionId = existingSessionId ?? (await findOpenCodeSessionId(process.cwd(), title));
+  const needsNewSession = !sessionId;
+
+  log.info(`Starting ${mode} for entry ${entryId}, sessionId=${sessionId ?? 'none'}`);
 
   const baseInstructions = [
     'Improve grammar, style and clarity while preserving the original meaning and personal tone.',
@@ -87,21 +94,19 @@ export async function rewriteTextWithAi(
     prompt,
     worktreePath: process.cwd(),
     model: model || process.env.AI_MODEL || 'provider/GLM5.2',
-    sessionId: existingSessionId || undefined,
-    title: existingSessionId ? undefined : title,
+    sessionId: sessionId || undefined,
+    title: needsNewSession ? title : undefined,
     onLog,
   });
 
   if (!result.success) {
     log.error(`OpenCode failed for entry ${entryId}: exitCode=${result.exitCode}`);
-    return { content: null, sessionId: existingSessionId };
+    return { content: null, sessionId };
   }
 
-  let sessionId = existingSessionId;
-  if (!sessionId) {
-    const { findOpenCodeSessionId } = await import('./opencode.js');
+  if (needsNewSession) {
     sessionId = await findOpenCodeSessionId(process.cwd(), title);
-    log.info(`Resolved sessionId for entry ${entryId}: ${sessionId ?? 'none'}`);
+    log.info(`Resolved new sessionId for entry ${entryId}: ${sessionId ?? 'none'}`);
   }
 
   const fileContent = readRewrittenFile(entryId);
@@ -197,11 +202,12 @@ export async function summarizeTextWithAi(
 
   const prompt = [
     'Wichtig: Deine Antwort darf maximal 500 Zeichen lang sein. Überschreite dieses Limit auf keinen Fall.',
-    'Fasse den folgenden deutschen Tagebucheintrag in 3-5 Sätzen zusammen.',
-    'Beschreibe die wichtigsten Ereignisse und Ergebnisse knapp und prägnant.',
-    'Nenne relevante Namen nur im Fließtext, wenn sie für das Ereignis wichtig sind.',
-    'Füge am Ende keine eigene Aufzählung von Beteiligten, Gruppen oder Orten hinzu.',
+    'Extrahiere aus dem folgenden deutschen Tagebucheintrag die wichtigsten Ereignisse und Fakten als kurze, eigenständige Aussagen.',
+    'Schreibe keine zusammenhängende Erzählung, sondern eine Liste von kurzen, allgemeinen Aussagen.',
+    'Jede Zeile sollte eine Sache beschreiben, z. B. "X ist passiert", "Y wurde verletzt", "Z wurde getötet", "A befehligt B".',
+    'Nenne relevante Namen nur, wenn sie für das Ereignis wichtig sind.',
     'Halte dich strikt an den vorliegenden Text und erfinke keine Details (z. B. Orte, Personen oder Ursachen), die darin nicht stehen.',
+    'Gib maximal 8–12 Punkte aus, jeder Punkt in einer eigenen Zeile.',
     'Do NOT modify any files, run any commands or perform any actions. Only output the summary text.',
     'Antworte ausschließlich auf Deutsch.',
     '',
@@ -219,8 +225,12 @@ export async function summarizeTextWithAi(
     log.warn('summarizeTextWithAi received no output');
     return null;
   }
-  const summary = raw.replace(/\s+/g, ' ').trim();
-  log.info(`Summary generated (${summary.length} chars)`);
+  const summary = raw
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length > 0)
+    .join('\n');
+  log.info(`Summary generated (${summary.length} chars, ${summary.split('\n').length} lines)`);
   return summary;
 }
 
