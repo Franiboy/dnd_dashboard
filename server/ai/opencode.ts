@@ -124,3 +124,18 @@ export async function findOpenCodeSessionId(
     return null;
   }
 }
+
+export async function deleteOpenCodeSession(sessionId: string): Promise<void> {
+  if (!sessionId) return;
+  log.info(`Deleting opencode session: ${sessionId}`);
+  try {
+    const { execSync } = await import('node:child_process');
+    execSync(`opencode session delete ${sessionId}`, {
+      encoding: 'utf-8',
+      timeout: 30_000,
+    });
+    log.info(`Deleted opencode session: ${sessionId}`);
+  } catch (err) {
+    log.warn(`Failed to delete opencode session ${sessionId}:`, err);
+  }
+}
