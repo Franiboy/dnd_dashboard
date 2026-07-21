@@ -21,6 +21,7 @@ import { runMigrations } from './migrations.js';
 import { recoverPreviewServers, startFeatureRequestBehindWatcher } from './ai/worker.js';
 import { startBot } from './discord/bot.js';
 import { startTranscriptionScheduler, stopTranscriptionScheduler } from './discord/scheduler.js';
+import { logger } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,6 +39,16 @@ const PREVIEW_MODE = process.env.PREVIEW_MODE === 'true';
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+
+// Generic request logging
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    logger.info(`${req.method} ${req.path} -> ${res.statusCode} (${duration}ms)`);
+  });
+  next();
+});
 
 // Disable caching for all API responses to avoid stale/304 responses
 app.use('/api', (req, res, next) => {

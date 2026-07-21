@@ -291,6 +291,18 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    name: 'add_diary_rewrite_file_and_session',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(diary_entries)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'rewritten_file_path')) {
+        db.exec('ALTER TABLE diary_entries ADD COLUMN rewritten_file_path TEXT');
+      }
+      if (!columns.some((c) => c.name === 'rewrite_session_id')) {
+        db.exec('ALTER TABLE diary_entries ADD COLUMN rewrite_session_id TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations() {

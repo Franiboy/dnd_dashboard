@@ -2,6 +2,7 @@ import type { DiaryEntry } from '../../shared/types.js';
 import type { DiaryEntities } from '../ai/rewrite.js';
 import { stripHtml } from '../ai/rewrite.js';
 import { db } from '../database.js';
+import { readRewrittenFile } from '../diaryFiles.js';
 
 interface EntityConfig {
   table: string;
@@ -15,14 +16,30 @@ const entityConfig: Record<keyof DiaryEntities, EntityConfig> = {
   locations: { table: 'locations', linkTable: 'diary_entry_locations', column: 'location_id' },
 };
 
-function rowToDiaryEntry(row: Record<string, unknown>, entities: DiaryEntities): DiaryEntry {
+function rowToDiaryEntry(
+  row: Record<string, unknown>,
+  entities: DiaryEntities,
+  includeRewritten = true,
+): DiaryEntry {
+  const rewrittenFilePath = (row.rewritten_file_path as string | null | undefined) ?? null;
+  const legacyRewrittenContent = (row.rewritten_content as string | null | undefined) ?? null;
+  const rewrittenContent = includeRewritten
+    ? rewrittenFilePath
+      ? readRewrittenFile(row.id as number) ?? legacyRewrittenContent
+      : legacyRewrittenContent
+    : rewrittenFilePath
+      ? null
+      : legacyRewrittenContent;
+
   return {
     id: row.id as number,
     userId: row.user_id as string,
     title: row.title as string,
     content: row.content as string,
     summary: (row.summary as string | null | undefined) ?? null,
-    rewrittenContent: (row.rewritten_content as string | null | undefined) ?? null,
+    rewrittenContent,
+    rewrittenFilePath: (row.rewritten_file_path as string | null | undefined) ?? null,
+    rewriteSessionId: (row.rewrite_session_id as string | null | undefined) ?? null,
     persons: entities.persons,
     organizations: entities.organizations,
     locations: entities.locations,
@@ -355,14 +372,21 @@ export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
   const entryIds = rows.map((row) => row.id as number);
   const entitiesMap = buildEntryEntitiesMap(entryIds);
   return rows.map((row) =>
-    rowToDiaryEntry(row, entitiesMap.get(row.id as number) ?? emptyEntities()),
+    rowToDiaryEntry(
+      row,
+      entitiesMap.get(row.id as number) ?? emptyEntities(),
+      false,
+    ),
   );
 }
 
 export function updateDiaryEntry(
   id: number,
   updates: Partial<
-    Pick<DiaryEntry, 'title' | 'content' | 'summary' | 'rewrittenContent' | 'persons' | 'organizations' | 'locations'>
+    Pick<DiaryEntry, 'title' | 'content' | 'summary' | 'rewrittenContent' | 'persons' | 'organizations' | 'locations'> & {
+      rewrittenFilePath?: string | null;
+      rewriteSessionId?: string | null;
+    }
   >,
 ): DiaryEntry | null {
   const existing = getDiaryEntryById(id);
@@ -386,6 +410,14 @@ export function updateDiaryEntry(
   if (updates.rewrittenContent !== undefined) {
     fields.push('rewritten_content = ?');
     values.push(updates.rewrittenContent ? updates.rewrittenContent.trim() : null);
+  }
+  if (updates.rewrittenFilePath !== undefined) {
+    fields.push('rewritten_file_path = ?');
+    values.push(updates.rewrittenFilePath ? updates.rewrittenFilePath.trim() : null);
+  }
+  if (updates.rewriteSessionId !== undefined) {
+    fields.push('rewrite_session_id = ?');
+    values.push(updates.rewriteSessionId ? updates.rewriteSessionId.trim() : null);
   }
 
   const hasPersonsUpdate = updates.persons !== undefined;

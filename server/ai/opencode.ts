@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('opencode');
 
 export interface OpenCodeOptions {
   prompt: string;
@@ -45,6 +48,8 @@ export function runOpenCode({
     args.push('--dir', worktreePath);
   }
 
+  log.info(`Spawning opencode: ${bin} ${args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`);
+
   return new Promise((resolve) => {
     const child = spawn(bin, args, {
       cwd: worktreePath,
@@ -55,7 +60,7 @@ export function runOpenCode({
     let output = '';
     let hasLog = false;
 
-    const log = (line: string) => {
+    const emitLog = (line: string) => {
       hasLog = true;
       onLog?.(line);
     };
@@ -63,17 +68,18 @@ export function runOpenCode({
     child.stdout?.on('data', (data) => {
       const line = data.toString();
       output += line;
-      log(line);
+      emitLog(line);
     });
     child.stderr?.on('data', (data) => {
       const line = data.toString();
       output += line;
-      log(line);
+      emitLog(line);
     });
     child.on('error', (err) => {
       const errorLine = `\nOpenCode spawn error: ${err.message}\n`;
       output += errorLine;
-      log(errorLine);
+      log.error(errorLine);
+      emitLog(errorLine);
       resolve({ success: false, output, exitCode: -1 });
     });
     child.on('close', (exitCode) => {
@@ -81,7 +87,9 @@ export function runOpenCode({
       if (!success && !hasLog) {
         const errorLine = `OpenCode exited with code ${exitCode ?? 'unknown'} and produced no output.`;
         output += `\n${errorLine}\n`;
-        log(errorLine);
+        log.error(errorLine);
+      } else {
+        log.info(`OpenCode finished with exit code ${exitCode ?? 'unknown'} (success=${success})`);
       }
       resolve({ success, output, exitCode: exitCode ?? 1 });
     });
@@ -92,6 +100,7 @@ export async function findOpenCodeSessionId(
   worktreePath: string,
   title: string,
 ): Promise<string | null> {
+  log.info(`Looking up opencode session: title=${title}, worktreePath=${worktreePath}`);
   try {
     const { execSync } = await import('node:child_process');
     const output = execSync('opencode session list --format json', {
@@ -107,8 +116,11 @@ export async function findOpenCodeSessionId(
     const matches = sessions
       .filter((s) => s.title === title && s.directory === worktreePath)
       .sort((a, b) => b.updated - a.updated);
-    return matches[0]?.id || null;
-  } catch {
+    const id = matches[0]?.id || null;
+    log.info(`Found opencode session: ${id ?? 'none'}`);
+    return id;
+  } catch (err) {
+    log.error('Failed to list opencode sessions:', err);
     return null;
   }
 }
