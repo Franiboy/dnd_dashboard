@@ -8,6 +8,8 @@ import {
   listDiaryEntriesByUser,
   updateDiaryEntry,
   deleteDiaryEntry,
+  findExistingEntitiesInText,
+  mergeEntities,
 } from '../repositories/diary.js';
 
 const SUMMARY_MAX_LENGTH = 500;
@@ -154,7 +156,7 @@ router.post('/entries', async (req: AuthRequest, res) => {
     const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
     try {
       const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-      const [summary, entities] = await Promise.all([
+      const [summary, aiEntities] = await Promise.all([
         summarizeTextWithAi(content, undefined, onLog).catch(() => null),
         extractEntitiesFromDiary(content, undefined, onLog).catch(() => ({
           persons: [],
@@ -162,6 +164,9 @@ router.post('/entries', async (req: AuthRequest, res) => {
           locations: [],
         })),
       ]);
+      const existingEntities = findExistingEntitiesInText(content);
+      const entities = mergeEntities(aiEntities, existingEntities);
+
       sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
       const updates: Parameters<typeof updateDiaryEntry>[1] = {};
       if (summary !== null) {
@@ -324,7 +329,7 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const [summary, entities] = await Promise.all([
+    const [summary, aiEntities] = await Promise.all([
       summarizeTextWithAi(existing.content, undefined, onLog),
       extractEntitiesFromDiary(existing.content, undefined, onLog),
     ]);
@@ -332,6 +337,9 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
       res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
       return;
     }
+
+    const existingEntities = findExistingEntitiesInText(existing.content);
+    const entities = mergeEntities(aiEntities, existingEntities);
 
     sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
     const updates: Parameters<typeof updateDiaryEntry>[1] = { summary: summary.slice(0, SUMMARY_MAX_LENGTH) };

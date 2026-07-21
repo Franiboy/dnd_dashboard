@@ -1,13 +1,9 @@
 import type { DiaryEntry } from '../../shared/types.js';
+import type { DiaryEntities } from '../ai/rewrite.js';
+import { stripHtml } from '../ai/rewrite.js';
 import { db } from '../database.js';
 
-interface EntryEntities {
-  persons: string[];
-  organizations: string[];
-  locations: string[];
-}
-
-function rowToDiaryEntry(row: Record<string, unknown>, entities: EntryEntities): DiaryEntry {
+function rowToDiaryEntry(row: Record<string, unknown>, entities: DiaryEntities): DiaryEntry {
   return {
     id: row.id as number,
     userId: row.user_id as string,
@@ -23,12 +19,12 @@ function rowToDiaryEntry(row: Record<string, unknown>, entities: EntryEntities):
   };
 }
 
-function emptyEntities(): EntryEntities {
+function emptyEntities(): DiaryEntities {
   return { persons: [], organizations: [], locations: [] };
 }
 
-function buildEntryEntitiesMap(entryIds: number[]): Map<number, EntryEntities> {
-  const map = new Map<number, EntryEntities>();
+function buildEntryEntitiesMap(entryIds: number[]): Map<number, DiaryEntities> {
+  const map = new Map<number, DiaryEntities>();
   if (entryIds.length === 0) return map;
 
   for (const id of entryIds) {
@@ -39,7 +35,7 @@ function buildEntryEntitiesMap(entryIds: number[]): Map<number, EntryEntities> {
     entityTable: string,
     linkTable: string,
     column: string,
-    key: keyof EntryEntities,
+    key: keyof DiaryEntities,
   ) => {
     const rows = db
       .prepare(
@@ -66,9 +62,80 @@ function buildEntryEntitiesMap(entryIds: number[]): Map<number, EntryEntities> {
   return map;
 }
 
-function getEntryEntities(entryId: number): EntryEntities {
+function getEntryEntities(entryId: number): DiaryEntities {
   const map = buildEntryEntitiesMap([entryId]);
   return map.get(entryId) ?? emptyEntities();
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function entityNameRegex(name: string): RegExp {
+  const escaped = escapeRegex(name);
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'iu');
+}
+
+function getEntityNames(table: string): string[] {
+  const rows = db.prepare(`SELECT name FROM ${table}`).all() as { name: string }[];
+  return rows.map((r) => r.name);
+}
+
+export function findExistingEntitiesInText(text: string): DiaryEntities {
+  const plainText = stripHtml(text);
+  const result: DiaryEntities = emptyEntities();
+
+  const detect = (table: string, key: keyof DiaryEntities) => {
+    const names = getEntityNames(table);
+    const seen = new Set<string>();
+    for (const name of names) {
+      if (name.length === 0) continue;
+      const lower = name.toLowerCase();
+      if (seen.has(lower)) continue;
+      if (entityNameRegex(name).test(plainText)) {
+        result[key].push(name);
+        seen.add(lower);
+      }
+    }
+  };
+
+  detect('persons', 'persons');
+  detect('organizations', 'organizations');
+  detect('locations', 'locations');
+
+  return result;
+}
+
+export function mergeEntities(
+  aiEntities: DiaryEntities,
+  existingEntities: DiaryEntities,
+): DiaryEntities {
+  const merge = (aiItems: string[], existingItems: string[]): string[] => {
+    const byLower = new Map<string, string>();
+    for (const name of existingItems) {
+      byLower.set(name.toLowerCase(), name);
+    }
+    for (const name of aiItems) {
+      const lower = name.toLowerCase();
+      if (!byLower.has(lower)) {
+        byLower.set(lower, name);
+      }
+    }
+    return Array.from(byLower.values());
+  };
+
+  return {
+    persons: merge(aiEntities.persons, existingEntities.persons),
+    organizations: merge(aiEntities.organizations, existingEntities.organizations),
+    locations: merge(aiEntities.locations, existingEntities.locations),
+  };
+}
+
+function canonicalEntityName(name: string, entityTable: string): string {
+  const existing = db
+    .prepare(`SELECT name FROM ${entityTable} WHERE name = ? COLLATE NOCASE`)
+    .get(name) as { name: string } | undefined;
+  return existing?.name ?? name;
 }
 
 function setLinkedEntities(
@@ -89,8 +156,9 @@ function setLinkedEntities(
 
   const tx = db.transaction((targetId: number, namesToLink: string[]) => {
     for (const name of namesToLink) {
-      insertEntity.run(name);
-      const entity = getEntity.get(name) as { id: number } | undefined;
+      const canonical = canonicalEntityName(name, entityTable);
+      insertEntity.run(canonical);
+      const entity = getEntity.get(canonical) as { id: number } | undefined;
       if (!entity) continue;
       linkEntity.run(targetId, entity.id);
     }
