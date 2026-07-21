@@ -24,6 +24,19 @@ function stripHtml(html: string): string {
   return doc.body.textContent || '';
 }
 
+function isHtml(text: string): boolean {
+  return /<[^>]+>/.test(text.trim());
+}
+
+function ensureHtml(text: string): string {
+  if (isHtml(text)) return text;
+  return text
+    .trim()
+    .split(/\n\n+/)
+    .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
+
 const quillModules = {
   toolbar: [
     [{ header: [1, 2, false] }],
@@ -74,9 +87,13 @@ export function Diary() {
   const [form, setForm] = useState<DiaryFormData>({ title: '', content: '' });
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null);
   const [editingSummaryText, setEditingSummaryText] = useState('');
   const [processingSummaryId, setProcessingSummaryId] = useState<number | null>(null);
+  const [processingRewriteId, setProcessingRewriteId] = useState<number | null>(null);
+  const [processingCommandId, setProcessingCommandId] = useState<number | null>(null);
+  const [rewriteCommands, setRewriteCommands] = useState<Record<number, string>>({});
   const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [aiOperation, setAiOperation] = useState(false);
   const [resetKey, setResetKey] = useState(0);
@@ -233,15 +250,51 @@ export function Diary() {
   }
 
   async function handleRewrite(entry: DiaryEntry) {
+    setProcessingRewriteId(entry.id);
+    setAiOperation(true);
+    setAiStatus('Text wird von KI umgeschrieben...');
+    await Promise.race([sseReadyRef.current, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
     setWorking(true);
     const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}/rewrite`, {
       method: 'POST',
     });
     setWorking(false);
+    setAiOperation(false);
+    setProcessingRewriteId(null);
     if (data) {
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
-      showSuccess('KI-Version erstellt.');
+      setViewRewritten(entry.id, true);
+      setAiStatus(null);
+      showSuccess('KI-Version aktualisiert.');
     } else if (error) {
+      setAiStatus(null);
+      setFormError(error);
+    }
+  }
+
+  async function handleRewriteCommand(entry: DiaryEntry, command: string) {
+    if (!command.trim() || !entry.rewriteSessionId) return;
+    setProcessingCommandId(entry.id);
+    setAiOperation(true);
+    setAiStatus('KI führt Befehl aus...');
+    await Promise.race([sseReadyRef.current, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
+    setWorking(true);
+    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}/rewrite-command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: command.trim() }),
+    });
+    setWorking(false);
+    setAiOperation(false);
+    setProcessingCommandId(null);
+    if (data) {
+      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      setViewRewritten(entry.id, true);
+      setRewriteCommands((prev) => ({ ...prev, [entry.id]: '' }));
+      setAiStatus(null);
+      showSuccess('KI-Version angepasst.');
+    } else if (error) {
+      setAiStatus(null);
       setFormError(error);
     }
   }
@@ -268,16 +321,17 @@ export function Diary() {
   }
 
   async function handleAcceptRewritten(entry: DiaryEntry) {
-    if (!entry.rewrittenContent) return;
+    if (!entry.rewrittenFilePath || !entry.rewrittenContent) return;
     setWorking(true);
     const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: entry.rewrittenContent, rewrittenContent: null }),
+      body: JSON.stringify({ content: ensureHtml(entry.rewrittenContent), rewrittenContent: null }),
     });
     setWorking(false);
     if (data) {
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      setViewRewritten(entry.id, false);
       showSuccess('Überarbeitung übernommen.');
     } else if (error) {
       setFormError(error);
@@ -294,16 +348,36 @@ export function Diary() {
     setWorking(false);
     if (data) {
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      setViewRewritten(entry.id, false);
     } else if (error) {
       setFormError(error);
     }
   }
 
-  function toggleExpanded(id: number) {
+  async function toggleExpanded(id: number) {
+    const isExpanding = !expandedIds.has(id);
+    if (isExpanding) {
+      const entry = entries.find((e) => e.id === id);
+      if (entry?.rewrittenFilePath && !entry.rewrittenContent) {
+        const { data } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${id}`);
+        if (data) {
+          setEntries((prev) => prev.map((e) => (e.id === id ? data.entry : e)));
+        }
+      }
+    }
     setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  }
+
+  function setViewRewritten(id: number, showRewritten: boolean) {
+    setViewingRewrittenIds((prev) => {
+      const next = new Set(prev);
+      if (showRewritten) next.add(id);
+      else next.delete(id);
       return next;
     });
   }
@@ -415,15 +489,6 @@ export function Diary() {
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <h3 className="text-lg font-semibold text-[var(--text-h)]">{entry.title}</h3>
                     <div className="flex flex-wrap gap-2 justify-end">
-                      {aiEnabled && (
-                        <Button
-                          variant="secondary"
-                          onClick={() => handleRewrite(entry)}
-                          disabled={working}
-                        >
-                          KI umschreiben
-                        </Button>
-                      )}
                       <Button
                         variant="secondary"
                         onClick={() => openEdit(entry)}
@@ -514,20 +579,101 @@ export function Diary() {
 
                   {expandedIds.has(entry.id) ? (
                     <>
-                      <div
-                        className="text-slate-300 diary-content mb-4"
-                        dangerouslySetInnerHTML={{ __html: entry.content }}
-                      />
+                      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                        <div className="inline-flex rounded-lg bg-slate-800 p-1 border border-[var(--border)]">
+                          <button
+                            type="button"
+                            onClick={() => setViewRewritten(entry.id, false)}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition ${
+                              !viewingRewrittenIds.has(entry.id) || !entry.rewrittenFilePath
+                                ? 'bg-[var(--accent)] text-slate-900'
+                                : 'text-slate-300 hover:text-[var(--text-h)]'
+                            }`}
+                          >
+                            Original
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => entry.rewrittenFilePath && setViewRewritten(entry.id, true)}
+                            disabled={!entry.rewrittenFilePath || working}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                              viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath
+                                ? 'bg-[var(--accent)] text-slate-900'
+                                : 'text-slate-300 hover:text-[var(--text-h)]'
+                            }`}
+                          >
+                            KI-Version
+                          </button>
+                        </div>
+                        {aiEnabled && (
+                          <Button
+                            variant="secondary"
+                            onClick={() => handleRewrite(entry)}
+                            disabled={working || processingRewriteId === entry.id}
+                            title={entry.rewrittenFilePath ? 'Weitere Verbesserung der KI-Version anfordern' : undefined}
+                            icon={
+                              processingRewriteId === entry.id ? (
+                                <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                </svg>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                  <path d="M21 4v6h-6" />
+                                </svg>
+                              )
+                            }
+                          >
+                            {processingRewriteId === entry.id
+                              ? 'Wird verarbeitet...'
+                              : entry.rewrittenFilePath
+                                ? 'KI verbessern'
+                                : 'KI umschreiben'}
+                          </Button>
+                        )}
+                      </div>
 
-                      {entry.rewrittenContent && (
+                      {viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath ? (
                         <div className="rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 p-4 mb-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-semibold text-[var(--accent)]">KI-Version</span>
-                            <div className="flex gap-2">
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <form
+                              className="flex items-center gap-2 flex-1"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const text = rewriteCommands[entry.id] || '';
+                                if (text.trim()) handleRewriteCommand(entry, text);
+                              }}
+                            >
+                              <input
+                                type="text"
+                                value={rewriteCommands[entry.id] || ''}
+                                onChange={(e) =>
+                                  setRewriteCommands((prev) => ({
+                                    ...prev,
+                                    [entry.id]: e.target.value,
+                                  }))
+                                }
+                                placeholder="Befehl für KI (z. B. formeller)"
+                                className="px-2 py-1 rounded-md text-sm bg-slate-900 border border-[var(--border)] text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[var(--accent)] w-full max-w-md"
+                                disabled={working || processingCommandId === entry.id}
+                              />
+                              <Button
+                                type="submit"
+                                variant="secondary"
+                                disabled={
+                                  working ||
+                                  processingCommandId === entry.id ||
+                                  !(rewriteCommands[entry.id] || '').trim()
+                                }
+                              >
+                                {processingCommandId === entry.id ? 'Wird verarbeitet...' : 'Ausführen'}
+                              </Button>
+                            </form>
+                            <div className="flex items-center gap-2">
                               <Button
                                 variant="accent"
                                 onClick={() => handleAcceptRewritten(entry)}
-                                disabled={working}
+                                disabled={working || !entry.rewrittenContent}
                               >
                                 Übernehmen
                               </Button>
@@ -540,8 +686,24 @@ export function Diary() {
                               </Button>
                             </div>
                           </div>
-                          <div className="text-slate-300 whitespace-pre-wrap">{entry.rewrittenContent}</div>
+                          {entry.rewrittenContent ? (
+                            isHtml(entry.rewrittenContent) ? (
+                              <div
+                                className="text-slate-300 diary-content"
+                                dangerouslySetInnerHTML={{ __html: entry.rewrittenContent }}
+                              />
+                            ) : (
+                              <div className="text-slate-300 whitespace-pre-wrap">{entry.rewrittenContent}</div>
+                            )
+                          ) : (
+                            <div className="text-slate-400 text-sm">KI-Version wird geladen...</div>
+                          )}
                         </div>
+                      ) : (
+                        <div
+                          className="text-slate-300 diary-content mb-4"
+                          dangerouslySetInnerHTML={{ __html: entry.content }}
+                        />
                       )}
 
                       <Button variant="ghost" onClick={() => toggleExpanded(entry.id)}>

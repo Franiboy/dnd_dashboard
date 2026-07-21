@@ -163,6 +163,8 @@ export interface DiaryEntry {
   content: string;
   summary: string | null;
   rewrittenContent: string | null;
+  rewrittenFilePath?: string | null;
+  rewriteSessionId?: string | null;
   persons: string[];
   organizations: string[];
   locations: string[];
