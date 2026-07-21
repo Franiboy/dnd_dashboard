@@ -35,6 +35,33 @@ const quillModules = {
 
 const quillFormats = ['header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet'];
 
+interface BadgeListProps {
+  items: string[];
+  variant: 'person' | 'organization' | 'location';
+}
+
+const badgeStyles = {
+  person: 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20',
+  organization: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
+  location: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+};
+
+function BadgeList({ items, variant }: BadgeListProps) {
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2 mb-3">
+      {items.map((item) => (
+        <span
+          key={item}
+          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${badgeStyles[variant]}`}
+        >
+          {item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function Diary() {
   const { request } = useApi();
   const { showSuccess, showError } = useError();
@@ -481,18 +508,9 @@ export function Diary() {
                     )}
                   </div>
 
-                  {entry.persons.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {entry.persons.map((person) => (
-                        <span
-                          key={person}
-                          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20"
-                        >
-                          {person}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <BadgeList items={entry.persons} variant="person" />
+                  <BadgeList items={entry.organizations} variant="organization" />
+                  <BadgeList items={entry.locations} variant="location" />
 
                   {expandedIds.has(entry.id) ? (
                     <>

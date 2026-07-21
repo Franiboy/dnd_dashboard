@@ -198,6 +198,41 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    name: 'create_organizations_and_locations_tables',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS organizations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL
+        );
+      `);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS diary_entry_organizations (
+          diary_entry_id INTEGER NOT NULL,
+          organization_id INTEGER NOT NULL,
+          PRIMARY KEY (diary_entry_id, organization_id),
+          FOREIGN KEY (diary_entry_id) REFERENCES diary_entries(id) ON DELETE CASCADE,
+          FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        );
+      `);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS locations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL
+        );
+      `);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS diary_entry_locations (
+          diary_entry_id INTEGER NOT NULL,
+          location_id INTEGER NOT NULL,
+          PRIMARY KEY (diary_entry_id, location_id),
+          FOREIGN KEY (diary_entry_id) REFERENCES diary_entries(id) ON DELETE CASCADE,
+          FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE
+        );
+      `);
+    },
+  },
 ];
 
 export function runMigrations() {
