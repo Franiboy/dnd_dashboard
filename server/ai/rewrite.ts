@@ -1,6 +1,6 @@
 import { runOpenCode } from './opencode.js';
 
-function stripHtml(html: string): string {
+export function stripHtml(html: string): string {
   return html
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
