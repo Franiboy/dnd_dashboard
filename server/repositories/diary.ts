@@ -1,7 +1,13 @@
 import type { DiaryEntry } from '../../shared/types.js';
 import { db } from '../database.js';
 
-function rowToDiaryEntry(row: Record<string, unknown>, persons: string[]): DiaryEntry {
+interface EntryEntities {
+  persons: string[];
+  organizations: string[];
+  locations: string[];
+}
+
+function rowToDiaryEntry(row: Record<string, unknown>, entities: EntryEntities): DiaryEntry {
   return {
     id: row.id as number,
     userId: row.user_id as string,
@@ -9,73 +15,100 @@ function rowToDiaryEntry(row: Record<string, unknown>, persons: string[]): Diary
     content: row.content as string,
     summary: (row.summary as string | null | undefined) ?? null,
     rewrittenContent: (row.rewritten_content as string | null | undefined) ?? null,
-    persons,
+    persons: entities.persons,
+    organizations: entities.organizations,
+    locations: entities.locations,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
 }
 
-function getPersonsByEntryId(entryId: number): string[] {
-  const rows = db
-    .prepare(
-      `SELECT p.name
-       FROM persons p
-       JOIN diary_entry_persons dep ON dep.person_id = p.id
-       WHERE dep.diary_entry_id = ?
-       ORDER BY p.name`,
-    )
-    .all(entryId) as { name: string }[];
-  return rows.map((r) => r.name);
+function emptyEntities(): EntryEntities {
+  return { persons: [], organizations: [], locations: [] };
 }
 
-function buildEntryPersonsMap(entryIds: number[]): Map<number, string[]> {
-  const map = new Map<number, string[]>();
+function buildEntryEntitiesMap(entryIds: number[]): Map<number, EntryEntities> {
+  const map = new Map<number, EntryEntities>();
   if (entryIds.length === 0) return map;
 
-  const rows = db
-    .prepare(
-      `SELECT dep.diary_entry_id AS entry_id, p.name
-       FROM persons p
-       JOIN diary_entry_persons dep ON dep.person_id = p.id
-       WHERE dep.diary_entry_id IN (${entryIds.map(() => '?').join(',')})
-       ORDER BY p.name`,
-    )
-    .all(...entryIds) as { entry_id: number; name: string }[];
-
-  for (const { entry_id, name } of rows) {
-    if (!map.has(entry_id)) {
-      map.set(entry_id, []);
-    }
-    map.get(entry_id)!.push(name);
+  for (const id of entryIds) {
+    map.set(id, emptyEntities());
   }
+
+  const load = (
+    entityTable: string,
+    linkTable: string,
+    column: string,
+    key: keyof EntryEntities,
+  ) => {
+    const rows = db
+      .prepare(
+        `SELECT l.diary_entry_id AS entry_id, e.name
+         FROM ${entityTable} e
+         JOIN ${linkTable} l ON l.${column} = e.id
+         WHERE l.diary_entry_id IN (${entryIds.map(() => '?').join(',')})
+         ORDER BY e.name`,
+      )
+      .all(...entryIds) as { entry_id: number; name: string }[];
+
+    for (const { entry_id, name } of rows) {
+      const entities = map.get(entry_id);
+      if (entities) {
+        entities[key].push(name);
+      }
+    }
+  };
+
+  load('persons', 'diary_entry_persons', 'person_id', 'persons');
+  load('organizations', 'diary_entry_organizations', 'organization_id', 'organizations');
+  load('locations', 'diary_entry_locations', 'location_id', 'locations');
 
   return map;
 }
 
-export function setDiaryEntryPersons(entryId: number, persons: string[]): void {
-  const normalized = [...new Set(persons.map((p) => p.trim()).filter((p) => p.length > 0))];
+function getEntryEntities(entryId: number): EntryEntities {
+  const map = buildEntryEntitiesMap([entryId]);
+  return map.get(entryId) ?? emptyEntities();
+}
 
-  const deleteExisting = db.prepare('DELETE FROM diary_entry_persons WHERE diary_entry_id = ?');
-  deleteExisting.run(entryId);
+function setLinkedEntities(
+  entryId: number,
+  names: string[],
+  entityTable: string,
+  linkTable: string,
+  column: string,
+): void {
+  const normalized = [...new Set(names.map((n) => n.trim()).filter((n) => n.length > 0))];
 
+  db.prepare(`DELETE FROM ${linkTable} WHERE diary_entry_id = ?`).run(entryId);
   if (normalized.length === 0) return;
 
-  const insertPerson = db.prepare('INSERT OR IGNORE INTO persons (name) VALUES (?)');
-  const getPerson = db.prepare('SELECT id FROM persons WHERE name = ?');
-  const linkPerson = db.prepare(
-    'INSERT INTO diary_entry_persons (diary_entry_id, person_id) VALUES (?, ?)',
-  );
+  const insertEntity = db.prepare(`INSERT OR IGNORE INTO ${entityTable} (name) VALUES (?)`);
+  const getEntity = db.prepare(`SELECT id FROM ${entityTable} WHERE name = ?`);
+  const linkEntity = db.prepare(`INSERT INTO ${linkTable} (diary_entry_id, ${column}) VALUES (?, ?)`);
 
-  const tx = db.transaction((entryId: number, names: string[]) => {
-    for (const name of names) {
-      insertPerson.run(name);
-      const person = getPerson.get(name) as { id: number } | undefined;
-      if (!person) continue;
-      linkPerson.run(entryId, person.id);
+  const tx = db.transaction((targetId: number, namesToLink: string[]) => {
+    for (const name of namesToLink) {
+      insertEntity.run(name);
+      const entity = getEntity.get(name) as { id: number } | undefined;
+      if (!entity) continue;
+      linkEntity.run(targetId, entity.id);
     }
   });
 
   tx(entryId, normalized);
+}
+
+export function setDiaryEntryPersons(entryId: number, persons: string[]): void {
+  setLinkedEntities(entryId, persons, 'persons', 'diary_entry_persons', 'person_id');
+}
+
+export function setDiaryEntryOrganizations(entryId: number, organizations: string[]): void {
+  setLinkedEntities(entryId, organizations, 'organizations', 'diary_entry_organizations', 'organization_id');
+}
+
+export function setDiaryEntryLocations(entryId: number, locations: string[]): void {
+  setLinkedEntities(entryId, locations, 'locations', 'diary_entry_locations', 'location_id');
 }
 
 export function createDiaryEntry(
@@ -98,7 +131,7 @@ export function getDiaryEntryById(id: number): DiaryEntry | null {
     | Record<string, unknown>
     | undefined;
   if (!row) return null;
-  return rowToDiaryEntry(row, getPersonsByEntryId(id));
+  return rowToDiaryEntry(row, getEntryEntities(id));
 }
 
 export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
@@ -106,14 +139,16 @@ export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
     .prepare('SELECT * FROM diary_entries WHERE user_id = ? ORDER BY created_at DESC')
     .all(userId) as Record<string, unknown>[];
   const entryIds = rows.map((row) => row.id as number);
-  const personsMap = buildEntryPersonsMap(entryIds);
-  return rows.map((row) => rowToDiaryEntry(row, personsMap.get(row.id as number) || []));
+  const entitiesMap = buildEntryEntitiesMap(entryIds);
+  return rows.map((row) =>
+    rowToDiaryEntry(row, entitiesMap.get(row.id as number) ?? emptyEntities()),
+  );
 }
 
 export function updateDiaryEntry(
   id: number,
   updates: Partial<
-    Pick<DiaryEntry, 'title' | 'content' | 'summary' | 'rewrittenContent' | 'persons'>
+    Pick<DiaryEntry, 'title' | 'content' | 'summary' | 'rewrittenContent' | 'persons' | 'organizations' | 'locations'>
   >,
 ): DiaryEntry | null {
   const existing = getDiaryEntryById(id);
@@ -140,10 +175,26 @@ export function updateDiaryEntry(
   }
 
   const hasPersonsUpdate = updates.persons !== undefined;
-  if (fields.length === 0 && !hasPersonsUpdate) return existing;
+  const hasOrganizationsUpdate = updates.organizations !== undefined;
+  const hasLocationsUpdate = updates.locations !== undefined;
+
+  if (
+    fields.length === 0 &&
+    !hasPersonsUpdate &&
+    !hasOrganizationsUpdate &&
+    !hasLocationsUpdate
+  ) {
+    return existing;
+  }
 
   if (hasPersonsUpdate) {
     setDiaryEntryPersons(id, updates.persons || []);
+  }
+  if (hasOrganizationsUpdate) {
+    setDiaryEntryOrganizations(id, updates.organizations || []);
+  }
+  if (hasLocationsUpdate) {
+    setDiaryEntryLocations(id, updates.locations || []);
   }
 
   const now = new Date().toISOString();

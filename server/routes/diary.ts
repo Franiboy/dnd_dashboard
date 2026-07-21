@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
-import { extractPersonsFromDiary, rewriteTextWithAi, summarizeTextWithAi, stripAnsi } from '../ai/rewrite.js';
+import { extractEntitiesFromDiary, rewriteTextWithAi, summarizeTextWithAi, stripAnsi } from '../ai/rewrite.js';
 import {
   createDiaryEntry,
   getDiaryEntryById,
@@ -154,17 +154,27 @@ router.post('/entries', async (req: AuthRequest, res) => {
     const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
     try {
       const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-      const [summary, persons] = await Promise.all([
+      const [summary, entities] = await Promise.all([
         summarizeTextWithAi(content, undefined, onLog).catch(() => null),
-        extractPersonsFromDiary(content, undefined, onLog).catch(() => []),
+        extractEntitiesFromDiary(content, undefined, onLog).catch(() => ({
+          persons: [],
+          organizations: [],
+          locations: [],
+        })),
       ]);
       sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
       const updates: Parameters<typeof updateDiaryEntry>[1] = {};
       if (summary !== null) {
         updates.summary = summary.slice(0, SUMMARY_MAX_LENGTH);
       }
-      if (persons.length > 0) {
-        updates.persons = persons;
+      if (entities.persons.length > 0) {
+        updates.persons = entities.persons;
+      }
+      if (entities.organizations.length > 0) {
+        updates.organizations = entities.organizations;
+      }
+      if (entities.locations.length > 0) {
+        updates.locations = entities.locations;
       }
       if (Object.keys(updates).length > 0) {
         const updated = updateDiaryEntry(entry.id, updates);
@@ -314,9 +324,9 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const [summary, persons] = await Promise.all([
+    const [summary, entities] = await Promise.all([
       summarizeTextWithAi(existing.content, undefined, onLog),
-      extractPersonsFromDiary(existing.content, undefined, onLog),
+      extractEntitiesFromDiary(existing.content, undefined, onLog),
     ]);
     if (summary === null) {
       res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
@@ -325,8 +335,14 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
 
     sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
     const updates: Parameters<typeof updateDiaryEntry>[1] = { summary: summary.slice(0, SUMMARY_MAX_LENGTH) };
-    if (persons.length > 0) {
-      updates.persons = persons;
+    if (entities.persons.length > 0) {
+      updates.persons = entities.persons;
+    }
+    if (entities.organizations.length > 0) {
+      updates.organizations = entities.organizations;
+    }
+    if (entities.locations.length > 0) {
+      updates.locations = entities.locations;
     }
 
     const entry = updateDiaryEntry(id, updates);

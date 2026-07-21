@@ -39,7 +39,10 @@ export async function summarizeTextWithAi(
 
   const prompt = [
     'Fasse den folgenden deutschen Tagebucheintrag in 3-5 Sätzen zusammen.',
-    'Nenne die wichtigsten Ereignisse und beteiligten Personen/Charaktere.',
+    'Beschreibe die wichtigsten Ereignisse und Ergebnisse knapp und prägnant.',
+    'Nenne relevante Namen nur im Fließtext, wenn sie für das Ereignis wichtig sind.',
+    'Füge am Ende keine eigene Aufzählung von Beteiligten, Gruppen oder Orten hinzu.',
+    'Halte dich strikt an den vorliegenden Text und erfinke keine Details (z. B. Orte, Personen oder Ursachen), die darin nicht stehen.',
     'Maximal 300 Zeichen.',
     'Do NOT modify any files, run any commands or perform any actions. Only output the summary text.',
     'Antworte ausschließlich auf Deutsch.',
@@ -102,19 +105,33 @@ function extractRewriteOutput(raw: string): string {
   return lines.join('\n').trim();
 }
 
-export async function extractPersonsFromDiary(
+export interface DiaryEntities {
+  persons: string[];
+  organizations: string[];
+  locations: string[];
+}
+
+export async function extractEntitiesFromDiary(
   text: string,
   model?: string,
   onLog?: (line: string) => void,
-): Promise<string[]> {
+): Promise<DiaryEntities> {
   const plainText = stripHtml(text);
-  if (!plainText) return [];
+  if (!plainText) {
+    return { persons: [], organizations: [], locations: [] };
+  }
 
   const prompt = [
-    'Extrahiere alle eindeutigen Personen- und Charakternamen aus dem folgenden deutschen Tagebucheintrag.',
-    'Nur Eigennamen oder bekannte Bezeichnungen von lebendigen Wesen, keine allgemeinen Begriffe wie "Wachen", "Aufständische" oder "Leute".',
-    'Gib das Ergebnis als gültiges JSON-Array von Strings zurück, z. B. ["Sergei", "Vimak", "Sophie"].',
-    'Do NOT modify any files, run any commands or perform any actions. Only output the JSON array.',
+    'Extrahiere alle eindeutigen Personen/Charaktere, Organisationen/Fraktionen und Orte aus dem folgenden deutschen Tagebucheintrag.',
+    '',
+    'Regeln:',
+    '- persons: Lebende Wesen, Charaktere, Tiere mit eigenem Namen oder eindeutiger Bezeichnung. Keine allgemeinen Begriffe wie "Wachen", "Aufständische" oder "Leute".',
+    '- organizations: Gruppen, Gilden, Fraktionen, Clans, Häuser, Orden, Reiche, Familien, militärische Einheiten, Firmen oder andere Kollektive mit eigenem Namen. Keine allgemeinen Gruppenbezeichnungen.',
+    '- locations: Städte, Dörfer, Länder, Regionen, Kontinente, Landmarken, Gebäude, Dungeons, Festungen, Wälder, Berge, Flüsse oder andere Orte mit eigenem Namen. Keine unbestimmten Orte wie "ein Wald" oder "der Markt".',
+    '',
+    'Gib das Ergebnis ausschließlich als gültiges JSON-Objekt in dieser Form zurück:',
+    '{"persons": ["..."], "organizations": ["..."], "locations": ["..."]}.',
+    'Do NOT modify any files, run any commands or perform any actions. Only output the JSON object.',
     '',
     'Tagebucheintrag:',
     plainText,
@@ -124,27 +141,40 @@ export async function extractPersonsFromDiary(
     prompt,
     worktreePath: process.cwd(),
     model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
-    title: `dnd-diary-persons-${Date.now()}`,
+    title: `dnd-diary-entities-${Date.now()}`,
     onLog,
   });
 
-  if (!result.success) return [];
-
-  const cleaned = extractRewriteOutput(result.output);
-  const jsonMatch = cleaned.match(/\[.*\]/s);
-  if (!jsonMatch) return [];
-
-  try {
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (Array.isArray(parsed)) {
-      return parsed
-        .filter((p: unknown): p is string => typeof p === 'string')
-        .map((p) => p.trim())
-        .filter((p) => p.length > 0);
-    }
-  } catch {
-    return [];
+  if (!result.success) {
+    return { persons: [], organizations: [], locations: [] };
   }
 
-  return [];
+  const cleaned = extractRewriteOutput(result.output);
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) {
+    return { persons: [], organizations: [], locations: [] };
+  }
+
+  try {
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    if (parsed && typeof parsed === 'object') {
+      const toStrings = (value: unknown): string[] => {
+        if (!Array.isArray(value)) return [];
+        return value
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0);
+      };
+      return {
+        persons: toStrings(parsed.persons),
+        organizations: toStrings(parsed.organizations),
+        locations: toStrings(parsed.locations),
+      };
+    }
+  } catch {
+    // ignore malformed JSON
+  }
+
+  return { persons: [], organizations: [], locations: [] };
 }
