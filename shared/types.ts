@@ -164,6 +164,8 @@ export interface DiaryEntry {
   summary: string | null;
   rewrittenContent: string | null;
   persons: string[];
+  organizations: string[];
+  locations: string[];
   createdAt: string;
   updatedAt: string;
 }
