@@ -10,6 +10,7 @@ import {
   deleteDiaryEntry,
   findExistingEntitiesInText,
   mergeEntities,
+  finalizeEntities,
 } from '../repositories/diary.js';
 
 const SUMMARY_MAX_LENGTH = 500;
@@ -165,7 +166,7 @@ router.post('/entries', async (req: AuthRequest, res) => {
         })),
       ]);
       const existingEntities = findExistingEntitiesInText(content);
-      const entities = mergeEntities(aiEntities, existingEntities);
+      const entities = finalizeEntities(mergeEntities(aiEntities, existingEntities));
 
       sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
       const updates: Parameters<typeof updateDiaryEntry>[1] = {};
@@ -339,7 +340,7 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
     }
 
     const existingEntities = findExistingEntitiesInText(existing.content);
-    const entities = mergeEntities(aiEntities, existingEntities);
+    const entities = finalizeEntities(mergeEntities(aiEntities, existingEntities));
 
     sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
     const updates: Parameters<typeof updateDiaryEntry>[1] = { summary: summary.slice(0, SUMMARY_MAX_LENGTH) };

@@ -233,6 +233,64 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    name: 'create_entity_blacklist_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS entity_blacklist (
+          type TEXT NOT NULL CHECK(type IN ('persons', 'organizations', 'locations')),
+          name TEXT NOT NULL,
+          PRIMARY KEY (type, name)
+        );
+      `);
+    },
+  },
+  {
+    name: 'migrate_entity_blacklist_types',
+    run: () => {
+      const tableExists = db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entity_blacklist'")
+        .get() as { '1': number } | undefined;
+      if (!tableExists) return;
+
+      db.exec(`
+        ALTER TABLE entity_blacklist RENAME TO entity_blacklist_old;
+      `);
+      db.exec(`
+        CREATE TABLE entity_blacklist (
+          type TEXT NOT NULL CHECK(type IN ('persons', 'organizations', 'locations')),
+          name TEXT NOT NULL,
+          PRIMARY KEY (type, name)
+        );
+      `);
+      db.exec(`
+        INSERT OR IGNORE INTO entity_blacklist (type, name)
+        SELECT
+          CASE type
+            WHEN 'person' THEN 'persons'
+            WHEN 'organization' THEN 'organizations'
+            WHEN 'location' THEN 'locations'
+            ELSE type
+          END,
+          name
+        FROM entity_blacklist_old;
+      `);
+      db.exec(`DROP TABLE entity_blacklist_old;`);
+    },
+  },
+  {
+    name: 'create_entity_aliases_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS entity_aliases (
+          type TEXT NOT NULL CHECK(type IN ('persons', 'organizations', 'locations')),
+          alias TEXT NOT NULL,
+          canonical TEXT NOT NULL,
+          PRIMARY KEY (type, alias)
+        );
+      `);
+    },
+  },
 ];
 
 export function runMigrations() {
