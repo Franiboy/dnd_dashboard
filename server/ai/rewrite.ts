@@ -202,12 +202,12 @@ export async function summarizeTextWithAi(
 
   const prompt = [
     'Wichtig: Deine Antwort darf maximal 500 Zeichen lang sein. Überschreite dieses Limit auf keinen Fall.',
-    'Extrahiere aus dem folgenden deutschen Tagebucheintrag die wichtigsten Ereignisse und Fakten als kurze, eigenständige Aussagen.',
-    'Schreibe keine zusammenhängende Erzählung, sondern eine Liste von kurzen, allgemeinen Aussagen.',
-    'Jede Zeile sollte eine Sache beschreiben, z. B. "X ist passiert", "Y wurde verletzt", "Z wurde getötet", "A befehligt B".',
-    'Nenne relevante Namen nur, wenn sie für das Ereignis wichtig sind.',
-    'Halte dich strikt an den vorliegenden Text und erfinke keine Details (z. B. Orte, Personen oder Ursachen), die darin nicht stehen.',
-    'Gib maximal 8–12 Punkte aus, jeder Punkt in einer eigenen Zeile.',
+    'Erstelle eine sehr grobe Zusammenfassung des folgenden deutschen Tagebucheintrags.',
+    'Nenne nur die gröbten Ereignisse, Orte und Handlungsstränge, z. B. "Kampf mit Drachen", "Aufenthalt in Goldenfields", "Verhandlung in Waterdeep".',
+    'Lass Details, Namen, Vermutungen und Gefühle weg, sofern sie nicht absolut zentral für das gröbste Ereignis sind.',
+    'Schreibe keine zusammenhängende Erzählung, sondern eine kurze Liste von knappen Stichpunkten.',
+    'Halte dich strikt an den vorliegenden Text und erfinke keine Details, die darin nicht stehen.',
+    'Gib maximal 3–5 Punkte aus, jeder Punkt in einer eigenen Zeile.',
     'Do NOT modify any files, run any commands or perform any actions. Only output the summary text.',
     'Antworte ausschließlich auf Deutsch.',
     '',
