@@ -240,11 +240,13 @@ async function runAiPrompt(
   model?: string,
   onLog?: (line: string) => void,
 ): Promise<string | null> {
-  log.info(`Running AI prompt: title=${title}, model=${model ?? 'default'}`);
+  const resolvedModel =
+    model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2';
+  log.info(`Running AI prompt: title=${title}, model=${resolvedModel}`);
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || process.env.AI_MODEL || 'provider/GLM5.2',
+    model: resolvedModel,
     title,
     onLog,
   });
