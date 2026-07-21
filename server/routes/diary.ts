@@ -15,6 +15,15 @@ import {
 
 const SUMMARY_MAX_LENGTH = 500;
 
+function truncateSummary(text: string, maxLength: number = SUMMARY_MAX_LENGTH): string {
+  if (text.length <= maxLength) return text;
+  const cut = text.lastIndexOf(' ', maxLength - 3);
+  if (cut === -1 || cut < maxLength * 0.5) {
+    return text.slice(0, maxLength - 3) + '...';
+  }
+  return text.slice(0, cut) + '...';
+}
+
 const sseClients = new Map<string, Set<Response>>();
 
 function sendDiaryAiStatus(userId: string, message: string) {
@@ -171,7 +180,7 @@ router.post('/entries', async (req: AuthRequest, res) => {
       sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
       const updates: Parameters<typeof updateDiaryEntry>[1] = {};
       if (summary !== null) {
-        updates.summary = summary.slice(0, SUMMARY_MAX_LENGTH);
+        updates.summary = truncateSummary(summary);
       }
       if (entities.persons.length > 0) {
         updates.persons = entities.persons;
@@ -343,7 +352,7 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
     const entities = finalizeEntities(mergeEntities(aiEntities, existingEntities));
 
     sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
-    const updates: Parameters<typeof updateDiaryEntry>[1] = { summary: summary.slice(0, SUMMARY_MAX_LENGTH) };
+    const updates: Parameters<typeof updateDiaryEntry>[1] = { summary: truncateSummary(summary) };
     if (entities.persons.length > 0) {
       updates.persons = entities.persons;
     }

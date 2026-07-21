@@ -21,7 +21,7 @@ export function Home() {
     <div className="min-h-full p-6 flex flex-col items-center justify-center">
       <h1 className="text-5xl font-bold text-[var(--text-h)] mb-4">DnD Dashboard</h1>
       <p className="text-xl text-slate-400 mb-12">Wähle einen Bereich</p>
-      <div className="grid gap-6 w-full max-w-2xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
         <Link
           to="/notizen"
           className="group block bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--accent)] transition"
