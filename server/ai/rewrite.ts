@@ -38,12 +38,12 @@ export async function summarizeTextWithAi(
   if (!plainText) return null;
 
   const prompt = [
+    'Wichtig: Deine Antwort darf maximal 500 Zeichen lang sein. Überschreite dieses Limit auf keinen Fall.',
     'Fasse den folgenden deutschen Tagebucheintrag in 3-5 Sätzen zusammen.',
     'Beschreibe die wichtigsten Ereignisse und Ergebnisse knapp und prägnant.',
     'Nenne relevante Namen nur im Fließtext, wenn sie für das Ereignis wichtig sind.',
     'Füge am Ende keine eigene Aufzählung von Beteiligten, Gruppen oder Orten hinzu.',
     'Halte dich strikt an den vorliegenden Text und erfinke keine Details (z. B. Orte, Personen oder Ursachen), die darin nicht stehen.',
-    'Maximal 300 Zeichen.',
     'Do NOT modify any files, run any commands or perform any actions. Only output the summary text.',
     'Antworte ausschließlich auf Deutsch.',
     '',
