@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
 import { extractEntitiesFromDiary, improveRewrittenWithCommand, rewriteTextWithAi, summarizeTextWithAi, stripAnsi } from '../ai/rewrite.js';
+import { deleteOpenCodeSession } from '../ai/opencode.js';
 import { deleteRewrittenFile, getRewrittenFilePath, readRewrittenFile } from '../diaryFiles.js';
 import { createLogger } from '../logger.js';
 import {
@@ -21,9 +22,10 @@ const SUMMARY_MAX_LENGTH = 500;
 
 function truncateSummary(text: string, maxLength: number = SUMMARY_MAX_LENGTH): string {
   if (text.length <= maxLength) return text;
-  const cut = text.lastIndexOf(' ', maxLength - 3);
-  if (cut === -1 || cut < maxLength * 0.5) {
-    return text.slice(0, maxLength - 3) + '...';
+  const prefix = text.slice(0, maxLength - 3);
+  const cut = Math.max(prefix.lastIndexOf(' '), prefix.lastIndexOf('\n'));
+  if (cut <= 0 || cut < maxLength * 0.5) {
+    return prefix + '...';
   }
   return text.slice(0, cut) + '...';
 }
@@ -272,7 +274,6 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
     if (existing.rewrittenContent) {
       const fileContent = readRewrittenFile(id);
       updates.content = fileContent ?? content;
-      deleteRewrittenFile(id);
       updates.rewrittenContent = null;
       updates.rewrittenFilePath = null;
       updates.rewriteSessionId = null;
@@ -290,11 +291,21 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
   if (rewrittenContent !== undefined) {
     const clearing = typeof rewrittenContent === 'string' ? !rewrittenContent : true;
     if (clearing && existing.rewrittenContent) {
-      deleteRewrittenFile(id);
+      updates.rewrittenContent = null;
+      updates.rewrittenFilePath = null;
+      updates.rewriteSessionId = null;
+    } else {
+      updates.rewrittenContent = typeof rewrittenContent === 'string' ? rewrittenContent : null;
     }
-    updates.rewrittenContent = typeof rewrittenContent === 'string' ? rewrittenContent : null;
-    updates.rewrittenFilePath = null;
-    updates.rewriteSessionId = null;
+  }
+
+  if (updates.rewrittenFilePath === null && existing.rewrittenFilePath) {
+    deleteRewrittenFile(id);
+    log.info(`Cleared rewritten file for entry ${id}`);
+  }
+  if (updates.rewriteSessionId === null && existing.rewriteSessionId) {
+    deleteOpenCodeSession(existing.rewriteSessionId);
+    log.info(`Deleted rewrite opencode session for entry ${id}`);
   }
 
   const entry = updateDiaryEntry(id, updates);
@@ -324,6 +335,10 @@ router.delete('/entries/:id', (req: AuthRequest, res) => {
   if (existing.rewrittenFilePath) {
     deleteRewrittenFile(id);
     log.info(`Deleted rewritten file for entry ${id}`);
+  }
+  if (existing.rewriteSessionId) {
+    deleteOpenCodeSession(existing.rewriteSessionId);
+    log.info(`Deleted rewrite opencode session for entry ${id}`);
   }
   deleteDiaryEntry(id);
   log.info(`Entry ${id} deleted`);
