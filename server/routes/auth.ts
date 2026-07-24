@@ -9,6 +9,7 @@ import {
   findUserByDiscordId,
   findUserById,
   findUserByUsername,
+  getAllUsers,
   resetFailedLogins,
   toSafeUser,
   updateDiscordProfile,
@@ -172,6 +173,10 @@ router.get('/state', authMiddleware, (req: AuthRequest, res) => {
     return res.status(403).json({ error: 'Account wurde noch nicht freigegeben' });
   }
   res.json(getGame());
+});
+
+router.get('/users', authMiddleware, (req: AuthRequest, res) => {
+  res.json(getAllUsers());
 });
 
 export default router;
