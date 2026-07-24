@@ -100,7 +100,6 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
     });
 
     socket.on('updateTask', ({ taskId, text, isPrivate, assignedTo }) => {
-      if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können Aufgaben bearbeiten.');
       try {
         updateTask(taskId, { text, isPrivate, assignedTo });
         broadcastState();

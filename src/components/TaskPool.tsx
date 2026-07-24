@@ -28,18 +28,16 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
   const [editingText, setEditingText] = useState('');
   const [editingIsPrivate, setEditingIsPrivate] = useState(false);
   const [editingAssignedTo, setEditingAssignedTo] = useState<string[]>([]);
-  const isAdmin = !!currentUser?.isAdmin;
   const ownerId = currentUser?.id;
   const assignableUsers = users.filter((u) => !u.isInitialAdmin);
 
   useEffect(() => {
-    if (!isAdmin) return;
     setUsersLoading(true);
-    request<SafeUser[]>('/api/admin/users').then(({ data }) => {
+    request<SafeUser[]>('/api/users').then(({ data }) => {
       setUsers(data ?? []);
       setUsersLoading(false);
     });
-  }, [isAdmin, request]);
+  }, [request]);
 
   const add = () => {
     if (!text.trim() || !socket) return;
@@ -106,32 +104,30 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
               Hinzufügen
             </button>
           </div>
-          {isAdmin && (
-            <div className="flex flex-col gap-2 p-3 rounded bg-slate-900/30 border border-[var(--border)]">
-              <Toggle
-                checked={isPrivate}
-                onChange={(checked) => {
-                  setIsPrivate(checked);
-                  setAssignedTo(checked && ownerId && !currentUser?.isInitialAdmin ? [ownerId] : []);
-                }}
-                label="Private Aufgabe"
-              />
-              {isPrivate && ownerId && (
-                usersLoading ? (
-                  <Loading text="Benutzer laden..." size="sm" />
-                ) : (
-                  <UserCheckboxList
-                    users={assignableUsers}
-                    selected={assignedTo}
-                    onChange={setAssignedTo}
-                    disabledIds={!currentUser?.isInitialAdmin && ownerId ? [ownerId] : []}
-                    title="Zugewiesen an (mehrere möglich):"
-                    emptyMessage="Keine Benutzer verfügbar."
-                  />
-                )
-              )}
-            </div>
-          )}
+          <div className="flex flex-col gap-2 p-3 rounded bg-slate-900/30 border border-[var(--border)]">
+            <Toggle
+              checked={isPrivate}
+              onChange={(checked) => {
+                setIsPrivate(checked);
+                setAssignedTo(checked && ownerId && !currentUser?.isInitialAdmin ? [ownerId] : []);
+              }}
+              label="Private Aufgabe"
+            />
+            {isPrivate && ownerId && (
+              usersLoading ? (
+                <Loading text="Benutzer laden..." size="sm" />
+              ) : (
+                <UserCheckboxList
+                  users={assignableUsers}
+                  selected={assignedTo}
+                  onChange={setAssignedTo}
+                  disabledIds={!currentUser?.isInitialAdmin && ownerId ? [ownerId] : []}
+                  title="Zugewiesen an (mehrere möglich):"
+                  emptyMessage="Keine Benutzer verfügbar."
+                />
+              )
+            )}
+          </div>
         </div>
       )}
       <ul className={`flex-1 min-h-0 space-y-2 overflow-auto ${listClassName || ''}`}>
@@ -157,7 +153,7 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
                 </span>
               )}
             </span>
-            {isSetup && isAdmin && (
+            {isSetup && (
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => startEdit(task)}
