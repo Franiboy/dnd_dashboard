@@ -177,14 +177,14 @@ export function Diary() {
     setResetKey((k) => k + 1);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(e?: React.FormEvent): Promise<DiaryEntry | null> {
+    e?.preventDefault();
     setFormError(null);
 
     const plainText = stripHtml(form.content).trim();
     if (!form.title.trim() || !plainText) {
       setFormError('Titel und Inhalt sind erforderlich');
-      return;
+      return null;
     }
 
     const payload = {
@@ -221,7 +221,7 @@ export function Diary() {
 
     if (res.error) {
       setFormError(res.error);
-      return;
+      return null;
     }
 
     if (res.data) {
@@ -237,6 +237,15 @@ export function Diary() {
 
     closeModal();
     loadEntries();
+    return res.data?.entry ?? null;
+  }
+
+  async function handleCreateAndRewrite() {
+    if (editingId !== null) return;
+    const entry = await handleSubmit();
+    if (entry) {
+      await handleRewrite(entry);
+    }
   }
 
   async function handleDelete(id: number) {
@@ -425,6 +434,16 @@ export function Diary() {
       >
         Abbrechen
       </button>
+      {editingId === null && aiEnabled === true && (
+        <button
+          type="button"
+          onClick={handleCreateAndRewrite}
+          disabled={working || !form.title.trim() || !stripHtml(form.content).trim()}
+          className="px-4 py-2 rounded border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)]/10 transition disabled:opacity-50"
+        >
+          KI umschreiben
+        </button>
+      )}
       <button
         type="submit"
         form="diary-form"
