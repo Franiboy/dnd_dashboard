@@ -28,8 +28,13 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
   const [editingText, setEditingText] = useState('');
   const [editingIsPrivate, setEditingIsPrivate] = useState(false);
   const [editingAssignedTo, setEditingAssignedTo] = useState<string[]>([]);
+  const [showHidden, setShowHidden] = useState(false);
   const ownerId = currentUser?.id;
   const assignableUsers = users.filter((u) => !u.isInitialAdmin);
+
+  const visibleTasks = game.tasks.filter(
+    (task) => !task.isPrivate || (ownerId && task.assignedTo?.includes(ownerId)) || showHidden,
+  );
 
   useEffect(() => {
     setUsersLoading(true);
@@ -131,8 +136,12 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
         </div>
       )}
       <ul className={`flex-1 min-h-0 space-y-2 overflow-auto ${listClassName || ''}`}>
-        {game.tasks.length === 0 && <li className="text-slate-500 italic">Noch keine Aufgaben.</li>}
-        {game.tasks.map((task) => (
+        {visibleTasks.length === 0 && (
+          <li className="text-slate-500 italic">
+            {game.tasks.length === 0 ? 'Noch keine Aufgaben.' : 'Keine sichtbaren Aufgaben.'}
+          </li>
+        )}
+        {visibleTasks.map((task) => (
           <li
             key={task.id}
             draggable={isSetup}
@@ -169,6 +178,16 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
           </li>
         ))}
       </ul>
+
+      {currentUser?.isAdmin && (
+        <div className="mt-2">
+          <Toggle
+            checked={showHidden}
+            onChange={setShowHidden}
+            label="Versteckte Aufgaben anzeigen"
+          />
+        </div>
+      )}
 
       {editingTask && (
         <Modal
