@@ -592,45 +592,47 @@ export function Diary() {
                             KI-Version
                           </button>
                         </div>
-                        {aiEnabled && (
+                        <div className="flex items-center gap-2">
+                          {aiEnabled && (
+                            <Button
+                              variant="secondary"
+                              onClick={() => handleRewrite(entry)}
+                              disabled={working || processingRewriteId === entry.id}
+                              title={entry.rewrittenFilePath ? 'Weitere Verbesserung der KI-Version anfordern' : undefined}
+                              icon={
+                                processingRewriteId === entry.id ? (
+                                  <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                  </svg>
+                                ) : (
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                    <path d="M21 4v6h-6" />
+                                  </svg>
+                                )
+                              }
+                            >
+                              {processingRewriteId === entry.id
+                                ? 'Wird verarbeitet...'
+                                : entry.rewrittenFilePath
+                                  ? 'KI verbessern'
+                                  : 'KI umschreiben'}
+                            </Button>
+                          )}
                           <Button
                             variant="secondary"
-                            onClick={() => handleRewrite(entry)}
-                            disabled={working || processingRewriteId === entry.id}
-                            title={entry.rewrittenFilePath ? 'Weitere Verbesserung der KI-Version anfordern' : undefined}
-                            icon={
-                              processingRewriteId === entry.id ? (
-                                <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                                </svg>
-                              ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                                  <path d="M21 4v6h-6" />
-                                </svg>
-                              )
-                            }
+                            onClick={() => openEdit(entry)}
+                            disabled={working}
+                            icon={(
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            )}
                           >
-                            {processingRewriteId === entry.id
-                              ? 'Wird verarbeitet...'
-                              : entry.rewrittenFilePath
-                                ? 'KI verbessern'
-                                : 'KI umschreiben'}
+                            Bearbeiten
                           </Button>
-                        )}
-                        <Button
-                          variant="secondary"
-                          onClick={() => openEdit(entry)}
-                          disabled={working}
-                          icon={(
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                          )}
-                        >
-                          Bearbeiten
-                        </Button>
+                        </div>
                       </div>
 
                       {viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath ? (
