@@ -756,7 +756,7 @@ export function Diary() {
             {formError}
           </div>
         )}
-        <form id="diary-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col space-y-4">
+        <form id="diary-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col space-y-4 px-1">
           <div>
             <label className="block text-sm text-slate-400 mb-1">Titel</label>
             <input
