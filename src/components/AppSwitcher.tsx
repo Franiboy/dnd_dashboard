@@ -8,6 +8,7 @@ interface AppSwitcherProps {
 }
 
 interface AppItem {
+  id: string;
   to: string;
   label: string;
   icon: ReactNode;
@@ -16,6 +17,7 @@ interface AppItem {
 
 const apps: AppItem[] = [
   {
+    id: 'dashboard',
     to: '/',
     label: 'Dashboard',
     icon: (
@@ -27,6 +29,7 @@ const apps: AppItem[] = [
     visible: (_user, _version, _isMain, isInitialAdmin) => !isInitialAdmin,
   },
   {
+    id: 'notes',
     to: '/notizen',
     label: 'Notizen',
     icon: (
@@ -38,6 +41,7 @@ const apps: AppItem[] = [
     visible: (_user, _version, _isMain, isInitialAdmin) => !isInitialAdmin,
   },
   {
+    id: 'bingo',
     to: '/bingo',
     label: 'Bingo',
     icon: (
@@ -51,6 +55,7 @@ const apps: AppItem[] = [
     visible: (_user, _version, _isMain, isInitialAdmin) => !isInitialAdmin,
   },
   {
+    id: 'world',
     to: '/welt',
     label: 'Welt',
     icon: (
@@ -63,6 +68,7 @@ const apps: AppItem[] = [
     visible: (_user, _version, _isMain, isInitialAdmin) => !isInitialAdmin,
   },
   {
+    id: 'recordings',
     to: '/recordings',
     label: 'Aufnahmen',
     icon: (
@@ -76,6 +82,7 @@ const apps: AppItem[] = [
     visible: (user, version) => user.isAdmin && !!version?.recordingEnabled,
   },
   {
+    id: 'feature-request',
     to: '/feature-request',
     label: 'Feature Request',
     icon: (
@@ -86,6 +93,7 @@ const apps: AppItem[] = [
     visible: (_user, version, isMain) => isMain && !!version?.aiEnabled,
   },
   {
+    id: 'admin',
     to: '/admin',
     label: 'Admin',
     icon: (
@@ -117,7 +125,9 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
     }
   }, [open]);
 
-  const visibleApps = apps.filter((app) => app.visible(user, version, isMain, isInitialAdmin));
+  const visibleApps = apps.filter(
+    (app) => !user.disabledApps.includes(app.id) && app.visible(user, version, isMain, isInitialAdmin),
+  );
   const current = visibleApps.find((app) => app.to === location.pathname);
 
   return (

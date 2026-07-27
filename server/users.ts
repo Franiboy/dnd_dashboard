@@ -9,6 +9,16 @@ export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 
+function parseJsonArray(value: unknown): string[] {
+  if (typeof value !== 'string' || !value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 function rowToUser(row: any): User {
   return {
     id: row.id,
@@ -20,6 +30,7 @@ function rowToUser(row: any): User {
     isAdmin: !!row.is_admin,
     isApproved: !!row.is_approved,
     canAccessPreviews: !!row.can_access_previews,
+    disabledApps: parseJsonArray(row.disabled_apps),
     failedLoginAttempts: row.failed_login_attempts || 0,
     lockedUntil: row.locked_until || null,
     createdAt: row.created_at,
@@ -35,6 +46,7 @@ export function toSafeUser(user: User): SafeUser {
     isAdmin: user.isAdmin,
     isApproved: user.isApproved,
     canAccessPreviews: user.canAccessPreviews,
+    disabledApps: user.disabledApps,
     isInitialAdmin: isInitialAdmin(user),
   };
 }
@@ -51,8 +63,8 @@ function isLocked(user: User): boolean {
 export function createDiscordUser(discordId: string, username: string, displayName: string, avatarUrl: string | null): SafeUser {
   const id = crypto.randomUUID();
   db.prepare(
-    'INSERT INTO users (id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, can_access_previews, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, username.trim().toLowerCase(), displayName.trim(), null, discordId, avatarUrl, 0, 0, 0, 0, null, new Date().toISOString());
+    'INSERT INTO users (id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, can_access_previews, disabled_apps, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, username.trim().toLowerCase(), displayName.trim(), null, discordId, avatarUrl, 0, 0, 0, '[]', 0, null, new Date().toISOString());
   return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)));
 }
 
@@ -60,8 +72,8 @@ export function createAdminUser(username: string, displayName: string, password:
   const id = crypto.randomUUID();
   const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
   db.prepare(
-    'INSERT INTO users (id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, can_access_previews, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, null, null, 1, 1, 0, 0, null, new Date().toISOString());
+    'INSERT INTO users (id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, can_access_previews, disabled_apps, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, null, null, 1, 1, 0, '[]', 0, null, new Date().toISOString());
   return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)));
 }
 
@@ -116,6 +128,14 @@ export function setUserPreviewAccess(id: string, canAccessPreviews: boolean): Sa
   const user = findUserById(id);
   if (!user) return null;
   db.prepare('UPDATE users SET can_access_previews = ? WHERE id = ?').run(canAccessPreviews ? 1 : 0, id);
+  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
+}
+
+export function setUserDisabledApps(id: string, disabledApps: string[]): SafeUser | null {
+  const user = findUserById(id);
+  if (!user) return null;
+  const value = JSON.stringify(disabledApps.map((app) => String(app)));
+  db.prepare('UPDATE users SET disabled_apps = ? WHERE id = ?').run(value, id);
   return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
 }
 

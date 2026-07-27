@@ -100,11 +100,11 @@ function App() {
           ) : (
             <>
               <Route path="/" element={<Home />} />
-              <Route path="/notizen" element={<ProtectedRoute user={user}><Notes /></ProtectedRoute>} />
-              <Route path="/welt" element={<ProtectedRoute user={user}><World /></ProtectedRoute>} />
-              <Route path="/feature-request" element={<ProtectedRoute user={user}><FeatureRequest currentUser={user} /></ProtectedRoute>} />
-              <Route path="/recordings" element={<ProtectedRoute user={user} adminOnly><Recordings /></ProtectedRoute>} />
-              <Route path="/bingo" element={<ProtectedRoute user={user}><Bingo token={token} user={user} /></ProtectedRoute>} />
+              <Route path="/notizen" element={<ProtectedRoute user={user} appId="notes"><Notes /></ProtectedRoute>} />
+              <Route path="/welt" element={<ProtectedRoute user={user} appId="world"><World /></ProtectedRoute>} />
+              <Route path="/feature-request" element={<ProtectedRoute user={user} appId="feature-request"><FeatureRequest currentUser={user} /></ProtectedRoute>} />
+              <Route path="/recordings" element={<ProtectedRoute user={user} appId="recordings" adminOnly><Recordings /></ProtectedRoute>} />
+              <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo"><Bingo token={token} user={user} /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/" />} />
             </>
           )}
