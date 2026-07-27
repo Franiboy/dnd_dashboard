@@ -22,17 +22,30 @@ def patch_tqdm() -> None:
     try:
         import tqdm as tqdm_module
 
-        class TqdmCapture(tqdm_module.tqdm):
-            def update(self, n: int = 1) -> None:
-                super().update(n)
-                if self.total:
-                    emit({"type": "progress", "current": self.n, "total": self.total})
+        patched = set()
 
-        tqdm_module.tqdm = TqdmCapture
+        def wrap_update(cls, original):
+            if id(cls) in patched:
+                return
+            patched.add(id(cls))
+
+            def update(self, n: int = 1) -> None:
+                original(self, n)
+                total = getattr(self, "total", None)
+                if total:
+                    emit({"type": "progress", "current": getattr(self, "n", 0), "total": total})
+
+            cls.update = update
+
+        classes = [tqdm_module.tqdm]
         if hasattr(tqdm_module, "std"):
-            tqdm_module.std.tqdm = TqdmCapture
+            classes.append(tqdm_module.std.tqdm)
         if hasattr(tqdm_module, "auto"):
-            tqdm_module.auto.tqdm = TqdmCapture
+            classes.append(tqdm_module.auto.tqdm)
+
+        for cls in classes:
+            if cls is not None and hasattr(cls, "update"):
+                wrap_update(cls, cls.update)
     except Exception:
         pass
 
