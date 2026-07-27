@@ -50,7 +50,8 @@ function runCommand(command: string, args: string[]): Promise<{ success: boolean
       if (code === 0) {
         resolve({ success: true, output });
       } else {
-        resolve({ success: false, output: errorOutput || output || `exit code ${code}` });
+        const combined = [errorOutput, output].filter(Boolean).join('\n---\n');
+        resolve({ success: false, output: combined || `exit code ${code}` });
       }
     });
   });
@@ -71,6 +72,8 @@ async function transcribeFile(
     'json',
     '--output_dir',
     outputDir,
+    '--fp16',
+    'False',
   ];
 
   const result = await runCommand(WHISPER_COMMAND, args);
