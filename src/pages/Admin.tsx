@@ -79,10 +79,59 @@ export function Admin({ currentUser }: AdminProps) {
     const [disabled, setDisabled] = useState<string[]>(user.disabledApps);
     const toggle = (id: string) =>
       setDisabled((prev) => (prev.includes(id) ? prev.filter((app) => app !== id) : [...prev, id]));
+    const enableAll = () => setDisabled([]);
+    const disableAll = () => setDisabled(disableableApps.map((app) => app.id));
 
     async function handleSave() {
       await action(user.id, '/disabled-apps', { disabledApps: disabled });
       onClose();
+    }
+
+    const enabledCount = disableableApps.length - disabled.length;
+
+    function getAppIcon(id: string) {
+      switch (id) {
+        case 'notes':
+          return (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+            </svg>
+          );
+        case 'bingo':
+          return (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+            </svg>
+          );
+        case 'world':
+          return (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+          );
+        case 'recordings':
+          return (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+          );
+        default:
+          return (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M9 3v18" />
+            </svg>
+          );
+      }
     }
 
     return (
@@ -90,6 +139,7 @@ export function Admin({ currentUser }: AdminProps) {
         isOpen
         title={`Apps für ${user.displayName}`}
         onClose={onClose}
+        contentClassName="max-h-[65vh] overflow-y-auto"
         actions={
           <>
             <button
@@ -110,18 +160,73 @@ export function Admin({ currentUser }: AdminProps) {
           </>
         }
       >
-        <div className="space-y-2">
-          {disableableApps.map((app) => (
-            <label key={app.id} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={disabled.includes(app.id)}
-                onChange={() => toggle(app.id)}
-                className="rounded border-[var(--border)] bg-slate-900 text-[var(--accent)] focus:ring-[var(--accent)]"
-              />
-              <span className="text-[var(--text-h)]">{app.label} deaktivieren</span>
-            </label>
-          ))}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-400">
+              {enabledCount} von {disableableApps.length} Apps aktiv
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={enableAll}
+                className="px-2 py-1 rounded text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition"
+              >
+                Alle aktivieren
+              </button>
+              <button
+                type="button"
+                onClick={disableAll}
+                className="px-2 py-1 rounded text-xs font-medium text-red-400 hover:bg-red-500/10 transition"
+              >
+                Alle deaktivieren
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {disableableApps.map((app) => {
+              const isDisabled = disabled.includes(app.id);
+              return (
+                <button
+                  key={app.id}
+                  type="button"
+                  onClick={() => toggle(app.id)}
+                  className={`group relative flex items-start gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+                    isDisabled
+                      ? 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10'
+                      : 'border-[var(--accent)]/30 bg-[var(--accent)]/5 hover:bg-[var(--accent)]/10'
+                  }`}
+                >
+                  <span
+                    className={`shrink-0 mt-0.5 transition-colors ${
+                      isDisabled ? 'text-slate-500' : 'text-[var(--accent)]'
+                    }`}
+                  >
+                    {getAppIcon(app.id)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-[var(--text-h)]">{app.label}</span>
+                      <span
+                        className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
+                          isDisabled
+                            ? 'bg-red-500/20 text-red-400'
+                            : 'bg-[var(--accent)]/20 text-[var(--accent)]'
+                        }`}
+                      >
+                        {isDisabled ? 'Deaktiviert' : 'Aktiv'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {isDisabled
+                        ? 'Klicke, um den Zugriff auf diese App freizugeben.'
+                        : 'Klicke, um den Zugriff auf diese App zu sperren.'}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </Modal>
     );
