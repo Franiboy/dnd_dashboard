@@ -147,7 +147,6 @@ export function Admin({ currentUser }: AdminProps) {
               <th className="p-3">Anzeigename</th>
               <th className="p-3">Status</th>
               <th className="p-3">Admin</th>
-              <th className="p-3">Preview</th>
               <th className="p-3">Aktionen</th>
             </tr>
           </thead>
@@ -169,7 +168,6 @@ export function Admin({ currentUser }: AdminProps) {
                   )}
                 </td>
                 <td className="p-3">{u.isAdmin ? 'Ja' : 'Nein'}</td>
-                <td className="p-3">{u.isAdmin || u.canAccessPreviews ? 'Ja' : 'Nein'}</td>
                 <td className="p-3 flex flex-wrap gap-2">
                   {!isInitialAdmin(u) && !isOwn(u) && (
                     <>
@@ -210,19 +208,6 @@ export function Admin({ currentUser }: AdminProps) {
                           u.isAdmin ? 'Admin entfernen' : 'Zum Admin'
                         )}
                       </button>
-                      {!u.isAdmin && (
-                        <button
-                          onClick={() => action(u.id, '/preview-access', { canAccessPreviews: !u.canAccessPreviews })}
-                          disabled={isActionLoading(u.id, '/preview-access')}
-                          className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
-                        >
-                          {isActionLoading(u.id, '/preview-access') ? (
-                            <Loading text="" size="sm" />
-                          ) : (
-                            u.canAccessPreviews ? 'Preview sperren' : 'Preview erlauben'
-                          )}
-                        </button>
-                      )}
                       <button
                         onClick={() => setManagingAppsFor(u)}
                         disabled={isActionLoading(u.id, '/disabled-apps')}

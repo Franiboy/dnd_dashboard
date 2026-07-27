@@ -11,7 +11,7 @@ passwortgeschützten Bingo-Modus.
 - **Frontend:** React, Vite, TypeScript, Tailwind CSS
 - **Backend:** Node.js, Express, SQLite (better-sqlite3), Socket.io
 - **Auth:** JWT (Cookie + Auth-Header), bcrypt, Discord OAuth2
-- **Echtzeit:** Socket.io (Bingo), SSE (Admin-Benutzerliste, Feature-Requests)
+- **Echtzeit:** Socket.io (Bingo), SSE (Admin-Benutzerliste)
 - **Module-System:** ESM (`"type": "module"` in `package.json`)
 
 ## Wichtige Befehle
@@ -47,9 +47,8 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - `server/game.ts` – Bingo-Spiel-Logik, Persistenz, Bingo-Prüfung
 - `server/routes/auth.ts` – Auth-/Login-/State-API-Routen
 - `server/routes/admin.ts` – Admin-API-Routen inkl. SSE-Stream für Benutzer-Updates
-- `server/routes/ai.ts` – KI-/Feature-Request-API-Routen inkl. SSE-Stream für Feature-Request-Updates
 - `server/socket.ts` – Socket.io-Event-Handler für das Bingo
-- `server/version.ts` – Liest die aktuelle Git-Commit-Nummer aus
+- `server/version.ts` – Liefert aktivierte Feature-Flags (AI, Aufnahmen)
 - `shared/types.ts` – Gemeinsame TypeScript-Typen für Frontend und Backend
 - `src/App.tsx` – React-App-Einstieg mit Router
 - `src/hooks/useAuth.ts` – Auth-Hook (Login, Token, /api/me)
@@ -57,7 +56,7 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - `src/hooks/useApi.ts` – `fetch`-Wrapper mit automatischer Fehler-Toast-Anzeige
 - `src/hooks/useError.ts` – Zugriff auf den globalen Fehler-Context
 - `src/contexts/ErrorContext.ts` / `ErrorProvider.tsx` – Globaler Fehler-/Toast-Context
-- `src/pages/` – Seiten: Login, AdminLogin, AuthCallback, Home, Bingo, Admin, FeatureRequest
+- `src/pages/` – Seiten: Login, AdminLogin, AuthCallback, Home, Bingo, Admin
 - `src/components/` – Wiederverwendbare Komponenten (Layout, ProtectedRoute, ConfirmDialog, Toast,
   HeaderAction, BackButton, Modal, Loading, Avatar, GridPanel, BingoDashboard)
 - `src/types.ts` – Frontend-Typ-Alias für den Socket.io-Client
@@ -71,8 +70,8 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - Client-Imports verwenden kein `.js`-Suffix und können `.ts`/`.tsx` direkt importieren.
 - `tsconfig.json` enthält nur Projekt-Referenzen (`tsconfig.app.json`, `tsconfig.node.json`).
 - `tsconfig.server.json` baut `server/` und `shared/` nach `dist-server/`.
-- `scripts/buildVersion.ts` generiert `dist-server/version.json` mit `mainVersion`, `currentVersion`, `branch` und `ahead`.
-- `server/version.ts` ermittelt zur Laufzeit über Git `mainVersion` (letzter `main`-Stand), `currentVersion`, `branch` und `ahead` (Commits vor `main`); falls Git nicht verfügbar ist, wird auf `dist-server/version.json` zurückgegriffen.
+- `scripts/buildVersion.ts` generiert `dist-server/version.json` mit den aktivierten Feature-Flags.
+- `server/version.ts` liefert zur Laufzeit die aktivierten Feature-Flags (`aiEnabled`, `recordingEnabled`).
 - Das SQLite-Handle wird in `server/database.ts` zentral geöffnet und von `server/users.ts` und `server/repositories/games.ts` verwendet.
 - `dnd.db` und `dnd_test.db` sind `.gitignore`d und werden automatisch erstellt.
 - Umgebungsvariablen werden über `dotenv` aus `.env` geladen.
@@ -125,8 +124,6 @@ DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
 - Der Ursprungsadmin `admin` darf Bingo nicht als Spieler beitreten.
 - Admins können Spieler freigeben/sperren, Admin-Rechte vergeben/entziehen und Benutzer löschen.
 - `/admin` ist nur für Admins zugänglich und zeigt die Benutzerverwaltung.
-- `/feature-request` ist für alle freigegebenen Benutzer zugänglich. Admins und
-  Preview-Berechtigte können dort Requests akzeptieren, aktualisieren oder löschen.
 - `/bingo` ist für alle freigegebenen Benutzer zugänglich.
 
 ## Bingo-Spielablauf
@@ -181,20 +178,13 @@ Neben Socket.io für das Bingo werden einige Zustands-Updates über **Server-Sen
 - `GET /api/admin/users/events` (Admin)
   - Event-Name: `users`
   - Payload: `SafeUser[]`
-  - Initialer Push und Updates nach Freigabe, Sperre, Admin-/Preview-Rechten oder Löschen.
+  - Initialer Push und Updates nach Freigabe, Sperre, Admin-Rechten oder Löschen.
   - Implementiert in `server/routes/admin.ts`
   - Client: `src/pages/Admin.tsx`
 
-- `GET /api/ai/feature-requests/events` (Admin oder Preview-User, nur wenn AI aktiviert)
-  - Event-Name: `requests`
-  - Payload: `{ requests: FeatureRequest[] }`
-  - Initialer Push und Updates bei Änderungen an Feature-Requests.
-  - Implementiert in `server/routes/ai.ts`
-  - Client: `src/components/FeatureRequests.tsx`
-
 ### Konventionen für neue SSE-Streams
 
-- Endpunkt: `GET /api/<bereich>/events`, mit `authMiddleware` und ggf. `requireAdmin` / `requirePreviewAccess` schützen.
+- Endpunkt: `GET /api/<bereich>/events`, mit `authMiddleware` und ggf. `requireAdmin` schützen.
 - Header setzen: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`.
 - Initialen Zustand sofort schreiben.
 - `req.on('close', ...)` abonnieren, um die `Response` aus `sseClients` zu entfernen.

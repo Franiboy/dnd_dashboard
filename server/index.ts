@@ -9,16 +9,13 @@ import { fileURLToPath } from 'url';
 import type { ClientToServerEvents, ServerToClientEvents } from '../shared/types.js';
 import { ensureAdminUser } from './users.js';
 import adminRouter from './routes/admin.js';
-import aiRouter from './routes/ai.js';
 import authRouter from './routes/auth.js';
 import diaryRouter from './routes/diary.js';
 import entitiesRouter from './routes/entities.js';
 import recordingsRouter from './routes/recordings.js';
 import { setupSocket } from './socket.js';
-import { previewAuthMiddleware } from './auth.js';
 import { getVersion } from './version.js';
 import { runMigrations } from './migrations.js';
-import { recoverPreviewServers, startFeatureRequestBehindWatcher } from './ai/worker.js';
 import { startBot } from './discord/bot.js';
 import { startTranscriptionScheduler, stopTranscriptionScheduler } from './discord/scheduler.js';
 import {
@@ -38,7 +35,6 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
 });
 
 const PORT = process.env.PORT || 3001;
-const PREVIEW_MODE = process.env.PREVIEW_MODE === 'true';
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
@@ -69,19 +65,12 @@ startBot();
 startTranscriptionScheduler();
 startEntitySummaryScheduler();
 
-// In preview mode, all routes (API + static SPA) require an authenticated user
-// with admin or preview access. Login endpoints are not exposed on previews.
-if (PREVIEW_MODE) {
-  app.use(previewAuthMiddleware);
-}
-
 app.get('/api/version', (req, res) => {
   res.json(getVersion());
 });
 
 app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
-app.use('/api/ai', aiRouter);
 app.use('/api/diary', diaryRouter);
 app.use('/api/entities', entitiesRouter);
 app.use('/api/recordings', recordingsRouter);
@@ -98,18 +87,10 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-setupSocket(io, PREVIEW_MODE);
-
-const stopBehindWatcher = startFeatureRequestBehindWatcher();
+setupSocket(io);
 
 http.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-
-  // Restart preview servers for feature requests that were preview_ready before a server restart.
-  // This runs after the server is listening so the main API is already reachable.
-  recoverPreviewServers().catch((err) => {
-    console.error('Failed to recover preview servers:', err);
-  });
 });
 
 let isShuttingDown = false;
@@ -118,7 +99,6 @@ function shutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`\n${signal} received, shutting down gracefully...`);
-  stopBehindWatcher();
   stopTranscriptionScheduler();
   stopEntitySummaryScheduler();
 

@@ -49,7 +49,6 @@ export interface User {
   avatarUrl: string | null;
   isAdmin: boolean;
   isApproved: boolean;
-  canAccessPreviews: boolean;
   disabledApps: string[];
   failedLoginAttempts: number;
   lockedUntil: string | null;
@@ -63,48 +62,13 @@ export interface SafeUser {
   avatarUrl: string | null;
   isAdmin: boolean;
   isApproved: boolean;
-  canAccessPreviews: boolean;
   disabledApps: string[];
   isInitialAdmin: boolean;
 }
 
-export type LogType = 'system' | 'prompt' | 'ai' | 'build' | 'diff' | 'error' | 'summary';
-
-export interface LogEntry {
-  type: LogType;
-  text: string;
-  timestamp: string;
-}
-
-export interface FeatureRequest {
-  id: number;
-  requestedBy: string;
-  title: string;
-  description: string;
-  status: 'pending' | 'running' | 'preview_ready' | 'failed' | 'merged';
-  branch: string | null;
-  worktreePath: string | null;
-  previewPort: number | null;
-  previewUrl: string | null;
-  previewPid: number | null;
-  sessionTitle: string | null;
-  sessionId: string | null;
-  logs: LogEntry[];
-  behind?: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface VersionInfo {
-  mainVersion: number;
-  currentVersion: number;
-  branch: string;
-  ahead: number;
-  behind: number;
   aiEnabled: boolean;
-  recordingEnabled?: boolean;
-  previewFeatureRequestId?: number | null;
-  mainServerUrl?: string | null;
+  recordingEnabled: boolean;
 }
 
 export interface ClientToServerEvents {
