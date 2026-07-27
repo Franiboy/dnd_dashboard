@@ -3,6 +3,7 @@ import type { DiaryEntities } from '../ai/rewrite.js';
 import { stripHtml } from '../ai/rewrite.js';
 import { db } from '../database.js';
 import { readRewrittenFile } from '../diaryFiles.js';
+import { renameEntityKnowledge } from './entityKnowledge.js';
 
 interface EntityConfig {
   table: string;
@@ -108,6 +109,23 @@ function entityNameRegex(name: string): RegExp {
 function getEntityNames(table: string): string[] {
   const rows = db.prepare(`SELECT name FROM ${table}`).all() as { name: string }[];
   return rows.map((r) => r.name);
+}
+
+export function listAllEntityNames(): DiaryEntities {
+  return {
+    persons: getEntityNames('persons'),
+    organizations: getEntityNames('organizations'),
+    locations: getEntityNames('locations'),
+  };
+}
+
+export function ensureEntityExists(type: keyof DiaryEntities, name: string): string {
+  const { table } = entityConfig[type];
+  const canonical = resolveEntityName(name.trim(), type);
+  const existing = db.prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`).get(canonical) as { name: string } | undefined;
+  if (existing) return existing.name;
+  db.prepare(`INSERT OR IGNORE INTO ${table} (name) VALUES (?)`).run(canonical);
+  return canonical;
 }
 
 function getAliasEntries(
@@ -378,6 +396,24 @@ export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
       false,
     ),
   );
+}
+
+export function listDiaryEntryContentsByEntity(
+  type: keyof DiaryEntities,
+  name: string,
+): { id: number; title: string; content: string; createdAt: string }[] {
+  const { table, linkTable, column } = entityConfig[type];
+  const rows = db
+    .prepare(
+      `SELECT de.id, de.title, de.content, de.created_at AS createdAt
+       FROM diary_entries de
+       JOIN ${linkTable} l ON l.diary_entry_id = de.id
+       JOIN ${table} e ON e.id = l.${column}
+       WHERE e.name = ? COLLATE NOCASE
+       ORDER BY de.created_at DESC`,
+    )
+    .all(name) as { id: number; title: string; content: string; createdAt: string }[];
+  return rows;
 }
 
 export function updateDiaryEntry(
@@ -658,6 +694,7 @@ export function updateEntity(
       db.prepare(
         'UPDATE entity_aliases SET canonical = ? WHERE type = ? AND canonical = ? COLLATE NOCASE',
       ).run(newNormalized, type, oldRow.name);
+      renameEntityKnowledge(type, oldRow.name, newNormalized);
     }
 
     db.prepare('DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE').run(

@@ -192,3 +192,16 @@ export interface EntityUpdatePayload {
   newName: string;
   aliases: string[];
 }
+
+export interface EntityKnowledgeEntry {
+  id: number;
+  entityType: EntityType;
+  entityName: string;
+  title: string | null;
+  content: string;
+  source: string;
+  status: 'active' | 'deleted';
+  statusReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

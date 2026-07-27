@@ -84,10 +84,11 @@ export function runOpenCode({
     });
     child.on('close', (exitCode) => {
       const success = exitCode === 0;
-      if (!success && !hasLog) {
-        const errorLine = `OpenCode exited with code ${exitCode ?? 'unknown'} and produced no output.`;
+      if (!success) {
+        const snippet = output.trim().slice(0, 500) || 'no output';
+        const errorLine = `OpenCode failed with exit code ${exitCode ?? 'unknown'}: ${snippet}`;
         output += `\n${errorLine}\n`;
-        log.error(errorLine);
+        log.warn(errorLine);
       } else {
         log.info(`OpenCode finished with exit code ${exitCode ?? 'unknown'} (success=${success})`);
       }

@@ -2,6 +2,12 @@ import { Router } from 'express';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { db } from '../database.js';
 import type { DiaryEntities } from '../ai/rewrite.js';
+import { isAiEnabled } from '../ai/config.js';
+import {
+  distributeKnowledgeFromText,
+  generateEntityKnowledgeFromDiary,
+  generateEntitySummary,
+} from '../ai/knowledge.js';
 import {
   addEntityAlias,
   blacklistEntity,
@@ -12,6 +18,14 @@ import {
   unblacklistEntity,
   updateEntity,
 } from '../repositories/diary.js';
+import {
+  createEntityKnowledge,
+  getEntityKnowledgeEntry,
+  listEntityKnowledge,
+  markEntityKnowledgeDeleted,
+  updateEntityKnowledge,
+} from '../repositories/entityKnowledge.js';
+import { getEntitySummary } from '../repositories/entitySummaries.js';
 
 const router = Router();
 
@@ -166,6 +180,185 @@ router.put('/detail', (req: AuthRequest, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Speichern fehlgeschlagen' });
+  }
+});
+
+router.get('/knowledge', (req: AuthRequest, res) => {
+  const { type, name } = req.query;
+  if (!type || typeof type !== 'string' || !ENTITY_TYPES.includes(type as keyof DiaryEntities) || !name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+
+  try {
+    const entries = listEntityKnowledge(type as keyof DiaryEntities, name.trim());
+    res.json({ entries });
+  } catch {
+    res.status(500).json({ error: 'Laden fehlgeschlagen' });
+  }
+});
+
+router.post('/knowledge', (req: AuthRequest, res) => {
+  const { type, name, title, content } = req.body;
+  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+  if (!content || typeof content !== 'string' || !content.trim()) {
+    res.status(400).json({ error: 'Inhalt ist erforderlich' });
+    return;
+  }
+
+  try {
+    const entry = createEntityKnowledge(
+      type,
+      name.trim(),
+      title && typeof title === 'string' ? title.trim() : null,
+      content.trim(),
+      'manual',
+    );
+    res.status(201).json({ entry });
+  } catch {
+    res.status(500).json({ error: 'Speichern fehlgeschlagen' });
+  }
+});
+
+router.put('/knowledge/:id', (req: AuthRequest, res) => {
+  const id = Number(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'Ungültige ID' });
+    return;
+  }
+
+  const { title, content } = req.body;
+  const updates: { title?: string | null; content?: string } = {};
+  if (title !== undefined) {
+    updates.title = title && typeof title === 'string' ? title.trim() : null;
+  }
+  if (content !== undefined) {
+    if (typeof content !== 'string' || !content.trim()) {
+      res.status(400).json({ error: 'Inhalt ist erforderlich' });
+      return;
+    }
+    updates.content = content.trim();
+  }
+
+  try {
+    const existing = getEntityKnowledgeEntry(id);
+    if (!existing) {
+      res.status(404).json({ error: 'Eintrag nicht gefunden' });
+      return;
+    }
+    const entry = updateEntityKnowledge(id, updates);
+    if (!entry) {
+      res.status(500).json({ error: 'Aktualisieren fehlgeschlagen' });
+      return;
+    }
+    res.json({ entry });
+  } catch {
+    res.status(500).json({ error: 'Aktualisieren fehlgeschlagen' });
+  }
+});
+
+router.delete('/knowledge/:id', (req: AuthRequest, res) => {
+  const id = Number(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'Ungültige ID' });
+    return;
+  }
+
+  const { reason } = req.body;
+  const deleteReason = typeof reason === 'string' && reason.trim() ? reason.trim() : 'Manuell als gelöscht markiert';
+
+  try {
+    const existing = getEntityKnowledgeEntry(id);
+    if (!existing) {
+      res.status(404).json({ error: 'Eintrag nicht gefunden' });
+      return;
+    }
+    const entry = markEntityKnowledgeDeleted(id, deleteReason);
+    res.json({ entry });
+  } catch {
+    res.status(500).json({ error: 'Löschen fehlgeschlagen' });
+  }
+});
+
+router.post('/knowledge/generate', async (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
+    return;
+  }
+
+  const { type, name } = req.body;
+  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+
+  try {
+    const generated = await generateEntityKnowledgeFromDiary(type, name.trim());
+    res.json({ generated });
+  } catch {
+    res.status(500).json({ error: 'KI-Wissensgenerierung fehlgeschlagen' });
+  }
+});
+
+router.post('/knowledge/distribute', async (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
+    return;
+  }
+
+  const { text } = req.body;
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    res.status(400).json({ error: 'Text ist erforderlich' });
+    return;
+  }
+
+  try {
+    const result = await distributeKnowledgeFromText(text.trim());
+    res.json(result);
+  } catch {
+    res.status(500).json({ error: 'KI-Einordnung fehlgeschlagen' });
+  }
+});
+
+router.get('/summary', (req: AuthRequest, res) => {
+  const { type, name } = req.query;
+  if (!type || !ENTITY_TYPES.includes(type as keyof DiaryEntities) || !name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+
+  try {
+    const summary = getEntitySummary(type as keyof DiaryEntities, name.trim());
+    res.json(summary ?? { entityType: type, entityName: name.trim(), summary: null, isDirty: true, updatedAt: null });
+  } catch {
+    res.status(500).json({ error: 'Zusammenfassung konnte nicht geladen werden' });
+  }
+});
+
+router.post('/summary/generate', async (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
+    return;
+  }
+
+  const { type, name } = req.body;
+  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+
+  try {
+    const summary = await generateEntitySummary(type, name.trim());
+    if (summary === null) {
+      res.status(500).json({ error: 'KI-Zusammenfassung fehlgeschlagen' });
+      return;
+    }
+    res.json({ summary });
+  } catch {
+    res.status(500).json({ error: 'KI-Zusammenfassung fehlgeschlagen' });
   }
 });
 

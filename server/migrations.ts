@@ -303,6 +303,56 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: 'create_entity_knowledge_entries_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS entity_knowledge_entries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          entity_type TEXT NOT NULL CHECK(entity_type IN ('persons', 'organizations', 'locations')),
+          entity_name TEXT NOT NULL,
+          title TEXT,
+          content TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'manual',
+          status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'deleted')),
+          status_reason TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_entity_knowledge_entries_lookup
+        ON entity_knowledge_entries (entity_type, entity_name);
+      `);
+    },
+  },
+  {
+    name: 'add_entity_knowledge_status',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(entity_knowledge_entries)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'status')) {
+        db.exec("ALTER TABLE entity_knowledge_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'deleted'))");
+      }
+      if (!columns.some((c) => c.name === 'status_reason')) {
+        db.exec('ALTER TABLE entity_knowledge_entries ADD COLUMN status_reason TEXT');
+      }
+    },
+  },
+  {
+    name: 'create_entity_summaries_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS entity_summaries (
+          entity_type TEXT NOT NULL CHECK(entity_type IN ('persons', 'organizations', 'locations')),
+          entity_name TEXT NOT NULL,
+          summary TEXT,
+          is_dirty INTEGER NOT NULL DEFAULT 1,
+          updated_at TEXT,
+          PRIMARY KEY (entity_type, entity_name)
+        );
+      `);
+    },
+  },
 ];
 
 export function runMigrations() {
