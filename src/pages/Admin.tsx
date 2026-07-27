@@ -23,8 +23,6 @@ export function Admin({ currentUser }: AdminProps) {
   const isActionLoading = (id: string, endpoint: string) =>
     actionLoading?.id === id && actionLoading?.endpoint === endpoint;
 
-  const disableableApps = APPS.filter((app) => app.disableable);
-
   useEffect(() => {
     const source = new EventSource('/api/admin/users/events', { withCredentials: true });
     source.addEventListener('users', (event) => {
@@ -76,6 +74,7 @@ export function Admin({ currentUser }: AdminProps) {
   const isInitialAdmin = (u: SafeUser) => u.username === 'admin';
 
   function AppAccessModal({ user, onClose }: { user: SafeUser; onClose: () => void }) {
+    const disableableApps = APPS.filter((app) => app.disableable && (!app.adminOnly || user.isAdmin));
     const [disabled, setDisabled] = useState<string[]>(user.disabledApps);
     const toggle = (id: string) =>
       setDisabled((prev) => (prev.includes(id) ? prev.filter((app) => app !== id) : [...prev, id]));
