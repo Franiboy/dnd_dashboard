@@ -74,7 +74,7 @@ function BadgeList({ items, variant }: BadgeListProps) {
       {items.map((item) => (
         <span
           key={item}
-          onClick={() => navigate('/world', { state: { selectedEntity: { name: item, type: badgeTypeMap[variant] } } })}
+          onClick={() => navigate('/welt', { state: { selectedEntity: { name: item, type: badgeTypeMap[variant] } } })}
           title="In Welt öffnen"
           className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium cursor-pointer hover:brightness-110 transition ${badgeStyles[variant]}`}
         >
