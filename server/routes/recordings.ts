@@ -227,6 +227,9 @@ router.post('/:id/transcribe', (req, res) => {
     return;
   }
 
+  updateSession(id, { trimStartSeconds: null, trimEndSeconds: null });
+  emitSessionsUpdated();
+
   runTranscription(id, files).catch((err) => {
     console.error(`Manual transcription failed for session ${id}:`, err);
   });
