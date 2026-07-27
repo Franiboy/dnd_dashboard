@@ -398,6 +398,28 @@ export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
   );
 }
 
+export function listPreviousDiaryEntriesByUser(
+  userId: string,
+  beforeCreatedAt: string,
+  limit = 3,
+): { id: number; title: string; content: string; createdAt: string }[] {
+  const rows = db
+    .prepare(
+      `SELECT id, title, content, created_at AS createdAt
+       FROM diary_entries
+       WHERE user_id = ? AND created_at < ?
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(userId, beforeCreatedAt, limit) as {
+      id: number;
+      title: string;
+      content: string;
+      createdAt: string;
+    }[];
+  return rows;
+}
+
 export function listDiaryEntryContentsByEntity(
   type: keyof DiaryEntities,
   name: string,

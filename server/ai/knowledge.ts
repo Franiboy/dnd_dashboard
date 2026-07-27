@@ -2,8 +2,10 @@ import { runOpenCode } from './opencode.js';
 import {
   ensureEntityExists,
   findExistingEntitiesInText,
+  getDiaryEntryById,
   listAllEntityNames,
   listDiaryEntryContentsByEntity,
+  listPreviousDiaryEntriesByUser,
 } from '../repositories/diary.js';
 import {
   createEntityKnowledge,
@@ -34,7 +36,48 @@ function formatEntityKnowledge(type: EntityType, name: string): string {
   return lines.join('\n');
 }
 
-export function getKnowledgeContextForText(text: string): string {
+export interface KnowledgeContextOptions {
+  userId?: string;
+  beforeCreatedAt?: string;
+  entryId?: number;
+}
+
+function buildDiaryContext(options?: KnowledgeContextOptions): string {
+  if (!options) return '';
+
+  let userId = options.userId;
+  let beforeCreatedAt = options.beforeCreatedAt;
+
+  if (options.entryId) {
+    const entry = getDiaryEntryById(options.entryId);
+    if (entry) {
+      userId = entry.userId;
+      beforeCreatedAt = entry.createdAt;
+    }
+  }
+
+  if (!userId) return '';
+  if (!beforeCreatedAt) {
+    beforeCreatedAt = new Date().toISOString();
+  }
+
+  const previousEntries = listPreviousDiaryEntriesByUser(userId, beforeCreatedAt, 3);
+  if (previousEntries.length === 0) return '';
+
+  const lines = ['Vorherige Tagebucheinträge (zum Kontext):'];
+  for (const entry of previousEntries.slice().reverse()) {
+    const date = new Date(entry.createdAt).toLocaleDateString('de-DE');
+    lines.push(`Titel: ${entry.title} (${date})`);
+    lines.push(stripHtml(entry.content));
+    lines.push('');
+  }
+  return lines.join('\n').trim();
+}
+
+export function getKnowledgeContextForText(
+  text: string,
+  options?: KnowledgeContextOptions,
+): string {
   const plainText = stripHtml(text);
   if (!plainText.trim()) return '';
 
@@ -54,9 +97,22 @@ export function getKnowledgeContextForText(text: string): string {
     if (formatted) parts.push(formatted);
   }
 
-  if (parts.length === 0) return '';
+  const diaryContext = buildDiaryContext(options);
 
-  return ['Relevantes Wissen:', ...parts, ''].join('\n');
+  const sections: string[] = [];
+  if (parts.length > 0) {
+    sections.push('Relevantes Wissen:');
+    sections.push(...parts);
+  }
+  if (diaryContext) {
+    if (sections.length > 0) sections.push('');
+    sections.push(diaryContext);
+  }
+
+  if (sections.length === 0) return '';
+
+  sections.push('');
+  return sections.join('\n');
 }
 
 interface GeneratedKnowledge {
