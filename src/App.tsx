@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { Loading } from './components/Loading';
 import { useAuth } from './hooks/useAuth';
 import { useError } from './hooks/useError';
@@ -10,11 +10,12 @@ import { Login } from './pages/Login';
 import { AdminLogin } from './pages/AdminLogin';
 import { AuthCallback } from './pages/AuthCallback';
 import { Home } from './pages/Home';
-import { Bingo } from './pages/Bingo';
-import { Admin } from './pages/Admin';
-import { Diary as Notes } from './pages/Diary';
-import { Recordings } from './pages/Recordings';
-import { World } from './pages/World';
+
+const Bingo = lazy(() => import('./pages/Bingo').then((m) => ({ default: m.Bingo })));
+const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })));
+const Notes = lazy(() => import('./pages/Diary').then((m) => ({ default: m.Diary })));
+const Recordings = lazy(() => import('./pages/Recordings').then((m) => ({ default: m.Recordings })));
+const World = lazy(() => import('./pages/World').then((m) => ({ default: m.World })));
 
 const PUBLIC_PATHS = ['/', '/admin-login', '/auth/discord'];
 
@@ -89,24 +90,32 @@ function App() {
 
   const isInitialAdmin = user.username === 'admin';
 
+  const pageLoader = (
+    <div className="h-full flex items-center justify-center">
+      <Loading size="lg" />
+    </div>
+  );
+
   return (
     <BrowserRouter>
       <Layout user={user} onLogout={logout}>
-        <Routes>
-          <Route path="/admin" element={<ProtectedRoute user={user} adminOnly><Admin currentUser={user} /></ProtectedRoute>} />
-          {isInitialAdmin ? (
-            <Route path="*" element={<Navigate to="/admin" />} />
-          ) : (
-            <>
-              <Route path="/" element={<Home />} />
-              <Route path="/notizen" element={<ProtectedRoute user={user} appId="notes"><Notes /></ProtectedRoute>} />
-              <Route path="/welt" element={<ProtectedRoute user={user} appId="world"><World /></ProtectedRoute>} />
-              <Route path="/recordings" element={<ProtectedRoute user={user} appId="recordings" adminOnly><Recordings /></ProtectedRoute>} />
-              <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo"><Bingo token={token} user={user} /></ProtectedRoute>} />
-              <Route path="*" element={<Navigate to="/" />} />
-            </>
-          )}
-        </Routes>
+        <Suspense fallback={pageLoader}>
+          <Routes>
+            <Route path="/admin" element={<ProtectedRoute user={user} adminOnly><Admin currentUser={user} /></ProtectedRoute>} />
+            {isInitialAdmin ? (
+              <Route path="*" element={<Navigate to="/admin" />} />
+            ) : (
+              <>
+                <Route path="/" element={<Home />} />
+                <Route path="/notizen" element={<ProtectedRoute user={user} appId="notes"><Notes /></ProtectedRoute>} />
+                <Route path="/welt" element={<ProtectedRoute user={user} appId="world"><World /></ProtectedRoute>} />
+                <Route path="/recordings" element={<ProtectedRoute user={user} appId="recordings" adminOnly><Recordings /></ProtectedRoute>} />
+                <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo"><Bingo token={token} user={user} /></ProtectedRoute>} />
+                <Route path="*" element={<Navigate to="/" />} />
+              </>
+            )}
+          </Routes>
+        </Suspense>
       </Layout>
     </BrowserRouter>
   );
