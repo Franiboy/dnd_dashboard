@@ -564,8 +564,7 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
 
           {activeTab === 'summary' && (
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-[var(--text-h)]">Zusammenfassung</label>
+              <div className="flex items-center justify-end mb-1">
                 {(summaryDirty || !summary) && (
                   <button
                     type="button"
@@ -596,9 +595,6 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
 
           {activeTab === 'aliases' && (
             <div>
-              <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
-                Synonyme
-              </label>
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {aliases.length === 0 ? (
                   <p className="text-slate-500 text-sm italic">Noch keine Synonyme vorhanden.</p>
@@ -664,9 +660,6 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
 
           {activeTab === 'knowledge' && (
             <div>
-              <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
-                Wissen
-              </label>
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {knowledge.length === 0 ? (
                   <p className="text-slate-500 text-sm italic">Noch keine Wissenseinträge vorhanden.</p>
