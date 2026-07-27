@@ -196,7 +196,7 @@ router.delete('/:id', async (req, res) => {
   }
 
   emitSessionsUpdated();
-  res.status(204).send();
+  res.json({ message: 'Aufnahme gelöscht' });
 });
 
 export default router;
