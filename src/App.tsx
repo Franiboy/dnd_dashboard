@@ -13,7 +13,6 @@ import { Home } from './pages/Home';
 import { Bingo } from './pages/Bingo';
 import { Admin } from './pages/Admin';
 import { Diary as Notes } from './pages/Diary';
-import { FeatureRequest } from './pages/FeatureRequest';
 import { Recordings } from './pages/Recordings';
 import { World } from './pages/World';
 
@@ -102,7 +101,6 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route path="/notizen" element={<ProtectedRoute user={user} appId="notes"><Notes /></ProtectedRoute>} />
               <Route path="/welt" element={<ProtectedRoute user={user} appId="world"><World /></ProtectedRoute>} />
-              <Route path="/feature-request" element={<ProtectedRoute user={user} appId="feature-request"><FeatureRequest currentUser={user} /></ProtectedRoute>} />
               <Route path="/recordings" element={<ProtectedRoute user={user} appId="recordings" adminOnly><Recordings /></ProtectedRoute>} />
               <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo"><Bingo token={token} user={user} /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/" />} />
