@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 
 interface AppSwitcherProps {
@@ -97,65 +97,32 @@ const apps: AppItem[] = [
 
 export function AppSwitcher({ user, version }: AppSwitcherProps) {
   const location = useLocation();
-  const [open, setOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const isInitialAdmin = user.username === 'admin';
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    if (open) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [open]);
 
   const visibleApps = apps.filter(
     (app) => !user.disabledApps.includes(app.id) && app.visible(user, version, isInitialAdmin),
   );
-  const current = visibleApps.find((app) => app.to === location.pathname);
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-[var(--text-h)]"
-        title="Anwendungen wechseln"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="7" height="7" />
-          <rect x="14" y="3" width="7" height="7" />
-          <rect x="14" y="14" width="7" height="7" />
-          <rect x="3" y="14" width="7" height="7" />
-        </svg>
-        <span className="hidden sm:inline">{current?.label ?? 'Apps'}</span>
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${open ? 'rotate-180' : ''}`}>
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      {open && (
-        <div className="absolute top-full right-0 mt-1 w-52 rounded-lg border border-[var(--border)] bg-[var(--panel)] shadow-lg z-50 overflow-hidden">
-          {visibleApps.map((app) => (
-            <Link
-              key={app.to}
-              to={app.to}
-              onClick={() => setOpen(false)}
-              className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                location.pathname === app.to
-                  ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
-                  : 'text-[var(--text-h)] hover:bg-slate-700/50'
-              }`}
-            >
-              {app.icon}
-              {app.label}
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
+    <nav className="flex items-center gap-1">
+      {visibleApps.map((app) => {
+        const active = location.pathname === app.to;
+        return (
+          <Link
+            key={app.id}
+            to={app.to}
+            title={app.label}
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              active
+                ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
+                : 'text-slate-300 hover:bg-slate-700/50 hover:text-[var(--text-h)]'
+            }`}
+          >
+            {app.icon}
+            <span className="hidden md:inline">{app.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
