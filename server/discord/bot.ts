@@ -1,9 +1,17 @@
-import { Client, GatewayIntentBits, type VoiceBasedChannel } from 'discord.js';
+import { Client, GatewayIntentBits, type VoiceBasedChannel, type VoiceState } from 'discord.js';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isOpusAvailable, makeSessionDir, ensureDir, writeWavFromPcm } from './audio.js';
 import { startRecording, stopRecording, isRecording, getActiveRecording } from './recorder.js';
-import { createSession, getSessionById, updateSession, getFilesBySessionId, createFile, updateFile } from '../repositories/recordings.js';
+import {
+  createSession,
+  getSessionById,
+  updateSession,
+  getFilesBySessionId,
+  createFile,
+  updateFile,
+  getRecordingConfig,
+} from '../repositories/recordings.js';
 
 import type { RecordingChannel, RecordingSession } from '../../shared/types.js';
 import { BOT_TOKEN, GUILD_ID, RECORDINGS_DIR, isRecordingFeatureEnabled } from './config.js';
@@ -43,6 +51,12 @@ export function startBot(): void {
     console.error('Discord bot error:', err);
   });
 
+  client.on('voiceStateUpdate', (_oldState, _newState) => {
+    handleVoiceStateUpdate(_oldState, _newState).catch((err) => {
+      console.error('Voice state update handler failed:', err);
+    });
+  });
+
   client.login(BOT_TOKEN).catch((err) => {
     console.error('Discord bot login failed:', err);
   });
@@ -50,6 +64,20 @@ export function startBot(): void {
 
 export function getBotStatus(): { ready: boolean; enabled: boolean } {
   return { ready: botReady, enabled: isBotEnabled() };
+}
+
+export function getMonitoredChannel(): { channelId: string | null; channelName: string | null } {
+  const config = getRecordingConfig();
+  if (!config.channelId) return { channelId: null, channelName: null };
+
+  const guild = getGuild();
+  if (!guild) return { channelId: config.channelId, channelName: null };
+
+  const channel = guild.channels.cache.get(config.channelId) as VoiceBasedChannel | undefined;
+  return {
+    channelId: config.channelId,
+    channelName: channel?.name ?? null,
+  };
 }
 
 function getGuild() {
@@ -101,6 +129,109 @@ export async function getVoiceChannels(): Promise<RecordingChannel[]> {
   cachedChannels = channels;
   channelsCachedAt = Date.now();
   return channels;
+}
+
+export async function getAllVoiceChannels(): Promise<RecordingChannel[]> {
+  const guild = getGuild();
+  if (!guild) return [];
+
+  try {
+    await guild.channels.fetch();
+  } catch {
+    // ignore fetch errors, use cache
+  }
+
+  const voiceChannels = guild.channels.cache.filter((channel) => channel.isVoiceBased());
+  const channels: RecordingChannel[] = [];
+
+  for (const channel of voiceChannels.values()) {
+    const voiceStates = guild.voiceStates.cache.filter((state) => state.channelId === channel.id);
+    const participants: string[] = [];
+    for (const state of voiceStates.values()) {
+      const member = state.member;
+      const displayName = member?.displayName ?? member?.user.username ?? client.users.cache.get(state.id)?.username ?? state.id;
+      participants.push(displayName);
+    }
+    participants.sort((a, b) => a.localeCompare(b));
+    channels.push({ id: channel.id, name: channel.name, participants });
+  }
+
+  channels.sort((a, b) => a.name.localeCompare(b.name));
+  return channels;
+}
+
+function isBotUser(userId: string): boolean {
+  return client.user?.id === userId;
+}
+
+function isChannelEmpty(channel: VoiceBasedChannel): boolean {
+  return channel.members.filter((member) => !member.user.bot).size === 0;
+}
+
+function generateAutoSessionName(): string {
+  const now = new Date();
+  return `DnD Session ${now.toLocaleDateString('de-DE')} ${now.toLocaleTimeString('de-DE')}`;
+}
+
+async function autoStartRecording(channel: VoiceBasedChannel): Promise<void> {
+  if (isRecording()) return;
+
+  try {
+    await beginRecording(channel.id, generateAutoSessionName(), 'auto');
+    console.log(`Auto-started recording in channel ${channel.name}`);
+  } catch (err) {
+    console.error(`Auto-start recording failed for channel ${channel.id}:`, err);
+  }
+}
+
+async function autoStopRecordingIfEmpty(channelId: string): Promise<void> {
+  const active = getActiveRecording();
+  if (!active || active.channelId !== channelId) return;
+
+  const guild = getGuild();
+  if (!guild) return;
+
+  const channel = guild.channels.cache.get(channelId) as VoiceBasedChannel | undefined;
+  if (!channel) return;
+
+  if (!isChannelEmpty(channel)) return;
+
+  try {
+    await finishRecording(active.sessionId);
+    console.log(`Auto-stopped recording in channel ${channel.name}`);
+  } catch (err) {
+    console.error(`Auto-stop recording failed for session ${active.sessionId}:`, err);
+  }
+}
+
+async function handleVoiceStateUpdate(oldState: VoiceState, newState: VoiceState): Promise<void> {
+  if (!isRecordingFeatureEnabled() || !botReady) return;
+
+  const config = getRecordingConfig();
+  if (!config.channelId) return;
+
+  const monitoredChannelId = config.channelId;
+  const userId = oldState.id ?? newState.id;
+  if (!userId || isBotUser(userId)) return;
+
+  const guild = getGuild();
+  if (!guild) return;
+
+  const joinedMonitored = newState.channelId === monitoredChannelId && oldState.channelId !== monitoredChannelId;
+  const leftMonitored = oldState.channelId === monitoredChannelId && newState.channelId !== monitoredChannelId;
+
+  if (!joinedMonitored && !leftMonitored) return;
+
+  if (joinedMonitored) {
+    const channel = guild.channels.cache.get(monitoredChannelId) as VoiceBasedChannel | undefined;
+    if (channel) {
+      await autoStartRecording(channel);
+    }
+  }
+
+  if (leftMonitored) {
+    await autoStopRecordingIfEmpty(monitoredChannelId);
+  }
 }
 
 export async function beginRecording(
