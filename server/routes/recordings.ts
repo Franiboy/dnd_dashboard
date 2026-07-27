@@ -1,10 +1,11 @@
 import { Router, type Response, type NextFunction } from 'express';
+import { rm } from 'node:fs/promises';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
-import { getBotStatus, getVoiceChannels, getAllVoiceChannels, finishRecording, getActiveRecording, getMonitoredChannel } from '../discord/bot.js';
+import { getBotStatus, getAllVoiceChannels, finishRecording, getActiveRecording, getMonitoredChannel } from '../discord/bot.js';
 import { runTranscription } from '../discord/transcriber.js';
 import { isRecordingFeatureEnabled } from '../discord/config.js';
-import { onSessionsUpdated, onStatusUpdated } from '../discord/recordingsEvents.js';
-import { getSessionById, listSessions, getFilesBySessionId, getRecordingConfig, setRecordingConfig } from '../repositories/recordings.js';
+import { onSessionsUpdated, onStatusUpdated, emitSessionsUpdated } from '../discord/recordingsEvents.js';
+import { getSessionById, listSessions, getFilesBySessionId, getRecordingConfig, setRecordingConfig, deleteSession, updateSession } from '../repositories/recordings.js';
 
 const router = Router();
 const sseClients = new Set<Response>();
@@ -121,6 +122,37 @@ router.post('/:id/stop', async (req, res) => {
   }
 });
 
+router.put('/:id/trim', (req, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+
+  const { trimStartSeconds, trimEndSeconds } = req.body;
+  if (
+    (trimStartSeconds !== undefined && trimStartSeconds !== null && typeof trimStartSeconds !== 'number') ||
+    (trimEndSeconds !== undefined && trimEndSeconds !== null && typeof trimEndSeconds !== 'number')
+  ) {
+    res.status(400).json({ error: 'Trim-Werte müssen Zahlen oder null sein' });
+    return;
+  }
+
+  if (trimStartSeconds !== undefined && trimEndSeconds !== undefined && trimStartSeconds !== null && trimEndSeconds !== null && trimStartSeconds >= trimEndSeconds) {
+    res.status(400).json({ error: 'Start muss vor Ende liegen' });
+    return;
+  }
+
+  updateSession(id, {
+    trimStartSeconds: trimStartSeconds === null ? null : Number(trimStartSeconds) || 0,
+    trimEndSeconds: trimEndSeconds === null ? null : Number(trimEndSeconds) || null,
+  });
+
+  emitSessionsUpdated();
+  res.json({ session: getSessionById(id) });
+});
+
 router.post('/:id/transcribe', (req, res) => {
   const id = Number(req.params.id);
   const session = getSessionById(id);
@@ -128,7 +160,7 @@ router.post('/:id/transcribe', (req, res) => {
     res.status(404).json({ error: 'Aufnahme nicht gefunden' });
     return;
   }
-  if (session.status !== 'pending_transcription' && session.status !== 'error') {
+  if (session.status !== 'pending_transcription' && session.status !== 'error' && session.status !== 'completed') {
     res.status(400).json({ error: 'Session kann aktuell nicht transkribiert werden' });
     return;
   }
@@ -144,6 +176,27 @@ router.post('/:id/transcribe', (req, res) => {
   });
 
   res.json({ message: 'Transkription wird im Hintergrund gestartet' });
+});
+
+router.delete('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+
+  const { directory } = deleteSession(id);
+  if (directory) {
+    try {
+      await rm(directory, { recursive: true, force: true });
+    } catch (err) {
+      console.error(`Failed to delete recording directory ${directory}:`, err);
+    }
+  }
+
+  emitSessionsUpdated();
+  res.status(204).send();
 });
 
 export default router;

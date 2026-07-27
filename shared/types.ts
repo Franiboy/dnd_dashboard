@@ -112,6 +112,8 @@ export interface RecordingSession {
   directory: string;
   transcript: string | null;
   error: string | null;
+  trimStartSeconds: number | null;
+  trimEndSeconds: number | null;
   hasWavFiles?: boolean;
   files?: RecordingFile[];
 }
