@@ -1,10 +1,10 @@
 import { Router, type Response, type NextFunction } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
-import { getBotStatus, getVoiceChannels, beginRecording, finishRecording, getActiveRecording } from '../discord/bot.js';
+import { getBotStatus, getVoiceChannels, getAllVoiceChannels, finishRecording, getActiveRecording, getMonitoredChannel } from '../discord/bot.js';
 import { runTranscription } from '../discord/transcriber.js';
 import { isRecordingFeatureEnabled } from '../discord/config.js';
 import { onSessionsUpdated, onStatusUpdated } from '../discord/recordingsEvents.js';
-import { getSessionById, listSessions, getFilesBySessionId } from '../repositories/recordings.js';
+import { getSessionById, listSessions, getFilesBySessionId, getRecordingConfig, setRecordingConfig } from '../repositories/recordings.js';
 
 const router = Router();
 const sseClients = new Set<Response>();
@@ -69,12 +69,12 @@ router.get('/events', (req, res) => {
 });
 
 router.get('/status', (_req, res) => {
-  res.json({ bot: getBotStatus(), active: getActiveRecording() });
+  res.json({ bot: getBotStatus(), active: getActiveRecording(), monitoredChannel: getMonitoredChannel() });
 });
 
 router.get('/channels', async (_req, res) => {
   try {
-    const channels = await getVoiceChannels();
+    const channels = await getAllVoiceChannels();
     res.json({ channels });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
@@ -86,6 +86,20 @@ router.get('/', (_req, res) => {
   res.json({ sessions });
 });
 
+router.get('/config', (_req, res) => {
+  res.json(getRecordingConfig());
+});
+
+router.post('/config', (req: AuthRequest, res) => {
+  const { channelId } = req.body;
+  if (channelId !== undefined && channelId !== null && typeof channelId !== 'string') {
+    res.status(400).json({ error: 'channelId muss ein String oder null sein' });
+    return;
+  }
+  setRecordingConfig(channelId || null);
+  res.json(getRecordingConfig());
+});
+
 router.get('/:id', (req, res) => {
   const id = Number(req.params.id);
   const session = getSessionById(id);
@@ -95,29 +109,6 @@ router.get('/:id', (req, res) => {
   }
   const files = getFilesBySessionId(id);
   res.json({ session: { ...session, files } });
-});
-
-router.post('/start', async (req: AuthRequest, res) => {
-  const { channelId, name } = req.body;
-  if (!channelId || typeof channelId !== 'string') {
-    res.status(400).json({ error: 'channelId ist erforderlich' });
-    return;
-  }
-  if (!name || typeof name !== 'string' || name.trim().length === 0) {
-    res.status(400).json({ error: 'Name ist erforderlich' });
-    return;
-  }
-  if (!req.user) {
-    res.status(403).json({ error: 'Nicht autorisiert' });
-    return;
-  }
-
-  try {
-    const session = await beginRecording(channelId, name.trim(), req.user.id);
-    res.status(201).json({ session });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
-  }
 });
 
 router.post('/:id/stop', async (req, res) => {
