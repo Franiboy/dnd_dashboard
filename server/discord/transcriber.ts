@@ -1,129 +1,180 @@
 import { spawn } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
-import { join, basename, extname } from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { updateFile, updateSession, getSessionById } from '../repositories/recordings.js';
 import { emitSessionsUpdated } from './recordingsEvents.js';
 import type { RecordingFile } from '../../shared/types.js';
 
-const WHISPER_COMMAND = process.env.WHISPER_COMMAND || 'whisper';
 const WHISPER_MODEL = process.env.WHISPER_MODEL || 'base';
 const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE || 'de';
+const WHISPER_FP16 = process.env.WHISPER_FP16 === 'true';
+const PYTHON_COMMAND = process.env.PYTHON_COMMAND || 'python';
 
-interface WhisperSegment {
-  id: number;
-  start: number;
-  end: number;
-  text: string;
-}
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-interface WhisperOutput {
-  segments: WhisperSegment[];
-}
-
-interface TranscriptSegment {
-  start: number;
-  end: number;
-  text: string;
-  speaker: string;
-}
-
-function runCommand(command: string, args: string[]): Promise<{ success: boolean; output: string }> {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: 'pipe' });
-    let output = '';
-    let errorOutput = '';
-
-    child.stdout?.on('data', (data: Buffer) => {
-      output += data.toString();
-    });
-    child.stderr?.on('data', (data: Buffer) => {
-      errorOutput += data.toString();
-    });
-
-    child.on('error', (err) => {
-      resolve({ success: false, output: err.message });
-    });
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve({ success: true, output });
-      } else {
-        const combined = [errorOutput, output].filter(Boolean).join('\n---\n');
-        resolve({ success: false, output: combined || `exit code ${code}` });
-      }
-    });
-  });
-}
-
-async function transcribeFile(
-  wavPath: string,
-  outputDir: string,
-  displayName: string,
-): Promise<TranscriptSegment[]> {
-  const args = [
-    wavPath,
-    '--model',
-    WHISPER_MODEL,
-    '--language',
-    WHISPER_LANGUAGE,
-    '--output_format',
-    'json',
-    '--output_dir',
-    outputDir,
-    '--fp16',
-    'False',
+function findTranscribeScript(): string {
+  const candidates = [
+    join(__dirname, 'transcribe.py'),
+    join(process.cwd(), 'server', 'discord', 'transcribe.py'),
+    join(process.cwd(), 'dist-server', 'server', 'discord', 'transcribe.py'),
   ];
-
-  const result = await runCommand(WHISPER_COMMAND, args);
-  if (!result.success) {
-    throw new Error(`Whisper failed for ${displayName}: ${result.output}`);
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
   }
-
-  const baseName = basename(wavPath, extname(wavPath));
-  const jsonPath = join(outputDir, `${baseName}.json`);
-  const raw = await readFile(jsonPath, 'utf-8');
-  const parsed = JSON.parse(raw) as WhisperOutput;
-
-  if (!parsed.segments || !Array.isArray(parsed.segments)) {
-    return [];
-  }
-
-  return parsed.segments.map((segment) => ({
-    start: segment.start,
-    end: segment.end,
-    text: segment.text.trim(),
-    speaker: displayName,
-  }));
+  return candidates[0];
 }
 
-function formatTimestamp(seconds: number): string {
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  if (hrs > 0) {
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+const TRANSCRIBE_SCRIPT = findTranscribeScript();
+
+export interface TranscriptionProgress {
+  currentFile: number;
+  totalFiles: number;
+  fileName: string;
+  framesCurrent: number;
+  framesTotal: number;
 }
 
-function buildTranscript(segments: TranscriptSegment[]): string {
-  const sorted = [...segments].sort((a, b) => a.start - b.start);
-  return sorted.map((s) => `[${formatTimestamp(s.start)}] ${s.speaker}: ${s.text}`).join('\n');
-}
+const transcriptionProgress = new Map<number, TranscriptionProgress>();
 
-const transcriptionProgress = new Map<number, { current: number; total: number }>();
-
-export function getTranscriptionProgress(sessionId: number): { current: number; total: number } | null {
+export function getTranscriptionProgress(sessionId: number): TranscriptionProgress | null {
   return transcriptionProgress.get(sessionId) ?? null;
 }
 
-function setTranscriptionProgress(sessionId: number, current: number, total: number): void {
-  transcriptionProgress.set(sessionId, { current, total });
+function setTranscriptionProgress(sessionId: number, progress: TranscriptionProgress): void {
+  transcriptionProgress.set(sessionId, progress);
 }
 
 function clearTranscriptionProgress(sessionId: number): void {
   transcriptionProgress.delete(sessionId);
+}
+
+type ScriptEvent =
+  | { type: 'file_start'; index: number; total: number; name: string }
+  | { type: 'progress'; current: number; total: number }
+  | { type: 'file_complete'; index: number; id: number; userId: string; transcriptPath: string }
+  | { type: 'file_error'; index: number; error: string }
+  | { type: 'complete'; transcript: string; transcriptPath: string; files: { id: number; userId: string; transcriptPath: string }[]; errors: string[] }
+  | { type: 'error'; error: string };
+
+function parseEvent(line: string): ScriptEvent | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed) as ScriptEvent;
+  } catch {
+    return null;
+  }
+}
+
+function runTranscriptionScript(
+  sessionId: number,
+  outputDir: string,
+  files: RecordingFile[],
+  trimStart: number,
+  trimEnd: number,
+): Promise<{ transcript: string | null; transcriptPath: string | null; files: { id: number; userId: string; transcriptPath: string }[]; errors: string[] }> {
+  const filesArg = JSON.stringify(
+    files
+      .filter((f) => f.wavPath)
+      .map((f) => ({ id: f.id, userId: f.userId, wavPath: f.wavPath, displayName: f.displayName })),
+  );
+
+  const args = [
+    TRANSCRIBE_SCRIPT,
+    '--model',
+    WHISPER_MODEL,
+    '--language',
+    WHISPER_LANGUAGE,
+    '--fp16',
+    String(WHISPER_FP16),
+    '--trim-start',
+    String(trimStart),
+    '--output-dir',
+    outputDir,
+    '--files',
+    filesArg,
+  ];
+
+  if (trimEnd !== Infinity) {
+    args.push('--trim-end', String(trimEnd));
+  }
+
+  return new Promise((resolve, reject) => {
+    let currentFileName = '';
+    let currentFileIndex = 0;
+    let totalFiles = 0;
+    let finalResult: { transcript: string | null; transcriptPath: string | null; files: { id: number; userId: string; transcriptPath: string }[]; errors: string[] } | null = null;
+
+    const child = spawn(PYTHON_COMMAND, args, { stdio: 'pipe' });
+    let stderrBuffer = '';
+
+    child.stdout?.on('data', (data: Buffer) => {
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        const event = parseEvent(line);
+        if (!event) continue;
+
+        if (event.type === 'file_start') {
+          currentFileIndex = event.index + 1;
+          totalFiles = event.total;
+          currentFileName = event.name;
+          setTranscriptionProgress(sessionId, {
+            currentFile: currentFileIndex,
+            totalFiles,
+            fileName: currentFileName,
+            framesCurrent: 0,
+            framesTotal: 0,
+          });
+        } else if (event.type === 'progress') {
+          setTranscriptionProgress(sessionId, {
+            currentFile: currentFileIndex,
+            totalFiles,
+            fileName: currentFileName,
+            framesCurrent: event.current,
+            framesTotal: event.total,
+          });
+        } else if (event.type === 'complete') {
+          finalResult = {
+            transcript: event.transcript,
+            transcriptPath: event.transcriptPath,
+            files: event.files,
+            errors: event.errors,
+          };
+        } else if (event.type === 'error') {
+          finalResult = {
+            transcript: null,
+            transcriptPath: null,
+            files: [],
+            errors: [event.error],
+          };
+        }
+      }
+    });
+
+    child.stderr?.on('data', (data: Buffer) => {
+      stderrBuffer += data.toString();
+    });
+
+    child.on('error', (err) => {
+      reject(err);
+    });
+
+    child.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(stderrBuffer || `Python transcription script exited with code ${code}`));
+        return;
+      }
+
+      if (finalResult) {
+        resolve(finalResult);
+        return;
+      }
+
+      reject(new Error('Transcription script completed without final event'));
+    });
+  });
 }
 
 export async function runTranscription(sessionId: number, files: RecordingFile[]): Promise<void> {
@@ -133,53 +184,28 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
   updateSession(sessionId, { status: 'processing', error: null });
   emitSessionsUpdated();
 
-  const allSegments: TranscriptSegment[] = [];
-  const errors: string[] = [];
-
   const trimStart = session.trimStartSeconds ?? 0;
   const trimEnd = session.trimEndSeconds ?? Infinity;
 
-  const filesWithWav = files.filter((f) => f.wavPath);
-
   try {
-    for (let i = 0; i < filesWithWav.length; i++) {
-      const file = filesWithWav[i];
-      setTranscriptionProgress(sessionId, i + 1, filesWithWav.length);
+    const result = await runTranscriptionScript(sessionId, session.directory, files, trimStart, trimEnd);
 
-      const transcriptPath = join(session.directory, `speaker-${file.userId}.txt`);
-      try {
-        const segments = (await transcribeFile(file.wavPath!, session.directory, file.displayName))
-          .filter((s) => s.end > trimStart && s.start < trimEnd)
-          .map((s) => ({
-            ...s,
-            start: Math.max(s.start, trimStart),
-            end: Math.min(s.end, trimEnd),
-          }));
-        const speakerText = segments.map((s) => `[${formatTimestamp(s.start)}] ${s.text}`).join('\n');
-        await writeFile(transcriptPath, speakerText);
-        updateFile(file.id, { transcriptPath });
-        allSegments.push(...segments);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        errors.push(`${file.displayName}: ${message}`);
-      }
+    for (const file of result.files) {
+      updateFile(file.id, { transcriptPath: file.transcriptPath });
     }
 
-    if (allSegments.length === 0) {
-      updateSession(sessionId, { status: 'error', error: errors.join('; ') || 'Transkription lieferte keine Ergebnisse' });
-      emitSessionsUpdated();
-      return;
+    if (result.transcript) {
+      updateSession(sessionId, { status: 'completed', transcript: result.transcript });
+    } else {
+      updateSession(sessionId, {
+        status: 'error',
+        error: result.errors.join('; ') || 'Transkription lieferte keine Ergebnisse',
+      });
     }
-
-    const transcript = buildTranscript(allSegments);
-    const transcriptPath = join(session.directory, 'transcript.txt');
-    await writeFile(transcriptPath, transcript);
-
-    updateSession(sessionId, { status: 'completed', transcript });
     emitSessionsUpdated();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    updateSession(sessionId, { status: 'error', error: `Transkript erstellung fehlgeschlagen: ${message}` });
+    updateSession(sessionId, { status: 'error', error: `Transkription fehlgeschlagen: ${message}` });
     emitSessionsUpdated();
   } finally {
     clearTranscriptionProgress(sessionId);
