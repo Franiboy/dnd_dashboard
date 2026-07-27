@@ -353,6 +353,15 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    name: 'add_users_disabled_apps',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'disabled_apps')) {
+        db.exec('ALTER TABLE users ADD COLUMN disabled_apps TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations() {
