@@ -68,6 +68,14 @@ export function Recordings() {
         setLoading(false);
       });
 
+      eventSource.addEventListener('progress', (event) => {
+        const data = JSON.parse((event as MessageEvent).data) as {
+          sessionId: number;
+          progress: { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null;
+        };
+        setTranscriptionProgress((prev) => ({ ...prev, [data.sessionId]: data.progress }));
+      });
+
       eventSource.onerror = () => {
         // EventSource reconnects automatically. On a fatal auth/config error
         // the page should be redirected by ProtectedRoute, so we do nothing here.
@@ -78,27 +86,6 @@ export function Recordings() {
       eventSource?.close();
     };
   }, [request]);
-
-  useEffect(() => {
-    const processingIds = sessions.filter((s) => s.status === 'processing').map((s) => s.id);
-    if (processingIds.length === 0) {
-      setTranscriptionProgress({});
-      return undefined;
-    }
-
-    async function fetchProgress() {
-      for (const sessionId of processingIds) {
-        const { data } = await request<{
-          progress: { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null;
-        }>(`/api/recordings/${sessionId}/progress`, {}, false);
-        setTranscriptionProgress((prev) => ({ ...prev, [sessionId]: data?.progress ?? null }));
-      }
-    }
-
-    fetchProgress();
-    const interval = setInterval(fetchProgress, 1000);
-    return () => clearInterval(interval);
-  }, [sessions, request]);
 
   async function saveConfig() {
     setWorking(true);

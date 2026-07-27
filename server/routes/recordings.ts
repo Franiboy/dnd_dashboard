@@ -5,7 +5,7 @@ import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getBotStatus, getAllVoiceChannels, finishRecording, getActiveRecording, getMonitoredChannel } from '../discord/bot.js';
 import { runTranscription, getTranscriptionProgress } from '../discord/transcriber.js';
 import { isRecordingFeatureEnabled } from '../discord/config.js';
-import { onSessionsUpdated, onStatusUpdated, emitSessionsUpdated } from '../discord/recordingsEvents.js';
+import { onSessionsUpdated, onStatusUpdated, onProgressUpdated, emitSessionsUpdated } from '../discord/recordingsEvents.js';
 import { getSessionById, listSessions, getFilesBySessionId, getRecordingConfig, setRecordingConfig, deleteSession, updateSession } from '../repositories/recordings.js';
 
 const router = Router();
@@ -35,8 +35,16 @@ function broadcastSessions(): void {
   });
 }
 
+function broadcastProgress(sessionId: number, progress: unknown): void {
+  const data = JSON.stringify({ sessionId, progress });
+  sseClients.forEach((client) => {
+    client.write(`event: progress\ndata: ${data}\n\n`);
+  });
+}
+
 onStatusUpdated(() => broadcastStatus());
 onSessionsUpdated(() => broadcastSessions());
+onProgressUpdated((sessionId, progress) => broadcastProgress(sessionId, progress));
 
 function requireRecordingFeature(_req: AuthRequest, res: Response, next: NextFunction): void {
   if (!isRecordingFeatureEnabled()) {
