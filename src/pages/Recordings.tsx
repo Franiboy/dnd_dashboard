@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { BackButton } from '../components/BackButton';
@@ -8,18 +8,7 @@ import type { RecordingChannel, RecordingSession, VersionInfo } from '../../shar
 interface StatusResponse {
   bot: { ready: boolean; enabled: boolean };
   active: { sessionId: number; channelId: string } | null;
-}
-
-function generateDefaultSessionName(sessions: RecordingSession[]): string {
-  const base = `DnD Session ${new Date().toLocaleDateString('de-DE')}`;
-  const existingNames = new Set(sessions.map((s) => s.name.toLowerCase()));
-  let name = base;
-  let counter = 2;
-  while (existingNames.has(name.toLowerCase())) {
-    name = `${base} (${counter})`;
-    counter++;
-  }
-  return name;
+  monitoredChannel: { channelId: string | null; channelName: string | null };
 }
 
 export function Recordings() {
@@ -28,35 +17,11 @@ export function Recordings() {
   const [channels, setChannels] = useState<RecordingChannel[]>([]);
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
   const [selectedChannel, setSelectedChannel] = useState('');
-  const [sessionName, setSessionName] = useState('');
-  const [nameError, setNameError] = useState<string | null>(null);
-  const isAutoName = useRef(true);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [loadedTranscripts, setLoadedTranscripts] = useState<Record<number, string | null>>({});
   const [visibleTranscripts, setVisibleTranscripts] = useState<Set<number>>(new Set());
   const [loadingTranscript, setLoadingTranscript] = useState<Set<number>>(new Set());
-
-  const validateName = useCallback(
-    (name: string, currentSessions: RecordingSession[]): string | null => {
-      const trimmed = name.trim();
-      if (!trimmed) return 'Name ist erforderlich';
-      const exists = currentSessions.some((s) => s.name.toLowerCase() === trimmed.toLowerCase());
-      if (exists) return 'Es gibt bereits eine Session mit diesem Namen';
-      return null;
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (isAutoName.current) {
-      const generated = generateDefaultSessionName(sessions);
-      setSessionName(generated);
-      setNameError(validateName(generated, sessions));
-    } else {
-      setNameError(validateName(sessionName, sessions));
-    }
-  }, [sessions, sessionName, validateName]);
 
   useEffect(() => {
     let eventSource: EventSource | null = null;
@@ -69,6 +34,10 @@ export function Recordings() {
 
       request<{ channels: RecordingChannel[] }>('/api/recordings/channels', {}, false).then(({ data }) => {
         if (data) setChannels(data.channels);
+      });
+
+      request<{ channelId: string | null }>('/api/recordings/config', {}, false).then(({ data }) => {
+        if (data) setSelectedChannel(data.channelId ?? '');
       });
 
       eventSource = new EventSource('/api/recordings/events', { withCredentials: true });
@@ -95,29 +64,16 @@ export function Recordings() {
     };
   }, [request]);
 
-  async function startRecording() {
-    const error = validateName(sessionName, sessions);
-    if (error) {
-      setNameError(error);
-      return;
-    }
-    if (!selectedChannel) return;
+  async function saveConfig() {
     setWorking(true);
-    const { data } = await request<{ session: RecordingSession }>('/api/recordings/start', {
+    const { data } = await request<{ channelId: string | null }>('/api/recordings/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channelId: selectedChannel, name: sessionName.trim() }),
+      body: JSON.stringify({ channelId: selectedChannel || null }),
     });
     if (data) {
-      isAutoName.current = true;
-      setSessionName('');
+      setSelectedChannel(data.channelId ?? '');
     }
-    setWorking(false);
-  }
-
-  async function stopRecording(sessionId: number) {
-    setWorking(true);
-    await request<{ session: RecordingSession }>(`/api/recordings/${sessionId}/stop`, { method: 'POST' });
     setWorking(false);
   }
 
@@ -161,6 +117,8 @@ export function Recordings() {
     );
   }
 
+  const monitoredName = status?.monitoredChannel.channelName ?? status?.monitoredChannel.channelId ?? 'nicht konfiguriert';
+
   return (
     <div className="min-h-full p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -181,26 +139,10 @@ export function Recordings() {
       )}
 
       <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 mb-8">
-        <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Neue Aufnahme</h2>
+        <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Konfiguration</h2>
         <div className="flex flex-col sm:flex-row gap-4 items-end">
           <div className="flex-1 w-full">
-            <label className="block text-sm text-slate-400 mb-1">Name</label>
-            <input
-              type="text"
-              value={sessionName}
-              onChange={(e) => {
-                isAutoName.current = false;
-                setSessionName(e.target.value);
-              }}
-              placeholder="DnD Session 19.07."
-              className={`w-full bg-slate-800 border rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] ${
-                nameError ? 'border-[var(--danger)]' : 'border-[var(--border)]'
-              }`}
-            />
-            {nameError && <p className="text-[var(--danger)] text-xs mt-1">{nameError}</p>}
-          </div>
-          <div className="flex-1 w-full">
-            <label className="block text-sm text-slate-400 mb-1">Voice-Channel</label>
+            <label className="block text-sm text-slate-400 mb-1">Überwachter Voice-Channel</label>
             <select
               value={selectedChannel}
               onChange={(e) => setSelectedChannel(e.target.value)}
@@ -208,29 +150,30 @@ export function Recordings() {
               className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
             >
               <option value="">
-                {channels.length === 0 ? 'Keine belegten Voice-Channels' : 'Bitte wählen'}
+                {channels.length === 0 ? 'Keine Voice-Channels verfügbar' : 'Bitte wählen'}
               </option>
-              {channels.map((c) => {
-                const participantLabel =
-                  c.participants.length <= 3
-                    ? c.participants.join(', ')
-                    : `${c.participants.slice(0, 3).join(', ')} +${c.participants.length - 3}`;
-                return (
-                  <option key={c.id} value={c.id} title={c.participants.join(', ')}>
-                    {c.name} ({c.participants.length}) — {participantLabel}
-                  </option>
-                );
-              })}
+              {channels.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.participants.length} online)
+                </option>
+              ))}
             </select>
           </div>
           <Button
             variant="accent"
-            disabled={working || !selectedChannel || !sessionName.trim() || !!nameError || !status?.bot.ready}
-            onClick={startRecording}
+            disabled={working || !status?.bot.ready}
+            onClick={saveConfig}
           >
-            Aufnahme starten
+            Speichern
           </Button>
         </div>
+        <p className="text-sm text-slate-400 mt-3">
+          {status?.active
+            ? `Aktuell wird in ${monitoredName} aufgezeichnet.`
+            : status?.monitoredChannel.channelId
+              ? `Bereit für Aufnahme in ${monitoredName}. Die Aufnahme startet automatisch, sobald jemand den Channel betritt.`
+              : 'Wähle einen Channel aus, damit Aufnahmen automatisch gestartet werden.'}
+        </p>
       </div>
 
       <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Sessions</h2>
@@ -249,11 +192,6 @@ export function Recordings() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {session.status === 'recording' && (
-                  <Button variant="danger" disabled={working} onClick={() => stopRecording(session.id)}>
-                    Stoppen
-                  </Button>
-                )}
                 {(session.status === 'pending_transcription' || session.status === 'error') && (
                   <Button
                     variant="secondary"
@@ -274,6 +212,13 @@ export function Recordings() {
                 )}
               </div>
             </div>
+
+            {session.status === 'recording' && (
+              <div className="mt-4 p-3 rounded-lg bg-[var(--danger)]/20 text-[var(--danger)] text-sm flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-[var(--danger)] animate-pulse" />
+                Aufnahme läuft…
+              </div>
+            )}
 
             {session.status === 'pending_transcription' && (
               <div className="mt-4 p-3 rounded-lg bg-slate-700/50 text-slate-300 text-sm">

@@ -134,6 +134,24 @@ export function getFilesBySessionId(sessionId: number): RecordingFile[] {
     .all(sessionId) as RecordingFile[];
 }
 
+export interface RecordingConfig {
+  channelId: string | null;
+}
+
+export function getRecordingConfig(): RecordingConfig {
+  const row = db
+    .prepare('SELECT channel_id as channelId FROM recording_config WHERE id = 1')
+    .get() as { channelId: string | null } | undefined;
+  return { channelId: row?.channelId ?? null };
+}
+
+export function setRecordingConfig(channelId: string | null): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    'INSERT INTO recording_config (id, channel_id, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET channel_id = excluded.channel_id, updated_at = excluded.updated_at',
+  ).run(channelId, now);
+}
+
 export function updateFile(
   id: number,
   updates: Partial<Pick<RecordingFile, 'wavPath' | 'duration' | 'transcriptPath'>>,

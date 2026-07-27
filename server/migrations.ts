@@ -312,6 +312,18 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: 'create_recording_config_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS recording_config (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          channel_id TEXT,
+          updated_at TEXT
+        );
+      `);
+    },
+  },
 ];
 
 export function runMigrations() {
