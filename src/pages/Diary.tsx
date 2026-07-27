@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
 import { Button } from '../components/Button';
@@ -8,7 +9,7 @@ import { GridPanel } from '../components/GridPanel';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
 import ReactQuill from 'react-quill-new';
-import type { DiaryEntry, VersionInfo } from '../../shared/types';
+import type { DiaryEntry, EntityType, VersionInfo } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 const SUMMARY_MAX_LENGTH = 500;
@@ -59,14 +60,23 @@ const badgeStyles = {
   location: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
 };
 
+const badgeTypeMap: Record<BadgeListProps['variant'], EntityType> = {
+  person: 'persons',
+  organization: 'organizations',
+  location: 'locations',
+};
+
 function BadgeList({ items, variant }: BadgeListProps) {
+  const navigate = useNavigate();
   if (items.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-2 mb-3">
       {items.map((item) => (
         <span
           key={item}
-          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${badgeStyles[variant]}`}
+          onClick={() => navigate('/world', { state: { selectedEntity: { name: item, type: badgeTypeMap[variant] } } })}
+          title="In Welt öffnen"
+          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium cursor-pointer hover:brightness-110 transition ${badgeStyles[variant]}`}
         >
           {item}
         </span>
