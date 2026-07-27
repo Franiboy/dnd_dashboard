@@ -2,7 +2,7 @@ import { Router, type Response, type NextFunction } from 'express';
 import { rm } from 'node:fs/promises';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getBotStatus, getAllVoiceChannels, finishRecording, getActiveRecording, getMonitoredChannel } from '../discord/bot.js';
-import { runTranscription } from '../discord/transcriber.js';
+import { runTranscription, getTranscriptionProgress } from '../discord/transcriber.js';
 import { isRecordingFeatureEnabled } from '../discord/config.js';
 import { onSessionsUpdated, onStatusUpdated, emitSessionsUpdated } from '../discord/recordingsEvents.js';
 import { getSessionById, listSessions, getFilesBySessionId, getRecordingConfig, setRecordingConfig, deleteSession, updateSession } from '../repositories/recordings.js';
@@ -176,6 +176,18 @@ router.post('/:id/transcribe', (req, res) => {
   });
 
   res.json({ message: 'Transkription wird im Hintergrund gestartet' });
+});
+
+router.get('/:id/progress', (req, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+
+  const progress = getTranscriptionProgress(id);
+  res.json({ sessionId: id, status: session.status, progress });
 });
 
 router.delete('/:id', async (req, res) => {
