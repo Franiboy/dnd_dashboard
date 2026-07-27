@@ -124,6 +124,14 @@ export interface RecordingChannel {
   participants: string[];
 }
 
+export interface TranscriptionProgress {
+  currentFile: number;
+  totalFiles: number;
+  fileName: string;
+  framesCurrent: number;
+  framesTotal: number;
+}
+
 export interface DiaryEntry {
   id: number;
   userId: string;
