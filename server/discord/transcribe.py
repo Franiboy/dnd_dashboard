@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import traceback
+import wave
 
 
 def emit(event: dict) -> None:
@@ -16,6 +17,29 @@ def format_timestamp(seconds: float) -> str:
     if hrs > 0:
         return f"{hrs:02d}:{mins:02d}:{secs:02d}"
     return f"{mins:02d}:{secs:02d}"
+
+
+_FRAMES_PER_SECOND = 100
+_N_FRAMES = 1500
+
+
+class DecodeProgress:
+    def __init__(self) -> None:
+        self.count = 0
+        self.total = 0
+
+    def reset(self, total: int) -> None:
+        self.count = 0
+        self.total = max(0, total)
+
+    def tick(self) -> None:
+        self.count += 1
+        if self.total > 0:
+            current = min(self.total, self.count * _N_FRAMES)
+            emit({"type": "progress", "current": current, "total": self.total})
+
+
+_progress = DecodeProgress()
 
 
 def patch_tqdm() -> None:
@@ -48,6 +72,26 @@ def patch_tqdm() -> None:
                 wrap_update(cls, cls.update)
     except Exception:
         pass
+
+
+def patch_model_decode(model) -> None:
+    original_decode = model.decode
+
+    def patched_decode(segment, *args, **kwargs):
+        _progress.tick()
+        return original_decode(segment, *args, **kwargs)
+
+    model.decode = patched_decode
+
+
+def compute_content_frames(wav_path: str) -> int:
+    try:
+        with wave.open(wav_path, "rb") as wf:
+            framerate = wf.getframerate() or 1
+            duration = wf.getnframes() / framerate
+        return max(0, int(duration * _FRAMES_PER_SECOND))
+    except Exception:
+        return 0
 
 
 def main() -> None:
@@ -89,6 +133,8 @@ def main() -> None:
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
+    patch_model_decode(model)
+
     all_segments = []
     errors = []
     completed_files = []
@@ -100,6 +146,8 @@ def main() -> None:
         display_name = file_info.get("displayName", f"Speaker {i + 1}")
 
         emit({"type": "file_start", "index": i, "total": len(files), "name": display_name})
+
+        _progress.reset(compute_content_frames(wav_path))
 
         try:
             result = model.transcribe(
