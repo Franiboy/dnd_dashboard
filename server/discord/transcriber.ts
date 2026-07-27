@@ -3,8 +3,8 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { updateFile, updateSession, getSessionById } from '../repositories/recordings.js';
-import { emitSessionsUpdated } from './recordingsEvents.js';
-import type { RecordingFile } from '../../shared/types.js';
+import { emitSessionsUpdated, emitProgressUpdated } from './recordingsEvents.js';
+import type { RecordingFile, TranscriptionProgress } from '../../shared/types.js';
 
 const WHISPER_MODEL = process.env.WHISPER_MODEL || 'base';
 const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE || 'de';
@@ -43,14 +43,6 @@ function findTranscribeScript(): string {
 
 const TRANSCRIBE_SCRIPT = findTranscribeScript();
 
-export interface TranscriptionProgress {
-  currentFile: number;
-  totalFiles: number;
-  fileName: string;
-  framesCurrent: number;
-  framesTotal: number;
-}
-
 const transcriptionProgress = new Map<number, TranscriptionProgress>();
 
 export function getTranscriptionProgress(sessionId: number): TranscriptionProgress | null {
@@ -59,10 +51,12 @@ export function getTranscriptionProgress(sessionId: number): TranscriptionProgre
 
 function setTranscriptionProgress(sessionId: number, progress: TranscriptionProgress): void {
   transcriptionProgress.set(sessionId, progress);
+  emitProgressUpdated(sessionId, progress);
 }
 
 function clearTranscriptionProgress(sessionId: number): void {
   transcriptionProgress.delete(sessionId);
+  emitProgressUpdated(sessionId, null);
 }
 
 type ScriptEvent =
