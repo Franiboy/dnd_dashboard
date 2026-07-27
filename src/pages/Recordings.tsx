@@ -8,7 +8,7 @@ import type { RecordingChannel, RecordingSession, VersionInfo } from '../../shar
 interface StatusResponse {
   bot: { ready: boolean; enabled: boolean };
   active: { sessionId: number; channelId: string } | null;
-  monitoredChannel: { channelId: string | null; channelName: string | null };
+  monitoredChannel?: { channelId: string | null; channelName: string | null } | null;
 }
 
 export function Recordings() {
@@ -117,7 +117,8 @@ export function Recordings() {
     );
   }
 
-  const monitoredName = status?.monitoredChannel.channelName ?? status?.monitoredChannel.channelId ?? 'nicht konfiguriert';
+  const monitoredChannel = status?.monitoredChannel;
+  const monitoredName = monitoredChannel?.channelName ?? monitoredChannel?.channelId ?? 'nicht konfiguriert';
 
   return (
     <div className="min-h-full p-6 max-w-4xl mx-auto">
@@ -170,7 +171,7 @@ export function Recordings() {
         <p className="text-sm text-slate-400 mt-3">
           {status?.active
             ? `Aktuell wird in ${monitoredName} aufgezeichnet.`
-            : status?.monitoredChannel.channelId
+            : monitoredChannel?.channelId
               ? `Bereit für Aufnahme in ${monitoredName}. Die Aufnahme startet automatisch, sobald jemand den Channel betritt.`
               : 'Wähle einen Channel aus, damit Aufnahmen automatisch gestartet werden.'}
         </p>
