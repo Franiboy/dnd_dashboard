@@ -189,7 +189,7 @@ router.post('/entries', async (req: AuthRequest, res) => {
     const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
     try {
       const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-      const knowledgeContext = getKnowledgeContextForText(content);
+      const knowledgeContext = getKnowledgeContextForText(content, { entryId: entry.id });
       const [summary, aiEntities] = await Promise.all([
         summarizeTextWithAi(content, undefined, onLog, knowledgeContext).catch(() => null),
         extractEntitiesFromDiary(content, undefined, onLog, knowledgeContext).catch(() => ({
@@ -376,7 +376,7 @@ router.post('/entries/:id/rewrite', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI schreibt den Text um...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const knowledgeContext = getKnowledgeContextForText(existing.content);
+    const knowledgeContext = getKnowledgeContextForText(existing.content, { entryId: existing.id });
     log.info(`Calling rewriteTextWithAi for entry ${id}, sessionId=${existing.rewriteSessionId ?? 'none'}`);
     const { content: rewritten, sessionId } = await rewriteTextWithAi(
       id,
@@ -451,7 +451,7 @@ router.post('/entries/:id/rewrite-command', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI bearbeitet den Text...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const knowledgeContext = getKnowledgeContextForText(existing.content);
+    const knowledgeContext = getKnowledgeContextForText(existing.content, { entryId: existing.id });
     const { content: rewritten, sessionId } = await improveRewrittenWithCommand(
       id,
       existing.content,
@@ -510,7 +510,7 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const knowledgeContext = getKnowledgeContextForText(existing.content);
+    const knowledgeContext = getKnowledgeContextForText(existing.content, { entryId: existing.id });
     const [summary, aiEntities] = await Promise.all([
       summarizeTextWithAi(existing.content, undefined, onLog, knowledgeContext),
       extractEntitiesFromDiary(existing.content, undefined, onLog, knowledgeContext),
