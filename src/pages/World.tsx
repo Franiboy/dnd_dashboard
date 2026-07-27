@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -941,10 +942,19 @@ export function World() {
     organizations: 'entities',
     locations: 'entities',
   });
+  const location = useLocation();
+  const navigate = useNavigate();
   const [selectedEntity, setSelectedEntity] = useState<{ name: string; type: EntityType } | null>(
-    null,
+    (location.state as { selectedEntity?: { name: string; type: EntityType } } | null)?.selectedEntity ?? null,
   );
   const [distributeOpen, setDistributeOpen] = useState(false);
+
+  useEffect(() => {
+    if ((location.state as { selectedEntity?: unknown } | null)?.selectedEntity) {
+      navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true });
+    }
+  }, [location, navigate]);
+
   const canClickRef = useRef(true);
   const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
