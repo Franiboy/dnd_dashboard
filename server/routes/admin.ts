@@ -8,7 +8,6 @@ import {
   setUserAdmin,
   setUserApproved,
   setUserDisabledApps,
-  setUserPreviewAccess,
 } from '../users.js';
 
 const sseClients = new Set<Response>();
@@ -79,17 +78,6 @@ router.post('/users/:id/admin', authMiddleware, requireAdmin, (req: AuthRequest,
   if (!check.ok) return res.status(403).json({ error: check.error });
   const { isAdmin } = req.body;
   const user = setUserAdmin(targetId, isAdmin);
-  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
-  notifyUserUpdate();
-  res.json(user);
-});
-
-router.post('/users/:id/preview-access', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
-  const targetId = req.params.id as string;
-  const check = checkAdminAction(req, targetId);
-  if (!check.ok) return res.status(403).json({ error: check.error });
-  const { canAccessPreviews } = req.body;
-  const user = setUserPreviewAccess(targetId, canAccessPreviews);
   if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
   notifyUserUpdate();
   res.json(user);

@@ -11,7 +11,6 @@ export const APPS: AppMeta[] = [
   { id: 'bingo', label: 'Bingo', path: '/bingo', disableable: true },
   { id: 'world', label: 'Welt', path: '/welt', disableable: true },
   { id: 'recordings', label: 'Aufnahmen', path: '/recordings', disableable: true },
-  { id: 'feature-request', label: 'Feature Request', path: '/feature-request', disableable: true },
   { id: 'admin', label: 'Admin', path: '/admin' },
 ];
 

@@ -140,26 +140,3 @@ export function requireApproved(req: AuthRequest, res: Response, next: NextFunct
   next();
 }
 
-export function requirePreviewAccess(req: AuthRequest, res: Response, next: NextFunction): void {
-  if (!req.user?.isAdmin && !req.user?.canAccessPreviews) {
-    res.status(403).json({ error: 'Forbidden: Preview access required' });
-    return;
-  }
-  next();
-}
-
-export function previewAuthMiddleware(req: AuthRequest, res: Response, next: NextFunction): void {
-  const token = getToken(req);
-  if (!token) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const payload = verifyToken(token);
-  const user = payload ? findUserById(payload.userId) : null;
-  if (!user || (!user.isAdmin && !user.canAccessPreviews)) {
-    res.status(403).json({ error: 'Forbidden: Preview access required' });
-    return;
-  }
-  req.user = user;
-  next();
-}
