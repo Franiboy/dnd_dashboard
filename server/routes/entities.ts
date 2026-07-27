@@ -5,7 +5,6 @@ import type { DiaryEntities } from '../ai/rewrite.js';
 import { isAiEnabled } from '../ai/config.js';
 import {
   distributeKnowledgeFromText,
-  generateEntityKnowledgeFromDiary,
   generateEntitySummary,
 } from '../ai/knowledge.js';
 import {
@@ -280,26 +279,6 @@ router.delete('/knowledge/:id', (req: AuthRequest, res) => {
     res.json({ entry });
   } catch {
     res.status(500).json({ error: 'Löschen fehlgeschlagen' });
-  }
-});
-
-router.post('/knowledge/generate', async (req: AuthRequest, res) => {
-  if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
-  }
-
-  const { type, name } = req.body;
-  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
-  }
-
-  try {
-    const generated = await generateEntityKnowledgeFromDiary(type, name.trim());
-    res.json({ generated });
-  } catch {
-    res.status(500).json({ error: 'KI-Wissensgenerierung fehlgeschlagen' });
   }
 });
 
