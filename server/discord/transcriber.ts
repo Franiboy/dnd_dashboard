@@ -4,7 +4,6 @@ import { join, basename, extname } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { updateFile, updateSession, getSessionById } from '../repositories/recordings.js';
 import { emitSessionsUpdated } from './recordingsEvents.js';
-import { deleteSessionAudioFiles } from './files.js';
 import type { RecordingFile } from '../../shared/types.js';
 
 const WHISPER_COMMAND = process.env.WHISPER_COMMAND || 'whisper';
@@ -123,12 +122,21 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
   const allSegments: TranscriptSegment[] = [];
   const errors: string[] = [];
 
+  const trimStart = session.trimStartSeconds ?? 0;
+  const trimEnd = session.trimEndSeconds ?? Infinity;
+
   for (const file of files) {
     if (!file.wavPath) continue;
 
     const transcriptPath = join(session.directory, `speaker-${file.userId}.txt`);
     try {
-      const segments = await transcribeFile(file.wavPath, session.directory, file.displayName);
+      const segments = (await transcribeFile(file.wavPath, session.directory, file.displayName))
+        .filter((s) => s.end > trimStart && s.start < trimEnd)
+        .map((s) => ({
+          ...s,
+          start: Math.max(s.start, trimStart),
+          end: Math.min(s.end, trimEnd),
+        }));
       const speakerText = segments.map((s) => `[${formatTimestamp(s.start)}] ${s.text}`).join('\n');
       await writeFile(transcriptPath, speakerText);
       updateFile(file.id, { transcriptPath });
@@ -152,11 +160,9 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
 
     updateSession(sessionId, { status: 'completed', transcript });
     emitSessionsUpdated();
-
-    await deleteSessionAudioFiles(sessionId);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    updateSession(sessionId, { status: 'error', error: `Transkript erstellt, aber Audio-Löschung fehlgeschlagen: ${message}` });
+    updateSession(sessionId, { status: 'error', error: `Transkript erstellung fehlgeschlagen: ${message}` });
     emitSessionsUpdated();
   }
 }
