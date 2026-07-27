@@ -50,6 +50,7 @@ export interface User {
   isAdmin: boolean;
   isApproved: boolean;
   canAccessPreviews: boolean;
+  disabledApps: string[];
   failedLoginAttempts: number;
   lockedUntil: string | null;
   createdAt: string;
@@ -63,6 +64,7 @@ export interface SafeUser {
   isAdmin: boolean;
   isApproved: boolean;
   canAccessPreviews: boolean;
+  disabledApps: string[];
   isInitialAdmin: boolean;
 }
 

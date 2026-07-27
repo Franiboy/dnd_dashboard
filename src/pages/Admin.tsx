@@ -3,6 +3,8 @@ import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
 import { BackButton } from '../components/BackButton';
 import { Loading } from '../components/Loading';
+import { Modal } from '../components/Modal';
+import { APPS } from '../lib/apps';
 import type { SafeUser } from '../../shared/types';
 
 interface AdminProps {
@@ -16,9 +18,12 @@ export function Admin({ currentUser }: AdminProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<{ id: string; endpoint: string } | null>(null);
+  const [managingAppsFor, setManagingAppsFor] = useState<SafeUser | null>(null);
 
   const isActionLoading = (id: string, endpoint: string) =>
     actionLoading?.id === id && actionLoading?.endpoint === endpoint;
+
+  const disableableApps = APPS.filter((app) => app.disableable);
 
   useEffect(() => {
     const source = new EventSource('/api/admin/users/events', { withCredentials: true });
@@ -69,6 +74,58 @@ export function Admin({ currentUser }: AdminProps) {
 
   const isOwn = (u: SafeUser) => u.id === currentUser.id;
   const isInitialAdmin = (u: SafeUser) => u.username === 'admin';
+
+  function AppAccessModal({ user, onClose }: { user: SafeUser; onClose: () => void }) {
+    const [disabled, setDisabled] = useState<string[]>(user.disabledApps);
+    const toggle = (id: string) =>
+      setDisabled((prev) => (prev.includes(id) ? prev.filter((app) => app !== id) : [...prev, id]));
+
+    async function handleSave() {
+      await action(user.id, '/disabled-apps', { disabledApps: disabled });
+      onClose();
+    }
+
+    return (
+      <Modal
+        isOpen
+        title={`Apps für ${user.displayName}`}
+        onClose={onClose}
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
+            >
+              Abbrechen
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isActionLoading(user.id, '/disabled-apps')}
+              className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+            >
+              Speichern
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          {disableableApps.map((app) => (
+            <label key={app.id} className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={disabled.includes(app.id)}
+                onChange={() => toggle(app.id)}
+                className="rounded border-[var(--border)] bg-slate-900 text-[var(--accent)] focus:ring-[var(--accent)]"
+              />
+              <span className="text-[var(--text-h)]">{app.label} deaktivieren</span>
+            </label>
+          ))}
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <div className="min-h-full p-6">
@@ -167,6 +224,17 @@ export function Admin({ currentUser }: AdminProps) {
                         </button>
                       )}
                       <button
+                        onClick={() => setManagingAppsFor(u)}
+                        disabled={isActionLoading(u.id, '/disabled-apps')}
+                        className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
+                      >
+                        {isActionLoading(u.id, '/disabled-apps') ? (
+                          <Loading text="" size="sm" />
+                        ) : (
+                          'Apps'
+                        )}
+                      </button>
+                      <button
                         onClick={() => deleteU(u.id)}
                         disabled={isActionLoading(u.id, '/delete')}
                         className="px-3 py-1 rounded bg-[var(--danger)] text-white text-xs disabled:opacity-50"
@@ -190,6 +258,8 @@ export function Admin({ currentUser }: AdminProps) {
       )}
       </div>
       )}
+
+      {managingAppsFor && <AppAccessModal user={managingAppsFor} onClose={() => setManagingAppsFor(null)} />}
     </div>
   );
 }
