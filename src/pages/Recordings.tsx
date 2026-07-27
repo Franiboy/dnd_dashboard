@@ -16,6 +16,16 @@ interface TrimInputs {
   end: string;
 }
 
+function parseTimestamp(ts: string): number | null {
+  const match = ts.match(/\[(\d{2}):(\d{2})(?::(\d{2}))?\]/);
+  if (!match) return null;
+  const [, a, b, c] = match;
+  if (c) {
+    return parseInt(a, 10) * 3600 + parseInt(b, 10) * 60 + parseInt(c, 10);
+  }
+  return parseInt(a, 10) * 60 + parseInt(b, 10);
+}
+
 export function Recordings() {
   const { request } = useApi();
   const [status, setStatus] = useState<StatusResponse | null>(null);
@@ -148,6 +158,15 @@ export function Recordings() {
     setTrimInputs((prev) => ({
       ...prev,
       [sessionId]: { ...prev[sessionId], [field]: value },
+    }));
+  }
+
+  function applyTrimFromTimestamp(sessionId: number, line: string, field: keyof TrimInputs) {
+    const seconds = parseTimestamp(line);
+    if (seconds === null) return;
+    setTrimInputs((prev) => ({
+      ...prev,
+      [sessionId]: { ...prev[sessionId], [field]: seconds.toString() },
     }));
   }
 
@@ -355,12 +374,46 @@ export function Recordings() {
               <div className="mt-4">
                 <h4 className="text-sm font-semibold text-slate-300 mb-2">Transkript</h4>
                 {loadedTranscripts[session.id] ? (
-                  <pre className="bg-slate-900/50 rounded-lg p-4 text-sm text-slate-300 overflow-auto max-h-96 whitespace-pre-wrap">
-                    {loadedTranscripts[session.id]}
-                  </pre>
+                  <div className="bg-slate-900/50 rounded-lg p-2 text-sm text-slate-300 overflow-auto max-h-96 space-y-1">
+                    {loadedTranscripts[session.id]!.split('\n').map((line, index) => {
+                      const lineMatch = line.match(/^((?:\[\d{2}:\d{2}(?::\d{2})?\])\s*)(.*)$/);
+                      const timestamp = lineMatch?.[1]?.trim() ?? '';
+                      const rest = lineMatch?.[2] ?? line;
+                      const hasTimestamp = !!timestamp;
+                      return (
+                        <div key={`${session.id}-${index}`} className="flex items-start gap-2 px-2 py-1 rounded hover:bg-slate-800/50 group">
+                          {hasTimestamp && (
+                            <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                              <span className="text-[var(--accent)] font-mono text-xs select-none">{timestamp}</span>
+                              <button
+                                type="button"
+                                onClick={() => applyTrimFromTimestamp(session.id, timestamp, 'start')}
+                                title="Ab hier als Startzeit übernehmen"
+                                className="text-[10px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-[var(--accent)] hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
+                              >
+                                Start
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => applyTrimFromTimestamp(session.id, timestamp, 'end')}
+                                title="Bis hier als Endzeit übernehmen"
+                                className="text-[10px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-[var(--accent)] hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
+                              >
+                                Ende
+                              </button>
+                            </div>
+                          )}
+                          <span className="break-words">{hasTimestamp ? rest : line}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : (
                   <p className="text-slate-400 text-sm">Noch kein Transkript verfügbar.</p>
                 )}
+                <p className="text-xs text-slate-500 mt-2">
+                  Klicke im Transkript auf <strong>Start</strong> oder <strong>Ende</strong>, um die Trim-Zeit direkt aus dem Transkript zu übernehmen. Danach auf „Speichern & transkribieren“ klicken.
+                </p>
               </div>
             )}
 
