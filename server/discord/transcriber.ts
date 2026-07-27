@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,22 @@ import type { RecordingFile } from '../../shared/types.js';
 const WHISPER_MODEL = process.env.WHISPER_MODEL || 'base';
 const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE || 'de';
 const WHISPER_FP16 = process.env.WHISPER_FP16 === 'true';
-const PYTHON_COMMAND = process.env.PYTHON_COMMAND || 'python';
+
+function findPythonCommand(): string {
+  const candidates = [process.env.PYTHON_COMMAND, 'python3', 'python'].filter((cmd): cmd is string => Boolean(cmd));
+  for (const cmd of candidates) {
+    try {
+      execSync(`${cmd} --version`, { stdio: 'ignore' });
+      return cmd;
+    } catch {
+      // try next
+    }
+  }
+  return process.env.PYTHON_COMMAND || 'python3';
+}
+
+const PYTHON_COMMAND = findPythonCommand();
+console.log(`[transcriber] Using Python command: ${PYTHON_COMMAND}`);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
