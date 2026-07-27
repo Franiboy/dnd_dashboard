@@ -1,5 +1,6 @@
 import { Router, type Response, type NextFunction } from 'express';
-import { rm } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getBotStatus, getAllVoiceChannels, finishRecording, getActiveRecording, getMonitoredChannel } from '../discord/bot.js';
 import { runTranscription, getTranscriptionProgress } from '../discord/transcriber.js';
@@ -150,6 +151,61 @@ router.put('/:id/trim', (req, res) => {
   });
 
   emitSessionsUpdated();
+  res.json({ session: getSessionById(id) });
+});
+
+function parseTimestamp(ts: string): number | null {
+  const match = ts.match(/\[(\d{2}):(\d{2})(?::(\d{2}))?\]/);
+  if (!match) return null;
+  const [, a, b, c] = match;
+  if (c) {
+    return parseInt(a, 10) * 3600 + parseInt(b, 10) * 60 + parseInt(c, 10);
+  }
+  return parseInt(a, 10) * 60 + parseInt(b, 10);
+}
+
+router.post('/:id/trim-transcript', async (req, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+
+  const { startSeconds, endSeconds } = req.body;
+  if (
+    (startSeconds !== undefined && startSeconds !== null && typeof startSeconds !== 'number') ||
+    (endSeconds !== undefined && endSeconds !== null && typeof endSeconds !== 'number')
+  ) {
+    res.status(400).json({ error: 'Werte müssen Zahlen oder null sein' });
+    return;
+  }
+
+  if (!session.transcript) {
+    res.status(400).json({ error: 'Kein Transkript vorhanden' });
+    return;
+  }
+
+  const lines = session.transcript.split('\n');
+  const trimmed = lines.filter((line) => {
+    const ts = parseTimestamp(line);
+    if (ts === null) return true;
+    if (startSeconds !== undefined && startSeconds !== null && ts < startSeconds) return false;
+    if (endSeconds !== undefined && endSeconds !== null && ts > endSeconds) return false;
+    return true;
+  });
+
+  const newTranscript = trimmed.join('\n');
+  const transcriptPath = join(session.directory, 'transcript.txt');
+  await writeFile(transcriptPath, newTranscript);
+
+  updateSession(id, {
+    transcript: newTranscript,
+    trimStartSeconds: startSeconds !== undefined ? startSeconds : session.trimStartSeconds,
+    trimEndSeconds: endSeconds !== undefined ? endSeconds : session.trimEndSeconds,
+  });
+  emitSessionsUpdated();
+
   res.json({ session: getSessionById(id) });
 });
 
