@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { BackButton } from '../components/BackButton';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useApi } from '../hooks/useApi';
 import type { RecordingChannel, RecordingSession, VersionInfo } from '../../shared/types';
 
@@ -38,6 +39,7 @@ export function Recordings() {
   const [visibleTranscripts, setVisibleTranscripts] = useState<Set<number>>(new Set());
   const [loadingTranscript, setLoadingTranscript] = useState<Set<number>>(new Set());
   const [trimInputs, setTrimInputs] = useState<Record<number, TrimInputs>>({});
+  const [sessionToDelete, setSessionToDelete] = useState<number | null>(null);
 
   useEffect(() => {
     let eventSource: EventSource | null = null;
@@ -114,10 +116,15 @@ export function Recordings() {
     setWorking(false);
   }
 
-  async function deleteSession(sessionId: number) {
-    if (!window.confirm('Aufnahme wirklich löschen?')) return;
+  function startDeleteSession(sessionId: number) {
+    setSessionToDelete(sessionId);
+  }
+
+  async function confirmDeleteSession() {
+    if (sessionToDelete === null) return;
     setWorking(true);
-    await request(`/api/recordings/${sessionId}`, { method: 'DELETE' });
+    setSessionToDelete(null);
+    await request(`/api/recordings/${sessionToDelete}`, { method: 'DELETE' });
     setWorking(false);
   }
 
@@ -301,7 +308,7 @@ export function Recordings() {
                 <Button
                   variant="danger"
                   disabled={working}
-                  onClick={() => deleteSession(session.id)}
+                  onClick={() => startDeleteSession(session.id)}
                 >
                   Löschen
                 </Button>
@@ -425,6 +432,20 @@ export function Recordings() {
           </div>
         ))}
       </div>
+
+      {sessionToDelete !== null && (
+        <ConfirmDialog
+          title="Aufnahme löschen"
+          confirmLabel="Löschen"
+          cancelLabel="Abbrechen"
+          variant="danger"
+          loading={working}
+          onConfirm={confirmDeleteSession}
+          onCancel={() => setSessionToDelete(null)}
+        >
+          <p>Möchtest du die Aufnahme wirklich löschen?</p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
