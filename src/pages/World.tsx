@@ -286,7 +286,6 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
   const [knowledge, setKnowledge] = useState<EntityKnowledgeEntry[]>([]);
   const [summary, setSummary] = useState<string | null>(null);
   const [summaryDirty, setSummaryDirty] = useState(false);
-  const [generatingKnowledge, setGeneratingKnowledge] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [editingKnowledgeId, setEditingKnowledgeId] = useState<number | null>(null);
   const [editingKnowledgeTitle, setEditingKnowledgeTitle] = useState('');
@@ -358,13 +357,6 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
     });
   }
 
-  async function loadKnowledge() {
-    const { data } = await request<{ entries: EntityKnowledgeEntry[] }>(
-      `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(detail?.canonical ?? name)}`,
-    );
-    if (data) setKnowledge(data.entries || []);
-  }
-
   function startEditKnowledge(entry: EntityKnowledgeEntry) {
     setEditingKnowledgeId(entry.id);
     setEditingKnowledgeTitle(entry.title || '');
@@ -431,16 +423,6 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
     }
   }
 
-  async function loadSummary() {
-    const { data } = await request<{ summary: string | null; isDirty: boolean }>(
-      `/api/entities/summary?type=${encodeURIComponent(type)}&name=${encodeURIComponent(detail?.canonical ?? name)}`,
-    );
-    if (data) {
-      setSummary(data.summary ?? null);
-      setSummaryDirty(data.isDirty ?? true);
-    }
-  }
-
   async function handleGenerateSummary() {
     setGeneratingSummary(true);
     const { data, error } = await request<{ summary: string }>('/api/entities/summary/generate', {
@@ -453,24 +435,6 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
       setSummary(data.summary);
       setSummaryDirty(false);
       showSuccess('Zusammenfassung generiert.');
-    }
-  }
-
-  async function handleGenerateKnowledge() {
-    setGeneratingKnowledge(true);
-    const { data, error } = await request<{ generated: { title: string | null; content: string }[] }>(
-      '/api/entities/knowledge/generate',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, name: detail?.canonical ?? name }),
-      },
-    );
-    setGeneratingKnowledge(false);
-    if (!error) {
-      await loadKnowledge();
-      await loadSummary();
-      showSuccess(data?.generated?.length ? `${data.generated.length} Wissenseinträge generiert.` : 'Keine neuen Einträge gefunden.');
     }
   }
 
@@ -700,19 +664,9 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
 
           {activeTab === 'knowledge' && (
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-[var(--text-h)]">
-                  Wissen
-                </label>
-                <button
-                  type="button"
-                  onClick={handleGenerateKnowledge}
-                  disabled={generatingKnowledge}
-                  className="text-xs px-2 py-1 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
-                >
-                  {generatingKnowledge ? 'Wird generiert...' : 'KI aus Tagebuch generieren'}
-                </button>
-              </div>
+              <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
+                Wissen
+              </label>
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {knowledge.length === 0 ? (
                   <p className="text-slate-500 text-sm italic">Noch keine Wissenseinträge vorhanden.</p>
