@@ -38,6 +38,7 @@ export async function rewriteTextWithAi(
   existingSessionId: string | null,
   model?: string,
   onLog?: (line: string) => void,
+  knowledgeContext?: string,
 ): Promise<RewriteResult> {
   const plainText = stripHtml(originalHtml).trim();
   if (!plainText) {
@@ -67,6 +68,7 @@ export async function rewriteTextWithAi(
   const promptParts = existingRewrittenContent
     ? [
         'Improve the following rewritten German diary entry further.',
+        ...(knowledgeContext ? [knowledgeContext] : []),
         ...baseInstructions,
         '',
         'Current rewritten version (improve this):',
@@ -77,6 +79,7 @@ export async function rewriteTextWithAi(
       ]
     : [
         'Rewrite the following German diary entry in HTML format.',
+        ...(knowledgeContext ? [knowledgeContext] : []),
         ...baseInstructions,
         '',
         'Diary entry:',
@@ -134,12 +137,14 @@ export async function improveRewrittenWithCommand(
   sessionId: string,
   model?: string,
   onLog?: (line: string) => void,
+  knowledgeContext?: string,
 ): Promise<RewriteResult> {
   const rewrittenFilePath = getRewrittenFilePath(entryId);
   const plainOriginal = stripHtml(originalHtml).trim();
 
   const prompt = [
     'You are improving a previously rewritten German diary entry based on a user command.',
+    ...(knowledgeContext ? [knowledgeContext] : []),
     'Keep the output in HTML format. Preserve all existing HTML tags and structure.',
     'Only change the text content as requested. Do NOT wrap the output in markdown code blocks.',
     'Do NOT run any other commands or perform any other actions.',
@@ -191,6 +196,7 @@ export async function summarizeTextWithAi(
   text: string,
   model?: string,
   onLog?: (line: string) => void,
+  knowledgeContext?: string,
 ): Promise<string | null> {
   const plainText = stripHtml(text);
   if (!plainText) {
@@ -202,6 +208,7 @@ export async function summarizeTextWithAi(
 
   const prompt = [
     'Wichtig: Deine Antwort darf maximal 500 Zeichen lang sein. Überschreite dieses Limit auf keinen Fall.',
+    ...(knowledgeContext ? [knowledgeContext] : []),
     'Erstelle eine sehr grobe Zusammenfassung des folgenden deutschen Tagebucheintrags.',
     'Nenne nur die gröbten Ereignisse, Orte und Handlungsstränge, z. B. "Kampf mit Drachen", "Aufenthalt in Goldenfields", "Verhandlung in Waterdeep".',
     'Lass Details, Namen, Vermutungen und Gefühle weg, sofern sie nicht absolut zentral für das gröbste Ereignis sind.',
@@ -296,6 +303,7 @@ export async function extractEntitiesFromDiary(
   text: string,
   model?: string,
   onLog?: (line: string) => void,
+  knowledgeContext?: string,
 ): Promise<DiaryEntities> {
   const plainText = stripHtml(text);
   if (!plainText) {
@@ -304,6 +312,7 @@ export async function extractEntitiesFromDiary(
 
   const prompt = [
     'Extrahiere alle eindeutigen Personen/Charaktere, Organisationen/Fraktionen und Orte aus dem folgenden deutschen Tagebucheintrag.',
+    ...(knowledgeContext ? [knowledgeContext] : []),
     '',
     'Regeln:',
     '- persons: Lebende Wesen, Charaktere, Tiere mit eigenem Namen oder eindeutiger Bezeichnung. Keine allgemeinen Begriffe wie "Wachen", "Aufständische" oder "Leute".',

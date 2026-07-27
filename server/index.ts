@@ -21,6 +21,10 @@ import { runMigrations } from './migrations.js';
 import { recoverPreviewServers, startFeatureRequestBehindWatcher } from './ai/worker.js';
 import { startBot } from './discord/bot.js';
 import { startTranscriptionScheduler, stopTranscriptionScheduler } from './discord/scheduler.js';
+import {
+  startEntitySummaryScheduler,
+  stopEntitySummaryScheduler,
+} from './scheduler/entitySummaries.js';
 import { logger } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -63,6 +67,7 @@ runMigrations();
 ensureAdminUser();
 startBot();
 startTranscriptionScheduler();
+startEntitySummaryScheduler();
 
 // In preview mode, all routes (API + static SPA) require an authenticated user
 // with admin or preview access. Login endpoints are not exposed on previews.
@@ -115,6 +120,7 @@ function shutdown(signal: string) {
   console.log(`\n${signal} received, shutting down gracefully...`);
   stopBehindWatcher();
   stopTranscriptionScheduler();
+  stopEntitySummaryScheduler();
 
   // Force close after 1.5s even if sockets are still open
   const forceExit = setTimeout(() => {

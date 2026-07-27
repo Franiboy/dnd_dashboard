@@ -7,7 +7,7 @@ import { DashboardLayout } from '../components/DashboardLayout';
 import { GridPanel } from '../components/GridPanel';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
-import type { EntitiesResponse, EntityDetail, EntityType, EntityUpdatePayload } from '../../shared/types';
+import type { EntitiesResponse, EntityDetail, EntityType, EntityUpdatePayload, EntityKnowledgeEntry } from '../../shared/types';
 
 type PanelView = 'entities' | 'blacklist';
 
@@ -282,23 +282,45 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
   const [canonical, setCanonical] = useState('');
   const [aliases, setAliases] = useState<string[]>([]);
   const [newAlias, setNewAlias] = useState('');
+  const [knowledge, setKnowledge] = useState<EntityKnowledgeEntry[]>([]);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryDirty, setSummaryDirty] = useState(false);
+  const [generatingKnowledge, setGeneratingKnowledge] = useState(false);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [editingKnowledgeId, setEditingKnowledgeId] = useState<number | null>(null);
+  const [editingKnowledgeTitle, setEditingKnowledgeTitle] = useState('');
+  const [editingKnowledgeContent, setEditingKnowledgeContent] = useState('');
+  const [newKnowledgeTitle, setNewKnowledgeTitle] = useState('');
+  const [newKnowledgeContent, setNewKnowledgeContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const { data } = await request<EntityDetail>(
-        `/api/entities/detail?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`,
-      );
+      const canonicalName = detail?.canonical ?? name;
+      const [{ data: detailData }, { data: knowledgeData }, { data: summaryData }] = await Promise.all([
+        request<EntityDetail>(
+          `/api/entities/detail?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`,
+        ),
+        request<{ entries: EntityKnowledgeEntry[] }>(
+          `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`,
+        ),
+        request<{ summary: string | null; isDirty: boolean }>(
+          `/api/entities/summary?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`,
+        ),
+      ]);
       if (cancelled) return;
-      if (!data) {
+      if (!detailData) {
         setLoading(false);
         return;
       }
-      setDetail(data);
-      setCanonical(data.canonical);
-      setAliases(data.aliases);
+      setDetail(detailData);
+      setCanonical(detailData.canonical);
+      setAliases(detailData.aliases);
+      setKnowledge(knowledgeData?.entries || []);
+      setSummary(summaryData?.summary ?? null);
+      setSummaryDirty(summaryData?.isDirty ?? true);
       setLoading(false);
     }
     load();
@@ -332,6 +354,122 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
       copy[index] = value;
       return copy;
     });
+  }
+
+  async function loadKnowledge() {
+    const { data } = await request<{ entries: EntityKnowledgeEntry[] }>(
+      `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(detail?.canonical ?? name)}`,
+    );
+    if (data) setKnowledge(data.entries || []);
+  }
+
+  function startEditKnowledge(entry: EntityKnowledgeEntry) {
+    setEditingKnowledgeId(entry.id);
+    setEditingKnowledgeTitle(entry.title || '');
+    setEditingKnowledgeContent(entry.content);
+  }
+
+  function cancelEditKnowledge() {
+    setEditingKnowledgeId(null);
+    setEditingKnowledgeTitle('');
+    setEditingKnowledgeContent('');
+  }
+
+  async function saveEditKnowledge(id: number) {
+    if (!editingKnowledgeContent.trim()) {
+      showError('Inhalt ist erforderlich');
+      return;
+    }
+    const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(`/api/entities/knowledge/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: editingKnowledgeTitle.trim() || null,
+        content: editingKnowledgeContent.trim(),
+      }),
+    });
+    if (!error && data) {
+      setKnowledge((prev) => prev.map((k) => (k.id === id ? data.entry : k)));
+      cancelEditKnowledge();
+      setSummaryDirty(true);
+      showSuccess('Wissen aktualisiert.');
+    }
+  }
+
+  async function handleDeleteKnowledge(id: number) {
+    const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(`/api/entities/knowledge/${id}`, { method: 'DELETE' });
+    if (!error && data) {
+      setKnowledge((prev) => prev.map((k) => (k.id === id ? data.entry : k)));
+      setSummaryDirty(true);
+      showSuccess('Wissen als gelöscht markiert.');
+    }
+  }
+
+  async function handleAddKnowledge() {
+    if (!newKnowledgeContent.trim()) {
+      showError('Inhalt ist erforderlich');
+      return;
+    }
+    const { data, error } = await request<{ entry: EntityKnowledgeEntry }>('/api/entities/knowledge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type,
+        name: detail?.canonical ?? name,
+        title: newKnowledgeTitle.trim() || null,
+        content: newKnowledgeContent.trim(),
+      }),
+    });
+    if (!error && data) {
+      setKnowledge((prev) => [data.entry, ...prev]);
+      setNewKnowledgeTitle('');
+      setNewKnowledgeContent('');
+      setSummaryDirty(true);
+      showSuccess('Wissen hinzugefügt.');
+    }
+  }
+
+  async function loadSummary() {
+    const { data } = await request<{ summary: string | null; isDirty: boolean }>(
+      `/api/entities/summary?type=${encodeURIComponent(type)}&name=${encodeURIComponent(detail?.canonical ?? name)}`,
+    );
+    if (data) {
+      setSummary(data.summary ?? null);
+      setSummaryDirty(data.isDirty ?? true);
+    }
+  }
+
+  async function handleGenerateSummary() {
+    setGeneratingSummary(true);
+    const { data, error } = await request<{ summary: string }>('/api/entities/summary/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, name: detail?.canonical ?? name }),
+    });
+    setGeneratingSummary(false);
+    if (!error && data) {
+      setSummary(data.summary);
+      setSummaryDirty(false);
+      showSuccess('Zusammenfassung generiert.');
+    }
+  }
+
+  async function handleGenerateKnowledge() {
+    setGeneratingKnowledge(true);
+    const { data, error } = await request<{ generated: { title: string | null; content: string }[] }>(
+      '/api/entities/knowledge/generate',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, name: detail?.canonical ?? name }),
+      },
+    );
+    setGeneratingKnowledge(false);
+    if (!error) {
+      await loadKnowledge();
+      await loadSummary();
+      showSuccess(data?.generated?.length ? `${data.generated.length} Wissenseinträge generiert.` : 'Keine neuen Einträge gefunden.');
+    }
   }
 
   async function handleSave() {
@@ -420,6 +558,36 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
           </div>
 
           <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-[var(--text-h)]">Zusammenfassung</label>
+              {(summaryDirty || !summary) && (
+                <button
+                  type="button"
+                  onClick={handleGenerateSummary}
+                  disabled={generatingSummary}
+                  className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
+                >
+                  {generatingSummary ? 'Wird generiert...' : summary ? 'Aktualisieren' : 'Generieren'}
+                </button>
+              )}
+            </div>
+            {summary ? (
+              <div className={`text-sm text-[var(--text-h)] p-2 rounded border border-[var(--border)] ${summaryDirty ? 'bg-amber-900/20' : 'bg-slate-900/50'}`}>
+                <p className="whitespace-pre-wrap">{summary}</p>
+                {summaryDirty && (
+                  <p className="text-xs text-amber-500 mt-1 italic">
+                    Zusammenfassung ist veraltet und sollte aktualisiert werden.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="text-sm text-slate-500 italic p-2 rounded border border-dashed border-[var(--border)] bg-slate-900/30">
+                Noch keine Zusammenfassung vorhanden.
+              </div>
+            )}
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
               Synonyme
             </label>
@@ -484,8 +652,230 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
               </button>
             </div>
           </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-[var(--text-h)]">
+                Wissen
+              </label>
+              <button
+                type="button"
+                onClick={handleGenerateKnowledge}
+                disabled={generatingKnowledge}
+                className="text-xs px-2 py-1 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                {generatingKnowledge ? 'Wird generiert...' : 'KI aus Tagebuch generieren'}
+              </button>
+            </div>
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {knowledge.length === 0 ? (
+                <p className="text-slate-500 text-sm italic">Noch keine Wissenseinträge vorhanden.</p>
+              ) : (
+                knowledge.map((entry) => {
+                  const isDeleted = entry.status === 'deleted';
+                  return (
+                    <div
+                      key={entry.id}
+                      className={`space-y-1 p-2 rounded border border-[var(--border)] ${
+                        isDeleted ? 'bg-slate-900/20 opacity-70' : 'bg-slate-900/50'
+                      }`}
+                    >
+                      {editingKnowledgeId === entry.id ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editingKnowledgeTitle}
+                            onChange={(e) => setEditingKnowledgeTitle(e.target.value)}
+                            placeholder="Titel (optional)"
+                            className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                          />
+                          <textarea
+                            value={editingKnowledgeContent}
+                            onChange={(e) => setEditingKnowledgeContent(e.target.value)}
+                            rows={2}
+                            className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => saveEditKnowledge(entry.id)}
+                              className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition"
+                            >
+                              Speichern
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditKnowledge}
+                              className="text-xs px-2 py-1 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2">
+                            {entry.title && (
+                              <p className={`text-xs font-semibold ${isDeleted ? 'text-slate-500 line-through' : 'text-[var(--accent)]'}`}>
+                                {entry.title}
+                              </p>
+                            )}
+                            {isDeleted && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--danger)]/10 text-[var(--danger)] font-medium">
+                                Gelöscht
+                              </span>
+                            )}
+                          </div>
+                          <p className={`text-sm whitespace-pre-wrap ${isDeleted ? 'text-slate-500 line-through' : 'text-[var(--text-h)]'}`}>
+                            {entry.content}
+                          </p>
+                          {isDeleted && entry.statusReason && (
+                            <p className="text-xs text-slate-500 italic">Grund: {entry.statusReason}</p>
+                          )}
+                          {!isDeleted && (
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => startEditKnowledge(entry)}
+                                title="Bearbeiten"
+                                className="text-xs text-slate-500 hover:text-[var(--accent)] transition"
+                              >
+                                Bearbeiten
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteKnowledge(entry.id)}
+                                title="Als ungültig markieren"
+                                className="text-xs text-slate-500 hover:text-[var(--danger)] transition"
+                              >
+                                Ungültig
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="space-y-1 mt-2 p-2 rounded bg-slate-900/30 border border-dashed border-[var(--border)]">
+              <input
+                type="text"
+                value={newKnowledgeTitle}
+                onChange={(e) => setNewKnowledgeTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleAddKnowledge();
+                  }
+                }}
+                placeholder="Titel (optional)"
+                className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+              />
+              <textarea
+                value={newKnowledgeContent}
+                onChange={(e) => setNewKnowledgeContent(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.ctrlKey) {
+                    e.preventDefault();
+                    handleAddKnowledge();
+                  }
+                }}
+                rows={2}
+                placeholder="Neuer Wissenseintrag"
+                className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
+              />
+              <button
+                type="button"
+                onClick={handleAddKnowledge}
+                disabled={!newKnowledgeContent.trim()}
+                className="w-full text-xs px-3 py-1 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
+              >
+                Hinzufügen
+              </button>
+            </div>
+          </div>
         </div>
       )}
+    </Modal>
+  );
+}
+
+interface DistributeKnowledgeDialogProps {
+  onClose: () => void;
+  onDistributed: () => void;
+}
+
+function DistributeKnowledgeDialog({ onClose, onDistributed }: DistributeKnowledgeDialogProps) {
+  const { request } = useApi();
+  const { showSuccess, showError } = useError();
+  const [text, setText] = useState('');
+  const [working, setWorking] = useState(false);
+
+  async function handleDistribute() {
+    if (!text.trim()) return;
+    setWorking(true);
+    const { data, error } = await request<{ created: EntityKnowledgeEntry[]; deleted: { id: number; reason: string; entry: EntityKnowledgeEntry }[] }>(
+      '/api/entities/knowledge/distribute',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.trim() }),
+      },
+    );
+    setWorking(false);
+    if (!error && data) {
+      const parts: string[] = [];
+      if (data.created.length) parts.push(`${data.created.length} neu`);
+      if (data.deleted.length) parts.push(`${data.deleted.length} als gelöscht markiert`);
+      showSuccess(parts.length ? `Wissen eingeordnet: ${parts.join(', ')}.` : 'Keine Änderungen erkannt.');
+      onDistributed();
+      onClose();
+    } else if (error) {
+      showError(error);
+    }
+  }
+
+  return (
+    <Modal
+      isOpen
+      title="Wissen einordnen"
+      onClose={onClose}
+      actions={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={working}
+            className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
+          >
+            Abbrechen
+          </button>
+          <button
+            type="button"
+            onClick={handleDistribute}
+            disabled={working || !text.trim()}
+            className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+          >
+            {working ? 'Wird eingeordnet...' : 'Einordnen'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-slate-400">
+          Gib einen Freitext ein. Die KI ordnet die Fakten passenden Entitäten zu, legt
+          Wissenseinträge an und markiert widersprüchliche Einträge als gelöscht.
+        </p>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={6}
+          placeholder="z. B. Vimak und Gideon gehören der Wagenwacht an."
+          className="w-full px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
+        />
+      </div>
     </Modal>
   );
 }
@@ -508,6 +898,7 @@ export function World() {
   const [selectedEntity, setSelectedEntity] = useState<{ name: string; type: EntityType } | null>(
     null,
   );
+  const [distributeOpen, setDistributeOpen] = useState(false);
   const canClickRef = useRef(true);
   const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -725,7 +1116,15 @@ export function World() {
 
   return (
     <div className="h-full flex flex-col p-6">
-      <DashboardHeader title="Welt" onReset={handleResetLayout} />
+      <DashboardHeader title="Welt" onReset={handleResetLayout}>
+        <button
+          type="button"
+          onClick={() => setDistributeOpen(true)}
+          className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition"
+        >
+          Wissen einordnen
+        </button>
+      </DashboardHeader>
 
       <DashboardLayout
         key={resetKey}
@@ -762,6 +1161,16 @@ export function World() {
           name={selectedEntity.name}
           onClose={handleCloseEdit}
           onSaved={() => {
+            load();
+            loadBlacklists();
+          }}
+        />
+      )}
+
+      {distributeOpen && (
+        <DistributeKnowledgeDialog
+          onClose={() => setDistributeOpen(false)}
+          onDistributed={() => {
             load();
             loadBlacklists();
           }}
