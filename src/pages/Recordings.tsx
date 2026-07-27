@@ -12,21 +12,6 @@ interface StatusResponse {
   monitoredChannel?: { channelId: string | null; channelName: string | null } | null;
 }
 
-interface TrimInputs {
-  start: string;
-  end: string;
-}
-
-function parseTimestamp(ts: string): number | null {
-  const match = ts.match(/\[(\d{2}):(\d{2})(?::(\d{2}))?\]/);
-  if (!match) return null;
-  const [, a, b, c] = match;
-  if (c) {
-    return parseInt(a, 10) * 3600 + parseInt(b, 10) * 60 + parseInt(c, 10);
-  }
-  return parseInt(a, 10) * 60 + parseInt(b, 10);
-}
-
 export function Recordings() {
   const { request } = useApi();
   const [status, setStatus] = useState<StatusResponse | null>(null);
@@ -38,7 +23,6 @@ export function Recordings() {
   const [loadedTranscripts, setLoadedTranscripts] = useState<Record<number, string | null>>({});
   const [visibleTranscripts, setVisibleTranscripts] = useState<Set<number>>(new Set());
   const [loadingTranscript, setLoadingTranscript] = useState<Set<number>>(new Set());
-  const [trimInputs, setTrimInputs] = useState<Record<number, TrimInputs>>({});
   const [sessionToDelete, setSessionToDelete] = useState<number | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<
     Record<number, { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null>
@@ -84,21 +68,6 @@ export function Recordings() {
       eventSource?.close();
     };
   }, [request]);
-
-  useEffect(() => {
-    setTrimInputs((prev) => {
-      const next = { ...prev };
-      for (const session of sessions) {
-        if (!next[session.id]) {
-          next[session.id] = {
-            start: session.trimStartSeconds?.toString() ?? '',
-            end: session.trimEndSeconds?.toString() ?? '',
-          };
-        }
-      }
-      return next;
-    });
-  }, [sessions]);
 
   useEffect(() => {
     const processingIds = sessions.filter((s) => s.status === 'processing').map((s) => s.id);
@@ -150,55 +119,6 @@ export function Recordings() {
     setSessionToDelete(null);
     await request(`/api/recordings/${sessionToDelete}`, { method: 'DELETE' });
     setWorking(false);
-  }
-
-  async function saveTrimAndTranscribe(sessionId: number) {
-    const inputs = trimInputs[sessionId];
-    if (!inputs) return;
-
-    const start = inputs.start.trim() ? parseFloat(inputs.start) : null;
-    const end = inputs.end.trim() ? parseFloat(inputs.end) : null;
-
-    if (start !== null && Number.isNaN(start)) {
-      alert('Startzeit muss eine Zahl sein');
-      return;
-    }
-    if (end !== null && Number.isNaN(end)) {
-      alert('Endzeit muss eine Zahl sein');
-      return;
-    }
-    if (start !== null && end !== null && start >= end) {
-      alert('Startzeit muss vor der Endzeit liegen');
-      return;
-    }
-
-    setWorking(true);
-    const { error } = await request<{ session: RecordingSession }>(`/api/recordings/${sessionId}/trim`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ trimStartSeconds: start, trimEndSeconds: end }),
-    });
-
-    if (!error) {
-      await startTranscriptionNow(sessionId);
-    }
-    setWorking(false);
-  }
-
-  function updateTrim(sessionId: number, field: keyof TrimInputs, value: string) {
-    setTrimInputs((prev) => ({
-      ...prev,
-      [sessionId]: { ...prev[sessionId], [field]: value },
-    }));
-  }
-
-  function applyTrimFromTimestamp(sessionId: number, line: string, field: keyof TrimInputs) {
-    const seconds = parseTimestamp(line);
-    if (seconds === null) return;
-    setTrimInputs((prev) => ({
-      ...prev,
-      [sessionId]: { ...prev[sessionId], [field]: seconds.toString() },
-    }));
   }
 
   async function toggleTranscript(sessionId: number) {
@@ -365,48 +285,6 @@ export function Recordings() {
               </div>
             </div>
 
-            {(session.status === 'pending_transcription' || session.status === 'error' || session.status === 'completed') && (
-              <div className="mt-4 p-3 rounded-lg bg-slate-900/50 border border-[var(--border)]">
-                <p className="text-sm text-slate-300 mb-2">Bereich zuschneiden (Sekunden, optional)</p>
-                <div className="flex flex-col sm:flex-row gap-3 items-end">
-                  <div className="flex-1 w-full">
-                    <label className="block text-xs text-slate-500 mb-1">Startzeit</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={trimInputs[session.id]?.start ?? ''}
-                      onChange={(e) => updateTrim(session.id, 'start', e.target.value)}
-                      placeholder="0"
-                      className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
-                    />
-                  </div>
-                  <div className="flex-1 w-full">
-                    <label className="block text-xs text-slate-500 mb-1">Endzeit</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={trimInputs[session.id]?.end ?? ''}
-                      onChange={(e) => updateTrim(session.id, 'end', e.target.value)}
-                      placeholder="leer = bis Ende"
-                      className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
-                    />
-                  </div>
-                  <Button
-                    variant="accent"
-                    disabled={working}
-                    onClick={() => saveTrimAndTranscribe(session.id)}
-                  >
-                    Speichern & transkribieren
-                  </Button>
-                </div>
-                <p className="text-xs text-slate-500 mt-2">
-                  Beispiel: Startzeit 600 überspringt die ersten 10 Minuten.
-                </p>
-              </div>
-            )}
-
             {session.status === 'recording' && (
               <div className="mt-4 p-3 rounded-lg bg-[var(--danger)]/20 text-[var(--danger)] text-sm flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-[var(--danger)] animate-pulse" />
@@ -431,46 +309,12 @@ export function Recordings() {
               <div className="mt-4">
                 <h4 className="text-sm font-semibold text-slate-300 mb-2">Transkript</h4>
                 {loadedTranscripts[session.id] ? (
-                  <div className="bg-slate-900/50 rounded-lg p-2 text-sm text-slate-300 overflow-auto max-h-96 space-y-1">
-                    {loadedTranscripts[session.id]!.split('\n').map((line, index) => {
-                      const lineMatch = line.match(/^((?:\[\d{2}:\d{2}(?::\d{2})?\])\s*)(.*)$/);
-                      const timestamp = lineMatch?.[1]?.trim() ?? '';
-                      const rest = lineMatch?.[2] ?? line;
-                      const hasTimestamp = !!timestamp;
-                      return (
-                        <div key={`${session.id}-${index}`} className="flex items-start gap-2 px-2 py-1 rounded hover:bg-slate-800/50 group">
-                          {hasTimestamp && (
-                            <div className="flex items-center gap-1 shrink-0 pt-0.5">
-                              <span className="text-[var(--accent)] font-mono text-xs select-none">{timestamp}</span>
-                              <button
-                                type="button"
-                                onClick={() => applyTrimFromTimestamp(session.id, timestamp, 'start')}
-                                title="Ab hier als Startzeit übernehmen"
-                                className="text-[10px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-[var(--accent)] hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
-                              >
-                                Start
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => applyTrimFromTimestamp(session.id, timestamp, 'end')}
-                                title="Bis hier als Endzeit übernehmen"
-                                className="text-[10px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-[var(--accent)] hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
-                              >
-                                Ende
-                              </button>
-                            </div>
-                          )}
-                          <span className="break-words">{hasTimestamp ? rest : line}</span>
-                        </div>
-                      );
-                    })}
+                  <div className="bg-slate-900/50 rounded-lg p-3 text-sm text-slate-300 overflow-auto max-h-96 whitespace-pre-wrap font-mono">
+                    {loadedTranscripts[session.id]}
                   </div>
                 ) : (
                   <p className="text-slate-400 text-sm">Noch kein Transkript verfügbar.</p>
                 )}
-                <p className="text-xs text-slate-500 mt-2">
-                  Klicke im Transkript auf <strong>Start</strong> oder <strong>Ende</strong>, um die Trim-Zeit direkt aus dem Transkript zu übernehmen. Danach auf „Speichern & transkribieren“ klicken.
-                </p>
               </div>
             )}
 
