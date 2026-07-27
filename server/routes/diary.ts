@@ -184,55 +184,7 @@ router.post('/entries', async (req: AuthRequest, res) => {
     return;
   }
 
-  let entry = createDiaryEntry(req.user.id, title, content);
-  if (isAiEnabled()) {
-    const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
-    try {
-      const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-      const knowledgeContext = getKnowledgeContextForText(content, { entryId: entry.id });
-      const [summary, aiEntities] = await Promise.all([
-        summarizeTextWithAi(content, undefined, onLog, knowledgeContext).catch(() => null),
-        extractEntitiesFromDiary(content, undefined, onLog, knowledgeContext).catch(() => ({
-          persons: [],
-          organizations: [],
-          locations: [],
-        })),
-      ]);
-      const existingEntities = findExistingEntitiesInText(content);
-      const entities = finalizeEntities(mergeEntities(aiEntities, existingEntities));
-
-      sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
-      const updates: Parameters<typeof updateDiaryEntry>[1] = {};
-      if (summary !== null) {
-        updates.summary = truncateSummary(summary);
-      }
-      if (entities.persons.length > 0) {
-        updates.persons = entities.persons;
-      }
-      if (entities.organizations.length > 0) {
-        updates.organizations = entities.organizations;
-      }
-      if (entities.locations.length > 0) {
-        updates.locations = entities.locations;
-      }
-      if (Object.keys(updates).length > 0) {
-        const updated = updateDiaryEntry(entry.id, updates);
-        if (updated) entry = updated;
-      }
-
-      sendDiaryAiStatus(req.user!.id, 'Wissen wird aus dem Eintrag abgeleitet...');
-      try {
-        await distributeKnowledgeFromText(content, undefined, onLog);
-      } catch {
-        // Knowledge distribution is optional; the entry has already been saved.
-      }
-    } catch {
-      // AI generation failed; the entry has already been created.
-    } finally {
-      stopProgress();
-    }
-  }
-
+  const entry = createDiaryEntry(req.user.id, title, content);
   res.status(201).json({ entry });
 });
 
