@@ -17,8 +17,14 @@ export function Home() {
   }, [request]);
 
   const isAppVisible = (id: string) => {
+    const app = APPS.find((a) => a.id === id);
+    if (!app) return false;
     if (user?.disabledApps.includes(id)) return false;
-    if (id === 'recordings') return user?.isAdmin && !!version?.recordingEnabled;
+    if (app.adminOnly) {
+      if (!user?.isAdmin) return false;
+      if (id === 'recordings') return !!version?.recordingEnabled;
+      return true;
+    }
     return true;
   };
 

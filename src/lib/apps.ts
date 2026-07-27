@@ -3,6 +3,7 @@ export interface AppMeta {
   label: string;
   path: string;
   disableable?: boolean;
+  adminOnly?: boolean;
 }
 
 export const APPS: AppMeta[] = [
@@ -10,7 +11,7 @@ export const APPS: AppMeta[] = [
   { id: 'notes', label: 'Notizen', path: '/notizen', disableable: true },
   { id: 'bingo', label: 'Bingo', path: '/bingo', disableable: true },
   { id: 'world', label: 'Welt', path: '/welt', disableable: true },
-  { id: 'recordings', label: 'Aufnahmen', path: '/recordings', disableable: true },
+  { id: 'recordings', label: 'Aufnahmen', path: '/recordings', disableable: true, adminOnly: true },
   { id: 'admin', label: 'Admin', path: '/admin' },
 ];
 
