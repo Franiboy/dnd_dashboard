@@ -324,6 +324,18 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    name: 'add_recording_session_trim',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'trim_start_seconds')) {
+        db.exec('ALTER TABLE recording_sessions ADD COLUMN trim_start_seconds REAL DEFAULT 0');
+      }
+      if (!columns.some((c) => c.name === 'trim_end_seconds')) {
+        db.exec('ALTER TABLE recording_sessions ADD COLUMN trim_end_seconds REAL');
+      }
+    },
+  },
 ];
 
 export function runMigrations() {

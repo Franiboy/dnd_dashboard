@@ -37,13 +37,15 @@ export function createSession(input: CreateSessionInput): RecordingSession {
     directory: input.directory,
     transcript: null,
     error: null,
+    trimStartSeconds: null,
+    trimEndSeconds: null,
   };
 }
 
 export function getSessionById(id: number): RecordingSession | null {
   const row = db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error FROM recording_sessions WHERE id = ?',
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds FROM recording_sessions WHERE id = ?',
     )
     .get(id) as RecordingSession | undefined;
   return row ?? null;
@@ -55,7 +57,7 @@ export function listSessions(): RecordingSession[] {
       `SELECT 
         s.id, s.name, s.status, s.guild_id as guildId, s.channel_id as channelId, 
         s.created_by as createdBy, s.started_at as startedAt, s.stopped_at as stoppedAt, 
-        s.directory, NULL as transcript, s.error,
+        s.directory, NULL as transcript, s.error, s.trim_start_seconds as trimStartSeconds, s.trim_end_seconds as trimEndSeconds,
         COALESCE((SELECT COUNT(*) FROM recording_files f WHERE f.session_id = s.id AND f.wav_path IS NOT NULL), 0) as hasWavFiles
       FROM recording_sessions s
       ORDER BY started_at DESC`,
@@ -67,14 +69,14 @@ export function listSessions(): RecordingSession[] {
 export function listPendingTranscriptionSessions(): RecordingSession[] {
   return db
     .prepare(
-      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC",
+      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC",
     )
     .all() as RecordingSession[];
 }
 
 export function updateSession(
   id: number,
-  updates: Partial<Pick<RecordingSession, 'status' | 'stoppedAt' | 'transcript' | 'error' | 'directory'>>,
+  updates: Partial<Pick<RecordingSession, 'status' | 'stoppedAt' | 'transcript' | 'error' | 'directory' | 'trimStartSeconds' | 'trimEndSeconds'>>,
 ): void {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -98,6 +100,14 @@ export function updateSession(
   if (updates.directory !== undefined) {
     fields.push('directory = ?');
     values.push(updates.directory);
+  }
+  if (updates.trimStartSeconds !== undefined) {
+    fields.push('trim_start_seconds = ?');
+    values.push(updates.trimStartSeconds);
+  }
+  if (updates.trimEndSeconds !== undefined) {
+    fields.push('trim_end_seconds = ?');
+    values.push(updates.trimEndSeconds);
   }
 
   if (fields.length === 0) return;
@@ -150,6 +160,13 @@ export function setRecordingConfig(channelId: string | null): void {
   db.prepare(
     'INSERT INTO recording_config (id, channel_id, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET channel_id = excluded.channel_id, updated_at = excluded.updated_at',
   ).run(channelId, now);
+}
+
+export function deleteSession(id: number): { directory: string | null } {
+  const session = getSessionById(id);
+  const directory = session?.directory ?? null;
+  db.prepare('DELETE FROM recording_sessions WHERE id = ?').run(id);
+  return { directory };
 }
 
 export function updateFile(
