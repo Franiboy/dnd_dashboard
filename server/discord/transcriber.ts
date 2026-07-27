@@ -112,6 +112,20 @@ function buildTranscript(segments: TranscriptSegment[]): string {
   return sorted.map((s) => `[${formatTimestamp(s.start)}] ${s.speaker}: ${s.text}`).join('\n');
 }
 
+const transcriptionProgress = new Map<number, { current: number; total: number }>();
+
+export function getTranscriptionProgress(sessionId: number): { current: number; total: number } | null {
+  return transcriptionProgress.get(sessionId) ?? null;
+}
+
+function setTranscriptionProgress(sessionId: number, current: number, total: number): void {
+  transcriptionProgress.set(sessionId, { current, total });
+}
+
+function clearTranscriptionProgress(sessionId: number): void {
+  transcriptionProgress.delete(sessionId);
+}
+
 export async function runTranscription(sessionId: number, files: RecordingFile[]): Promise<void> {
   const session = getSessionById(sessionId);
   if (!session) return;
@@ -125,35 +139,38 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
   const trimStart = session.trimStartSeconds ?? 0;
   const trimEnd = session.trimEndSeconds ?? Infinity;
 
-  for (const file of files) {
-    if (!file.wavPath) continue;
-
-    const transcriptPath = join(session.directory, `speaker-${file.userId}.txt`);
-    try {
-      const segments = (await transcribeFile(file.wavPath, session.directory, file.displayName))
-        .filter((s) => s.end > trimStart && s.start < trimEnd)
-        .map((s) => ({
-          ...s,
-          start: Math.max(s.start, trimStart),
-          end: Math.min(s.end, trimEnd),
-        }));
-      const speakerText = segments.map((s) => `[${formatTimestamp(s.start)}] ${s.text}`).join('\n');
-      await writeFile(transcriptPath, speakerText);
-      updateFile(file.id, { transcriptPath });
-      allSegments.push(...segments);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      errors.push(`${file.displayName}: ${message}`);
-    }
-  }
-
-  if (allSegments.length === 0) {
-    updateSession(sessionId, { status: 'error', error: errors.join('; ') || 'Transkription lieferte keine Ergebnisse' });
-    emitSessionsUpdated();
-    return;
-  }
+  const filesWithWav = files.filter((f) => f.wavPath);
 
   try {
+    for (let i = 0; i < filesWithWav.length; i++) {
+      const file = filesWithWav[i];
+      setTranscriptionProgress(sessionId, i + 1, filesWithWav.length);
+
+      const transcriptPath = join(session.directory, `speaker-${file.userId}.txt`);
+      try {
+        const segments = (await transcribeFile(file.wavPath!, session.directory, file.displayName))
+          .filter((s) => s.end > trimStart && s.start < trimEnd)
+          .map((s) => ({
+            ...s,
+            start: Math.max(s.start, trimStart),
+            end: Math.min(s.end, trimEnd),
+          }));
+        const speakerText = segments.map((s) => `[${formatTimestamp(s.start)}] ${s.text}`).join('\n');
+        await writeFile(transcriptPath, speakerText);
+        updateFile(file.id, { transcriptPath });
+        allSegments.push(...segments);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push(`${file.displayName}: ${message}`);
+      }
+    }
+
+    if (allSegments.length === 0) {
+      updateSession(sessionId, { status: 'error', error: errors.join('; ') || 'Transkription lieferte keine Ergebnisse' });
+      emitSessionsUpdated();
+      return;
+    }
+
     const transcript = buildTranscript(allSegments);
     const transcriptPath = join(session.directory, 'transcript.txt');
     await writeFile(transcriptPath, transcript);
@@ -164,5 +181,7 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
     const message = err instanceof Error ? err.message : String(err);
     updateSession(sessionId, { status: 'error', error: `Transkript erstellung fehlgeschlagen: ${message}` });
     emitSessionsUpdated();
+  } finally {
+    clearTranscriptionProgress(sessionId);
   }
 }

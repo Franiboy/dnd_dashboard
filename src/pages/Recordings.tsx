@@ -40,6 +40,7 @@ export function Recordings() {
   const [loadingTranscript, setLoadingTranscript] = useState<Set<number>>(new Set());
   const [trimInputs, setTrimInputs] = useState<Record<number, TrimInputs>>({});
   const [sessionToDelete, setSessionToDelete] = useState<number | null>(null);
+  const [transcriptionProgress, setTranscriptionProgress] = useState<Record<number, { current: number; total: number } | null>>({});
 
   useEffect(() => {
     let eventSource: EventSource | null = null;
@@ -96,6 +97,29 @@ export function Recordings() {
       return next;
     });
   }, [sessions]);
+
+  useEffect(() => {
+    const processingIds = sessions.filter((s) => s.status === 'processing').map((s) => s.id);
+    if (processingIds.length === 0) {
+      setTranscriptionProgress({});
+      return undefined;
+    }
+
+    async function fetchProgress() {
+      for (const sessionId of processingIds) {
+        const { data } = await request<{ progress: { current: number; total: number } | null }>(
+          `/api/recordings/${sessionId}/progress`,
+          {},
+          false,
+        );
+        setTranscriptionProgress((prev) => ({ ...prev, [sessionId]: data?.progress ?? null }));
+      }
+    }
+
+    fetchProgress();
+    const interval = setInterval(fetchProgress, 1000);
+    return () => clearInterval(interval);
+  }, [sessions, request]);
 
   async function saveConfig() {
     setWorking(true);
@@ -285,6 +309,28 @@ export function Recordings() {
                 <p className="text-sm text-slate-400">
                   {new Date(session.startedAt).toLocaleString('de-DE')} · Status: {session.status}
                 </p>
+                {session.status === 'processing' && (
+                  <div className="mt-1">
+                    {transcriptionProgress[session.id] ? (
+                      <>
+                        <p className="text-xs text-[var(--accent)] mb-1">
+                          Transkribiere Datei {transcriptionProgress[session.id]!.current} von{' '}
+                          {transcriptionProgress[session.id]!.total}
+                        </p>
+                        <div className="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[var(--accent)] transition-all duration-300"
+                            style={{
+                              width: `${(transcriptionProgress[session.id]!.current / transcriptionProgress[session.id]!.total) * 100}%`,
+                            }}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-xs text-slate-400">Transkription wird vorbereitet...</p>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 {(session.status === 'pending_transcription' || session.status === 'error' || session.status === 'completed') && (
