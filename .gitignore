@@ -17,6 +17,7 @@ dist-ssr
 recordings
 data/diary
 .venv
+*.db-*
 
 # Editor directories and files
 .vscode/*

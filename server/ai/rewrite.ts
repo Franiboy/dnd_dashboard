@@ -1,5 +1,6 @@
 import { runOpenCode } from './opencode.js';
-import { getRewrittenFilePath, readRewrittenFile, writeRewrittenFile } from '../diaryFiles.js';
+import { readRewrittenFile } from '../diaryFiles.js';
+import { getDiaryEntryById, getEntryEntities } from '../repositories/diary.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('rewrite');
@@ -17,7 +18,7 @@ export function stripHtml(html: string): string {
     .trim();
 }
 
-function normalizeToHtml(text: string): string {
+export function normalizeToHtml(text: string): string {
   const trimmed = text.trim();
   if (/<[^>]+>/.test(trimmed)) return trimmed;
   return trimmed
@@ -46,87 +47,52 @@ export async function rewriteTextWithAi(
     return { content: null, sessionId: existingSessionId };
   }
 
-  const rewrittenFilePath = getRewrittenFilePath(entryId);
   const title = `dnd-diary-${entryId}`;
   const mode = existingRewrittenContent ? 'improve' : 'rewrite';
+  const previousContent = existingRewrittenContent || '(noch kein Rewrite vorhanden)';
 
-  const { findOpenCodeSessionId } = await import('./opencode.js');
-
-  // Reuse an existing session by title if we don't already have an ID.
-  // This prevents creating duplicate orphan sessions when --title is reused.
-  let sessionId = existingSessionId ?? (await findOpenCodeSessionId(process.cwd(), title));
-  const needsNewSession = !sessionId;
-
-  log.info(`Starting ${mode} for entry ${entryId}, sessionId=${sessionId ?? 'none'}`);
-
-  const baseInstructions = [
-    'Improve grammar, style and clarity while preserving the original meaning and personal tone.',
-    'Preserve all existing HTML tags and structure (paragraphs, headings, lists, bold, italic, etc.). Only change the text content, not the HTML structure.',
-    'Do NOT wrap the output in markdown code blocks and do not add explanations. Only output the rewritten HTML.',
-  ];
-
-  const promptParts = existingRewrittenContent
-    ? [
-        'Improve the following rewritten German diary entry further.',
-        ...(knowledgeContext ? [knowledgeContext] : []),
-        ...baseInstructions,
-        '',
-        'Current rewritten version (improve this):',
-        existingRewrittenContent,
-        '',
-        'Original diary entry for reference:',
-        originalHtml,
-      ]
-    : [
-        'Rewrite the following German diary entry in HTML format.',
-        ...(knowledgeContext ? [knowledgeContext] : []),
-        ...baseInstructions,
-        '',
-        'Diary entry:',
-        originalHtml,
-      ];
+  log.info(`Starting ${mode} for entry ${entryId}`);
 
   const prompt = [
-    ...promptParts,
+    `${mode === 'rewrite' ? 'Schreibe' : 'Verbessere'} den folgenden deutschen Tagebucheintrag in HTML-Format.`,
+    'Nutze das Tool "set_diary_rewrite", um den finalen HTML-Text zu speichern.',
     '',
-    `Write the final rewritten HTML to the file ${rewrittenFilePath} and also return it in your response.`,
-    'Do NOT run any other commands or perform any other actions.',
+    'Wichtig:',
+    '- Verbessere Grammatik, Stil und Verständlichkeit, aber bewahre den ursprünglichen Sinn und persönlichen Ton.',
+    '- Bewahre alle bestehenden HTML-Tags und Strukturen (Absätze, Überschriften, Listen, fett, kursiv etc.). Ändere nur den Textinhalt, nicht die HTML-Struktur.',
+    '- Wickele die Ausgabe nicht in Markdown-Code-Blöcke und füge keine Erklärungen hinzu.',
+    ...(knowledgeContext ? [knowledgeContext] : []),
+    '',
+    'Tagebucheintrag:',
+    originalHtml,
+    '',
+    'Aktuelles Rewrite (verbessere dieses):',
+    previousContent,
   ].join('\n');
 
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
     model: model || process.env.AI_MODEL || 'provider/GLM5.2',
-    sessionId: sessionId || undefined,
-    title: needsNewSession ? title : undefined,
+    sessionId: existingSessionId || undefined,
+    title,
+    scopes: ['diary:rewrite'],
     onLog,
   });
 
   if (!result.success) {
     log.error(`OpenCode failed for entry ${entryId}: exitCode=${result.exitCode}`);
-    return { content: null, sessionId };
-  }
-
-  if (needsNewSession) {
-    sessionId = await findOpenCodeSessionId(process.cwd(), title);
-    log.info(`Resolved new sessionId for entry ${entryId}: ${sessionId ?? 'none'}`);
+    return { content: null, sessionId: existingSessionId };
   }
 
   const fileContent = readRewrittenFile(entryId);
-  if (fileContent) {
-    log.info(`Using rewritten file content for entry ${entryId} (${fileContent.length} bytes)`);
-    return { content: normalizeToHtml(fileContent), sessionId };
+  if (!fileContent) {
+    log.warn(`No rewritten file content found for entry ${entryId}`);
+    return { content: null, sessionId: existingSessionId };
   }
 
-  const output = extractRewriteOutput(result.output);
-  if (!output) {
-    log.warn(`No usable output for entry ${entryId}; stdout was empty after filtering`);
-    return { content: null, sessionId };
-  }
-
-  log.info(`Using stdout output for entry ${entryId} (${output.length} bytes)`);
-  writeRewrittenFile(entryId, output);
-  return { content: normalizeToHtml(output), sessionId };
+  log.info(`Using rewritten file content for entry ${entryId} (${fileContent.length} bytes)`);
+  return { content: normalizeToHtml(fileContent), sessionId: existingSessionId };
 }
 
 export async function improveRewrittenWithCommand(
@@ -139,25 +105,24 @@ export async function improveRewrittenWithCommand(
   onLog?: (line: string) => void,
   knowledgeContext?: string,
 ): Promise<RewriteResult> {
-  const rewrittenFilePath = getRewrittenFilePath(entryId);
   const plainOriginal = stripHtml(originalHtml).trim();
 
   const prompt = [
-    'You are improving a previously rewritten German diary entry based on a user command.',
+    'Verbessere ein bereits umgeschriebenes deutsches Tagebucheintrag basierend auf einem Benutzerbefehl.',
+    'Nutze das Tool "set_diary_rewrite", um den finalen HTML-Text zu speichern.',
+    '',
+    'Wichtig:',
+    '- Halte die Ausgabe im HTML-Format. Bewahre alle bestehenden HTML-Tags und Strukturen.',
+    '- Ändere nur den Textinhalt wie gewünscht. Wickele die Ausgabe nicht in Markdown-Code-Blöcke.',
     ...(knowledgeContext ? [knowledgeContext] : []),
-    'Keep the output in HTML format. Preserve all existing HTML tags and structure.',
-    'Only change the text content as requested. Do NOT wrap the output in markdown code blocks.',
-    'Do NOT run any other commands or perform any other actions.',
     '',
-    `Write the final improved HTML to the file ${rewrittenFilePath} and also return it in your response.`,
-    '',
-    'User command:',
+    'Benutzerbefehl:',
     command,
     '',
-    'Current rewritten version (edit this):',
+    'Aktuelles Rewrite (bearbeite dieses):',
     existingRewrittenContent,
     ...(plainOriginal
-      ? ['', 'Original diary entry for reference:', originalHtml]
+      ? ['', 'Originaler Tagebucheintrag zur Referenz:', originalHtml]
       : []),
   ].join('\n');
 
@@ -167,6 +132,7 @@ export async function improveRewrittenWithCommand(
     worktreePath: process.cwd(),
     model: model || process.env.AI_MODEL || 'provider/GLM5.2',
     sessionId,
+    scopes: ['diary:rewrite'],
     onLog,
   });
 
@@ -176,23 +142,17 @@ export async function improveRewrittenWithCommand(
   }
 
   const fileContent = readRewrittenFile(entryId);
-  if (fileContent) {
-    log.info(`Using rewritten file content after command for entry ${entryId} (${fileContent.length} bytes)`);
-    return { content: normalizeToHtml(fileContent), sessionId };
-  }
-
-  const output = extractRewriteOutput(result.output);
-  if (!output) {
-    log.warn(`No usable output after command for entry ${entryId}`);
+  if (!fileContent) {
+    log.warn(`No rewritten file content found after command for entry ${entryId}`);
     return { content: null, sessionId };
   }
 
-  log.info(`Using stdout output after command for entry ${entryId} (${output.length} bytes)`);
-  writeRewrittenFile(entryId, output);
-  return { content: normalizeToHtml(output), sessionId };
+  log.info(`Using rewritten file content after command for entry ${entryId} (${fileContent.length} bytes)`);
+  return { content: normalizeToHtml(fileContent), sessionId };
 }
 
 export async function summarizeTextWithAi(
+  entryId: number,
   text: string,
   model?: string,
   onLog?: (line: string) => void,
@@ -204,7 +164,7 @@ export async function summarizeTextWithAi(
     return null;
   }
 
-  log.info(`Starting summarize with model ${model ?? 'default'}`);
+  log.info(`Starting summarize for entry ${entryId} with model ${model ?? 'default'}`);
 
   const prompt = [
     'Wichtig: Deine Antwort darf maximal 500 Zeichen lang sein. Überschreite dieses Limit auf keinen Fall.',
@@ -215,124 +175,40 @@ export async function summarizeTextWithAi(
     'Schreibe keine zusammenhängende Erzählung, sondern eine kurze Liste von knappen Stichpunkten.',
     'Halte dich strikt an den vorliegenden Text und erfinke keine Details, die darin nicht stehen.',
     'Gib maximal 3–5 Punkte aus, jeder Punkt in einer eigenen Zeile.',
-    'Do NOT modify any files, run any commands or perform any actions. Only output the summary text.',
+    'Nutze das Tool "set_diary_summary", um die Zusammenfassung zu speichern.',
     'Antworte ausschließlich auf Deutsch.',
     '',
     'Tagebucheintrag:',
     plainText,
   ].join('\n');
 
-  const raw = await runAiPrompt(
-    prompt,
-    `dnd-diary-summarize-${Date.now()}`,
-    model || process.env.AI_CHEAP_MODEL,
-    onLog,
-  );
-  if (raw === null) {
-    log.warn('summarizeTextWithAi received no output');
-    return null;
-  }
-  const summary = raw
-    .split('\n')
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter((line) => line.length > 0)
-    .join('\n');
-  log.info(`Summary generated (${summary.length} chars, ${summary.split('\n').length} lines)`);
-  return summary;
-}
-
-async function runAiPrompt(
-  prompt: string,
-  title: string,
-  model?: string,
-  onLog?: (line: string) => void,
-): Promise<string | null> {
-  const resolvedModel =
-    model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2';
-  log.info(`Running AI prompt: title=${title}, model=${resolvedModel}`);
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: resolvedModel,
-    title,
+    model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
+    title: `dnd-diary-summarize-${entryId}-${Date.now()}`,
+    scopes: ['diary:summarize'],
     onLog,
   });
 
   if (!result.success) {
-    log.warn(`AI prompt failed: title=${title}, exitCode=${result.exitCode}`);
+    log.warn(`Summary failed for entry ${entryId}: exitCode=${result.exitCode}`);
     return null;
   }
 
-  const output = extractRewriteOutput(result.output);
-  log.info(`AI prompt completed: title=${title}, outputLength=${output.length}`);
-  return output;
+  const entry = getDiaryEntryById(entryId);
+  const summary = entry?.summary ?? null;
+  if (!summary) {
+    log.warn(`No summary saved for entry ${entryId}`);
+    return null;
+  }
+
+  log.info(`Summary loaded for entry ${entryId} (${summary.length} chars)`);
+  return summary;
 }
 
 export function stripAnsi(text: string): string {
   return text.replace(/\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
-}
-
-export function extractRewriteOutput(raw: string): string {
-  let cleaned = stripAnsi(raw).trim();
-
-  // If the model wrapped the output in a markdown code block, extract it.
-  const codeBlockMatch = cleaned.match(/```(?:\w+)?\n?([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    cleaned = codeBlockMatch[1].trim();
-  }
-
-  // Filter out opencode status/progress lines (e.g. "> build · code-secure-local")
-  // and empty lines that remain after stripping ANSI escape sequences.
-  const lines = cleaned.split('\n').filter((line) => {
-    const trimmed = line.trim();
-    if (!trimmed) return false;
-    if (/^\s*>\s+\S+\s*·\s*\S+/.test(trimmed)) return false;
-    return true;
-  });
-
-  return lines.join('\n').trim();
-}
-
-export function extractJsonFromAiOutput(raw: string): unknown {
-  let cleaned = stripAnsi(raw).trim();
-
-  const codeBlockMatch = cleaned.match(/```(?:\w+)?\n?([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    cleaned = codeBlockMatch[1].trim();
-  }
-
-  cleaned = cleaned
-    .split('\n')
-    .filter((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return false;
-      if (/^\s*>\s+\S+\s*·\s*\S+/.test(trimmed)) return false;
-      return true;
-    })
-    .join('\n')
-    .trim();
-
-  const arrayStart = cleaned.indexOf('[');
-  const arrayEnd = cleaned.lastIndexOf(']');
-  if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
-    try {
-      return JSON.parse(cleaned.slice(arrayStart, arrayEnd + 1));
-    } catch {
-      // fall through
-    }
-  }
-
-  const objectStart = cleaned.indexOf('{');
-  const objectEnd = cleaned.lastIndexOf('}');
-  if (objectStart !== -1 && objectEnd !== -1 && objectEnd > objectStart) {
-    try {
-      return JSON.parse(cleaned.slice(objectStart, objectEnd + 1));
-    } catch {
-      // fall through
-    }
-  }
-
-  return null;
 }
 
 export interface DiaryEntities {
@@ -342,6 +218,7 @@ export interface DiaryEntities {
 }
 
 export async function extractEntitiesFromDiary(
+  entryId: number,
   text: string,
   model?: string,
   onLog?: (line: string) => void,
@@ -361,9 +238,8 @@ export async function extractEntitiesFromDiary(
     '- organizations: Gruppen, Gilden, Fraktionen, Clans, Häuser, Orden, Reiche, Familien, militärische Einheiten, Firmen oder andere Kollektive mit eigenem Namen. Keine allgemeinen Gruppenbezeichnungen.',
     '- locations: Städte, Dörfer, Länder, Regionen, Kontinente, Landmarken, Gebäude, Dungeons, Festungen, Wälder, Berge, Flüsse oder andere Orte mit eigenem Namen. Keine unbestimmten Orte wie "ein Wald" oder "der Markt".',
     '',
-    'Gib das Ergebnis ausschließlich als gültiges JSON-Objekt in dieser Form zurück:',
-    '{"persons": ["..."], "organizations": ["..."], "locations": ["..."]}.',
-    'Do NOT modify any files, run any commands or perform any actions. Only output the JSON object.',
+    'Für jede gefundene Entität rufe das Tool "link_diary_entity" auf mit:',
+    '{"entryId": number, "type": "persons" | "organizations" | "locations", "name": "Entitätsname"}',
     '',
     'Tagebucheintrag:',
     plainText,
@@ -373,7 +249,8 @@ export async function extractEntitiesFromDiary(
     prompt,
     worktreePath: process.cwd(),
     model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
-    title: `dnd-diary-entities-${Date.now()}`,
+    title: `dnd-diary-entities-${entryId}-${Date.now()}`,
+    scopes: ['entity:extract'],
     onLog,
   });
 
@@ -381,32 +258,5 @@ export async function extractEntitiesFromDiary(
     return { persons: [], organizations: [], locations: [] };
   }
 
-  const cleaned = extractRewriteOutput(result.output);
-  const start = cleaned.indexOf('{');
-  const end = cleaned.lastIndexOf('}');
-  if (start === -1 || end === -1 || end < start) {
-    return { persons: [], organizations: [], locations: [] };
-  }
-
-  try {
-    const parsed = JSON.parse(cleaned.slice(start, end + 1));
-    if (parsed && typeof parsed === 'object') {
-      const toStrings = (value: unknown): string[] => {
-        if (!Array.isArray(value)) return [];
-        return value
-          .filter((item): item is string => typeof item === 'string')
-          .map((item) => item.trim())
-          .filter((item) => item.length > 0);
-      };
-      return {
-        persons: toStrings(parsed.persons),
-        organizations: toStrings(parsed.organizations),
-        locations: toStrings(parsed.locations),
-      };
-    }
-  } catch {
-    // ignore malformed JSON
-  }
-
-  return { persons: [], organizations: [], locations: [] };
+  return getEntryEntities(entryId);
 }
