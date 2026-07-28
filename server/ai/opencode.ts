@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createLogger } from '../logger.js';
+import { createMcpSessionToken, type McpScope } from '../mcp/tokens.js';
 
 const log = createLogger('opencode');
 
@@ -9,6 +10,7 @@ export interface OpenCodeOptions {
   model: string;
   title?: string;
   sessionId?: string;
+  scopes?: McpScope[];
   onLog?: (line: string) => void;
 }
 
@@ -24,10 +26,16 @@ export function runOpenCode({
   model,
   title,
   sessionId,
+  scopes,
   onLog,
 }: OpenCodeOptions): Promise<OpenCodeResult> {
   const bin = process.env.AI_OPENCODE_BIN || 'opencode';
   const args = ['run'];
+
+  const mcpToken = scopes && scopes.length > 0 ? createMcpSessionToken(scopes) : undefined;
+  if (mcpToken) {
+    log.info(`Created MCP session token with scopes: ${scopes?.join(', ')}`);
+  }
 
   if (sessionId) {
     args.push('--session', sessionId);
@@ -54,7 +62,9 @@ export function runOpenCode({
     const child = spawn(bin, args, {
       cwd: worktreePath,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
+      env: mcpToken
+        ? { ...process.env, MCP_SESSION_TOKEN: mcpToken, MCP_SCOPES: scopes?.join(',') }
+        : process.env,
     });
 
     let output = '';

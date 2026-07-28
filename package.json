@@ -19,8 +19,10 @@
     "test:server": "DB_PATH=dnd_test.db npm run server"
   },
   "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "ansi-to-html": "^0.7.2",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.11.1",
@@ -40,7 +42,8 @@
     "react-resizable": "^3.2.0",
     "react-router-dom": "^7.18.1",
     "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.2",

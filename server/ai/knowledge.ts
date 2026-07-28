@@ -6,10 +6,9 @@ import {
   listDiaryEntryContentsByEntity,
   listPreviousDiaryEntriesByUser,
 } from '../repositories/diary.js';
-import { listActiveEntityKnowledge } from '../repositories/entityKnowledge.js';
+import { listActiveEntityKnowledge, listAllKnowledge } from '../repositories/entityKnowledge.js';
 import { getEntitySummary } from '../repositories/entitySummaries.js';
-import { extractJsonFromAiOutput, stripHtml } from './rewrite.js';
-import { executeAiActions, parseAiActions, type AiAction } from './actions.js';
+import { stripHtml } from './rewrite.js';
 import { createLogger } from '../logger.js';
 import type { EntityKnowledgeEntry, EntityType } from '../../shared/types.js';
 
@@ -111,21 +110,46 @@ interface DistributeResult {
   deleted: { id: number; reason: string; entry: EntityKnowledgeEntry }[];
 }
 
-function distributeActionsFromParsed(parsed: unknown): AiAction[] {
-  if (!Array.isArray(parsed)) return [];
+interface KnowledgeSnapshot {
+  id: number;
+  entityType: EntityType;
+  entityName: string;
+  status: 'active' | 'deleted';
+}
 
-  const validActions: AiAction[] = [];
-  for (const raw of parsed) {
-    if (typeof raw !== 'object' || raw === null) continue;
-    if (!('action' in raw)) continue;
+function takeKnowledgeSnapshot(): Map<number, KnowledgeSnapshot> {
+  const rows = listAllKnowledge();
+  const map = new Map<number, KnowledgeSnapshot>();
+  for (const row of rows) {
+    map.set(row.id, { id: row.id, entityType: row.entityType, entityName: row.entityName, status: row.status });
+  }
+  return map;
+}
 
-    const actionRaw = (raw as { action: unknown }).action;
-    if (actionRaw === 'createKnowledge' || actionRaw === 'deleteKnowledge') {
-      const action = parseAiActions([raw])[0];
-      if (action) validActions.push(action);
+function computeDistributionDiff(
+  before: Map<number, KnowledgeSnapshot>,
+  after: EntityKnowledgeEntry[],
+): DistributeResult {
+  const afterById = new Map<number, EntityKnowledgeEntry>();
+  for (const entry of after) afterById.set(entry.id, entry);
+
+  const created: EntityKnowledgeEntry[] = [];
+  const deleted: { id: number; reason: string; entry: EntityKnowledgeEntry }[] = [];
+
+  for (const [id, entry] of afterById) {
+    if (!before.has(id)) {
+      created.push(entry);
     }
   }
-  return validActions;
+
+  for (const [id, beforeEntry] of before) {
+    const afterEntry = afterById.get(id);
+    if (beforeEntry.status === 'active' && afterEntry?.status === 'deleted') {
+      deleted.push({ id, reason: afterEntry.statusReason || 'Widerspruch', entry: afterEntry });
+    }
+  }
+
+  return { created, deleted };
 }
 
 export async function distributeKnowledgeFromText(
@@ -171,20 +195,20 @@ export async function distributeKnowledgeFromText(
     'Analysiere den folgenden Text und ordne die darin enthaltenen Fakten den passenden Entitäten zu.',
     'Widerspricht ein neuer Fakt einem bestehenden Wissenseintrag, markiere den alten als gelöscht.',
     '',
-    'Verfügbare Aktionen (gib ein JSON-Array zurück):',
-    '- {"action": "createKnowledge", "type": "persons|organizations|locations", "name": "Entitätsname", "title": "Kategorie", "content": "Fakt"}',
-    '- {"action": "deleteKnowledge", "id": 123, "reason": "Widerspruch mit neuem Text"}',
+    'Verfügbare Tools:',
+    '- create_knowledge(type, name, content, title?): Erstellt einen Wissenseintrag.',
+    '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht.',
     '',
     'Regeln:',
     '- Ordne jeden Fakt einer oder mehreren Entitäten zu.',
-    '- Wenn eine Entität noch nicht existiert, wird sie automatisch durch createKnowledge angelegt.',
+    '- Wenn eine Entität noch nicht existiert, wird sie automatisch durch create_knowledge angelegt.',
     '- Verwende die exakte Schreibweise aus dem Text, wenn keine bestehende Entität passt.',
     '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
     '- content ist der eigentliche Faktentext.',
     '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
-    '- Extrahiere nur Fakten, die im Text tatsächlich vorkommen. Erfinke keine Details.',
+    '- Extrahiere nur Fakten, die im Text tatsächlich vorkommen. Erfinde keine Details.',
     '- Halte jeden Fakt kurz und prägnant.',
-    '- In "deleteKnowledge" dürfen nur IDs aus dem bestehenden Wissen stehen.',
+    '- In delete_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
     '',
     ...(allRelevantEntities.length > 0
       ? [
@@ -194,56 +218,37 @@ export async function distributeKnowledgeFromText(
         ]
       : []),
     ...(existingKnowledgeText
-      ? ['Bestehendes Wissen (nur diese IDs dürfen in "deleteKnowledge" vorkommen):', existingKnowledgeText, '']
+      ? ['Bestehendes Wissen (nur diese IDs dürfen in delete_knowledge vorkommen):', existingKnowledgeText, '']
       : []),
     'Text:',
     plainText,
     '',
-    'Antworte ausschließlich mit dem JSON-Array der Aktionen.',
+    'Speichere die Fakten direkt über die Tools.',
   ].join('\n');
 
   log.info(`Distributing knowledge from free text`);
+
+  const snapshotBefore = takeKnowledgeSnapshot();
 
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
     model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
     title: `dnd-distribute-knowledge-${Date.now()}`,
+    scopes: ['knowledge:distribute'],
     onLog,
   });
+
+  const allAfter = listAllKnowledge();
+  const diff = computeDistributionDiff(snapshotBefore, allAfter);
 
   if (!result.success) {
     log.warn(`Knowledge distribution failed: exitCode=${result.exitCode}`);
     return { created: [], deleted: [] };
   }
 
-  const parsed = extractJsonFromAiOutput(result.output);
-  const actions = distributeActionsFromParsed(parsed);
-  if (actions.length === 0) {
-    log.warn('No knowledge distributed from text');
-    return { created: [], deleted: [] };
-  }
-
-  const results = executeAiActions(actions);
-
-  const createdEntries: EntityKnowledgeEntry[] = [];
-  const deletedEntries: { id: number; reason: string; entry: EntityKnowledgeEntry }[] = [];
-
-  for (const result of results) {
-    if (!result.success) {
-      log.warn(`AI action failed during knowledge distribution: ${result.message}`);
-      continue;
-    }
-    if (result.action.action === 'createKnowledge') {
-      createdEntries.push(result.data as EntityKnowledgeEntry);
-    } else if (result.action.action === 'deleteKnowledge') {
-      const entry = result.data as EntityKnowledgeEntry;
-      deletedEntries.push({ id: entry.id, reason: entry.statusReason || 'Widerspruch', entry });
-    }
-  }
-
-  log.info(`Distributed ${createdEntries.length} new entries and marked ${deletedEntries.length} entries as deleted`);
-  return { created: createdEntries, deleted: deletedEntries };
+  log.info(`Distributed ${diff.created.length} new entries and marked ${diff.deleted.length} entries as deleted`);
+  return diff;
 }
 
 export async function generateEntitySummary(
@@ -254,7 +259,6 @@ export async function generateEntitySummary(
 ): Promise<string | null> {
   const knowledge = listActiveEntityKnowledge(entityType, entityName);
   const diaryEntries = listDiaryEntryContentsByEntity(entityType, entityName);
-  const summaryRow = getEntitySummary(entityType, entityName);
 
   const typeLabel = entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
 
@@ -266,20 +270,20 @@ export async function generateEntitySummary(
     .map((entry) => `Titel: ${entry.title}\n${stripHtml(entry.content)}`)
     .join('\n\n---\n\n');
 
+  const summaryRow = getEntitySummary(entityType, entityName);
   const previousSummary = summaryRow?.summary ? `Vorherige Zusammenfassung:\n${summaryRow.summary}\n\n` : '';
 
   const prompt = [
     `Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${entityName}".`,
     'Nutze dafür die folgenden Wissenseinträge und Tagebucheinträge.',
     '',
-    'Verfügbare Aktionen (gib ein JSON-Array mit genau einer Aktion zurück):',
-    '- {"action": "setSummary", "type": "persons|organizations|locations", "name": "Entitätsname", "summary": "Text der Zusammenfassung"}',
+    'Verfügbares Tool:',
+    '- set_entity_summary(type, name, summary): Speichert die Zusammenfassung.',
     '',
     'Regeln:',
     '- Beschreibe die wichtigsten Eigenschaften, Beziehungen und Ereignisse.',
     '- Vermeide Spekulation; nutze nur die gegebenen Informationen.',
     '- Maximal 3-5 Sätze.',
-    '- Antworte ausschließlich mit dem JSON-Array der Aktionen.',
     '',
     ...(knowledgeContext ? ['Wissenseinträge:', knowledgeContext, ''] : []),
     ...(diaryContext ? ['Tagebucheinträge:', diaryContext, ''] : []),
@@ -294,6 +298,7 @@ export async function generateEntitySummary(
     worktreePath: process.cwd(),
     model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
     title: `dnd-entity-summary-${entityType}-${entityName}-${Date.now()}`,
+    scopes: ['entity:summary'],
     onLog,
   });
 
@@ -302,22 +307,12 @@ export async function generateEntitySummary(
     return null;
   }
 
-  const parsed = extractJsonFromAiOutput(result.output);
-  const actions = Array.isArray(parsed) ? parseAiActions(parsed) : [];
-  const setSummaryAction = actions.find(
-    (a): a is AiAction & { action: 'setSummary' } => a.action === 'setSummary',
-  );
-  if (!setSummaryAction) {
-    log.warn(`No setSummary action generated for ${entityType}/${entityName}`);
-    return null;
-  }
-
-  const [summaryResult] = executeAiActions([setSummaryAction]);
-  if (!summaryResult.success) {
-    log.warn(`Failed to save summary for ${entityType}/${entityName}: ${summaryResult.message}`);
+  const summaryRowAfter = getEntitySummary(entityType, entityName);
+  if (!summaryRowAfter?.summary) {
+    log.warn(`No summary saved for ${entityType}/${entityName}`);
     return null;
   }
 
   log.info(`Summary generated for ${entityType}/${entityName}`);
-  return setSummaryAction.summary;
+  return summaryRowAfter.summary;
 }
