@@ -174,6 +174,12 @@ export interface EntityDetail {
   aliases: string[];
 }
 
+export interface EntityMapping {
+  type: EntityType;
+  canonical: string;
+  aliases: string[];
+}
+
 export interface EntityUpdatePayload {
   type: EntityType;
   oldName: string;
