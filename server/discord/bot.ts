@@ -42,7 +42,7 @@ export function startBot(): void {
 
   ensureDir(RECORDINGS_DIR);
 
-  client.once('ready', () => {
+  client.once('clientReady', () => {
     botReady = true;
     console.log(`Discord bot logged in as ${client.user?.tag}`);
   });
