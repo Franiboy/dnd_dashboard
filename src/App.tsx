@@ -13,7 +13,7 @@ import { Home } from './pages/Home';
 
 const Bingo = lazy(() => import('./pages/Bingo').then((m) => ({ default: m.Bingo })));
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })));
-const Notes = lazy(() => import('./pages/Diary').then((m) => ({ default: m.Diary })));
+const Diary = lazy(() => import('./pages/Diary').then((m) => ({ default: m.Diary })));
 const Recordings = lazy(() => import('./pages/Recordings').then((m) => ({ default: m.Recordings })));
 const World = lazy(() => import('./pages/World').then((m) => ({ default: m.World })));
 
@@ -107,7 +107,7 @@ function App() {
             ) : (
               <>
                 <Route path="/" element={<Home />} />
-                <Route path="/notizen" element={<ProtectedRoute user={user} appId="notes"><Notes /></ProtectedRoute>} />
+                <Route path="/tagebuch" element={<ProtectedRoute user={user} appId="notes"><Diary /></ProtectedRoute>} />
                 <Route path="/welt" element={<ProtectedRoute user={user} appId="world"><World /></ProtectedRoute>} />
                 <Route path="/recordings" element={<ProtectedRoute user={user} appId="recordings" adminOnly><Recordings /></ProtectedRoute>} />
                 <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo"><Bingo token={token} user={user} /></ProtectedRoute>} />

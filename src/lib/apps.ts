@@ -8,7 +8,7 @@ export interface AppMeta {
 
 export const APPS: AppMeta[] = [
   { id: 'dashboard', label: 'Dashboard', path: '/' },
-  { id: 'notes', label: 'Notizen', path: '/notizen', disableable: true },
+  { id: 'notes', label: 'Tagebuch', path: '/tagebuch', disableable: true },
   { id: 'bingo', label: 'Bingo', path: '/bingo', disableable: true },
   { id: 'world', label: 'Welt', path: '/welt', disableable: true },
   { id: 'recordings', label: 'Aufnahmen', path: '/recordings', disableable: true, adminOnly: true },
