@@ -63,8 +63,9 @@ export async function distributeKnowledgeFromText(
   if (!plainText) return { created: [], deleted: [] };
 
   const prompt = [
-    'Analysiere den folgenden Text und ordne die darin enthaltenen Fakten den passenden Entitäten zu.',
-    'Ergänze fehlende Fakten. Widerspricht ein neuer Fakt einem bestehenden Wissenseintrag klar und eindeutig, korrigiere oder lösche diesen.',
+    'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+    '',
+    'Aufgabe: Analysiere den folgenden Text und ordne die darin enthaltenen Fakten den passenden Entitäten zu.',
     '',
     'Verfügbare Tools:',
     '- get_entity(type, name): Liefert Zusammenfassung, Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
@@ -80,14 +81,16 @@ export async function distributeKnowledgeFromText(
     '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
     '- content ist der eigentliche Faktentext.',
     '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
-    '- Extrahiere nur Fakten, die im Text tatsächlich vorkommen. Erfinde keine Details.',
+    '- Extrahiere nur Fakten, die im Text tatsächlich vorkommen. Erfinke keine Details.',
     '- Halte jeden Fakt kurz und prägnant.',
+    '- Wenn ein bestehender Eintrag unvollständig ist, ergänze ihn mit create_knowledge für dieselbe Entität.',
+    '- Widerspricht ein neuer Fakt einem bestehenden Eintrag klar und eindeutig, lösche den alten mit delete_knowledge(id) und erstelle einen neuen, korrekten Eintrag.',
     '- In delete_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
     '',
     'Text:',
     plainText,
     '',
-    'Speichere die Fakten direkt über die Tools, aber nur nachdem du das bestehende Wissen abgefragt hast.',
+    'Speichere die Fakten direkt über die Tools, aber nur nachdem du das bestehende Wissen abgefragt hast. Wenn keine Fakten im Text enthalten sind, beende die Aufgabe ohne weitere Tool-Aufrufe.',
   ].join('\n');
 
   log.info(`Distributing knowledge from free text`);
@@ -124,10 +127,14 @@ export async function generateEntitySummary(
   const typeLabel = entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
 
   const summaryRow = getEntitySummary(entityType, entityName);
-  const previousSummary = summaryRow?.summary ? `Vorherige Zusammenfassung:\n${summaryRow.summary}\n\n` : '';
+  const previousSummary = summaryRow?.summary
+    ? `Vorherige Zusammenfassung (korrigiere oder erweitere sie bei Bedarf):\n${summaryRow.summary}\n\n`
+    : '';
 
   const prompt = [
-    `Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${entityName}".`,
+    'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+    '',
+    `Aufgabe: Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${entityName}".`,
     '',
     'Verfügbare Tools:',
     `- get_entity(type="${entityType}", name="${entityName}"): Liefert alle Informationen zur Entität. DU MUSST dieses Tool aufrufen, bevor du die Zusammenfassung erstellst.`,
