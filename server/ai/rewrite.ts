@@ -1,4 +1,4 @@
-import { findOpenCodeSessionId, runOpenCode } from './opencode.js';
+import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
 import { readRewrittenFile } from '../diaryFiles.js';
 import { getDiaryEntryById, getEntryEntities } from '../repositories/diary.js';
 import { createLogger } from '../logger.js';
@@ -103,15 +103,12 @@ export async function rewriteTextWithAi(
   const fileContent = readRewrittenFile(entryId);
   if (!fileContent) {
     log.warn(`No rewritten file content found for entry ${entryId}`);
-    return { content: null, sessionId: existingSessionId };
+    return { content: null, sessionId: result.sessionId ?? existingSessionId };
   }
 
-  let finalSessionId = existingSessionId;
-  if (!finalSessionId) {
-    finalSessionId = await findOpenCodeSessionId(process.cwd(), title);
-    if (finalSessionId) {
-      log.info(`Resolved new opencode session for entry ${entryId}: ${finalSessionId}`);
-    }
+  const finalSessionId = result.sessionId ?? existingSessionId;
+  if (finalSessionId) {
+    log.info(`Using opencode session for entry ${entryId}: ${finalSessionId}`);
   }
 
   log.info(`Using rewritten file content for entry ${entryId} (${fileContent.length} bytes)`);
@@ -175,17 +172,17 @@ export async function improveRewrittenWithCommand(
 
   if (!result.success) {
     log.error(`Rewrite command failed for entry ${entryId}: exitCode=${result.exitCode}`);
-    return { content: null, sessionId };
+    return { content: null, sessionId: result.sessionId ?? sessionId };
   }
 
   const fileContent = readRewrittenFile(entryId);
   if (!fileContent) {
     log.warn(`No rewritten file content found after command for entry ${entryId}`);
-    return { content: null, sessionId };
+    return { content: null, sessionId: result.sessionId ?? sessionId };
   }
 
   log.info(`Using rewritten file content after command for entry ${entryId} (${fileContent.length} bytes)`);
-  return { content: normalizeToHtml(fileContent), sessionId };
+  return { content: normalizeToHtml(fileContent), sessionId: result.sessionId ?? sessionId };
 }
 
 export async function summarizeTextWithAi(
@@ -240,6 +237,9 @@ export async function summarizeTextWithAi(
 
   if (!result.success) {
     log.warn(`Summary failed for entry ${entryId}: exitCode=${result.exitCode}`);
+    if (result.sessionId) {
+      deleteOpenCodeSession(result.sessionId);
+    }
     return null;
   }
 
@@ -247,7 +247,14 @@ export async function summarizeTextWithAi(
   const summary = entry?.summary ?? null;
   if (!summary) {
     log.warn(`No summary saved for entry ${entryId}`);
+    if (result.sessionId) {
+      deleteOpenCodeSession(result.sessionId);
+    }
     return null;
+  }
+
+  if (result.sessionId) {
+    deleteOpenCodeSession(result.sessionId);
   }
 
   log.info(`Summary loaded for entry ${entryId} (${summary.length} chars)`);
@@ -305,6 +312,10 @@ export async function extractEntitiesFromDiary(
     scopes: ['entity:read', 'entity:extract'],
     onLog,
   });
+
+  if (result.sessionId) {
+    deleteOpenCodeSession(result.sessionId);
+  }
 
   if (!result.success) {
     return { persons: [], organizations: [], locations: [] };
