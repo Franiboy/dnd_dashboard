@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
 import { extractEntitiesFromDiary, improveRewrittenWithCommand, rewriteTextWithAi, summarizeTextWithAi } from '../ai/rewrite.js';
-import { distributeKnowledgeFromText, getKnowledgeContextForText } from '../ai/knowledge.js';
+import { distributeKnowledgeFromText } from '../ai/knowledge.js';
 import { deleteOpenCodeSession } from '../ai/opencode.js';
 import { deleteRewrittenFile, getRewrittenFilePath, readRewrittenFile } from '../diaryFiles.js';
 import { createLogger } from '../logger.js';
@@ -325,7 +325,6 @@ router.post('/entries/:id/rewrite', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI schreibt den Text um...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const knowledgeContext = getKnowledgeContextForText(existing.content, { entryId: existing.id });
     log.info(`Calling rewriteTextWithAi for entry ${id}, sessionId=${existing.rewriteSessionId ?? 'none'}`);
     const { content: rewritten, sessionId } = await rewriteTextWithAi(
       id,
@@ -334,7 +333,6 @@ router.post('/entries/:id/rewrite', async (req: AuthRequest, res) => {
       existing.rewriteSessionId ?? null,
       undefined,
       onLog,
-      knowledgeContext,
     );
     if (rewritten === null) {
       log.error(`rewriteTextWithAi returned null for entry ${id}`);
@@ -400,7 +398,6 @@ router.post('/entries/:id/rewrite-command', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI bearbeitet den Text...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const knowledgeContext = getKnowledgeContextForText(existing.content, { entryId: existing.id });
     const { content: rewritten, sessionId } = await improveRewrittenWithCommand(
       id,
       existing.content,
@@ -409,7 +406,6 @@ router.post('/entries/:id/rewrite-command', async (req: AuthRequest, res) => {
       existing.rewriteSessionId,
       undefined,
       onLog,
-      knowledgeContext,
     );
     if (rewritten === null) {
       log.error(`improveRewrittenWithCommand returned null for entry ${id}`);
@@ -459,10 +455,9 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const knowledgeContext = getKnowledgeContextForText(existing.content, { entryId: existing.id });
     const [summary] = await Promise.all([
-      summarizeTextWithAi(existing.id, existing.content, undefined, onLog, knowledgeContext),
-      extractEntitiesFromDiary(existing.id, existing.content, undefined, onLog, knowledgeContext),
+      summarizeTextWithAi(existing.id, existing.content, undefined, onLog),
+      extractEntitiesFromDiary(existing.id, existing.content, undefined, onLog),
     ]);
     if (summary === null) {
       res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });

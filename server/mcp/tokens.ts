@@ -4,8 +4,10 @@ import { createLogger } from '../logger.js';
 const log = createLogger('mcp-tokens');
 
 export type McpScope =
+  | 'diary:read'
   | 'diary:summarize'
   | 'diary:rewrite'
+  | 'entity:read'
   | 'entity:extract'
   | 'entity:summary'
   | 'knowledge:distribute';

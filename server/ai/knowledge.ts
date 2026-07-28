@@ -1,109 +1,11 @@
 import { runOpenCode } from './opencode.js';
-import {
-  findExistingEntitiesInText,
-  getDiaryEntryById,
-  listAllEntityNames,
-  listDiaryEntryContentsByEntity,
-  listPreviousDiaryEntriesByUser,
-} from '../repositories/diary.js';
-import { listActiveEntityKnowledge, listAllKnowledge } from '../repositories/entityKnowledge.js';
+import { listAllKnowledge } from '../repositories/entityKnowledge.js';
 import { getEntitySummary } from '../repositories/entitySummaries.js';
 import { stripHtml } from './rewrite.js';
 import { createLogger } from '../logger.js';
 import type { EntityKnowledgeEntry, EntityType } from '../../shared/types.js';
 
 const log = createLogger('knowledge');
-
-function formatEntityKnowledge(type: EntityType, name: string): string {
-  const entries = listActiveEntityKnowledge(type, name);
-  if (entries.length === 0) return '';
-
-  const lines = [`${type === 'persons' ? 'Person' : type === 'organizations' ? 'Organisation' : 'Ort'}: ${name}`];
-  for (const entry of entries) {
-    const title = entry.title ? `${entry.title}: ` : '';
-    lines.push(`  - ${title}${entry.content}`);
-  }
-  return lines.join('\n');
-}
-
-export interface KnowledgeContextOptions {
-  userId?: string;
-  beforeCreatedAt?: string;
-  entryId?: number;
-}
-
-function buildDiaryContext(options?: KnowledgeContextOptions): string {
-  if (!options) return '';
-
-  let userId = options.userId;
-  let beforeCreatedAt = options.beforeCreatedAt;
-
-  if (options.entryId) {
-    const entry = getDiaryEntryById(options.entryId);
-    if (entry) {
-      userId = entry.userId;
-      beforeCreatedAt = entry.createdAt;
-    }
-  }
-
-  if (!userId) return '';
-  if (!beforeCreatedAt) {
-    beforeCreatedAt = new Date().toISOString();
-  }
-
-  const previousEntries = listPreviousDiaryEntriesByUser(userId, beforeCreatedAt, 3);
-  if (previousEntries.length === 0) return '';
-
-  const lines = ['Vorherige Tagebucheinträge (zum Kontext):'];
-  for (const entry of previousEntries.slice().reverse()) {
-    const date = new Date(entry.createdAt).toLocaleDateString('de-DE');
-    lines.push(`Titel: ${entry.title} (${date})`);
-    lines.push(stripHtml(entry.content));
-    lines.push('');
-  }
-  return lines.join('\n').trim();
-}
-
-export function getKnowledgeContextForText(
-  text: string,
-  options?: KnowledgeContextOptions,
-): string {
-  const plainText = stripHtml(text);
-  if (!plainText.trim()) return '';
-
-  const entities = findExistingEntitiesInText(text);
-  const parts: string[] = [];
-
-  for (const name of entities.persons) {
-    const formatted = formatEntityKnowledge('persons', name);
-    if (formatted) parts.push(formatted);
-  }
-  for (const name of entities.organizations) {
-    const formatted = formatEntityKnowledge('organizations', name);
-    if (formatted) parts.push(formatted);
-  }
-  for (const name of entities.locations) {
-    const formatted = formatEntityKnowledge('locations', name);
-    if (formatted) parts.push(formatted);
-  }
-
-  const diaryContext = buildDiaryContext(options);
-
-  const sections: string[] = [];
-  if (parts.length > 0) {
-    sections.push('Relevantes Wissen:');
-    sections.push(...parts);
-  }
-  if (diaryContext) {
-    if (sections.length > 0) sections.push('');
-    sections.push(diaryContext);
-  }
-
-  if (sections.length === 0) return '';
-
-  sections.push('');
-  return sections.join('\n');
-}
 
 interface DistributeResult {
   created: EntityKnowledgeEntry[];
@@ -160,49 +62,21 @@ export async function distributeKnowledgeFromText(
   const plainText = stripHtml(text).trim();
   if (!plainText) return { created: [], deleted: [] };
 
-  const existingEntities = listAllEntityNames();
-  const detectedEntities = findExistingEntitiesInText(text);
-
-  const allRelevantEntities: { type: EntityType; name: string }[] = [
-    ...existingEntities.persons.map((name) => ({ type: 'persons' as EntityType, name })),
-    ...existingEntities.organizations.map((name) => ({ type: 'organizations' as EntityType, name })),
-    ...existingEntities.locations.map((name) => ({ type: 'locations' as EntityType, name })),
-  ];
-
-  const relevantKnowledge: { type: EntityType; name: string; entries: EntityKnowledgeEntry[] }[] = [];
-  const collect = (type: EntityType, name: string) => {
-    const entries = listActiveEntityKnowledge(type, name);
-    if (entries.length > 0) {
-      relevantKnowledge.push({ type, name, entries });
-    }
-  };
-  for (const name of detectedEntities.persons) collect('persons', name);
-  for (const name of detectedEntities.organizations) collect('organizations', name);
-  for (const name of detectedEntities.locations) collect('locations', name);
-
-  const existingKnowledgeText = relevantKnowledge
-    .map(({ type, name, entries }) => {
-      const lines = [`Entität ${type} "${name}":`];
-      for (const entry of entries) {
-        const title = entry.title ? `${entry.title}: ` : '';
-        lines.push(`  - ID ${entry.id}: ${title}${entry.content}`);
-      }
-      return lines.join('\n');
-    })
-    .join('\n\n');
-
   const prompt = [
     'Analysiere den folgenden Text und ordne die darin enthaltenen Fakten den passenden Entitäten zu.',
-    'Widerspricht ein neuer Fakt einem bestehenden Wissenseintrag, markiere den alten als gelöscht.',
+    'Ergänze fehlende Fakten. Widerspricht ein neuer Fakt einem bestehenden Wissenseintrag klar und eindeutig, korrigiere oder lösche diesen.',
     '',
     'Verfügbare Tools:',
+    '- get_entity(type, name): Liefert Zusammenfassung, Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
+    '- list_entities(type?): Listet alle bekannten Entitäten auf.',
     '- create_knowledge(type, name, content, title?): Erstellt einen Wissenseintrag.',
     '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht.',
     '',
     'Regeln:',
+    '- DU MUSST vor dem Erstellen oder Löschen von Wissen get_entity für jede im Text erwähnte Entität aufrufen, um bestehendes Wissen zu sehen.',
     '- Ordne jeden Fakt einer oder mehreren Entitäten zu.',
     '- Wenn eine Entität noch nicht existiert, wird sie automatisch durch create_knowledge angelegt.',
-    '- Verwende die exakte Schreibweise aus dem Text, wenn keine bestehende Entität passt.',
+    '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
     '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
     '- content ist der eigentliche Faktentext.',
     '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
@@ -210,20 +84,10 @@ export async function distributeKnowledgeFromText(
     '- Halte jeden Fakt kurz und prägnant.',
     '- In delete_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
     '',
-    ...(allRelevantEntities.length > 0
-      ? [
-          'Bekannte Entitäten (verwende diese Schreibweisen, wenn sie passen):',
-          ...allRelevantEntities.map((e) => `- ${e.type}: ${e.name}`),
-          '',
-        ]
-      : []),
-    ...(existingKnowledgeText
-      ? ['Bestehendes Wissen (nur diese IDs dürfen in delete_knowledge vorkommen):', existingKnowledgeText, '']
-      : []),
     'Text:',
     plainText,
     '',
-    'Speichere die Fakten direkt über die Tools.',
+    'Speichere die Fakten direkt über die Tools, aber nur nachdem du das bestehende Wissen abgefragt hast.',
   ].join('\n');
 
   log.info(`Distributing knowledge from free text`);
@@ -235,7 +99,7 @@ export async function distributeKnowledgeFromText(
     worktreePath: process.cwd(),
     model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
     title: `dnd-distribute-knowledge-${Date.now()}`,
-    scopes: ['knowledge:distribute'],
+    scopes: ['entity:read', 'knowledge:distribute'],
     onLog,
   });
 
@@ -257,36 +121,26 @@ export async function generateEntitySummary(
   model?: string,
   onLog?: (line: string) => void,
 ): Promise<string | null> {
-  const knowledge = listActiveEntityKnowledge(entityType, entityName);
-  const diaryEntries = listDiaryEntryContentsByEntity(entityType, entityName);
-
   const typeLabel = entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
-
-  const knowledgeContext = knowledge
-    .map((entry) => (entry.title ? `${entry.title}: ${entry.content}` : entry.content))
-    .join('\n');
-
-  const diaryContext = diaryEntries
-    .map((entry) => `Titel: ${entry.title}\n${stripHtml(entry.content)}`)
-    .join('\n\n---\n\n');
 
   const summaryRow = getEntitySummary(entityType, entityName);
   const previousSummary = summaryRow?.summary ? `Vorherige Zusammenfassung:\n${summaryRow.summary}\n\n` : '';
 
   const prompt = [
     `Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${entityName}".`,
-    'Nutze dafür die folgenden Wissenseinträge und Tagebucheinträge.',
     '',
-    'Verfügbares Tool:',
+    'Verfügbare Tools:',
+    `- get_entity(type="${entityType}", name="${entityName}"): Liefert alle Informationen zur Entität. DU MUSST dieses Tool aufrufen, bevor du die Zusammenfassung erstellst.`,
     `- set_entity_summary(type="${entityType}", name="${entityName}", summary): Speichert die Zusammenfassung. Verwende diesen type und name genau so.`,
     '',
     'Regeln:',
+    '- Rufe get_entity auf, um Wissen und verknüpfte Tagebucheinträge zu erhalten.',
     '- Beschreibe die wichtigsten Eigenschaften, Beziehungen und Ereignisse.',
     '- Vermeide Spekulation; nutze nur die gegebenen Informationen.',
+    '- Korrigiere die vorherige Zusammenfassung, falls neue Informationen sie widerlegen.',
     '- Maximal 3-5 Sätze.',
+    '- Speichere die Zusammenfassung erst, nachdem du get_entity aufgerufen hast.',
     '',
-    ...(knowledgeContext ? ['Wissenseinträge:', knowledgeContext, ''] : []),
-    ...(diaryContext ? ['Tagebucheinträge:', diaryContext, ''] : []),
     previousSummary,
     `Zusammenfassung für ${entityName}:`,
   ].join('\n');
@@ -298,7 +152,7 @@ export async function generateEntitySummary(
     worktreePath: process.cwd(),
     model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
     title: `dnd-entity-summary-${entityType}-${entityName}-${Date.now()}`,
-    scopes: ['entity:summary'],
+    scopes: ['entity:read', 'entity:summary'],
     onLog,
   });
 
