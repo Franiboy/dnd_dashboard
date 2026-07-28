@@ -5,9 +5,16 @@ import { z } from 'zod';
 import { createLogger } from '../logger.js';
 import { runMigrations } from '../migrations.js';
 import '../database.js';
+import { stripHtml } from '../ai/rewrite.js';
 import {
   ensureEntityExists,
+  findEntityCanonicalName,
+  getDiaryEntryById,
   getEntryEntities,
+  listAllEntityNames,
+  listDiaryEntryContentsByEntity,
+  listPreviousDiaryEntriesByUser,
+  searchDiaryEntries,
   setDiaryEntryLocations,
   setDiaryEntryOrganizations,
   setDiaryEntryPersons,
@@ -16,9 +23,10 @@ import {
 import {
   createEntityKnowledge,
   getEntityKnowledgeEntry,
+  listActiveEntityKnowledge,
   markEntityKnowledgeDeleted,
 } from '../repositories/entityKnowledge.js';
-import { setEntitySummary } from '../repositories/entitySummaries.js';
+import { getEntitySummary, setEntitySummary } from '../repositories/entitySummaries.js';
 import { writeRewrittenFile } from '../diaryFiles.js';
 import { normalizeToHtml } from '../ai/rewrite.js';
 import { verifyMcpSessionToken, type McpScope } from './tokens.js';
@@ -180,6 +188,157 @@ if (requireScope('knowledge:distribute')) {
         return success(`Wissenseintrag ${id} als gelöscht markiert.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Löschen des Wissenseintrags');
+      }
+    },
+  );
+}
+
+if (requireScope('diary:read')) {
+  server.tool(
+    'get_diary_entry',
+    'Liefert einen bestimmten Tagebucheintrag inklusive Titel, Inhalt, Zusammenfassung und verknüpfter Entitäten.',
+    {
+      entryId: z.number().int().positive(),
+    },
+    async ({ entryId }) => {
+      try {
+        const entry = getDiaryEntryById(entryId);
+        if (!entry) return error('Tagebucheintrag nicht gefunden');
+        const lines = [
+          `ID: ${entry.id}`,
+          `Titel: ${entry.title}`,
+          `Datum: ${entry.createdAt}`,
+          `Zusammenfassung: ${entry.summary ?? '-'}`,
+          `Personen: ${entry.persons.join(', ') || '-'}`,
+          `Organisationen: ${entry.organizations.join(', ') || '-'}`,
+          `Orte: ${entry.locations.join(', ') || '-'}`,
+          '',
+          'Inhalt (Plain Text):',
+          stripHtml(entry.content),
+        ];
+        return success(lines.join('\n'));
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Laden des Tagebucheintrags');
+      }
+    },
+  );
+
+  server.tool(
+    'search_diary_entries',
+    'Sucht nach Tagebucheinträgen, die einen Suchbegriff im Titel oder Inhalt enthalten.',
+    {
+      query: z.string().min(1),
+      limit: z.number().int().positive().max(20).optional(),
+    },
+    async ({ query, limit }) => {
+      try {
+        const entries = searchDiaryEntries(query, limit ?? 5);
+        if (entries.length === 0) return success('Keine Tagebucheinträge gefunden.');
+        const lines = entries.map((e) => {
+          const plain = stripHtml(e.content);
+          return `ID ${e.id} | ${e.createdAt} | ${e.title}\n${plain.slice(0, 300)}${plain.length > 300 ? '...' : ''}`;
+        });
+        return success(lines.join('\n\n'));
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler bei der Suche');
+      }
+    },
+  );
+
+  server.tool(
+    'get_previous_diary_entries',
+    'Liefert die vorherigen Tagebucheinträge desselben Autors vor einem bestimmten Eintrag.',
+    {
+      entryId: z.number().int().positive(),
+      limit: z.number().int().positive().max(10).optional(),
+    },
+    async ({ entryId, limit }) => {
+      try {
+        const entry = getDiaryEntryById(entryId);
+        if (!entry) return error('Tagebucheintrag nicht gefunden');
+        const entries = listPreviousDiaryEntriesByUser(entry.userId, entry.createdAt, limit ?? 3);
+        if (entries.length === 0) return success('Keine vorherigen Tagebucheinträge gefunden.');
+        const lines = entries.map((e) => {
+          const plain = stripHtml(e.content);
+          return `ID ${e.id} | ${e.createdAt} | ${e.title}\n${plain.slice(0, 300)}${plain.length > 300 ? '...' : ''}`;
+        });
+        return success(lines.join('\n\n'));
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Laden der vorherigen Einträge');
+      }
+    },
+  );
+}
+
+if (requireScope('entity:read')) {
+  server.tool(
+    'list_entities',
+    'Listet alle bekannten Entitäten (Personen, Organisationen, Orte) auf. Optional gefiltert nach Typ.',
+    {
+      type: z.enum(['persons', 'organizations', 'locations']).optional(),
+      limit: z.number().int().positive().max(200).optional(),
+    },
+    async ({ type, limit }) => {
+      try {
+        const names = listAllEntityNames();
+        const all = [
+          ...names.persons.map((name) => ({ type: 'persons', name })),
+          ...names.organizations.map((name) => ({ type: 'organizations', name })),
+          ...names.locations.map((name) => ({ type: 'locations', name })),
+        ];
+        const filtered = type ? all.filter((e) => e.type === type) : all;
+        const limited = filtered.slice(0, limit ?? 100);
+        if (limited.length === 0) return success('Keine Entitäten gefunden.');
+        return success(limited.map((e) => `- ${e.type}: ${e.name}`).join('\n'));
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Laden der Entitäten');
+      }
+    },
+  );
+
+  server.tool(
+    'get_entity',
+    'Liefert Zusammenfassung, aktives Wissen und verknüpfte Tagebucheinträge zu einer bestimmten Entität.',
+    {
+      type: z.enum(['persons', 'organizations', 'locations']),
+      name: z.string().min(1),
+      includeDiaryEntries: z.boolean().optional(),
+    },
+    async ({ type, name, includeDiaryEntries }) => {
+      try {
+        const canonical = findEntityCanonicalName(type, name);
+        if (!canonical) {
+          return error(`Entität ${type}/${name} nicht gefunden. Verwende list_entities, um passende Namen zu finden.`);
+        }
+        const summary = getEntitySummary(type, canonical);
+        const knowledge = listActiveEntityKnowledge(type, canonical);
+        const diaryEntries = includeDiaryEntries !== false ? listDiaryEntryContentsByEntity(type, canonical) : [];
+
+        const lines: string[] = [`Entität: ${canonical} (${type})`];
+        lines.push(`Zusammenfassung: ${summary?.summary ?? '-'}`);
+
+        if (knowledge.length > 0) {
+          lines.push('');
+          lines.push('Wissen:');
+          for (const entry of knowledge) {
+            const title = entry.title ? `${entry.title}: ` : '';
+            lines.push(`- ${title}${entry.content}`);
+          }
+        }
+
+        if (diaryEntries.length > 0) {
+          lines.push('');
+          lines.push('Verknüpfte Tagebucheinträge:');
+          for (const entry of diaryEntries.slice(0, 5)) {
+            const plain = stripHtml(entry.content);
+            lines.push(`ID ${entry.id} | ${entry.createdAt} | ${entry.title}`);
+            lines.push(`${plain.slice(0, 200)}${plain.length > 200 ? '...' : ''}`);
+          }
+        }
+
+        return success(lines.join('\n'));
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Laden der Entität');
       }
     },
   );

@@ -119,13 +119,20 @@ export function listAllEntityNames(): DiaryEntities {
   };
 }
 
-export function ensureEntityExists(type: keyof DiaryEntities, name: string): string {
+export function findEntityCanonicalName(type: keyof DiaryEntities, name: string): string | null {
   const { table } = entityConfig[type];
   const canonical = resolveEntityName(name.trim(), type);
   const existing = db.prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`).get(canonical) as { name: string } | undefined;
-  if (existing) return existing.name;
-  db.prepare(`INSERT OR IGNORE INTO ${table} (name) VALUES (?)`).run(canonical);
-  return canonical;
+  return existing ? existing.name : null;
+}
+
+export function ensureEntityExists(type: keyof DiaryEntities, name: string): string {
+  const canonical = findEntityCanonicalName(type, name);
+  if (canonical) return canonical;
+  const { table } = entityConfig[type];
+  const resolved = resolveEntityName(name.trim(), type);
+  db.prepare(`INSERT OR IGNORE INTO ${table} (name) VALUES (?)`).run(resolved);
+  return resolved;
 }
 
 function getAliasEntries(
@@ -142,7 +149,7 @@ function getAliasEntries(
   return map;
 }
 
-function resolveEntityName(name: string, type: keyof DiaryEntities): string {
+export function resolveEntityName(name: string, type: keyof DiaryEntities): string {
   const aliases = getAliasEntries(type);
   let current = name.trim();
   const seen = new Set<string>();
@@ -417,6 +424,24 @@ export function listPreviousDiaryEntriesByUser(
       content: string;
       createdAt: string;
     }[];
+  return rows;
+}
+
+export function searchDiaryEntries(
+  query: string,
+  limit = 5,
+): { id: number; title: string; content: string; createdAt: string }[] {
+  const escaped = query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+  const like = `%${escaped}%`;
+  const rows = db
+    .prepare(
+      `SELECT id, title, content, created_at AS createdAt
+       FROM diary_entries
+       WHERE title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\'
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(like, like, limit) as { id: number; title: string; content: string; createdAt: string }[];
   return rows;
 }
 

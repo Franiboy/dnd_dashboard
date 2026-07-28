@@ -39,7 +39,6 @@ export async function rewriteTextWithAi(
   existingSessionId: string | null,
   model?: string,
   onLog?: (line: string) => void,
-  knowledgeContext?: string,
 ): Promise<RewriteResult> {
   const plainText = stripHtml(originalHtml).trim();
   if (!plainText) {
@@ -64,13 +63,16 @@ export async function rewriteTextWithAi(
     '- Wickele die Ausgabe nicht in Markdown-Code-Blöcke und füge keine Erklärungen hinzu.',
     '- Rufe set_diary_rewrite genau ein einziges Mal auf, mit dem vollständigen HTML-Text als "html"-Parameter.',
     '- Gib nach dem Tool-Aufruf nur eine kurze Bestätigung aus, nicht den HTML-Text selbst.',
-    ...(knowledgeContext ? [knowledgeContext] : []),
+    '- DU MUSST die verfügbaren Tools nutzen, um fehlenden Kontext abzufragen, BEVOR du das Ergebnis speicherst.',
+    '- Wenn der Text Personen, Organisationen oder Orte erwähnt, rufe get_entity für jede davon auf, um aktuelles Wissen und Zusammenfassungen zu erhalten.',
+    '- Für zeitlichen Kontext rufe get_previous_diary_entries(entryId=${entryId}) auf.',
+    '- Speichere das Rewrite erst, nachdem du alle relevanten Informationen abgefragt hast.',
     '',
     'Tagebucheintrag:',
     originalHtml,
-    '',
-    'Aktuelles Rewrite (verbessere dieses):',
-    previousContent,
+    ...(mode === 'improve'
+      ? ['', 'Aktuelles Rewrite (verbessere dieses):', previousContent]
+      : []),
   ].join('\n');
 
   const result = await runOpenCode({
@@ -79,7 +81,7 @@ export async function rewriteTextWithAi(
     model: model || process.env.AI_MODEL || 'provider/GLM5.2',
     sessionId: existingSessionId || undefined,
     title,
-    scopes: ['diary:rewrite'],
+    scopes: ['diary:read', 'entity:read', 'diary:rewrite'],
     onLog,
   });
 
@@ -106,19 +108,21 @@ export async function improveRewrittenWithCommand(
   sessionId: string,
   model?: string,
   onLog?: (line: string) => void,
-  knowledgeContext?: string,
 ): Promise<RewriteResult> {
   const plainOriginal = stripHtml(originalHtml).trim();
 
   const prompt = [
-    'Verbessere ein bereits umgeschriebenes deutsches Tagebucheintrag basierend auf einem Benutzerbefehl.',
+    'Verbessere einen bereits umgeschriebenen deutschen Tagebucheintrag basierend auf einem Benutzerbefehl.',
     `Speichere das Ergebnis mit dem Tool "set_diary_rewrite" (entryId=${entryId}). Rufe das Tool erst auf, wenn die Verarbeitung abgeschlossen ist.`,
     '',
     'Wichtig:',
     '- Halte die Ausgabe im HTML-Format. Bewahre alle bestehenden HTML-Tags und Strukturen.',
     '- Ändere nur den Textinhalt wie gewünscht. Wickele die Ausgabe nicht in Markdown-Code-Blöcke.',
     '- Rufe set_diary_rewrite nur ein einziges Mal auf, mit dem vollständigen HTML-Text.',
-    ...(knowledgeContext ? [knowledgeContext] : []),
+    '- DU MUSST die verfügbaren Tools nutzen, um fehlenden Kontext abzufragen, BEVOR du das Ergebnis speicherst.',
+    '- Wenn der Text oder der Befehl Personen, Organisationen oder Orte erwähnt, rufe get_entity für jede davon auf.',
+    '- Für zeitlichen Kontext rufe get_previous_diary_entries(entryId=${entryId}) auf.',
+    '- Speichere das Ergebnis erst, nachdem du alle relevanten Informationen abgefragt hast.',
     '',
     'Benutzerbefehl:',
     command,
@@ -136,7 +140,7 @@ export async function improveRewrittenWithCommand(
     worktreePath: process.cwd(),
     model: model || process.env.AI_MODEL || 'provider/GLM5.2',
     sessionId,
-    scopes: ['diary:rewrite'],
+    scopes: ['diary:read', 'entity:read', 'diary:rewrite'],
     onLog,
   });
 
@@ -160,7 +164,6 @@ export async function summarizeTextWithAi(
   text: string,
   model?: string,
   onLog?: (line: string) => void,
-  knowledgeContext?: string,
 ): Promise<string | null> {
   const plainText = stripHtml(text);
   if (!plainText) {
@@ -172,7 +175,6 @@ export async function summarizeTextWithAi(
 
 const prompt = [
     'Wichtig: Deine Antwort darf maximal 500 Zeichen lang sein. Überschreite dieses Limit auf keinen Fall.',
-    ...(knowledgeContext ? [knowledgeContext] : []),
     'Erstelle eine sehr grobe Zusammenfassung des folgenden deutschen Tagebucheintrags.',
     'Nenne nur die gröbsten Ereignisse, Orte und Handlungsstränge, z. B. "Kampf mit Drachen", "Aufenthalt in Goldenfields", "Verhandlung in Waterdeep".',
     'Lass Details, Namen, Vermutungen und Gefühle weg, sofern sie nicht absolut zentral für das gröbste Ereignis sind.',
@@ -181,6 +183,11 @@ const prompt = [
     'Gib maximal 3–5 Punkte aus, jeder Punkt in einer eigenen Zeile.',
     `Nutze das Tool "set_diary_summary" mit entryId=${entryId}, um die Zusammenfassung zu speichern.`,
     'Antworte ausschließlich auf Deutsch.',
+    '',
+    'DU MUSST die verfügbaren Tools nutzen, um Hintergrundinformationen abzufragen, BEVOR du die Zusammenfassung erstellst.',
+    '- Wenn der Text Personen, Organisationen oder Orte enthält, rufe get_entity für jede davon auf, um deren Bedeutung zu verstehen.',
+    '- Für zeitlichen Kontext rufe get_previous_diary_entries(entryId=${entryId}) auf.',
+    '- Erstelle die Zusammenfassung erst, nachdem du alle relevanten Informationen abgefragt hast.',
     '',
     'Tagebucheintrag:',
     plainText,
@@ -191,7 +198,7 @@ const prompt = [
     worktreePath: process.cwd(),
     model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
     title: `dnd-diary-summarize-${entryId}-${Date.now()}`,
-    scopes: ['diary:summarize'],
+    scopes: ['diary:read', 'entity:read', 'diary:summarize'],
     onLog,
   });
 
@@ -222,7 +229,6 @@ export async function extractEntitiesFromDiary(
   text: string,
   model?: string,
   onLog?: (line: string) => void,
-  knowledgeContext?: string,
 ): Promise<DiaryEntities> {
   const plainText = stripHtml(text);
   if (!plainText) {
@@ -231,7 +237,6 @@ export async function extractEntitiesFromDiary(
 
   const prompt = [
     'Extrahiere alle eindeutigen Personen/Charaktere, Organisationen/Fraktionen und Orte aus dem folgenden deutschen Tagebucheintrag.',
-    ...(knowledgeContext ? [knowledgeContext] : []),
     '',
     'Regeln:',
     '- persons: Lebende Wesen, Charaktere, Tiere mit eigenem Namen oder eindeutiger Bezeichnung. Keine allgemeinen Begriffe wie "Wachen", "Aufständische" oder "Leute".',
@@ -239,6 +244,12 @@ export async function extractEntitiesFromDiary(
     '- locations: Städte, Dörfer, Länder, Regionen, Kontinente, Landmarken, Gebäude, Dungeons, Festungen, Wälder, Berge, Flüsse oder andere Orte mit eigenem Namen. Keine unbestimmten Orte wie "ein Wald" oder "der Markt".',
     '',
     `Für jede gefundene Entität rufe das Tool "link_diary_entity" auf mit entryId=${entryId} und {"type": "persons" | "organizations" | "locations", "name": "Entitätsname"}.`,
+    '',
+    'DU MUSST vor dem Extrahieren die verfügbaren Tools nutzen, um bekannte Entitäten zu ermitteln:',
+    '- Rufe list_entities auf, um alle bereits bekannten Entitäten zu sehen.',
+    '- Wenn du unsicher bei einer Schreibweise bist, rufe get_entity(type, name) auf, um den korrekten Namen zu ermitteln.',
+    '- Verwende die exakte Schreibweise, die bereits in der Datenbank existiert, um Dubletten zu vermeiden.',
+    '- Extrahiere nur Entitäten, die im Text tatsächlich vorkommen. Erfinke keine Details.',
     '',
     'Tagebucheintrag:',
     plainText,
@@ -249,7 +260,7 @@ export async function extractEntitiesFromDiary(
     worktreePath: process.cwd(),
     model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
     title: `dnd-diary-entities-${entryId}-${Date.now()}`,
-    scopes: ['entity:extract'],
+    scopes: ['entity:read', 'entity:extract'],
     onLog,
   });
 
