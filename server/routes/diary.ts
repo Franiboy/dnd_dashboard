@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
-import { extractEntitiesFromDiary, improveRewrittenWithCommand, rewriteTextWithAi, summarizeTextWithAi, stripAnsi } from '../ai/rewrite.js';
+import { extractEntitiesFromDiary, improveRewrittenWithCommand, rewriteTextWithAi, summarizeTextWithAi } from '../ai/rewrite.js';
 import { distributeKnowledgeFromText, getKnowledgeContextForText } from '../ai/knowledge.js';
 import { deleteOpenCodeSession } from '../ai/opencode.js';
 import { deleteRewrittenFile, getRewrittenFilePath, readRewrittenFile } from '../diaryFiles.js';
@@ -77,7 +77,7 @@ function notifyDiaryAiLog(userId: string, raw: string) {
   const clients = sseClients.get(userId);
   if (!clients || clients.size === 0) return;
 
-  const messages = stripAnsi(raw)
+  const messages = raw
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line)
