@@ -55,12 +55,15 @@ export async function rewriteTextWithAi(
 
   const prompt = [
     `${mode === 'rewrite' ? 'Schreibe' : 'Verbessere'} den folgenden deutschen Tagebucheintrag in HTML-Format.`,
-    'Nutze das Tool "set_diary_rewrite", um den finalen HTML-Text zu speichern.',
+    `Du MUSST das Ergebnis über das Tool "set_diary_rewrite" (mit entryId=${entryId}) speichern. Schreibe den Text nicht als Antwort, sondern speichere ihn ausschließlich über das Tool.`,
     '',
     'Wichtig:',
     '- Verbessere Grammatik, Stil und Verständlichkeit, aber bewahre den ursprünglichen Sinn und persönlichen Ton.',
+    '- Schreibe den KOMPLETTEN Tagebucheintrag um. Lass keine Absätze, Listen oder Inhalte weg.',
     '- Bewahre alle bestehenden HTML-Tags und Strukturen (Absätze, Überschriften, Listen, fett, kursiv etc.). Ändere nur den Textinhalt, nicht die HTML-Struktur.',
     '- Wickele die Ausgabe nicht in Markdown-Code-Blöcke und füge keine Erklärungen hinzu.',
+    '- Rufe set_diary_rewrite genau ein einziges Mal auf, mit dem vollständigen HTML-Text als "html"-Parameter.',
+    '- Gib nach dem Tool-Aufruf nur eine kurze Bestätigung aus, nicht den HTML-Text selbst.',
     ...(knowledgeContext ? [knowledgeContext] : []),
     '',
     'Tagebucheintrag:',
@@ -109,11 +112,12 @@ export async function improveRewrittenWithCommand(
 
   const prompt = [
     'Verbessere ein bereits umgeschriebenes deutsches Tagebucheintrag basierend auf einem Benutzerbefehl.',
-    'Nutze das Tool "set_diary_rewrite", um den finalen HTML-Text zu speichern.',
+    `Speichere das Ergebnis mit dem Tool "set_diary_rewrite" (entryId=${entryId}). Rufe das Tool erst auf, wenn die Verarbeitung abgeschlossen ist.`,
     '',
     'Wichtig:',
     '- Halte die Ausgabe im HTML-Format. Bewahre alle bestehenden HTML-Tags und Strukturen.',
     '- Ändere nur den Textinhalt wie gewünscht. Wickele die Ausgabe nicht in Markdown-Code-Blöcke.',
+    '- Rufe set_diary_rewrite nur ein einziges Mal auf, mit dem vollständigen HTML-Text.',
     ...(knowledgeContext ? [knowledgeContext] : []),
     '',
     'Benutzerbefehl:',
@@ -166,16 +170,16 @@ export async function summarizeTextWithAi(
 
   log.info(`Starting summarize for entry ${entryId} with model ${model ?? 'default'}`);
 
-  const prompt = [
+const prompt = [
     'Wichtig: Deine Antwort darf maximal 500 Zeichen lang sein. Überschreite dieses Limit auf keinen Fall.',
     ...(knowledgeContext ? [knowledgeContext] : []),
     'Erstelle eine sehr grobe Zusammenfassung des folgenden deutschen Tagebucheintrags.',
-    'Nenne nur die gröbten Ereignisse, Orte und Handlungsstränge, z. B. "Kampf mit Drachen", "Aufenthalt in Goldenfields", "Verhandlung in Waterdeep".',
+    'Nenne nur die gröbsten Ereignisse, Orte und Handlungsstränge, z. B. "Kampf mit Drachen", "Aufenthalt in Goldenfields", "Verhandlung in Waterdeep".',
     'Lass Details, Namen, Vermutungen und Gefühle weg, sofern sie nicht absolut zentral für das gröbste Ereignis sind.',
     'Schreibe keine zusammenhängende Erzählung, sondern eine kurze Liste von knappen Stichpunkten.',
     'Halte dich strikt an den vorliegenden Text und erfinke keine Details, die darin nicht stehen.',
     'Gib maximal 3–5 Punkte aus, jeder Punkt in einer eigenen Zeile.',
-    'Nutze das Tool "set_diary_summary", um die Zusammenfassung zu speichern.',
+    `Nutze das Tool "set_diary_summary" mit entryId=${entryId}, um die Zusammenfassung zu speichern.`,
     'Antworte ausschließlich auf Deutsch.',
     '',
     'Tagebucheintrag:',
@@ -234,8 +238,7 @@ export async function extractEntitiesFromDiary(
     '- organizations: Gruppen, Gilden, Fraktionen, Clans, Häuser, Orden, Reiche, Familien, militärische Einheiten, Firmen oder andere Kollektive mit eigenem Namen. Keine allgemeinen Gruppenbezeichnungen.',
     '- locations: Städte, Dörfer, Länder, Regionen, Kontinente, Landmarken, Gebäude, Dungeons, Festungen, Wälder, Berge, Flüsse oder andere Orte mit eigenem Namen. Keine unbestimmten Orte wie "ein Wald" oder "der Markt".',
     '',
-    'Für jede gefundene Entität rufe das Tool "link_diary_entity" auf mit:',
-    '{"entryId": number, "type": "persons" | "organizations" | "locations", "name": "Entitätsname"}',
+    `Für jede gefundene Entität rufe das Tool "link_diary_entity" auf mit entryId=${entryId} und {"type": "persons" | "organizations" | "locations", "name": "Entitätsname"}.`,
     '',
     'Tagebucheintrag:',
     plainText,

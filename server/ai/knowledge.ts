@@ -278,7 +278,7 @@ export async function generateEntitySummary(
     'Nutze dafür die folgenden Wissenseinträge und Tagebucheinträge.',
     '',
     'Verfügbares Tool:',
-    '- set_entity_summary(type, name, summary): Speichert die Zusammenfassung.',
+    `- set_entity_summary(type="${entityType}", name="${entityName}", summary): Speichert die Zusammenfassung. Verwende diesen type und name genau so.`,
     '',
     'Regeln:',
     '- Beschreibe die wichtigsten Eigenschaften, Beziehungen und Ereignisse.',
