@@ -1,8 +1,7 @@
 import { Router, type Response } from 'express';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
-import { extractEntitiesFromDiary, improveRewrittenWithCommand, rewriteTextWithAi, summarizeTextWithAi } from '../ai/rewrite.js';
-import { distributeKnowledgeFromText } from '../ai/knowledge.js';
+import { improveRewrittenWithCommand, processDiaryEntryAi, rewriteTextWithAi } from '../ai/rewrite.js';
 import { deleteOpenCodeSession } from '../ai/opencode.js';
 import { deleteRewrittenFile, getRewrittenFilePath, readRewrittenFile } from '../diaryFiles.js';
 import { createLogger } from '../logger.js';
@@ -17,16 +16,6 @@ import {
 const log = createLogger('diaryRoutes');
 
 const SUMMARY_MAX_LENGTH = 500;
-
-function truncateSummary(text: string, maxLength: number = SUMMARY_MAX_LENGTH): string {
-  if (text.length <= maxLength) return text;
-  const prefix = text.slice(0, maxLength - 3);
-  const cut = Math.max(prefix.lastIndexOf(' '), prefix.lastIndexOf('\n'));
-  if (cut <= 0 || cut < maxLength * 0.5) {
-    return prefix + '...';
-  }
-  return text.slice(0, cut) + '...';
-}
 
 const sseClients = new Map<string, Set<Response>>();
 
@@ -455,27 +444,17 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const [summary] = await Promise.all([
-      summarizeTextWithAi(existing.id, existing.content, undefined, onLog),
-      extractEntitiesFromDiary(existing.id, existing.content, undefined, onLog),
-    ]);
-    if (summary === null) {
-      res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
+    const success = await processDiaryEntryAi(existing.id, undefined, onLog);
+    if (!success) {
+      res.status(500).json({ error: 'KI-Verarbeitung ist fehlgeschlagen' });
       return;
     }
 
     sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
-    const entry = updateDiaryEntry(id, { summary: truncateSummary(summary) });
+    const entry = getDiaryEntryById(id);
     if (!entry) {
       res.status(500).json({ error: 'Speichern fehlgeschlagen' });
       return;
-    }
-
-    sendDiaryAiStatus(req.user!.id, 'Wissen wird aus dem Eintrag abgeleitet...');
-    try {
-      await distributeKnowledgeFromText(existing.content, undefined, onLog);
-    } catch {
-      // Knowledge distribution is optional.
     }
 
     res.json({ entry });

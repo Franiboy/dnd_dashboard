@@ -25,6 +25,10 @@ import {
   stopEntitySummaryScheduler,
 } from './scheduler/entitySummaries.js';
 import {
+  startDiarySummaryScheduler,
+  stopDiarySummaryScheduler,
+} from './scheduler/diarySummaries.js';
+import {
   startSessionCleanupScheduler,
   stopSessionCleanupScheduler,
 } from './scheduler/sessionCleanup.js';
@@ -68,6 +72,7 @@ runMigrations();
 ensureAdminUser();
 startBot();
 startTranscriptionScheduler();
+startDiarySummaryScheduler();
 startEntitySummaryScheduler();
 startSessionCleanupScheduler();
 
@@ -107,6 +112,7 @@ function shutdown(signal: string) {
   isShuttingDown = true;
   console.log(`\n${signal} received, shutting down gracefully...`);
   stopTranscriptionScheduler();
+  stopDiarySummaryScheduler();
   stopEntitySummaryScheduler();
   stopSessionCleanupScheduler();
 

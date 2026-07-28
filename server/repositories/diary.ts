@@ -41,6 +41,8 @@ function rowToDiaryEntry(
     rewrittenContent,
     rewrittenFilePath: (row.rewritten_file_path as string | null | undefined) ?? null,
     rewriteSessionId: (row.rewrite_session_id as string | null | undefined) ?? null,
+    aiDirty: Boolean(row.ai_dirty),
+    aiProcessedAt: (row.ai_processed_at as string | null | undefined) ?? null,
     persons: entities.persons,
     organizations: entities.organizations,
     locations: entities.locations,
@@ -376,9 +378,9 @@ export function createDiaryEntry(
   const now = new Date().toISOString();
   const result = db
     .prepare(
-      'INSERT INTO diary_entries (user_id, title, content, summary, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
-    .run(userId, title.trim(), content.trim(), summary ? summary.trim() : null, now, now);
+    .run(userId, title.trim(), content.trim(), summary ? summary.trim() : null, 1, now, now);
   return getDiaryEntryById(Number(result.lastInsertRowid))!;
 }
 
@@ -466,7 +468,7 @@ export function listDiaryEntryContentsByEntity(
 export function updateDiaryEntry(
   id: number,
   updates: Partial<
-    Pick<DiaryEntry, 'title' | 'content' | 'summary' | 'rewrittenContent' | 'persons' | 'organizations' | 'locations'> & {
+    Pick<DiaryEntry, 'title' | 'content' | 'summary' | 'rewrittenContent' | 'persons' | 'organizations' | 'locations' | 'aiDirty' | 'aiProcessedAt'> & {
       rewrittenFilePath?: string | null;
       rewriteSessionId?: string | null;
     }
@@ -485,6 +487,11 @@ export function updateDiaryEntry(
   if (updates.content !== undefined) {
     fields.push('content = ?');
     values.push(updates.content.trim());
+    // Content changed -> AI summary/entities need reprocessing.
+    fields.push('ai_dirty = ?');
+    values.push(1);
+    fields.push('ai_processed_at = ?');
+    values.push(null);
   }
   if (updates.summary !== undefined) {
     fields.push('summary = ?');
@@ -501,6 +508,14 @@ export function updateDiaryEntry(
   if (updates.rewriteSessionId !== undefined) {
     fields.push('rewrite_session_id = ?');
     values.push(updates.rewriteSessionId ? updates.rewriteSessionId.trim() : null);
+  }
+  if (updates.aiDirty !== undefined) {
+    fields.push('ai_dirty = ?');
+    values.push(updates.aiDirty ? 1 : 0);
+  }
+  if (updates.aiProcessedAt !== undefined) {
+    fields.push('ai_processed_at = ?');
+    values.push(updates.aiProcessedAt ? updates.aiProcessedAt.trim() : null);
   }
 
   const hasPersonsUpdate = updates.persons !== undefined;
@@ -798,6 +813,26 @@ export function unblacklistEntity(name: string, type: keyof DiaryEntities): void
 
 export function deleteDiaryEntry(id: number): void {
   db.prepare('DELETE FROM diary_entries WHERE id = ?').run(id);
+}
+
+export function markDiaryEntryDirty(id: number): void {
+  db.prepare('UPDATE diary_entries SET ai_dirty = 1 WHERE id = ?').run(id);
+}
+
+export function clearDiaryEntryDirty(id: number, processedAt?: string): void {
+  const ts = processedAt ?? new Date().toISOString();
+  db.prepare('UPDATE diary_entries SET ai_dirty = 0, ai_processed_at = ? WHERE id = ?').run(ts, id);
+}
+
+export function listDirtyDiaryEntries(limit = 10): DiaryEntry[] {
+  const rows = db
+    .prepare('SELECT * FROM diary_entries WHERE ai_dirty = 1 ORDER BY created_at DESC LIMIT ?')
+    .all(limit) as Record<string, unknown>[];
+  const entryIds = rows.map((row) => row.id as number);
+  const entitiesMap = buildEntryEntitiesMap(entryIds);
+  return rows.map((row) =>
+    rowToDiaryEntry(row, entitiesMap.get(row.id as number) ?? emptyEntities(), false),
+  );
 }
 
 export function listActiveRewriteSessionIds(): string[] {
