@@ -137,3 +137,14 @@ export function renameEntityKnowledge(
   ).run(newName, entityType, oldName);
   renameEntitySummary(entityType, oldName, newName);
 }
+
+export function mergeEntityKnowledge(
+  sourceType: EntityType,
+  sourceName: string,
+  targetType: EntityType,
+  targetName: string,
+): void {
+  db.prepare(
+    'UPDATE entity_knowledge_entries SET entity_type = ?, entity_name = ? WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE',
+  ).run(targetType, targetName, sourceType, sourceName);
+}
