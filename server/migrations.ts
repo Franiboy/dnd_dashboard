@@ -348,6 +348,15 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: 'add_entity_mini_summary',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(entity_summaries)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'mini_summary')) {
+        db.exec('ALTER TABLE entity_summaries ADD COLUMN mini_summary TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations() {

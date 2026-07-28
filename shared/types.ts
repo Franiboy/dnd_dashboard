@@ -178,6 +178,7 @@ export interface EntityMapping {
   type: EntityType;
   canonical: string;
   aliases: string[];
+  miniSummary: string | null;
 }
 
 export interface EntityUpdatePayload {

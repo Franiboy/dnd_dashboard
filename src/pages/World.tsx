@@ -288,6 +288,9 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
   const [newAlias, setNewAlias] = useState('');
   const [knowledge, setKnowledge] = useState<EntityKnowledgeEntry[]>([]);
   const [summary, setSummary] = useState<string | null>(null);
+  const [miniSummary, setMiniSummary] = useState<string | null>(null);
+  const [editingMiniSummary, setEditingMiniSummary] = useState(false);
+  const [editingMiniSummaryText, setEditingMiniSummaryText] = useState('');
   const [summaryDirty, setSummaryDirty] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [editingKnowledgeId, setEditingKnowledgeId] = useState<number | null>(null);
@@ -310,7 +313,7 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
         request<{ entries: EntityKnowledgeEntry[] }>(
           `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`,
         ),
-        request<{ summary: string | null; isDirty: boolean }>(
+        request<{ summary: string | null; miniSummary: string | null; isDirty: boolean }>(
           `/api/entities/summary?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`,
         ),
       ]);
@@ -324,6 +327,7 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
       setAliases(detailData.aliases);
       setKnowledge(knowledgeData?.entries || []);
       setSummary(summaryData?.summary ?? null);
+      setMiniSummary(summaryData?.miniSummary ?? null);
       setSummaryDirty(summaryData?.isDirty ?? true);
       setLoading(false);
     }
@@ -428,7 +432,7 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
 
   async function handleGenerateSummary() {
     setGeneratingSummary(true);
-    const { data, error } = await request<{ summary: string }>('/api/entities/summary/generate', {
+    const { data, error } = await request<{ summary: string; miniSummary: string | null }>('/api/entities/summary/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type, name: detail?.canonical ?? name }),
@@ -436,8 +440,37 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
     setGeneratingSummary(false);
     if (!error && data) {
       setSummary(data.summary);
+      setMiniSummary(data.miniSummary);
       setSummaryDirty(false);
       showSuccess('Zusammenfassung generiert.');
+    }
+  }
+
+  function startEditMiniSummary() {
+    setEditingMiniSummaryText(miniSummary ?? '');
+    setEditingMiniSummary(true);
+  }
+
+  function cancelEditMiniSummary() {
+    setEditingMiniSummary(false);
+    setEditingMiniSummaryText('');
+  }
+
+  async function saveMiniSummary() {
+    const text = editingMiniSummaryText.trim();
+    if (text.length > 200) {
+      showError('Mini-Zusammenfassung darf maximal 200 Zeichen haben');
+      return;
+    }
+    const { data, error } = await request<{ miniSummary: string | null }>('/api/entities/mini-summary', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, name: detail?.canonical ?? name, miniSummary: text || null }),
+    });
+    if (!error && data) {
+      setMiniSummary(data.miniSummary);
+      setEditingMiniSummary(false);
+      showSuccess('Mini-Zusammenfassung gespeichert.');
     }
   }
 
@@ -595,6 +628,54 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
                   Noch keine Zusammenfassung vorhanden.
                 </div>
               )}
+
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-medium text-[var(--text-h)]">Mini-Zusammenfassung</p>
+                  {!editingMiniSummary && (
+                    <button
+                      type="button"
+                      onClick={startEditMiniSummary}
+                      title="Mini-Zusammenfassung bearbeiten"
+                      className="text-xs text-slate-500 hover:text-[var(--accent)] transition"
+                    >
+                      Bearbeiten
+                    </button>
+                  )}
+                </div>
+                {editingMiniSummary ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editingMiniSummaryText}
+                      onChange={(e) => setEditingMiniSummaryText(e.target.value)}
+                      rows={2}
+                      maxLength={200}
+                      className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={saveMiniSummary}
+                        disabled={editingMiniSummaryText.trim().length > 200}
+                        className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
+                      >
+                        Speichern
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditMiniSummary}
+                        className="text-xs px-2 py-1 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </div>
+                ) : miniSummary ? (
+                  <p className="text-sm text-slate-300 whitespace-pre-wrap">{miniSummary}</p>
+                ) : (
+                  <p className="text-sm text-slate-500 italic">Noch keine Mini-Zusammenfassung vorhanden.</p>
+                )}
+              </div>
             </div>
           )}
 
