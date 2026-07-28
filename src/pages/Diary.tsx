@@ -3,9 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
 import { Button } from '../components/Button';
-import { DashboardHeader } from '../components/DashboardHeader';
-import { DashboardLayout } from '../components/DashboardLayout';
-import { GridPanel } from '../components/GridPanel';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
 import ReactQuill from 'react-quill-new';
@@ -106,7 +103,6 @@ export function Diary() {
   const [rewriteCommands, setRewriteCommands] = useState<Record<number, string>>({});
   const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [aiOperation, setAiOperation] = useState(false);
-  const [resetKey, setResetKey] = useState(0);
   const sseReadyRef = useRef(Promise.resolve());
 
   const loadEntries = useCallback(async () => {
@@ -180,11 +176,6 @@ export function Diary() {
     if (working) return;
     setIsModalOpen(false);
     resetForm();
-  }
-
-  function handleResetLayout() {
-    localStorage.removeItem('diary-layout-v2');
-    setResetKey((k) => k + 1);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -456,7 +447,12 @@ export function Diary() {
 
   return (
     <div className="h-full flex flex-col p-6">
-      <DashboardHeader title="Notizen" onReset={handleResetLayout} />
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-3xl font-bold text-[var(--text-h)]">Tagebuch</h1>
+        <Button variant="accent" onClick={openCreate} className="text-xs px-2 py-1">
+          Neuer Eintrag
+        </Button>
+      </div>
 
       {aiStatus && (
         <div className="fixed bottom-4 right-4 bg-[var(--panel)] border border-[var(--border)] rounded-xl p-3 shadow-lg z-50 max-w-md">
@@ -468,24 +464,8 @@ export function Diary() {
         </div>
       )}
 
-      <DashboardLayout
-        key={resetKey}
-        storageKey="diary-layout-v2"
-        defaultLayout={[{ i: 'diary', x: 0, y: 0, w: 12, h: 100, minW: 3, minH: 4 }]}
-        className="flex-1 min-h-0"
-        fitHeight
-      >
-        <div key="diary">
-          <GridPanel
-            title="Tagebuch"
-            actions={
-              <Button variant="accent" onClick={openCreate} className="text-xs px-2 py-1">
-                Neuer Eintrag
-              </Button>
-            }
-          >
-            <div className="flex-1 min-h-0 overflow-auto -m-4 p-4">
-              {entries.length === 0 ? (
+      <div className="flex-1 min-h-0 overflow-auto -mx-6 px-6">
+        {entries.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center">
                   <p className="text-slate-400">Noch keine Tagebucheinträge vorhanden.</p>
                 </div>
@@ -732,9 +712,6 @@ export function Diary() {
               </div>
               )}
             </div>
-          </GridPanel>
-        </div>
-      </DashboardLayout>
 
       <Modal
         isOpen={isModalOpen}
