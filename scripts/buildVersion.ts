@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getVersion } from '../server/version.ts';

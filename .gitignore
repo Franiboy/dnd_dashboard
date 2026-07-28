@@ -18,6 +18,7 @@ recordings
 data/diary
 .venv
 *.db-*
+opencode.json
 
 # Editor directories and files
 .vscode/*
