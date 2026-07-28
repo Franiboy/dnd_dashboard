@@ -10,6 +10,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from '../shared/types
 import { ensureAdminUser } from './users.js';
 import adminRouter from './routes/admin.js';
 import authRouter from './routes/auth.js';
+import aiRouter from './routes/ai.js';
 import diaryRouter from './routes/diary.js';
 import entitiesRouter from './routes/entities.js';
 import recordingsRouter from './routes/recordings.js';
@@ -71,6 +72,7 @@ app.get('/api/version', (req, res) => {
 
 app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/ai', aiRouter);
 app.use('/api/diary', diaryRouter);
 app.use('/api/entities', entitiesRouter);
 app.use('/api/recordings', recordingsRouter);

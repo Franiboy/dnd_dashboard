@@ -269,10 +269,10 @@ async function runAiPrompt(
 }
 
 export function stripAnsi(text: string): string {
-  return text.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+  return text.replace(/\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
 }
 
-function extractRewriteOutput(raw: string): string {
+export function extractRewriteOutput(raw: string): string {
   let cleaned = stripAnsi(raw).trim();
 
   // If the model wrapped the output in a markdown code block, extract it.
@@ -291,6 +291,48 @@ function extractRewriteOutput(raw: string): string {
   });
 
   return lines.join('\n').trim();
+}
+
+export function extractJsonFromAiOutput(raw: string): unknown {
+  let cleaned = stripAnsi(raw).trim();
+
+  const codeBlockMatch = cleaned.match(/```(?:\w+)?\n?([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    cleaned = codeBlockMatch[1].trim();
+  }
+
+  cleaned = cleaned
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (/^\s*>\s+\S+\s*·\s*\S+/.test(trimmed)) return false;
+      return true;
+    })
+    .join('\n')
+    .trim();
+
+  const arrayStart = cleaned.indexOf('[');
+  const arrayEnd = cleaned.lastIndexOf(']');
+  if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+    try {
+      return JSON.parse(cleaned.slice(arrayStart, arrayEnd + 1));
+    } catch {
+      // fall through
+    }
+  }
+
+  const objectStart = cleaned.indexOf('{');
+  const objectEnd = cleaned.lastIndexOf('}');
+  if (objectStart !== -1 && objectEnd !== -1 && objectEnd > objectStart) {
+    try {
+      return JSON.parse(cleaned.slice(objectStart, objectEnd + 1));
+    } catch {
+      // fall through
+    }
+  }
+
+  return null;
 }
 
 export interface DiaryEntities {
