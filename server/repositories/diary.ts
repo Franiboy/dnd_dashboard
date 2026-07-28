@@ -164,6 +164,44 @@ export function resolveEntityName(name: string, type: keyof DiaryEntities): stri
   return current;
 }
 
+interface EntityMapping {
+  type: keyof DiaryEntities;
+  canonical: string;
+  aliases: string[];
+}
+
+export function getEntityMappings(): EntityMapping[] {
+  const result: EntityMapping[] = [];
+  const blacklists = getBlacklists();
+
+  for (const type of ['persons', 'organizations', 'locations'] as const) {
+    const { table } = entityConfig[type];
+    const names = getEntityNames(table);
+    const aliasesByCanonical = new Map<string, string[]>();
+
+    const aliasRows = db
+      .prepare('SELECT alias, canonical FROM entity_aliases WHERE type = ?')
+      .all(type) as { alias: string; canonical: string }[];
+    for (const { alias, canonical } of aliasRows) {
+      const list = aliasesByCanonical.get(canonical) ?? [];
+      list.push(alias);
+      aliasesByCanonical.set(canonical, list);
+    }
+
+    for (const name of names) {
+      const lower = name.toLowerCase();
+      if (blacklists[type].has(lower)) continue;
+      result.push({
+        type,
+        canonical: name,
+        aliases: aliasesByCanonical.get(name) ?? [],
+      });
+    }
+  }
+
+  return result;
+}
+
 export function findExistingEntitiesInText(text: string): DiaryEntities {
   const plainText = stripHtml(text);
   const result: DiaryEntities = emptyEntities();
