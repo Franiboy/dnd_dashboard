@@ -134,16 +134,17 @@ if (requireScope('entity:extract')) {
 if (requireScope('entity:summary')) {
   server.tool(
     'set_entity_summary',
-    'Setzt die Zusammenfassung einer Entität.',
+    'Setzt die Zusammenfassung und optionale Mini-Zusammenfassung einer Entität.',
     {
       type: z.enum(['persons', 'organizations', 'locations']),
       name: z.string().min(1),
       summary: z.string().min(1),
+      miniSummary: z.string().max(200).optional(),
     },
-    async ({ type, name, summary }) => {
+    async ({ type, name, summary, miniSummary }) => {
       try {
         const canonical = ensureEntityExists(type, name);
-        setEntitySummary(type, canonical, summary.trim(), false);
+        setEntitySummary(type, canonical, summary.trim(), false, miniSummary);
         return success(`Zusammenfassung für ${type}/${canonical} gesetzt.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Setzen der Zusammenfassung');
@@ -316,6 +317,7 @@ if (requireScope('entity:read')) {
 
         const lines: string[] = [`Entität: ${canonical} (${type})`];
         lines.push(`Zusammenfassung: ${summary?.summary ?? '-'}`);
+        lines.push(`Mini-Zusammenfassung: ${summary?.miniSummary ?? '-'}`);
 
         if (knowledge.length > 0) {
           lines.push('');

@@ -122,12 +122,17 @@ export async function distributeKnowledgeFromText(
   return diff;
 }
 
+export interface GeneratedEntitySummary {
+  summary: string;
+  miniSummary: string | null;
+}
+
 export async function generateEntitySummary(
   entityType: EntityType,
   entityName: string,
   model?: string,
   onLog?: (line: string) => void,
-): Promise<string | null> {
+): Promise<GeneratedEntitySummary | null> {
   const typeLabel = entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
 
   const summaryRow = getEntitySummary(entityType, entityName);
@@ -138,22 +143,23 @@ export async function generateEntitySummary(
   const prompt = [
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
-    `Aufgabe: Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${entityName}".`,
+    `Aufgabe: Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${entityName}" und zusätzlich eine sehr kurze Mini-Zusammenfassung (1 Satz, maximal 150 Zeichen) für Tooltips.`,
     '',
     'Verfügbare Tools:',
     `- get_entity(type="${entityType}", name="${entityName}"): Liefert alle Informationen zur Entität. DU MUSST dieses Tool aufrufen, bevor du die Zusammenfassung erstellst.`,
-    `- set_entity_summary(type="${entityType}", name="${entityName}", summary): Speichert die Zusammenfassung. Verwende diesen type und name genau so.`,
+    `- set_entity_summary(type="${entityType}", name="${entityName}", summary, miniSummary): Speichert die Zusammenfassung und Mini-Zusammenfassung. Verwende diesen type und name genau so.`,
     '',
     'Regeln:',
     '- Rufe get_entity auf, um Wissen und verknüpfte Tagebucheinträge zu erhalten.',
     '- Beschreibe die wichtigsten Eigenschaften, Beziehungen und Ereignisse.',
     '- Vermeide Spekulation; nutze nur die gegebenen Informationen.',
     '- Korrigiere die vorherige Zusammenfassung, falls neue Informationen sie widerlegen.',
-    '- Maximal 3-5 Sätze.',
-    '- Speichere die Zusammenfassung erst, nachdem du get_entity aufgerufen hast.',
+    '- Die normale Zusammenfassung soll maximal 3-5 Sätze haben.',
+    '- Die Mini-Zusammenfassung soll 1 Satz mit maximal 150 Zeichen sein und ideal als Tooltip verwendet werden können.',
+    '- Speichere beides zusammen mit set_entity_summary, nachdem du get_entity aufgerufen hast.',
     '',
     previousSummary,
-    `Zusammenfassung für ${entityName}:`,
+    `Zusammenfassung für ${entityName}:`
   ].join('\n');
 
   log.info(`Generating summary for ${entityType}/${entityName}`);
@@ -183,5 +189,8 @@ export async function generateEntitySummary(
   }
 
   log.info(`Summary generated for ${entityType}/${entityName}`);
-  return summaryRowAfter.summary;
+  return {
+    summary: summaryRowAfter.summary,
+    miniSummary: summaryRowAfter.miniSummary,
+  };
 }

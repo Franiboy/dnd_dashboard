@@ -168,6 +168,7 @@ interface EntityMapping {
   type: keyof DiaryEntities;
   canonical: string;
   aliases: string[];
+  miniSummary: string | null;
 }
 
 export function getEntityMappings(): EntityMapping[] {
@@ -188,6 +189,14 @@ export function getEntityMappings(): EntityMapping[] {
       aliasesByCanonical.set(canonical, list);
     }
 
+    const summaryRows = db
+      .prepare('SELECT entity_name, mini_summary FROM entity_summaries WHERE entity_type = ?')
+      .all(type) as { entity_name: string; mini_summary: string | null }[];
+    const miniSummaries = new Map<string, string | null>();
+    for (const { entity_name, mini_summary } of summaryRows) {
+      miniSummaries.set(entity_name, mini_summary);
+    }
+
     for (const name of names) {
       const lower = name.toLowerCase();
       if (blacklists[type].has(lower)) continue;
@@ -195,6 +204,7 @@ export function getEntityMappings(): EntityMapping[] {
         type,
         canonical: name,
         aliases: aliasesByCanonical.get(name) ?? [],
+        miniSummary: miniSummaries.get(name) ?? null,
       });
     }
   }
