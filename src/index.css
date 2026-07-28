@@ -81,6 +81,95 @@ button {
   text-decoration: underline;
 }
 
+.diary-content blockquote {
+  border-left: 4px solid var(--accent);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.diary-content pre {
+  background: #0f172a;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.diary-content code {
+  background: #0f172a;
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.diary-content ul,
+.diary-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.diary-content ul ul,
+.diary-content ol ol,
+.diary-content ul ol,
+.diary-content ol ul {
+  margin: 0.25rem 0;
+}
+
+.diary-content ul {
+  list-style-type: disc;
+}
+
+.diary-content ul ul {
+  list-style-type: circle;
+}
+
+.diary-content ul ul ul {
+  list-style-type: square;
+}
+
+.diary-content ol {
+  list-style-type: decimal;
+}
+
+.diary-content ol ol {
+  list-style-type: lower-alpha;
+}
+
+.diary-content ol ol ol {
+  list-style-type: lower-roman;
+}
+
+.diary-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  background: #0f172a;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.diary-content th,
+.diary-content td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.diary-content th {
+  background: #1e293b;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.diary-content tr:nth-child(even) td {
+  background: #111827;
+}
+
 .ql-toolbar {
   background: var(--panel);
   border-color: var(--border) !important;
@@ -123,6 +212,44 @@ button {
   min-height: 120px;
   overflow-y: auto;
   background: var(--bg);
+}
+
+.ql-editor blockquote {
+  border-left: 4px solid var(--accent);
+  padding-left: 1rem;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.ql-editor pre.ql-syntax {
+  background: #0f172a;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  color: var(--text);
+}
+
+.ql-editor table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  background: #0f172a;
+  border: 1px solid var(--border);
+}
+
+.ql-editor th,
+.ql-editor td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ql-editor th {
+  background: #1e293b;
+  font-weight: 600;
+  color: var(--text-h);
 }
 
 .diary-editor {
