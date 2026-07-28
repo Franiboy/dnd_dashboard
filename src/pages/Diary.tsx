@@ -140,11 +140,14 @@ export function Diary() {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<DiaryFormData>({ title: '', content: '' });
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
+  const [draftOriginal, setDraftOriginal] = useState<Record<number, string>>({});
+  const [draftRewritten, setDraftRewritten] = useState<Record<number, string>>({});
+  const [editingTitleId, setEditingTitleId] = useState<number | null>(null);
+  const [editingTitleText, setEditingTitleText] = useState('');
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null);
   const [editingSummaryText, setEditingSummaryText] = useState('');
   const [processingSummaryId, setProcessingSummaryId] = useState<number | null>(null);
@@ -201,24 +204,13 @@ export function Diary() {
   }, []);
 
 
-  function resetForm(entry?: DiaryEntry) {
-    if (entry) {
-      setForm({ title: entry.title, content: entry.content });
-      setEditingId(entry.id);
-    } else {
-      setForm({ title: '', content: '' });
-      setEditingId(null);
-    }
+  function resetForm() {
+    setForm({ title: '', content: '' });
     setFormError(null);
   }
 
   function openCreate() {
     resetForm();
-    setIsModalOpen(true);
-  }
-
-  function openEdit(entry: DiaryEntry) {
-    resetForm(entry);
     setIsModalOpen(true);
   }
 
@@ -243,28 +235,18 @@ export function Diary() {
       content: form.content,
     };
 
-    if (editingId === null) {
-      setAiOperation(true);
-      setAiStatus('Eintrag wird erstellt und analysiert...');
-      await Promise.race([sseReadyRef.current, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
-    }
+    setAiOperation(true);
+    setAiStatus('Eintrag wird erstellt und analysiert...');
+    await Promise.race([sseReadyRef.current, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
     setWorking(true);
 
     let res;
     try {
-      if (editingId !== null) {
-        res = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${editingId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } else {
-        res = await request<{ entry: DiaryEntry }>('/api/diary/entries', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      }
+      res = await request<{ entry: DiaryEntry }>('/api/diary/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
     } finally {
       setWorking(false);
       setAiOperation(false);
@@ -276,14 +258,9 @@ export function Diary() {
     }
 
     if (res.data) {
-      showSuccess(editingId !== null ? 'Eintrag aktualisiert.' : 'Eintrag erstellt.');
+      showSuccess('Eintrag erstellt.');
       setAiStatus(null);
-      setEntries((prev) => {
-        if (editingId !== null) {
-          return prev.map((e) => (e.id === editingId ? res.data!.entry : e));
-        }
-        return [res.data!.entry, ...prev];
-      });
+      setEntries((prev) => [res.data!.entry, ...prev]);
     }
 
     closeModal();
@@ -371,18 +348,77 @@ export function Diary() {
     }
   }
 
-  async function handleAcceptRewritten(entry: DiaryEntry) {
-    if (!entry.rewrittenFilePath || !entry.rewrittenContent) return;
+  function getEditingContent(entry: DiaryEntry): string {
+    if (viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath) {
+      return draftRewritten[entry.id] ?? entry.rewrittenContent ?? '';
+    }
+    return draftOriginal[entry.id] ?? entry.content;
+  }
+
+  function setEditingContent(entryId: number, value: string) {
+    if (viewingRewrittenIds.has(entryId)) {
+      setDraftRewritten((prev) => ({ ...prev, [entryId]: value }));
+    } else {
+      setDraftOriginal((prev) => ({ ...prev, [entryId]: value }));
+    }
+  }
+
+  function hasDraft(entry: DiaryEntry): boolean {
+    if (viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath) {
+      return draftRewritten[entry.id] !== undefined && draftRewritten[entry.id] !== (entry.rewrittenContent ?? '');
+    }
+    return draftOriginal[entry.id] !== undefined && draftOriginal[entry.id] !== entry.content;
+  }
+
+  function cancelEntryEdit(entry: DiaryEntry) {
+    setDraftOriginal((prev) => {
+      const next = { ...prev };
+      delete next[entry.id];
+      return next;
+    });
+    setDraftRewritten((prev) => {
+      const next = { ...prev };
+      delete next[entry.id];
+      return next;
+    });
+  }
+
+  async function handleSaveOriginal(entry: DiaryEntry) {
+    const content = draftOriginal[entry.id];
+    if (content === undefined || content === entry.content) {
+      cancelEntryEdit(entry);
+      return;
+    }
     setWorking(true);
     const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: ensureHtml(entry.rewrittenContent), rewrittenContent: null }),
+      body: JSON.stringify({ content: ensureHtml(content) }),
+    });
+    setWorking(false);
+    if (data) {
+      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      cancelEntryEdit(entry);
+      showSuccess('Eintrag gespeichert.');
+    } else if (error) {
+      setFormError(error);
+    }
+  }
+
+  async function handleAcceptRewritten(entry: DiaryEntry) {
+    const content = draftRewritten[entry.id] ?? entry.rewrittenContent;
+    if (!entry.rewrittenFilePath || !content) return;
+    setWorking(true);
+    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: ensureHtml(content), rewrittenContent: null }),
     });
     setWorking(false);
     if (data) {
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
       setViewRewritten(entry.id, false);
+      cancelEntryEdit(entry);
       showSuccess('Überarbeitung übernommen.');
     } else if (error) {
       setFormError(error);
@@ -400,6 +436,7 @@ export function Diary() {
     if (data) {
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
       setViewRewritten(entry.id, false);
+      cancelEntryEdit(entry);
     } else if (error) {
       setFormError(error);
     }
@@ -431,6 +468,40 @@ export function Diary() {
       else next.delete(id);
       return next;
     });
+  }
+
+  function startTitleEdit(entry: DiaryEntry) {
+    setEditingTitleId(entry.id);
+    setEditingTitleText(entry.title);
+  }
+
+  function cancelTitleEdit() {
+    setEditingTitleId(null);
+    setEditingTitleText('');
+  }
+
+  async function saveTitleEdit(entry: DiaryEntry) {
+    const title = editingTitleText.trim();
+    if (!title || title === entry.title) {
+      cancelTitleEdit();
+      return;
+    }
+
+    setWorking(true);
+    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    setWorking(false);
+
+    if (data) {
+      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      showSuccess('Titel aktualisiert.');
+      cancelTitleEdit();
+    } else if (error) {
+      setFormError(error);
+    }
   }
 
   function startSummaryEdit(entry: DiaryEntry) {
@@ -482,7 +553,7 @@ export function Diary() {
         disabled={working || !form.title.trim() || !stripHtml(form.content).trim()}
         className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
       >
-        {working ? <Loading text="" size="sm" /> : editingId !== null ? 'Speichern' : 'Erstellen'}
+        {working ? <Loading text="" size="sm" /> : 'Erstellen'}
       </button>
     </>
   );
@@ -527,7 +598,39 @@ export function Diary() {
                   className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5"
                 >
                   <div className="flex items-start justify-between gap-4 mb-3">
-                    <h3 className="text-lg font-semibold text-[var(--text-h)]">{entry.title}</h3>
+                    {editingTitleId === entry.id ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          type="text"
+                          value={editingTitleText}
+                          onChange={(e) => setEditingTitleText(e.target.value)}
+                          disabled={working}
+                          className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-lg font-semibold"
+                        />
+                        <Button variant="accent" onClick={() => saveTitleEdit(entry)} disabled={working || !editingTitleText.trim()}>
+                          Speichern
+                        </Button>
+                        <Button variant="ghost" onClick={cancelTitleEdit} disabled={working}>
+                          Abbrechen
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-1">
+                        <h3 className="text-lg font-semibold text-[var(--text-h)]">{entry.title}</h3>
+                        <button
+                          type="button"
+                          title="Titel bearbeiten"
+                          onClick={() => startTitleEdit(entry)}
+                          disabled={working}
+                          className="text-slate-400 hover:text-[var(--accent)] transition disabled:opacity-50"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2 justify-end">
                       <Button variant="danger" onClick={() => handleDelete(entry.id)} disabled={working}>
                         Löschen
@@ -607,31 +710,35 @@ export function Diary() {
                   {expandedIds.has(entry.id) ? (
                     <>
                       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                        <div className="inline-flex rounded-lg bg-slate-800 p-1 border border-[var(--border)]">
-                          <button
-                            type="button"
-                            onClick={() => setViewRewritten(entry.id, false)}
-                            className={`px-3 py-1 rounded-md text-sm font-medium transition ${
-                              !viewingRewrittenIds.has(entry.id) || !entry.rewrittenFilePath
-                                ? 'bg-[var(--accent)] text-slate-900'
-                                : 'text-slate-300 hover:text-[var(--text-h)]'
-                            }`}
-                          >
-                            Original
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => entry.rewrittenFilePath && setViewRewritten(entry.id, true)}
-                            disabled={!entry.rewrittenFilePath || working}
-                            className={`px-3 py-1 rounded-md text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                              viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath
-                                ? 'bg-[var(--accent)] text-slate-900'
-                                : 'text-slate-300 hover:text-[var(--text-h)]'
-                            }`}
-                          >
-                            KI-Version
-                          </button>
-                        </div>
+                        {entry.rewrittenFilePath ? (
+                          <div className="inline-flex rounded-lg bg-slate-800 p-1 border border-[var(--border)]">
+                            <button
+                              type="button"
+                              onClick={() => setViewRewritten(entry.id, false)}
+                              className={`px-3 py-1 rounded-md text-sm font-medium transition ${
+                                !viewingRewrittenIds.has(entry.id)
+                                  ? 'bg-[var(--accent)] text-slate-900'
+                                  : 'text-slate-300 hover:text-[var(--text-h)]'
+                              }`}
+                            >
+                              Original
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setViewRewritten(entry.id, true)}
+                              disabled={working}
+                              className={`px-3 py-1 rounded-md text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                                viewingRewrittenIds.has(entry.id)
+                                  ? 'bg-[var(--accent)] text-slate-900'
+                                  : 'text-slate-300 hover:text-[var(--text-h)]'
+                              }`}
+                            >
+                              KI-Version
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-400">Original</span>
+                        )}
                         <div className="flex items-center gap-2">
                           {aiEnabled && (
                             <Button
@@ -659,93 +766,100 @@ export function Diary() {
                                   : 'KI umschreiben'}
                             </Button>
                           )}
-                          <Button
-                            variant="secondary"
-                            onClick={() => openEdit(entry)}
-                            disabled={working}
-                            icon={(
-                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                              </svg>
-                            )}
-                          >
-                            Bearbeiten
-                          </Button>
                         </div>
                       </div>
 
                       {viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath ? (
                         <div className="rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 p-4 mb-4">
-                          <div className="flex items-center justify-between gap-2 mb-2">
-                            <form
-                              className="flex items-center gap-2 flex-1"
-                              onSubmit={(e) => {
-                                e.preventDefault();
-                                const text = rewriteCommands[entry.id] || '';
-                                if (text.trim()) handleRewriteCommand(entry, text);
-                              }}
+                          <form
+                            className="flex items-center gap-2 mb-3"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const text = rewriteCommands[entry.id] || '';
+                              if (text.trim()) handleRewriteCommand(entry, text);
+                            }}
+                          >
+                            <input
+                              type="text"
+                              value={rewriteCommands[entry.id] || ''}
+                              onChange={(e) =>
+                                setRewriteCommands((prev) => ({
+                                  ...prev,
+                                  [entry.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="Befehl für KI (z. B. formeller)"
+                              className="px-2 py-1 rounded-md text-sm bg-slate-900 border border-[var(--border)] text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[var(--accent)] w-full max-w-md"
+                              disabled={working || processingCommandId === entry.id}
+                            />
+                            <Button
+                              type="submit"
+                              variant="secondary"
+                              disabled={
+                                working ||
+                                processingCommandId === entry.id ||
+                                !(rewriteCommands[entry.id] || '').trim()
+                              }
                             >
-                              <input
-                                type="text"
-                                value={rewriteCommands[entry.id] || ''}
-                                onChange={(e) =>
-                                  setRewriteCommands((prev) => ({
-                                    ...prev,
-                                    [entry.id]: e.target.value,
-                                  }))
-                                }
-                                placeholder="Befehl für KI (z. B. formeller)"
-                                className="px-2 py-1 rounded-md text-sm bg-slate-900 border border-[var(--border)] text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[var(--accent)] w-full max-w-md"
-                                disabled={working || processingCommandId === entry.id}
-                              />
-                              <Button
-                                type="submit"
-                                variant="secondary"
-                                disabled={
-                                  working ||
-                                  processingCommandId === entry.id ||
-                                  !(rewriteCommands[entry.id] || '').trim()
-                                }
-                              >
-                                {processingCommandId === entry.id ? 'Wird verarbeitet...' : 'Ausführen'}
-                              </Button>
-                            </form>
-                            <div className="flex items-center gap-2">
+                              {processingCommandId === entry.id ? 'Wird verarbeitet...' : 'Ausführen'}
+                            </Button>
+                          </form>
+                          <ReactQuill
+                            theme="snow"
+                            value={getEditingContent(entry)}
+                            onChange={(value) => setEditingContent(entry.id, value)}
+                            modules={quillModules}
+                            formats={quillFormats}
+                            readOnly={working}
+                            className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--accent)]/30 mb-4"
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="accent"
+                              onClick={() => handleAcceptRewritten(entry)}
+                              disabled={working || !stripHtml(getEditingContent(entry)).trim()}
+                            >
+                              Übernehmen
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={() => handleDiscardRewritten(entry)}
+                              disabled={working}
+                            >
+                              Verwerfen
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mb-4">
+                          <ReactQuill
+                            theme="snow"
+                            value={getEditingContent(entry)}
+                            onChange={(value) => setEditingContent(entry.id, value)}
+                            modules={quillModules}
+                            formats={quillFormats}
+                            readOnly={working}
+                            className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)] mb-2"
+                          />
+                          {hasDraft(entry) && (
+                            <div className="flex items-center justify-end gap-2">
                               <Button
                                 variant="accent"
-                                onClick={() => handleAcceptRewritten(entry)}
-                                disabled={working || !entry.rewrittenContent}
+                                onClick={() => handleSaveOriginal(entry)}
+                                disabled={working || !stripHtml(getEditingContent(entry)).trim()}
                               >
-                                Übernehmen
+                                Speichern
                               </Button>
                               <Button
                                 variant="ghost"
-                                onClick={() => handleDiscardRewritten(entry)}
+                                onClick={() => cancelEntryEdit(entry)}
                                 disabled={working}
                               >
-                                Verwerfen
+                                Abbrechen
                               </Button>
                             </div>
-                          </div>
-                          {entry.rewrittenContent ? (
-                            isHtml(entry.rewrittenContent) ? (
-                              <div
-                                className="text-slate-300 diary-content"
-                                dangerouslySetInnerHTML={{ __html: entry.rewrittenContent }}
-                              />
-                            ) : (
-                              <div className="text-slate-300 whitespace-pre-wrap">{entry.rewrittenContent}</div>
-                            )
-                          ) : (
-                            <div className="text-slate-400 text-sm">KI-Version wird geladen...</div>
                           )}
                         </div>
-                      ) : (
-                        <div
-                          className="text-slate-300 diary-content mb-4"
-                          dangerouslySetInnerHTML={{ __html: entry.content }}
-                        />
                       )}
 
                       <Button variant="ghost" onClick={() => toggleExpanded(entry.id)}>
@@ -765,7 +879,7 @@ export function Diary() {
 
       <Modal
         isOpen={isModalOpen}
-        title={editingId !== null ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}
+        title="Neuer Eintrag"
         onClose={closeModal}
         actions={modalActions}
         className="h-[85vh] flex flex-col"
@@ -802,7 +916,7 @@ export function Diary() {
           </div>
         </form>
 
-        {aiOperation && editingId === null && aiStatus && (
+        {aiOperation && aiStatus && (
           <div className="mt-4">
             <Loading size="sm" text={aiStatus} />
           </div>
