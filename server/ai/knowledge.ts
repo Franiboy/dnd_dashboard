@@ -1,24 +1,15 @@
 import { runOpenCode } from './opencode.js';
 import {
-  ensureEntityExists,
   findExistingEntitiesInText,
   getDiaryEntryById,
   listAllEntityNames,
   listDiaryEntryContentsByEntity,
   listPreviousDiaryEntriesByUser,
 } from '../repositories/diary.js';
-import {
-  createEntityKnowledge,
-  getEntityKnowledgeEntry,
-  listActiveEntityKnowledge,
-  markEntityKnowledgeDeleted,
-} from '../repositories/entityKnowledge.js';
-import {
-  clearEntitySummaryDirty,
-  getEntitySummary,
-  setEntitySummary,
-} from '../repositories/entitySummaries.js';
-import { stripHtml } from './rewrite.js';
+import { listActiveEntityKnowledge } from '../repositories/entityKnowledge.js';
+import { getEntitySummary } from '../repositories/entitySummaries.js';
+import { extractJsonFromAiOutput, stripHtml } from './rewrite.js';
+import { executeAiActions, parseAiActions, type AiAction } from './actions.js';
 import { createLogger } from '../logger.js';
 import type { EntityKnowledgeEntry, EntityType } from '../../shared/types.js';
 
@@ -115,62 +106,26 @@ export function getKnowledgeContextForText(
   return sections.join('\n');
 }
 
-interface DistributedKnowledge {
-  type: EntityType;
-  name: string;
-  title: string | null;
-  content: string;
-}
-
-interface Contradiction {
-  id: number;
-  reason: string;
-}
-
 interface DistributeResult {
   created: EntityKnowledgeEntry[];
   deleted: { id: number; reason: string; entry: EntityKnowledgeEntry }[];
 }
 
-function parseDistributeResultJson(raw: string): { add: DistributedKnowledge[]; delete: Contradiction[] } | null {
-  const cleaned = raw.trim();
-  const start = cleaned.indexOf('{');
-  const end = cleaned.lastIndexOf('}');
-  if (start === -1 || end === -1 || end < start) return null;
+function distributeActionsFromParsed(parsed: unknown): AiAction[] {
+  if (!Array.isArray(parsed)) return [];
 
-  const validTypes: EntityType[] = ['persons', 'organizations', 'locations'];
-  try {
-    const parsed = JSON.parse(cleaned.slice(start, end + 1));
-    if (typeof parsed !== 'object' || parsed === null) return null;
+  const validActions: AiAction[] = [];
+  for (const raw of parsed) {
+    if (typeof raw !== 'object' || raw === null) continue;
+    if (!('action' in raw)) continue;
 
-    const add: DistributedKnowledge[] = [];
-    if ('add' in parsed && Array.isArray(parsed.add)) {
-      for (const item of parsed.add) {
-        if (typeof item !== 'object' || item === null) continue;
-        const type = 'type' in item && validTypes.includes(item.type as EntityType) ? (item.type as EntityType) : null;
-        const name = 'name' in item && item.name ? String(item.name).trim() : '';
-        const title = 'title' in item && item.title ? String(item.title).trim() : null;
-        const content = 'content' in item && item.content ? String(item.content).trim() : '';
-        if (!type || !name || !content) continue;
-        add.push({ type, name, title: title && title.length > 0 ? title : null, content });
-      }
+    const actionRaw = (raw as { action: unknown }).action;
+    if (actionRaw === 'createKnowledge' || actionRaw === 'deleteKnowledge') {
+      const action = parseAiActions([raw])[0];
+      if (action) validActions.push(action);
     }
-
-    const del: Contradiction[] = [];
-    if ('delete' in parsed && Array.isArray(parsed.delete)) {
-      for (const item of parsed.delete) {
-        if (typeof item !== 'object' || item === null) continue;
-        const id = 'id' in item && typeof item.id === 'number' ? item.id : Number(String(item.id));
-        const reason = 'reason' in item && item.reason ? String(item.reason).trim() : '';
-        if (isNaN(id) || !reason) continue;
-        del.push({ id, reason });
-      }
-    }
-
-    return { add, delete: del };
-  } catch {
-    return null;
   }
+  return validActions;
 }
 
 export async function distributeKnowledgeFromText(
@@ -214,19 +169,22 @@ export async function distributeKnowledgeFromText(
 
   const prompt = [
     'Analysiere den folgenden Text und ordne die darin enthaltenen Fakten den passenden Entitäten zu.',
-    'Widerspricht ein neuer Fakt einem bestehenden Wissenseintrag, markiere den alten als gelöscht. Lösche ihn aber nicht wirklich, sondern gib nur seine ID in "delete" zurück.',
+    'Widerspricht ein neuer Fakt einem bestehenden Wissenseintrag, markiere den alten als gelöscht.',
+    '',
+    'Verfügbare Aktionen (gib ein JSON-Array zurück):',
+    '- {"action": "createKnowledge", "type": "persons|organizations|locations", "name": "Entitätsname", "title": "Kategorie", "content": "Fakt"}',
+    '- {"action": "deleteKnowledge", "id": 123, "reason": "Widerspruch mit neuem Text"}',
     '',
     'Regeln:',
     '- Ordne jeden Fakt einer oder mehreren Entitäten zu.',
-    '- Wenn eine Entität noch nicht existiert, wähle den passenden Typ und erstelle sie.',
+    '- Wenn eine Entität noch nicht existiert, wird sie automatisch durch createKnowledge angelegt.',
     '- Verwende die exakte Schreibweise aus dem Text, wenn keine bestehende Entität passt.',
-    '- Gib das Ergebnis als JSON-Objekt zurück: {"add": [{"type": "persons|organizations|locations", "name": "Entitätsname", "title": "Kategorie", "content": "Fakt"}, ...], "delete": [{"id": 123, "reason": "Widerspruch mit neuem Text"}, ...]}',
     '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
     '- content ist der eigentliche Faktentext.',
     '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
     '- Extrahiere nur Fakten, die im Text tatsächlich vorkommen. Erfinke keine Details.',
     '- Halte jeden Fakt kurz und prägnant.',
-    '- In "delete" dürfen nur IDs aus dem bestehenden Wissen stehen.',
+    '- In "deleteKnowledge" dürfen nur IDs aus dem bestehenden Wissen stehen.',
     '',
     ...(allRelevantEntities.length > 0
       ? [
@@ -236,12 +194,12 @@ export async function distributeKnowledgeFromText(
         ]
       : []),
     ...(existingKnowledgeText
-      ? ['Bestehendes Wissen (nur diese IDs dürfen in "delete" vorkommen):', existingKnowledgeText, '']
+      ? ['Bestehendes Wissen (nur diese IDs dürfen in "deleteKnowledge" vorkommen):', existingKnowledgeText, '']
       : []),
     'Text:',
     plainText,
     '',
-    'Antworte ausschließlich mit dem JSON-Objekt.',
+    'Antworte ausschließlich mit dem JSON-Array der Aktionen.',
   ].join('\n');
 
   log.info(`Distributing knowledge from free text`);
@@ -259,27 +217,28 @@ export async function distributeKnowledgeFromText(
     return { created: [], deleted: [] };
   }
 
-  const parsed = parseDistributeResultJson(result.output);
-  if (!parsed || (parsed.add.length === 0 && parsed.delete.length === 0)) {
+  const parsed = extractJsonFromAiOutput(result.output);
+  const actions = distributeActionsFromParsed(parsed);
+  if (actions.length === 0) {
     log.warn('No knowledge distributed from text');
     return { created: [], deleted: [] };
   }
 
+  const results = executeAiActions(actions);
+
   const createdEntries: EntityKnowledgeEntry[] = [];
   const deletedEntries: { id: number; reason: string; entry: EntityKnowledgeEntry }[] = [];
 
-  for (const item of parsed.add) {
-    const canonical = ensureEntityExists(item.type, item.name);
-    const entry = createEntityKnowledge(item.type, canonical, item.title, item.content, 'ai_extracted');
-    createdEntries.push(entry);
-  }
-
-  for (const item of parsed.delete) {
-    const existing = getEntityKnowledgeEntry(item.id);
-    if (!existing) continue;
-    const updated = markEntityKnowledgeDeleted(item.id, item.reason);
-    if (updated) {
-      deletedEntries.push({ id: item.id, reason: item.reason, entry: updated });
+  for (const result of results) {
+    if (!result.success) {
+      log.warn(`AI action failed during knowledge distribution: ${result.message}`);
+      continue;
+    }
+    if (result.action.action === 'createKnowledge') {
+      createdEntries.push(result.data as EntityKnowledgeEntry);
+    } else if (result.action.action === 'deleteKnowledge') {
+      const entry = result.data as EntityKnowledgeEntry;
+      deletedEntries.push({ id: entry.id, reason: entry.statusReason || 'Widerspruch', entry });
     }
   }
 
@@ -313,11 +272,14 @@ export async function generateEntitySummary(
     `Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${entityName}".`,
     'Nutze dafür die folgenden Wissenseinträge und Tagebucheinträge.',
     '',
+    'Verfügbare Aktionen (gib ein JSON-Array mit genau einer Aktion zurück):',
+    '- {"action": "setSummary", "type": "persons|organizations|locations", "name": "Entitätsname", "summary": "Text der Zusammenfassung"}',
+    '',
     'Regeln:',
     '- Beschreibe die wichtigsten Eigenschaften, Beziehungen und Ereignisse.',
     '- Vermeide Spekulation; nutze nur die gegebenen Informationen.',
     '- Maximal 3-5 Sätze.',
-    '- Antworte ausschließlich mit der Zusammenfassung, ohne Einleitung.',
+    '- Antworte ausschließlich mit dem JSON-Array der Aktionen.',
     '',
     ...(knowledgeContext ? ['Wissenseinträge:', knowledgeContext, ''] : []),
     ...(diaryContext ? ['Tagebucheinträge:', diaryContext, ''] : []),
@@ -340,14 +302,22 @@ export async function generateEntitySummary(
     return null;
   }
 
-  const summary = result.output.trim();
-  if (!summary) {
-    log.warn(`No summary generated for ${entityType}/${entityName}`);
+  const parsed = extractJsonFromAiOutput(result.output);
+  const actions = Array.isArray(parsed) ? parseAiActions(parsed) : [];
+  const setSummaryAction = actions.find(
+    (a): a is AiAction & { action: 'setSummary' } => a.action === 'setSummary',
+  );
+  if (!setSummaryAction) {
+    log.warn(`No setSummary action generated for ${entityType}/${entityName}`);
     return null;
   }
 
-  setEntitySummary(entityType, entityName, summary, false);
-  clearEntitySummaryDirty(entityType, entityName);
+  const [summaryResult] = executeAiActions([setSummaryAction]);
+  if (!summaryResult.success) {
+    log.warn(`Failed to save summary for ${entityType}/${entityName}: ${summaryResult.message}`);
+    return null;
+  }
+
   log.info(`Summary generated for ${entityType}/${entityName}`);
-  return summary;
+  return setSummaryAction.summary;
 }
