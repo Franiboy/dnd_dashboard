@@ -274,3 +274,21 @@ button {
   height: auto;
   overflow-y: auto;
 }
+
+.ql-entity {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+.ql-entity.ql-entity-persons {
+  color: var(--accent);
+}
+
+.ql-entity.ql-entity-organizations {
+  color: #60a5fa;
+}
+
+.ql-entity.ql-entity-locations {
+  color: #fbbf24;
+}

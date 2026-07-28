@@ -4,10 +4,12 @@ import { useApi } from '../hooks/useApi';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
 import { EntityRichText } from '../components/EntityRichText';
+import { applyEntityHighlights, stripEntityBadges } from '../components/EntityQuillBlot';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
 import ReactQuill from 'react-quill-new';
+import type Quill from 'quill';
 import type { DiaryEntry, EntityType, VersionInfo } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -96,6 +98,7 @@ const quillFormats = [
   'code-block',
   'link',
   'table',
+  'entity',
 ];
 
 interface BadgeListProps {
@@ -147,10 +150,10 @@ export function Diary() {
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
-  const [draftOriginal, setDraftOriginal] = useState<Record<number, string>>({});
-  const [draftRewritten, setDraftRewritten] = useState<Record<number, string>>({});
   const draftOriginalRef = useRef<Record<number, string>>({});
   const draftRewrittenRef = useRef<Record<number, string>>({});
+  const quillRefs = useRef<Record<number, ReactQuill>>({});
+  const highlightTimeouts = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const [editingTitleId, setEditingTitleId] = useState<number | null>(null);
   const [editingTitleText, setEditingTitleText] = useState('');
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null);
@@ -207,6 +210,19 @@ export function Diary() {
       es.close();
     };
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      for (const entry of entries) {
+        if (!expandedIds.has(entry.id)) continue;
+        const reactQuill = quillRefs.current[entry.id];
+        if (!reactQuill) continue;
+        const quill = reactQuill.getEditor();
+        if (quill) applyEntityHighlights(quill, mappings);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [entries, mappings, expandedIds]);
 
 
   function resetForm() {
@@ -355,47 +371,39 @@ export function Diary() {
     }
   }
 
-  function getEditingContent(entry: DiaryEntry): string {
-    if (viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath) {
-      return draftRewritten[entry.id] ?? entry.rewrittenContent ?? '';
-    }
-    return draftOriginal[entry.id] ?? entry.content;
-  }
-
-  function setOriginalDraft(entryId: number, value: string) {
-    draftOriginalRef.current[entryId] = value;
-    setDraftOriginal((prev) => ({ ...prev, [entryId]: value }));
-  }
-
-  function setRewrittenDraft(entryId: number, value: string) {
-    draftRewrittenRef.current[entryId] = value;
-    setDraftRewritten((prev) => ({ ...prev, [entryId]: value }));
-  }
-
   function hasDraft(entry: DiaryEntry): boolean {
     if (viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath) {
-      return draftRewritten[entry.id] !== undefined && draftRewritten[entry.id] !== (entry.rewrittenContent ?? '');
+      return draftRewrittenRef.current[entry.id] !== undefined && draftRewrittenRef.current[entry.id] !== (entry.rewrittenContent ?? '');
     }
-    return draftOriginal[entry.id] !== undefined && draftOriginal[entry.id] !== entry.content;
+    return draftOriginalRef.current[entry.id] !== undefined && draftOriginalRef.current[entry.id] !== entry.content;
   }
 
   function cancelEntryEdit(entry: DiaryEntry) {
     delete draftOriginalRef.current[entry.id];
     delete draftRewrittenRef.current[entry.id];
-    setDraftOriginal((prev) => {
-      const next = { ...prev };
-      delete next[entry.id];
-      return next;
-    });
-    setDraftRewritten((prev) => {
-      const next = { ...prev };
-      delete next[entry.id];
-      return next;
-    });
+  }
+
+  function handleQuillChange(entryId: number, value: string, source: string, kind: 'original' | 'rewritten') {
+    const ref = kind === 'original' ? draftOriginalRef : draftRewrittenRef;
+    ref.current[entryId] = stripEntityBadges(value);
+    if (source === 'user') {
+      const reactQuill = quillRefs.current[entryId];
+      const quill = reactQuill?.getEditor();
+      if (quill) scheduleEntityHighlights(quill, entryId);
+    }
+  }
+
+  function scheduleEntityHighlights(quill: Quill, entryId: number) {
+    const existing = highlightTimeouts.current[entryId];
+    if (existing) clearTimeout(existing);
+    highlightTimeouts.current[entryId] = setTimeout(() => {
+      applyEntityHighlights(quill, mappings);
+      delete highlightTimeouts.current[entryId];
+    }, 300);
   }
 
   async function handleSaveOriginal(entry: DiaryEntry) {
-    const content = draftOriginalRef.current[entry.id] ?? entry.content;
+    const content = stripEntityBadges(draftOriginalRef.current[entry.id] ?? entry.content);
     if (content === entry.content) {
       cancelEntryEdit(entry);
       return;
@@ -417,7 +425,7 @@ export function Diary() {
   }
 
   async function handleAcceptRewritten(entry: DiaryEntry) {
-    const content = draftRewrittenRef.current[entry.id] ?? entry.rewrittenContent;
+    const content = stripEntityBadges(draftRewrittenRef.current[entry.id] ?? (entry.rewrittenContent ?? ''));
     if (!entry.rewrittenFilePath || !content) return;
     setWorking(true);
     const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
@@ -818,9 +826,12 @@ export function Diary() {
                             </Button>
                           </form>
                           <ReactQuill
+                            ref={(el) => {
+                              if (el) quillRefs.current[entry.id] = el;
+                            }}
                             theme="snow"
-                            value={getEditingContent(entry)}
-                            onChange={(value) => setRewrittenDraft(entry.id, value)}
+                            value={entry.rewrittenContent ?? ''}
+                            onChange={(value, _delta, source) => handleQuillChange(entry.id, value, source, 'rewritten')}
                             modules={quillModules}
                             formats={quillFormats}
                             readOnly={working}
@@ -830,7 +841,7 @@ export function Diary() {
                             <Button
                               variant="accent"
                               onClick={() => handleAcceptRewritten(entry)}
-                              disabled={working || !stripHtml(getEditingContent(entry)).trim()}
+                              disabled={working || !stripHtml(draftRewrittenRef.current[entry.id] ?? (entry.rewrittenContent ?? '')).trim()}
                             >
                               Übernehmen
                             </Button>
@@ -846,9 +857,12 @@ export function Diary() {
                       ) : (
                         <div className="mb-4">
                           <ReactQuill
+                            ref={(el) => {
+                              if (el) quillRefs.current[entry.id] = el;
+                            }}
                             theme="snow"
-                            value={getEditingContent(entry)}
-                            onChange={(value) => setOriginalDraft(entry.id, value)}
+                            value={entry.content}
+                            onChange={(value, _delta, source) => handleQuillChange(entry.id, value, source, 'original')}
                             modules={quillModules}
                             formats={quillFormats}
                             readOnly={working}
@@ -859,7 +873,7 @@ export function Diary() {
                               <Button
                                 variant="accent"
                                 onClick={() => handleSaveOriginal(entry)}
-                                disabled={working || !stripHtml(getEditingContent(entry)).trim()}
+                                disabled={working || !stripHtml(draftOriginalRef.current[entry.id] ?? entry.content).trim()}
                               >
                                 Speichern
                               </Button>
