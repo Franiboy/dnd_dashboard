@@ -32,7 +32,7 @@ export function Home() {
   const homeApps = APPS.filter((app) => homeAppIds.includes(app.id) && isAppVisible(app.id));
 
   const appDescriptions: Record<string, string> = {
-    notes: 'Persönliche Notizen und Tagebucheinträge pro Spieler hinterlegen und mit der KI überarbeiten lassen.',
+    notes: 'Persönliche Tagebucheinträge pro Spieler hinterlegen und mit der KI überarbeiten lassen.',
     world: 'Übersicht aller bekannten Personen, Organisationen und Orte.',
     bingo: 'Aufgaben sammeln, Bingo-Runde starten und gegeneinander spielen.',
     recordings: 'Discord-Sessions aufnehmen, transkribieren und als Text einsehen.',

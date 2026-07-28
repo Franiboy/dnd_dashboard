@@ -115,7 +115,7 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 |---------------------|-------|
 | `src/App.tsx` | React-App-Einstieg mit Router |
 | `src/main.tsx` | Root-Render |
-| `src/lib/apps.ts` | App-Metadaten (Dashboard, Notizen, Bingo, Welt, Aufnahmen, Admin) |
+| `src/lib/apps.ts` | App-Metadaten (Dashboard, Tagebuch, Bingo, Welt, Aufnahmen, Admin) |
 | `src/pages/` | Seiten: Login, AdminLogin, AuthCallback, Home, Bingo, Diary, World, Recordings, Admin |
 | `src/components/` | Wiederverwendbare Komponenten (Layout, ProtectedRoute, ConfirmDialog, Toast, LogPanel, …) |
 | `src/hooks/useAuth.ts` | Auth-Hook |
@@ -221,7 +221,7 @@ AI_MODEL=provider/GLM5.2
 - Admins können Spieler freigeben/sperren, Admin-Rechte vergeben/entziehen,
   Benutzer löschen und einzelne Apps pro Benutzer deaktivieren (`disabledApps`).
 - `/admin` ist nur für Admins zugänglich und zeigt Benutzerverwaltung sowie Logs.
-- `/bingo`, `/notizen`, `/welt`, `/recordings` können über `disabledApps` pro Benutzer gesperrt werden.
+- `/bingo`, `/tagebuch`, `/welt`, `/recordings` können über `disabledApps` pro Benutzer gesperrt werden.
 
 ## App-Navigator
 
@@ -230,7 +230,7 @@ Die sichtbaren Apps werden in `src/lib/apps.ts` gepflegt:
 | ID | Label | Route | Admin only | Disableable |
 |----|-------|-------|------------|-------------|
 | `dashboard` | Dashboard | `/` | nein | nein |
-| `notes` | Notizen | `/notizen` | nein | ja |
+| `notes` | Tagebuch | `/tagebuch` | nein | ja |
 | `bingo` | Bingo | `/bingo` | nein | ja |
 | `world` | Welt | `/welt` | nein | ja |
 | `recordings` | Aufnahmen | `/recordings` | ja | ja |
@@ -306,7 +306,7 @@ Das Muster ist überall gleich:
 
 ## Tagebuch- & Welt-Modul
 
-### Tagebuch (`/notizen`)
+### Tagebuch (`/tagebuch`)
 
 - Benutzer können HTML-basierte Tagebucheinträge erstellen, bearbeiten und löschen.
 - KI kann Einträge umschreiben (`rewriteTextWithAi`) und mit einem Befehl nachbearbeiten
