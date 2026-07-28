@@ -4,6 +4,13 @@ import { markEntitySummaryDirty, renameEntitySummary } from './entitySummaries.j
 
 const selectColumns = `id, entity_type AS entityType, entity_name AS entityName, title, content, source, status, status_reason AS statusReason, created_at AS createdAt, updated_at AS updatedAt`;
 
+export function listAllKnowledge(): EntityKnowledgeEntry[] {
+  const rows = db
+    .prepare(`SELECT ${selectColumns} FROM entity_knowledge_entries ORDER BY id`)
+    .all() as EntityKnowledgeEntry[];
+  return rows;
+}
+
 export function listEntityKnowledge(
   entityType: EntityType,
   entityName: string,

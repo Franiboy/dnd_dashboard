@@ -12,9 +12,6 @@ import {
   listDiaryEntriesByUser,
   updateDiaryEntry,
   deleteDiaryEntry,
-  findExistingEntitiesInText,
-  mergeEntities,
-  finalizeEntities,
 } from '../repositories/diary.js';
 
 const log = createLogger('diaryRoutes');
@@ -463,31 +460,17 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
     const knowledgeContext = getKnowledgeContextForText(existing.content, { entryId: existing.id });
-    const [summary, aiEntities] = await Promise.all([
-      summarizeTextWithAi(existing.content, undefined, onLog, knowledgeContext),
-      extractEntitiesFromDiary(existing.content, undefined, onLog, knowledgeContext),
+    const [summary] = await Promise.all([
+      summarizeTextWithAi(existing.id, existing.content, undefined, onLog, knowledgeContext),
+      extractEntitiesFromDiary(existing.id, existing.content, undefined, onLog, knowledgeContext),
     ]);
     if (summary === null) {
       res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
       return;
     }
 
-    const existingEntities = findExistingEntitiesInText(existing.content);
-    const entities = finalizeEntities(mergeEntities(aiEntities, existingEntities));
-
     sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
-    const updates: Parameters<typeof updateDiaryEntry>[1] = { summary: truncateSummary(summary) };
-    if (entities.persons.length > 0) {
-      updates.persons = entities.persons;
-    }
-    if (entities.organizations.length > 0) {
-      updates.organizations = entities.organizations;
-    }
-    if (entities.locations.length > 0) {
-      updates.locations = entities.locations;
-    }
-
-    const entry = updateDiaryEntry(id, updates);
+    const entry = updateDiaryEntry(id, { summary: truncateSummary(summary) });
     if (!entry) {
       res.status(500).json({ error: 'Speichern fehlgeschlagen' });
       return;

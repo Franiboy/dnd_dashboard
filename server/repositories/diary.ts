@@ -92,7 +92,7 @@ function buildEntryEntitiesMap(entryIds: number[]): Map<number, DiaryEntities> {
   return map;
 }
 
-function getEntryEntities(entryId: number): DiaryEntities {
+export function getEntryEntities(entryId: number): DiaryEntities {
   const map = buildEntryEntitiesMap([entryId]);
   return map.get(entryId) ?? emptyEntities();
 }
