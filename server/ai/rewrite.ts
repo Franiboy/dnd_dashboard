@@ -1,6 +1,7 @@
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
 import { readRewrittenFile } from '../diaryFiles.js';
-import { getDiaryEntryById, getEntryEntities } from '../repositories/diary.js';
+import { clearDiaryEntryDirty, getDiaryEntryById, getEntryEntities } from '../repositories/diary.js';
+import { markEntitySummaryDirty } from '../repositories/entitySummaries.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('rewrite');
@@ -322,4 +323,41 @@ export async function extractEntitiesFromDiary(
   }
 
   return getEntryEntities(entryId);
+}
+
+export async function processDiaryEntryAi(
+  entryId: number,
+  model?: string,
+  onLog?: (line: string) => void,
+): Promise<boolean> {
+  const entry = getDiaryEntryById(entryId);
+  if (!entry) {
+    log.warn(`processDiaryEntryAi called with unknown entry ${entryId}`);
+    return false;
+  }
+
+  log.info(`Processing AI for diary entry ${entryId}`);
+  const [summary, entities] = await Promise.all([
+    summarizeTextWithAi(entryId, entry.content, model, onLog),
+    extractEntitiesFromDiary(entryId, entry.content, model, onLog),
+  ]);
+
+  for (const name of entities.persons) markEntitySummaryDirty('persons', name);
+  for (const name of entities.organizations) markEntitySummaryDirty('organizations', name);
+  for (const name of entities.locations) markEntitySummaryDirty('locations', name);
+
+  if (entities.persons.length + entities.organizations.length + entities.locations.length > 0) {
+    log.info(`Marked ${entities.persons.length + entities.organizations.length + entities.locations.length} entity summaries as dirty for entry ${entryId}`);
+  }
+
+  try {
+    const { distributeKnowledgeFromText } = await import('./knowledge.js');
+    await distributeKnowledgeFromText(entry.content, model, onLog);
+  } catch (err) {
+    log.warn(`Knowledge distribution failed for entry ${entryId}: ${err}`);
+  }
+
+  clearDiaryEntryDirty(entryId);
+  log.info(`Finished AI processing for diary entry ${entryId}, summary=${summary ? 'ok' : 'none'}`);
+  return summary !== null;
 }

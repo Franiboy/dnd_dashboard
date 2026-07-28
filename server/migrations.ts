@@ -336,6 +336,18 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: 'add_diary_entries_ai_dirty',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(diary_entries)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'ai_dirty')) {
+        db.exec('ALTER TABLE diary_entries ADD COLUMN ai_dirty INTEGER NOT NULL DEFAULT 0');
+      }
+      if (!columns.some((c) => c.name === 'ai_processed_at')) {
+        db.exec('ALTER TABLE diary_entries ADD COLUMN ai_processed_at TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations() {

@@ -151,6 +151,8 @@ export interface DiaryEntry {
   rewrittenContent: string | null;
   rewrittenFilePath?: string | null;
   rewriteSessionId?: string | null;
+  aiDirty?: boolean;
+  aiProcessedAt?: string | null;
   persons: string[];
   organizations: string[];
   locations: string[];
