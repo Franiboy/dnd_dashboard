@@ -20,10 +20,10 @@ type Segment =
   | { kind: 'text'; text: string }
   | { kind: 'entity'; text: string; type: EntityType; canonical: string };
 
-const badgeStyles: Record<EntityType, string> = {
-  persons: 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20',
-  organizations: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
-  locations: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+const entityTextStyles: Record<EntityType, string> = {
+  persons: 'text-[var(--accent)]',
+  organizations: 'text-blue-400',
+  locations: 'text-amber-400',
 };
 
 const typeLabels: Record<EntityType, string> = {
@@ -105,7 +105,7 @@ function EntityBadge({ text, type, canonical }: EntityBadgeProps) {
     <span
       onClick={() => navigate('/welt', { state: { selectedEntity: { name: canonical, type } } })}
       title={`${typeLabels[type]} in Welt öffnen`}
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:brightness-110 transition ${badgeStyles[type]}`}
+      className={`cursor-pointer hover:underline transition ${entityTextStyles[type]}`}
     >
       {text}
     </span>
