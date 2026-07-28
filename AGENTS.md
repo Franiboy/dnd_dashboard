@@ -393,3 +393,10 @@ Das Muster ist überall gleich:
 - Änderungen nicht eigenmächtig in `main` auf Produktions-Umgebungen pushen.
 - Bei Unsicherheit vor dem Commit / Push beim Nutzer nachfragen.
 - Nach Abschluss einer Aufgabe kurze Zusammenfassung der Änderungen geben.
+
+## Dokumentation
+
+- Diese Datei (`AGENTS.md`) und `README.md` müssen bei größeren Änderungen an Architektur, Features, `.env`-Variablen oder Sicherheitsregeln aktualisiert werden.
+- Bei neuen Modulen, Routen, Repositories oder wichtigen Konventionen sollten die entsprechenden Tabellen in `AGENTS.md` erweitert werden.
+- Code-Stil, Importkonventionen und Qualitätsrichtlinien sind in [`CodingStandards.md`](./CodingStandards.md) beschrieben.
+- Details zur KI, zu MCP-Tools und zu Prompt-Strukturen finden sich in den Dateien unter `server/ai/` und `server/mcp/`.
