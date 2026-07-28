@@ -207,10 +207,6 @@ export async function summarizeTextWithAi(
   return summary;
 }
 
-export function stripAnsi(text: string): string {
-  return text.replace(/\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
-}
-
 export interface DiaryEntities {
   persons: string[];
   organizations: string[];
