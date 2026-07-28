@@ -4,6 +4,10 @@ import { createMcpSessionToken, type McpScope } from '../mcp/tokens.js';
 
 const log = createLogger('opencode');
 
+function getOpenCodeBin(): string {
+  return process.env.AI_OPENCODE_BIN || 'opencode';
+}
+
 export interface OpenCodeOptions {
   prompt: string;
   worktreePath: string;
@@ -30,7 +34,7 @@ export function runOpenCode({
   scopes,
   onLog,
 }: OpenCodeOptions): Promise<OpenCodeResult> {
-  const bin = process.env.AI_OPENCODE_BIN || 'opencode';
+  const bin = getOpenCodeBin();
   const args = ['run'];
 
   const mcpToken = scopes && scopes.length > 0 ? createMcpSessionToken(scopes) : undefined;
@@ -138,10 +142,11 @@ export async function findOpenCodeSessionId(
 
 export async function deleteOpenCodeSession(sessionId: string): Promise<void> {
   if (!sessionId) return;
+  const bin = getOpenCodeBin();
   log.info(`Deleting opencode session: ${sessionId}`);
   try {
     const { execSync } = await import('node:child_process');
-    execSync(`opencode session delete ${sessionId}`, {
+    execSync(`${bin} session delete ${sessionId}`, {
       encoding: 'utf-8',
       timeout: 30_000,
     });
@@ -159,15 +164,16 @@ export interface OpenCodeSession {
 }
 
 export async function listOpenCodeSessions(): Promise<OpenCodeSession[]> {
+  const bin = getOpenCodeBin();
   try {
     const { execSync } = await import('node:child_process');
-    const output = execSync('opencode session list --format json', {
+    const output = execSync(`${bin} session list --format json`, {
       encoding: 'utf-8',
       maxBuffer: 50 * 1024 * 1024,
     });
     return JSON.parse(output) as OpenCodeSession[];
   } catch (err) {
-    log.error('Failed to list opencode sessions:', err);
+    log.error(`Failed to list opencode sessions using ${bin}:`, err);
     return [];
   }
 }
