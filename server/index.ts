@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { logger } from './logger.js';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -23,7 +24,6 @@ import {
   startEntitySummaryScheduler,
   stopEntitySummaryScheduler,
 } from './scheduler/entitySummaries.js';
-import { logger } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
