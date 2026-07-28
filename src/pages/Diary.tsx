@@ -146,6 +146,8 @@ export function Diary() {
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
   const [draftOriginal, setDraftOriginal] = useState<Record<number, string>>({});
   const [draftRewritten, setDraftRewritten] = useState<Record<number, string>>({});
+  const draftOriginalRef = useRef<Record<number, string>>({});
+  const draftRewrittenRef = useRef<Record<number, string>>({});
   const [editingTitleId, setEditingTitleId] = useState<number | null>(null);
   const [editingTitleText, setEditingTitleText] = useState('');
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null);
@@ -290,6 +292,7 @@ export function Diary() {
     setAiOperation(false);
     setProcessingRewriteId(null);
     if (data) {
+      cancelEntryEdit(entry);
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
       setViewRewritten(entry.id, true);
       setAiStatus(null);
@@ -316,6 +319,7 @@ export function Diary() {
     setAiOperation(false);
     setProcessingCommandId(null);
     if (data) {
+      cancelEntryEdit(entry);
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
       setViewRewritten(entry.id, true);
       setRewriteCommands((prev) => ({ ...prev, [entry.id]: '' }));
@@ -355,12 +359,14 @@ export function Diary() {
     return draftOriginal[entry.id] ?? entry.content;
   }
 
-  function setEditingContent(entryId: number, value: string) {
-    if (viewingRewrittenIds.has(entryId)) {
-      setDraftRewritten((prev) => ({ ...prev, [entryId]: value }));
-    } else {
-      setDraftOriginal((prev) => ({ ...prev, [entryId]: value }));
-    }
+  function setOriginalDraft(entryId: number, value: string) {
+    draftOriginalRef.current[entryId] = value;
+    setDraftOriginal((prev) => ({ ...prev, [entryId]: value }));
+  }
+
+  function setRewrittenDraft(entryId: number, value: string) {
+    draftRewrittenRef.current[entryId] = value;
+    setDraftRewritten((prev) => ({ ...prev, [entryId]: value }));
   }
 
   function hasDraft(entry: DiaryEntry): boolean {
@@ -371,6 +377,8 @@ export function Diary() {
   }
 
   function cancelEntryEdit(entry: DiaryEntry) {
+    delete draftOriginalRef.current[entry.id];
+    delete draftRewrittenRef.current[entry.id];
     setDraftOriginal((prev) => {
       const next = { ...prev };
       delete next[entry.id];
@@ -384,8 +392,8 @@ export function Diary() {
   }
 
   async function handleSaveOriginal(entry: DiaryEntry) {
-    const content = draftOriginal[entry.id];
-    if (content === undefined || content === entry.content) {
+    const content = draftOriginalRef.current[entry.id] ?? entry.content;
+    if (content === entry.content) {
       cancelEntryEdit(entry);
       return;
     }
@@ -406,7 +414,7 @@ export function Diary() {
   }
 
   async function handleAcceptRewritten(entry: DiaryEntry) {
-    const content = draftRewritten[entry.id] ?? entry.rewrittenContent;
+    const content = draftRewrittenRef.current[entry.id] ?? entry.rewrittenContent;
     if (!entry.rewrittenFilePath || !content) return;
     setWorking(true);
     const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
@@ -807,7 +815,7 @@ export function Diary() {
                           <ReactQuill
                             theme="snow"
                             value={getEditingContent(entry)}
-                            onChange={(value) => setEditingContent(entry.id, value)}
+                            onChange={(value) => setRewrittenDraft(entry.id, value)}
                             modules={quillModules}
                             formats={quillFormats}
                             readOnly={working}
@@ -835,7 +843,7 @@ export function Diary() {
                           <ReactQuill
                             theme="snow"
                             value={getEditingContent(entry)}
-                            onChange={(value) => setEditingContent(entry.id, value)}
+                            onChange={(value) => setOriginalDraft(entry.id, value)}
                             modules={quillModules}
                             formats={quillFormats}
                             readOnly={working}
