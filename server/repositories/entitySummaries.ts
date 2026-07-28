@@ -113,6 +113,38 @@ export function renameEntitySummary(
   })();
 }
 
+export function mergeEntitySummary(
+  sourceType: EntityType,
+  sourceName: string,
+  targetType: EntityType,
+  targetName: string,
+): void {
+  const source = getEntitySummary(sourceType, sourceName);
+  if (!source) {
+    markEntitySummaryDirty(targetType, targetName);
+    return;
+  }
+
+  const target = getEntitySummary(targetType, targetName);
+  if (!target) {
+    db.prepare(
+      'UPDATE entity_summaries SET entity_type = ?, entity_name = ?, is_dirty = 1 WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE',
+    ).run(targetType, targetName, sourceType, sourceName);
+    return;
+  }
+
+  const mergedMini = target.miniSummary ?? source.miniSummary ?? null;
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    db.prepare(
+      'UPDATE entity_summaries SET mini_summary = ?, is_dirty = 1, updated_at = ? WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE',
+    ).run(mergedMini, now, targetType, targetName);
+    db.prepare(
+      'DELETE FROM entity_summaries WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE',
+    ).run(sourceType, sourceName);
+  })();
+}
+
 export function listDirtyEntitySummaries(): EntitySummary[] {
   const rows = db
     .prepare(

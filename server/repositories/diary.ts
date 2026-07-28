@@ -3,7 +3,8 @@ import type { DiaryEntities } from '../ai/rewrite.js';
 import { stripHtml } from '../ai/rewrite.js';
 import { db } from '../database.js';
 import { readRewrittenFile } from '../diaryFiles.js';
-import { renameEntityKnowledge } from './entityKnowledge.js';
+import { mergeEntityKnowledge, renameEntityKnowledge } from './entityKnowledge.js';
+import { mergeEntitySummary } from './entitySummaries.js';
 
 interface EntityConfig {
   table: string;
@@ -674,6 +675,9 @@ export function reclassifyEntity(
       fromType,
       normalized,
     );
+
+    mergeEntityKnowledge(fromType, normalized, toType, normalized);
+    mergeEntitySummary(fromType, normalized, toType, normalized);
   });
 
   tx();
@@ -722,6 +726,8 @@ export function addEntityAlias(
         insertLink.run(diary_entry_id, canonicalRow.id);
       }
       db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(aliasRow.id);
+      mergeEntityKnowledge(type, aliasNormalized, type, canonicalNormalized);
+      mergeEntitySummary(type, aliasNormalized, type, canonicalNormalized);
     }
 
     db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?').run(
