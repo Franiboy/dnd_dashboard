@@ -147,7 +147,6 @@ export function Diary() {
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
-  const [editingEntryIds, setEditingEntryIds] = useState<Set<number>>(new Set());
   const [draftOriginal, setDraftOriginal] = useState<Record<number, string>>({});
   const [draftRewritten, setDraftRewritten] = useState<Record<number, string>>({});
   const draftOriginalRef = useRef<Record<number, string>>({});
@@ -356,23 +355,6 @@ export function Diary() {
     }
   }
 
-  function startContentEdit(entry: DiaryEntry) {
-    if (viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath) {
-      setRewrittenDraft(entry.id, entry.rewrittenContent ?? '');
-    } else {
-      setOriginalDraft(entry.id, entry.content);
-    }
-    setEditingEntryIds((prev) => new Set(prev).add(entry.id));
-  }
-
-  function stopContentEdit(entryId: number) {
-    setEditingEntryIds((prev) => {
-      const next = new Set(prev);
-      next.delete(entryId);
-      return next;
-    });
-  }
-
   function getEditingContent(entry: DiaryEntry): string {
     if (viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath) {
       return draftRewritten[entry.id] ?? entry.rewrittenContent ?? '';
@@ -390,8 +372,14 @@ export function Diary() {
     setDraftRewritten((prev) => ({ ...prev, [entryId]: value }));
   }
 
+  function hasDraft(entry: DiaryEntry): boolean {
+    if (viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath) {
+      return draftRewritten[entry.id] !== undefined && draftRewritten[entry.id] !== (entry.rewrittenContent ?? '');
+    }
+    return draftOriginal[entry.id] !== undefined && draftOriginal[entry.id] !== entry.content;
+  }
+
   function cancelEntryEdit(entry: DiaryEntry) {
-    stopContentEdit(entry.id);
     delete draftOriginalRef.current[entry.id];
     delete draftRewrittenRef.current[entry.id];
     setDraftOriginal((prev) => {
@@ -829,114 +817,60 @@ export function Diary() {
                               {processingCommandId === entry.id ? 'Wird verarbeitet...' : 'Ausführen'}
                             </Button>
                           </form>
-                          {editingEntryIds.has(entry.id) ? (
-                            <>
-                              <ReactQuill
-                                theme="snow"
-                                value={getEditingContent(entry)}
-                                onChange={(value) => setRewrittenDraft(entry.id, value)}
-                                modules={quillModules}
-                                formats={quillFormats}
-                                readOnly={working}
-                                className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--accent)]/30 mb-4"
-                              />
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  variant="accent"
-                                  onClick={() => handleAcceptRewritten(entry)}
-                                  disabled={working || !stripHtml(getEditingContent(entry)).trim()}
-                                >
-                                  Übernehmen
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  onClick={() => cancelEntryEdit(entry)}
-                                  disabled={working}
-                                >
-                                  Abbrechen
-                                </Button>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-sm text-[var(--text-h)] mb-4 entity-rich-text">
-                                <EntityRichText
-                                  content={entry.rewrittenContent ?? ''}
-                                  mappings={mappings}
-                                  isHtml
-                                />
-                              </div>
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  variant="secondary"
-                                  onClick={() => startContentEdit(entry)}
-                                  disabled={working}
-                                >
-                                  Bearbeiten
-                                </Button>
-                                <Button
-                                  variant="accent"
-                                  onClick={() => handleAcceptRewritten(entry)}
-                                  disabled={working || !stripHtml(entry.rewrittenContent ?? '').trim()}
-                                >
-                                  Übernehmen
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  onClick={() => handleDiscardRewritten(entry)}
-                                  disabled={working}
-                                >
-                                  Verwerfen
-                                </Button>
-                              </div>
-                            </>
-                          )}
+                          <ReactQuill
+                            theme="snow"
+                            value={getEditingContent(entry)}
+                            onChange={(value) => setRewrittenDraft(entry.id, value)}
+                            modules={quillModules}
+                            formats={quillFormats}
+                            readOnly={working}
+                            className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--accent)]/30 mb-4"
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="accent"
+                              onClick={() => handleAcceptRewritten(entry)}
+                              disabled={working || !stripHtml(getEditingContent(entry)).trim()}
+                            >
+                              Übernehmen
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={() => handleDiscardRewritten(entry)}
+                              disabled={working}
+                            >
+                              Verwerfen
+                            </Button>
+                          </div>
                         </div>
                       ) : (
                         <div className="mb-4">
-                          {editingEntryIds.has(entry.id) ? (
-                            <>
-                              <ReactQuill
-                                theme="snow"
-                                value={getEditingContent(entry)}
-                                onChange={(value) => setOriginalDraft(entry.id, value)}
-                                modules={quillModules}
-                                formats={quillFormats}
-                                readOnly={working}
-                                className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)] mb-2"
-                              />
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  variant="accent"
-                                  onClick={() => handleSaveOriginal(entry)}
-                                  disabled={working || !stripHtml(getEditingContent(entry)).trim()}
-                                >
-                                  Speichern
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  onClick={() => cancelEntryEdit(entry)}
-                                  disabled={working}
-                                >
-                                  Abbrechen
-                                </Button>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-sm text-[var(--text-h)] mb-2 entity-rich-text">
-                                <EntityRichText content={entry.content} mappings={mappings} isHtml />
-                              </div>
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  variant="secondary"
-                                  onClick={() => startContentEdit(entry)}
-                                  disabled={working}
-                                >
-                                  Bearbeiten
-                                </Button>
-                              </div>
-                            </>
+                          <ReactQuill
+                            theme="snow"
+                            value={getEditingContent(entry)}
+                            onChange={(value) => setOriginalDraft(entry.id, value)}
+                            modules={quillModules}
+                            formats={quillFormats}
+                            readOnly={working}
+                            className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)] mb-2"
+                          />
+                          {hasDraft(entry) && (
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="accent"
+                                onClick={() => handleSaveOriginal(entry)}
+                                disabled={working || !stripHtml(getEditingContent(entry)).trim()}
+                              >
+                                Speichern
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                onClick={() => cancelEntryEdit(entry)}
+                                disabled={working}
+                              >
+                                Abbrechen
+                              </Button>
+                            </div>
                           )}
                         </div>
                       )}
