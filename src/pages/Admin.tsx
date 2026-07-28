@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi';
 import { useError } from '../hooks/useError';
 import { BackButton } from '../components/BackButton';
 import { Loading } from '../components/Loading';
+import { LogPanel } from '../components/LogPanel';
 import { Modal } from '../components/Modal';
 import { APPS } from '../lib/apps';
 import type { SafeUser } from '../../shared/types';
@@ -239,113 +240,118 @@ export function Admin({ currentUser }: AdminProps) {
       </div>
 
       {currentUser.isAdmin && (
-      <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 overflow-auto">
-        {loading ? (
-          <Loading text="Verbinde..." />
-        ) : users.length === 0 ? (
-          <p className="text-slate-400">Keine Benutzer vorhanden.</p>
-        ) : (
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-[var(--border)]">
-              <th className="p-3">Anzeigename</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Admin</th>
-              <th className="p-3">Aktionen</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-b border-[var(--border)] last:border-0">
-                <td className="p-3 text-[var(--text-h)]">
-                  <div className="flex items-center gap-2">
-                    {u.avatarUrl && <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
-                    <span>{u.displayName} {isInitialAdmin(u) && <span className="text-xs text-slate-500">(Ursprungsadmin)</span>}
-                    {isOwn(u) && !isInitialAdmin(u) && <span className="text-xs text-slate-500"> (Du)</span>}</span>
-                  </div>
-                </td>
-                <td className="p-3">
-                  {u.isApproved ? (
-                    <span className="text-[var(--accent)]">Freigegeben</span>
-                  ) : (
-                    <span className="text-[var(--danger)]">Wartend</span>
-                  )}
-                </td>
-                <td className="p-3">{u.isAdmin ? 'Ja' : 'Nein'}</td>
-                <td className="p-3 flex flex-wrap gap-2">
-                  {!isInitialAdmin(u) && !isOwn(u) && (
-                    <>
-                      {!u.isApproved && (
-                        <button
-                          onClick={() => action(u.id, '/approve')}
-                          disabled={isActionLoading(u.id, '/approve')}
-                          className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 text-xs font-semibold disabled:opacity-50"
-                        >
-                          {isActionLoading(u.id, '/approve') ? (
-                            <Loading text="" size="sm" />
-                          ) : (
-                            'Freigeben'
-                          )}
-                        </button>
-                      )}
-                      {u.isApproved && (
-                        <button
-                          onClick={() => action(u.id, '/reject')}
-                          disabled={isActionLoading(u.id, '/reject')}
-                          className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 text-xs font-semibold disabled:opacity-50"
-                        >
-                          {isActionLoading(u.id, '/reject') ? (
-                            <Loading text="" size="sm" />
-                          ) : (
-                            'Sperren'
-                          )}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => action(u.id, '/admin', { isAdmin: !u.isAdmin })}
-                        disabled={isActionLoading(u.id, '/admin')}
-                        className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
-                      >
-                        {isActionLoading(u.id, '/admin') ? (
-                          <Loading text="" size="sm" />
+        <>
+          <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 overflow-auto">
+            {loading ? (
+              <Loading text="Verbinde..." />
+            ) : users.length === 0 ? (
+              <p className="text-slate-400">Keine Benutzer vorhanden.</p>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)]">
+                    <th className="p-3">Anzeigename</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Admin</th>
+                    <th className="p-3">Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id} className="border-b border-[var(--border)] last:border-0">
+                      <td className="p-3 text-[var(--text-h)]">
+                        <div className="flex items-center gap-2">
+                          {u.avatarUrl && <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
+                          <span>{u.displayName} {isInitialAdmin(u) && <span className="text-xs text-slate-500">(Ursprungsadmin)</span>}
+                          {isOwn(u) && !isInitialAdmin(u) && <span className="text-xs text-slate-500"> (Du)</span>}</span>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        {u.isApproved ? (
+                          <span className="text-[var(--accent)]">Freigegeben</span>
                         ) : (
-                          u.isAdmin ? 'Admin entfernen' : 'Zum Admin'
+                          <span className="text-[var(--danger)]">Wartend</span>
                         )}
-                      </button>
-                      <button
-                        onClick={() => setManagingAppsFor(u)}
-                        disabled={isActionLoading(u.id, '/disabled-apps')}
-                        className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
-                      >
-                        {isActionLoading(u.id, '/disabled-apps') ? (
-                          <Loading text="" size="sm" />
-                        ) : (
-                          'Apps'
+                      </td>
+                      <td className="p-3">{u.isAdmin ? 'Ja' : 'Nein'}</td>
+                      <td className="p-3 flex flex-wrap gap-2">
+                        {!isInitialAdmin(u) && !isOwn(u) && (
+                          <>
+                            {!u.isApproved && (
+                              <button
+                                onClick={() => action(u.id, '/approve')}
+                                disabled={isActionLoading(u.id, '/approve')}
+                                className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 text-xs font-semibold disabled:opacity-50"
+                              >
+                                {isActionLoading(u.id, '/approve') ? (
+                                  <Loading text="" size="sm" />
+                                ) : (
+                                  'Freigeben'
+                                )}
+                              </button>
+                            )}
+                            {u.isApproved && (
+                              <button
+                                onClick={() => action(u.id, '/reject')}
+                                disabled={isActionLoading(u.id, '/reject')}
+                                className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 text-xs font-semibold disabled:opacity-50"
+                              >
+                                {isActionLoading(u.id, '/reject') ? (
+                                  <Loading text="" size="sm" />
+                                ) : (
+                                  'Sperren'
+                                )}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => action(u.id, '/admin', { isAdmin: !u.isAdmin })}
+                              disabled={isActionLoading(u.id, '/admin')}
+                              className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
+                            >
+                              {isActionLoading(u.id, '/admin') ? (
+                                <Loading text="" size="sm" />
+                              ) : (
+                                u.isAdmin ? 'Admin entfernen' : 'Zum Admin'
+                              )}
+                            </button>
+                            <button
+                              onClick={() => setManagingAppsFor(u)}
+                              disabled={isActionLoading(u.id, '/disabled-apps')}
+                              className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
+                            >
+                              {isActionLoading(u.id, '/disabled-apps') ? (
+                                <Loading text="" size="sm" />
+                              ) : (
+                                'Apps'
+                              )}
+                            </button>
+                            <button
+                              onClick={() => deleteU(u.id)}
+                              disabled={isActionLoading(u.id, '/delete')}
+                              className="px-3 py-1 rounded bg-[var(--danger)] text-white text-xs disabled:opacity-50"
+                            >
+                              {isActionLoading(u.id, '/delete') ? (
+                                <Loading text="" size="sm" />
+                              ) : (
+                                'Löschen'
+                              )}
+                            </button>
+                          </>
                         )}
-                      </button>
-                      <button
-                        onClick={() => deleteU(u.id)}
-                        disabled={isActionLoading(u.id, '/delete')}
-                        className="px-3 py-1 rounded bg-[var(--danger)] text-white text-xs disabled:opacity-50"
-                      >
-                        {isActionLoading(u.id, '/delete') ? (
-                          <Loading text="" size="sm" />
-                        ) : (
-                          'Löschen'
+                        {(isInitialAdmin(u) || isOwn(u)) && (
+                          <span className="text-slate-500 text-xs">Geschützt</span>
                         )}
-                      </button>
-                    </>
-                  )}
-                  {(isInitialAdmin(u) || isOwn(u)) && (
-                    <span className="text-slate-500 text-xs">Geschützt</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div className="mt-6">
+            <LogPanel />
+          </div>
+        </>
       )}
 
       {managingAppsFor && <AppAccessModal user={managingAppsFor} onClose={() => setManagingAppsFor(null)} />}
