@@ -25,7 +25,7 @@ import {
   markEntityKnowledgeDeleted,
   updateEntityKnowledge,
 } from '../repositories/entityKnowledge.js';
-import { getEntitySummary } from '../repositories/entitySummaries.js';
+import { getEntitySummary, setEntityMiniSummary } from '../repositories/entitySummaries.js';
 
 const router = Router();
 
@@ -320,7 +320,16 @@ router.get('/summary', (req: AuthRequest, res) => {
 
   try {
     const summary = getEntitySummary(type as keyof DiaryEntities, name.trim());
-    res.json(summary ?? { entityType: type, entityName: name.trim(), summary: null, isDirty: true, updatedAt: null });
+    res.json(
+      summary ?? {
+        entityType: type,
+        entityName: name.trim(),
+        summary: null,
+        miniSummary: null,
+        isDirty: true,
+        updatedAt: null,
+      },
+    );
   } catch {
     res.status(500).json({ error: 'Zusammenfassung konnte nicht geladen werden' });
   }
@@ -339,14 +348,31 @@ router.post('/summary/generate', async (req: AuthRequest, res) => {
   }
 
   try {
-    const summary = await generateEntitySummary(type, name.trim());
-    if (summary === null) {
+    const result = await generateEntitySummary(type, name.trim());
+    if (result === null) {
       res.status(500).json({ error: 'KI-Zusammenfassung fehlgeschlagen' });
       return;
     }
-    res.json({ summary });
+    res.json({ summary: result.summary, miniSummary: result.miniSummary });
   } catch {
     res.status(500).json({ error: 'KI-Zusammenfassung fehlgeschlagen' });
+  }
+});
+
+router.put('/mini-summary', (req: AuthRequest, res) => {
+  const { type, name, miniSummary } = req.body;
+  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+
+  const normalizedMini = typeof miniSummary === 'string' ? miniSummary.trim() : null;
+
+  try {
+    const entry = setEntityMiniSummary(type, name.trim(), normalizedMini);
+    res.json({ miniSummary: entry.miniSummary });
+  } catch {
+    res.status(500).json({ error: 'Mini-Zusammenfassung konnte nicht gespeichert werden' });
   }
 });
 

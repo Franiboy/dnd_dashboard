@@ -6,6 +6,7 @@ interface Trigger {
   type: EntityType;
   canonical: string;
   text: string;
+  miniSummary: string | null;
 }
 
 interface Match {
@@ -14,11 +15,12 @@ interface Match {
   text: string;
   type: EntityType;
   canonical: string;
+  miniSummary: string | null;
 }
 
 type Segment =
   | { kind: 'text'; text: string }
-  | { kind: 'entity'; text: string; type: EntityType; canonical: string };
+  | { kind: 'entity'; text: string; type: EntityType; canonical: string; miniSummary: string | null };
 
 const entityTextStyles: Record<EntityType, string> = {
   persons: 'text-[var(--accent)]',
@@ -39,9 +41,19 @@ function escapeRegex(str: string): string {
 function buildTriggers(mappings: EntityMapping[]): Trigger[] {
   const triggers: Trigger[] = [];
   for (const mapping of mappings) {
-    triggers.push({ type: mapping.type, canonical: mapping.canonical, text: mapping.canonical });
+    triggers.push({
+      type: mapping.type,
+      canonical: mapping.canonical,
+      text: mapping.canonical,
+      miniSummary: mapping.miniSummary,
+    });
     for (const alias of mapping.aliases) {
-      triggers.push({ type: mapping.type, canonical: mapping.canonical, text: alias });
+      triggers.push({
+        type: mapping.type,
+        canonical: mapping.canonical,
+        text: alias,
+        miniSummary: mapping.miniSummary,
+      });
     }
   }
   return triggers.sort((a, b) => b.text.length - a.text.length);
@@ -60,6 +72,7 @@ function findMatches(input: string, triggers: Trigger[]): Match[] {
         text: match[0],
         type: trigger.type,
         canonical: trigger.canonical,
+        miniSummary: trigger.miniSummary,
       });
       if (match[0].length === 0) break;
     }
@@ -84,7 +97,7 @@ function segmentText(input: string, matches: Match[]): Segment[] {
     if (m.start > pos) {
       segments.push({ kind: 'text', text: input.slice(pos, m.start) });
     }
-    segments.push({ kind: 'entity', text: input.slice(m.start, m.end), type: m.type, canonical: m.canonical });
+    segments.push({ kind: 'entity', text: input.slice(m.start, m.end), type: m.type, canonical: m.canonical, miniSummary: m.miniSummary });
     pos = m.end;
   }
   if (pos < input.length) {
@@ -97,14 +110,16 @@ interface EntityBadgeProps {
   text: string;
   type: EntityType;
   canonical: string;
+  miniSummary: string | null;
 }
 
-function EntityBadge({ text, type, canonical }: EntityBadgeProps) {
+function EntityBadge({ text, type, canonical, miniSummary }: EntityBadgeProps) {
   const navigate = useNavigate();
+  const tooltip = miniSummary ? `${miniSummary}\n(${typeLabels[type]} in Welt öffnen)` : `${typeLabels[type]} in Welt öffnen`;
   return (
     <span
       onClick={() => navigate('/welt', { state: { selectedEntity: { name: canonical, type } } })}
-      title={`${typeLabels[type]} in Welt öffnen`}
+      title={tooltip}
       className={`cursor-pointer hover:underline transition ${entityTextStyles[type]}`}
     >
       {text}
@@ -116,7 +131,7 @@ function renderSegments(segments: Segment[], baseKey: string): React.ReactNode[]
   return segments.map((seg, i) => {
     const key = `${baseKey}-${i}`;
     if (seg.kind === 'text') return <React.Fragment key={key}>{seg.text}</React.Fragment>;
-    return <EntityBadge key={key} text={seg.text} type={seg.type} canonical={seg.canonical} />;
+    return <EntityBadge key={key} text={seg.text} type={seg.type} canonical={seg.canonical} miniSummary={seg.miniSummary} />;
   });
 }
 
