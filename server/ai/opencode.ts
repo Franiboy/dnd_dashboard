@@ -58,10 +58,8 @@ export function runOpenCode({
     });
 
     let output = '';
-    let hasLog = false;
 
     const emitLog = (line: string) => {
-      hasLog = true;
       onLog?.(line);
     };
 
