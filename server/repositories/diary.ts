@@ -799,3 +799,10 @@ export function unblacklistEntity(name: string, type: keyof DiaryEntities): void
 export function deleteDiaryEntry(id: number): void {
   db.prepare('DELETE FROM diary_entries WHERE id = ?').run(id);
 }
+
+export function listActiveRewriteSessionIds(): string[] {
+  const rows = db
+    .prepare('SELECT DISTINCT rewrite_session_id AS id FROM diary_entries WHERE rewrite_session_id IS NOT NULL')
+    .all() as { id: string }[];
+  return rows.map((r) => r.id).filter((id): id is string => !!id);
+}

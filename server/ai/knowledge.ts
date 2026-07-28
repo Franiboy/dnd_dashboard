@@ -1,4 +1,4 @@
-import { runOpenCode } from './opencode.js';
+import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
 import { listAllKnowledge } from '../repositories/entityKnowledge.js';
 import { getEntitySummary } from '../repositories/entitySummaries.js';
 import { stripHtml } from './rewrite.js';
@@ -109,6 +109,10 @@ export async function distributeKnowledgeFromText(
   const allAfter = listAllKnowledge();
   const diff = computeDistributionDiff(snapshotBefore, allAfter);
 
+  if (result.sessionId) {
+    deleteOpenCodeSession(result.sessionId);
+  }
+
   if (!result.success) {
     log.warn(`Knowledge distribution failed: exitCode=${result.exitCode}`);
     return { created: [], deleted: [] };
@@ -162,6 +166,10 @@ export async function generateEntitySummary(
     scopes: ['entity:read', 'entity:summary'],
     onLog,
   });
+
+  if (result.sessionId) {
+    deleteOpenCodeSession(result.sessionId);
+  }
 
   if (!result.success) {
     log.warn(`Summary generation failed for ${entityType}/${entityName}: exitCode=${result.exitCode}`);
