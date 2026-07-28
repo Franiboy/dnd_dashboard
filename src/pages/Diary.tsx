@@ -882,7 +882,7 @@ export function Diary() {
         title="Neuer Eintrag"
         onClose={closeModal}
         actions={modalActions}
-        className="h-[85vh] flex flex-col"
+        className="h-[85vh] flex flex-col max-w-5xl"
         contentClassName="flex-1 min-h-0 overflow-hidden flex flex-col"
       >
         {formError && (
