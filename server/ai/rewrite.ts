@@ -1,4 +1,4 @@
-import { runOpenCode } from './opencode.js';
+import { findOpenCodeSessionId, runOpenCode } from './opencode.js';
 import { readRewrittenFile } from '../diaryFiles.js';
 import { getDiaryEntryById, getEntryEntities } from '../repositories/diary.js';
 import { createLogger } from '../logger.js';
@@ -106,8 +106,16 @@ export async function rewriteTextWithAi(
     return { content: null, sessionId: existingSessionId };
   }
 
+  let finalSessionId = existingSessionId;
+  if (!finalSessionId) {
+    finalSessionId = await findOpenCodeSessionId(process.cwd(), title);
+    if (finalSessionId) {
+      log.info(`Resolved new opencode session for entry ${entryId}: ${finalSessionId}`);
+    }
+  }
+
   log.info(`Using rewritten file content for entry ${entryId} (${fileContent.length} bytes)`);
-  return { content: normalizeToHtml(fileContent), sessionId: existingSessionId };
+  return { content: normalizeToHtml(fileContent), sessionId: finalSessionId };
 }
 
 export async function improveRewrittenWithCommand(
