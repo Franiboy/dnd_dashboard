@@ -13,6 +13,7 @@ import {
   finalizeEntities,
   getBlacklistedEntities,
   getEntityDetail,
+  getEntityMappings,
   reclassifyEntity,
   unblacklistEntity,
   updateEntity,
@@ -31,6 +32,14 @@ const router = Router();
 const ENTITY_TYPES: Array<keyof DiaryEntities> = ['persons', 'organizations', 'locations'];
 
 router.use(authMiddleware, requireApproved);
+
+router.get('/mappings', (_req: AuthRequest, res) => {
+  try {
+    res.json({ mappings: getEntityMappings() });
+  } catch {
+    res.status(500).json({ error: 'Mappings konnten nicht geladen werden' });
+  }
+});
 
 router.get('/', (_req: AuthRequest, res) => {
   const fetchNames = (table: string): string[] => {

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
+import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
+import { EntityRichText } from '../components/EntityRichText';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DashboardHeader } from '../components/DashboardHeader';
 import { DashboardLayout } from '../components/DashboardLayout';
@@ -278,6 +280,7 @@ interface EntityEditDialogProps {
 
 function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProps) {
   const { request } = useApi();
+  const { mappings } = useEntityMappings();
   const { showSuccess, showError } = useError();
   const [detail, setDetail] = useState<EntityDetail | null>(null);
   const [canonical, setCanonical] = useState('');
@@ -578,7 +581,9 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
               </div>
               {summary ? (
                 <div className={`text-sm text-[var(--text-h)] p-2 rounded border border-[var(--border)] ${summaryDirty ? 'bg-amber-900/20' : 'bg-slate-900/50'}`}>
-                  <p className="whitespace-pre-wrap">{summary}</p>
+                  <p className="whitespace-pre-wrap">
+                    <EntityRichText content={summary} mappings={mappings} isHtml={false} />
+                  </p>
                   {summaryDirty && (
                     <p className="text-xs text-amber-500 mt-1 italic">
                       Zusammenfassung ist veraltet und sollte aktualisiert werden.
@@ -720,7 +725,7 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
                               )}
                             </div>
                             <p className={`text-sm whitespace-pre-wrap ${isDeleted ? 'text-slate-500 line-through' : 'text-[var(--text-h)]'}`}>
-                              {entry.content}
+                              <EntityRichText content={entry.content} mappings={mappings} isHtml={false} />
                             </p>
                             {isDeleted && entry.statusReason && (
                               <p className="text-xs text-slate-500 italic">Grund: {entry.statusReason}</p>
