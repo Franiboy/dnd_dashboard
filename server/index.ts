@@ -24,6 +24,10 @@ import {
   startEntitySummaryScheduler,
   stopEntitySummaryScheduler,
 } from './scheduler/entitySummaries.js';
+import {
+  startSessionCleanupScheduler,
+  stopSessionCleanupScheduler,
+} from './scheduler/sessionCleanup.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,6 +69,7 @@ ensureAdminUser();
 startBot();
 startTranscriptionScheduler();
 startEntitySummaryScheduler();
+startSessionCleanupScheduler();
 
 app.get('/api/version', (req, res) => {
   res.json(getVersion());
@@ -103,6 +108,7 @@ function shutdown(signal: string) {
   console.log(`\n${signal} received, shutting down gracefully...`);
   stopTranscriptionScheduler();
   stopEntitySummaryScheduler();
+  stopSessionCleanupScheduler();
 
   // Force close after 1.5s even if sockets are still open
   const forceExit = setTimeout(() => {
