@@ -1,5 +1,7 @@
 import { Router, type Response } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
+import { getRecentLogs, subscribeLogs } from '../logger.js';
+import type { LogEntry } from '../../shared/types.js';
 import {
   deleteUser,
   findUserById,
@@ -11,6 +13,7 @@ import {
 } from '../users.js';
 
 const sseClients = new Set<Response>();
+const logSseClients = new Set<Response>();
 
 function notifyUserUpdate() {
   const data = JSON.stringify(getAllUsers());
@@ -19,6 +22,16 @@ function notifyUserUpdate() {
     client.write(`data: ${data}\n\n`);
   });
 }
+
+function notifyLogUpdate(entry: LogEntry) {
+  const data = JSON.stringify(entry);
+  logSseClients.forEach((client) => {
+    client.write(`event: log\n`);
+    client.write(`data: ${data}\n\n`);
+  });
+}
+
+subscribeLogs(notifyLogUpdate);
 
 function checkAdminAction(req: AuthRequest, targetId: string): { ok: true } | { ok: false; error: string } {
   const target = findUserById(targetId);
@@ -49,6 +62,24 @@ router.get('/users/events', authMiddleware, requireAdmin, (req: AuthRequest, res
 
   req.on('close', () => {
     sseClients.delete(res);
+  });
+});
+
+router.get('/logs/events', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  // Send recent logs
+  res.write(`event: logs\n`);
+  res.write(`data: ${JSON.stringify(getRecentLogs())}\n\n`);
+
+  logSseClients.add(res);
+
+  req.on('close', () => {
+    logSseClients.delete(res);
   });
 });
 

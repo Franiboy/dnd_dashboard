@@ -71,6 +71,16 @@ export interface VersionInfo {
   recordingEnabled: boolean;
 }
 
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  category: string;
+  message: string;
+  args: unknown[];
+}
+
 export interface ClientToServerEvents {
   join: () => void;
   addTask: (payload: { text: string; isPrivate?: boolean; assignedTo?: string[] }) => void;
