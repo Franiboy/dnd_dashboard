@@ -11,24 +11,25 @@ import {
   setUserApproved,
   setUserDisabledApps,
 } from '../users.js';
+import { SseBroadcaster, writeSse } from '../utils/sse.js';
 
-const sseClients = new Set<Response>();
-const logSseClients = new Set<Response>();
+const userEvents = new SseBroadcaster();
+const logEvents = new SseBroadcaster();
 
 function notifyUserUpdate() {
-  const data = JSON.stringify(getAllUsers());
-  sseClients.forEach((client) => {
-    client.write(`event: users\n`);
-    client.write(`data: ${data}\n\n`);
-  });
+  try {
+    userEvents.broadcast('users', JSON.stringify(getAllUsers()));
+  } catch {
+    // ignore broadcast errors
+  }
 }
 
 function notifyLogUpdate(entry: LogEntry) {
-  const data = JSON.stringify(entry);
-  logSseClients.forEach((client) => {
-    client.write(`event: log\n`);
-    client.write(`data: ${data}\n\n`);
-  });
+  try {
+    logEvents.broadcast('log', JSON.stringify(entry));
+  } catch {
+    // ignore broadcast errors
+  }
 }
 
 subscribeLogs(notifyLogUpdate);
@@ -39,6 +40,12 @@ function checkAdminAction(req: AuthRequest, targetId: string): { ok: true } | { 
   if (isInitialAdmin(target)) return { ok: false, error: 'Der Ursprungsadmin kann nicht verändert werden' };
   if (target.id === req.user!.id) return { ok: false, error: 'Du kannst deinen eigenen Account nicht verändern' };
   return { ok: true };
+}
+
+function attachSseCleanup(req: AuthRequest, res: Response, cleanup: () => void) {
+  req.on('close', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
 }
 
 const router = Router();
@@ -55,14 +62,12 @@ router.get('/users/events', authMiddleware, requireAdmin, (req: AuthRequest, res
   res.flushHeaders();
 
   // Send initial list
-  res.write(`event: users\n`);
-  res.write(`data: ${JSON.stringify(getAllUsers())}\n\n`);
+  if (!writeSse(res, 'users', JSON.stringify(getAllUsers()))) {
+    return;
+  }
 
-  sseClients.add(res);
-
-  req.on('close', () => {
-    sseClients.delete(res);
-  });
+  const cleanup = userEvents.add(res);
+  attachSseCleanup(req, res, cleanup);
 });
 
 router.get('/logs/events', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
@@ -73,14 +78,12 @@ router.get('/logs/events', authMiddleware, requireAdmin, (req: AuthRequest, res)
   res.flushHeaders();
 
   // Send recent logs
-  res.write(`event: logs\n`);
-  res.write(`data: ${JSON.stringify(getRecentLogs())}\n\n`);
+  if (!writeSse(res, 'logs', JSON.stringify(getRecentLogs()))) {
+    return;
+  }
 
-  logSseClients.add(res);
-
-  req.on('close', () => {
-    logSseClients.delete(res);
-  });
+  const cleanup = logEvents.add(res);
+  attachSseCleanup(req, res, cleanup);
 });
 
 router.post('/users/:id/approve', authMiddleware, requireAdmin, (req: AuthRequest, res) => {

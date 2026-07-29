@@ -36,16 +36,29 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function getCorsOrigin(): string[] | boolean {
+  if (process.env.CORS_ORIGIN) {
+    return process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  if (process.env.NODE_ENV === 'production') {
+    return false;
+  }
+  // Development: allow only the common local origins. Never reflect arbitrary origins.
+  return ['http://localhost:5173', 'http://localhost:3001'];
+}
+
+const corsOrigin = getCorsOrigin();
+
 const app = express();
 app.set('trust proxy', 1);
 const http = createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
-  cors: { origin: true, credentials: true },
+  cors: { origin: corsOrigin, credentials: true },
 });
 
 const PORT = process.env.PORT || 3001;
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 

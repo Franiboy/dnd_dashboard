@@ -7,39 +7,32 @@ import { runTranscription, getTranscriptionProgress } from '../discord/transcrib
 import { isRecordingFeatureEnabled } from '../discord/config.js';
 import { onSessionsUpdated, onStatusUpdated, onProgressUpdated, emitSessionsUpdated } from '../discord/recordingsEvents.js';
 import { getSessionById, listSessions, getFilesBySessionId, getRecordingConfig, setRecordingConfig, deleteSession, updateSession } from '../repositories/recordings.js';
+import { createLogger } from '../logger.js';
+import { SseBroadcaster, writeSse } from '../utils/sse.js';
+
+const log = createLogger('recordings-routes');
 
 const router = Router();
-const sseClients = new Set<Response>();
+const sseClients = new SseBroadcaster();
 
-function sendStatusToClient(client: Response): void {
-  const data = JSON.stringify({ bot: getBotStatus(), active: getActiveRecording() });
-  client.write(`event: status\ndata: ${data}\n\n`);
+function getStatusData(): string {
+  return JSON.stringify({ bot: getBotStatus(), active: getActiveRecording() });
 }
 
-function sendSessionsToClient(client: Response): void {
-  const data = JSON.stringify({ sessions: listSessions() });
-  client.write(`event: sessions\ndata: ${data}\n\n`);
+function getSessionsData(): string {
+  return JSON.stringify({ sessions: listSessions() });
 }
 
 function broadcastStatus(): void {
-  const data = JSON.stringify({ bot: getBotStatus(), active: getActiveRecording() });
-  sseClients.forEach((client) => {
-    client.write(`event: status\ndata: ${data}\n\n`);
-  });
+  sseClients.broadcast('status', getStatusData());
 }
 
 function broadcastSessions(): void {
-  const data = JSON.stringify({ sessions: listSessions() });
-  sseClients.forEach((client) => {
-    client.write(`event: sessions\ndata: ${data}\n\n`);
-  });
+  sseClients.broadcast('sessions', getSessionsData());
 }
 
 function broadcastProgress(sessionId: number, progress: unknown): void {
-  const data = JSON.stringify({ sessionId, progress });
-  sseClients.forEach((client) => {
-    client.write(`event: progress\ndata: ${data}\n\n`);
-  });
+  sseClients.broadcast('progress', JSON.stringify({ sessionId, progress }));
 }
 
 onStatusUpdated(() => broadcastStatus());
@@ -64,14 +57,11 @@ router.get('/events', (req, res) => {
   res.status(200);
   res.flushHeaders();
 
-  sendStatusToClient(res);
-  sendSessionsToClient(res);
+  if (!writeSse(res, 'status', getStatusData()) || !writeSse(res, 'sessions', getSessionsData())) {
+    return;
+  }
 
-  sseClients.add(res);
-
-  const cleanup = () => {
-    sseClients.delete(res);
-  };
+  const cleanup = sseClients.add(res);
 
   req.on('close', cleanup);
   res.on('close', cleanup);
@@ -239,7 +229,7 @@ router.post('/:id/transcribe', (req, res) => {
   emitSessionsUpdated();
 
   runTranscription(id, files).catch((err) => {
-    console.error(`Manual transcription failed for session ${id}:`, err);
+    log.error(`Manual transcription failed for session ${id}:`, err);
   });
 
   res.json({ message: 'Transkription wird im Hintergrund gestartet' });
@@ -270,7 +260,7 @@ router.delete('/:id', async (req, res) => {
     try {
       await rm(directory, { recursive: true, force: true });
     } catch (err) {
-      console.error(`Failed to delete recording directory ${directory}:`, err);
+      log.error(`Failed to delete recording directory ${directory}:`, err);
     }
   }
 

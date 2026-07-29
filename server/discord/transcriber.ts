@@ -4,11 +4,22 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { updateFile, updateSession, getSessionById } from '../repositories/recordings.js';
 import { emitSessionsUpdated, emitProgressUpdated } from './recordingsEvents.js';
+import { createLogger } from '../logger.js';
 import type { RecordingFile, TranscriptionProgress } from '../../shared/types.js';
+
+const log = createLogger('transcriber');
 
 const WHISPER_MODEL = process.env.WHISPER_MODEL || 'base';
 const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE || 'de';
 const WHISPER_FP16 = process.env.WHISPER_FP16 === 'true';
+const MAX_STDERR_LENGTH = 5000;
+
+function appendStderr(buffer: string, chunk: string, maxLength: number): string {
+  const combined = buffer + chunk;
+  if (combined.length <= maxLength) return combined;
+  // Keep the tail of the output; the most recent error lines are usually the most useful.
+  return combined.slice(-maxLength);
+}
 
 function findPythonCommand(): string {
   const candidates = [process.env.PYTHON_COMMAND, 'python3', 'python'].filter((cmd): cmd is string => Boolean(cmd));
@@ -24,7 +35,7 @@ function findPythonCommand(): string {
 }
 
 const PYTHON_COMMAND = findPythonCommand();
-console.log(`[transcriber] Using Python command: ${PYTHON_COMMAND}`);
+log.info(`Using Python command: ${PYTHON_COMMAND}`);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -163,7 +174,7 @@ function runTranscriptionScript(
     });
 
     child.stderr?.on('data', (data: Buffer) => {
-      stderrBuffer += data.toString();
+      stderrBuffer = appendStderr(stderrBuffer, data.toString(), MAX_STDERR_LENGTH);
     });
 
     child.on('error', (err) => {

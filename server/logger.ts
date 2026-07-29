@@ -4,6 +4,9 @@ import type { LogEntry, LogLevel } from '../shared/types.js';
 export type { LogEntry };
 
 const MAX_LOGS = 1000;
+const MAX_MESSAGE_LENGTH = 5000;
+const MAX_EXTRA_ARGS = 5;
+const MAX_ARG_LENGTH = 500;
 const logBuffer: LogEntry[] = [];
 const listeners = new Set<(entry: LogEntry) => void>();
 
@@ -40,35 +43,49 @@ function formatMessage(entry: LogEntry): string {
   return `[${entry.timestamp}] [${entry.level.toUpperCase()}] [${entry.category}] ${entry.message}`;
 }
 
-function serializeFirstArg(arg: unknown): { message: string } {
-  if (typeof arg === 'string') {
-    return { message: arg };
-  }
-  if (arg instanceof Error) {
-    return { message: arg.stack ?? arg.message };
-  }
-  if (arg === undefined) {
-    return { message: 'undefined' };
-  }
-  if (arg === null) {
-    return { message: 'null' };
-  }
+function truncate(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
+}
+
+function inspectValue(arg: unknown, maxLength: number, depth = 2): string {
+  if (typeof arg === 'string') return truncate(arg, maxLength);
+  if (arg instanceof Error) return truncate(arg.stack ?? arg.message, maxLength);
+  if (arg === undefined) return 'undefined';
+  if (arg === null) return 'null';
   try {
-    return { message: util.inspect(arg, { depth: 3, colors: false }) };
+    const inspected = util.inspect(arg, {
+      depth,
+      colors: false,
+      maxStringLength: maxLength,
+      maxArrayLength: 20,
+      breakLength: Infinity,
+      compact: true,
+    });
+    return truncate(inspected, maxLength);
   } catch {
-    return { message: String(arg) };
+    return truncate(String(arg), maxLength);
   }
+}
+
+function serializeFirstArg(arg: unknown): { message: string } {
+  return { message: inspectValue(arg, MAX_MESSAGE_LENGTH, 3) };
+}
+
+function serializeExtraArg(arg: unknown): string {
+  return inspectValue(arg, MAX_ARG_LENGTH, 1);
 }
 
 function pushLog(level: LogLevel, category: string, args: unknown[]): LogEntry {
   const rawArgs = args.length === 0 ? [''] : args;
   const { message } = serializeFirstArg(rawArgs[0]);
+  const extraArgs = rawArgs.slice(1, MAX_EXTRA_ARGS + 1).map(serializeExtraArg);
   const entry: LogEntry = {
     timestamp: new Date().toISOString(),
     level,
     category,
     message,
-    args: rawArgs.slice(1),
+    args: extraArgs,
   };
   logBuffer.push(entry);
   if (logBuffer.length > MAX_LOGS) {

@@ -1,30 +1,16 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { AppSwitcher } from './AppSwitcher';
 import { HeaderAction } from './HeaderAction';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 
 interface LayoutProps {
   user: SafeUser;
+  version: VersionInfo | null | undefined;
   onLogout: () => void;
   children: ReactNode;
 }
 
-export function Layout({ user, onLogout, children }: LayoutProps) {
-  const [version, setVersion] = useState<VersionInfo | null>(null);
-
-  useEffect(() => {
-    fetch('/api/version')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: VersionInfo | null) => {
-        if (data) {
-          setVersion(data);
-        }
-      })
-      .catch(() => {
-        // Version is optional; failing silently is fine
-      });
-  }, []);
-
+export function Layout({ user, version, onLogout, children }: LayoutProps) {
   const logoutIcon = (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
