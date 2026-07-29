@@ -400,6 +400,11 @@ Das Muster ist überall gleich:
 
 ## Entwicklungs- & Git-Workflow (Regeln für Assistenten)
 
+- **Jede Änderung in einem separaten Git Worktree auf einem eigenen Branch entwickeln.**
+  Nicht direkt in `main` arbeiten. Einen Worktree mit
+  `git worktree add <pfad> -b <branch-name>` anlegen, darin entwickeln und committen;
+  nach ausdrücklicher Bestätigung des Nutzers den Branch in `main` mergen und den
+  Worktree entfernen.
 - **Keine Commits ohne ausdrückliche Genehmigung des Nutzers.**
 - **Kein Push ohne ausdrückliche Genehmigung des Nutzers.**
 - **Kein Force-Push, keine Branch-Löschungen und keine History-Rewrites ohne Genehmigung.**
