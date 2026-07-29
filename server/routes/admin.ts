@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
-import { getRecentLogs, subscribeLogs } from '../logger.js';
-import type { LogEntry } from '../../shared/types.js';
+import { getRecentLogs, getLogsPaginated, subscribeLogs } from '../logger.js';
+import type { LogEntry, LogLevel } from '../../shared/types.js';
 import {
   deleteUser,
   findUserById,
@@ -84,6 +84,29 @@ router.get('/logs/events', authMiddleware, requireAdmin, (req: AuthRequest, res)
 
   const cleanup = logEvents.add(res);
   attachSseCleanup(req, res, cleanup);
+});
+
+const VALID_LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
+
+router.get('/logs', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const rawLevel = req.query.level;
+  const level =
+    typeof rawLevel === 'string' && VALID_LOG_LEVELS.includes(rawLevel as LogLevel)
+      ? (rawLevel as LogLevel)
+      : undefined;
+
+  if (rawLevel !== undefined && rawLevel !== '' && !level) {
+    return res.status(400).json({ error: 'Ungültiger level-Wert' });
+  }
+
+  const before = typeof req.query.before === 'string' ? parseInt(req.query.before, 10) : undefined;
+  const limit = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : undefined;
+
+  if (before !== undefined && (!Number.isFinite(before) || before < 0)) {
+    return res.status(400).json({ error: 'Ungültiger before-Wert' });
+  }
+
+  res.json(getLogsPaginated({ level, before, limit }));
 });
 
 router.post('/users/:id/approve', authMiddleware, requireAdmin, (req: AuthRequest, res) => {

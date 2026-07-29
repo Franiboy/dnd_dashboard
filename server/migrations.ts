@@ -357,6 +357,23 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: 'create_logs_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          timestamp TEXT NOT NULL,
+          level TEXT NOT NULL,
+          category TEXT NOT NULL,
+          message TEXT NOT NULL,
+          args TEXT NOT NULL DEFAULT '[]'
+        );
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_id ON logs (id);`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_level_id ON logs (level, id);`);
+    },
+  },
 ];
 
 export function runMigrations() {

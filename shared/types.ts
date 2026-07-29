@@ -74,6 +74,7 @@ export interface VersionInfo {
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogEntry {
+  id?: number;
   timestamp: string;
   level: LogLevel;
   category: string;
