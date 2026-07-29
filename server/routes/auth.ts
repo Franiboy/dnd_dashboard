@@ -2,18 +2,23 @@ import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { authMiddleware, clearAuthCookie, createToken, setAuthCookie, type AuthRequest } from '../auth.js';
 import { getGame } from '../game.js';
+import { createLogger } from '../logger.js';
 import {
-  ADMIN_PASSWORD,
   checkLoginAllowed,
   createDiscordUser,
   findUserByDiscordId,
   findUserById,
   findUserByUsername,
   getAllUsers,
+  isInitialAdmin,
+  recordFailedLogin,
   resetFailedLogins,
   toSafeUser,
   updateDiscordProfile,
+  verifyPassword,
 } from '../users.js';
+
+const log = createLogger('auth-routes');
 
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -82,7 +87,7 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     });
     if (!tokenResponse.ok) {
       const text = await tokenResponse.text();
-      console.error('Discord token error:', text);
+      log.error('Discord token error:', text);
       return res.status(401).json({ error: 'Discord Authentifizierung fehlgeschlagen' });
     }
     const tokenData = await tokenResponse.json();
@@ -92,7 +97,7 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     });
     if (!userResponse.ok) {
       const text = await userResponse.text();
-      console.error('Discord user error:', text);
+      log.error('Discord user error:', text);
       return res.status(401).json({ error: 'Discord Profil konnte nicht geladen werden' });
     }
     const discordUser = await userResponse.json();
@@ -135,25 +140,33 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     setAuthCookie(res, token);
     res.json({ ok: true, user: toSafeUser(user), token });
   } catch (err) {
-    console.error('Discord callback error:', err);
+    log.error('Discord callback error:', err);
     res.status(500).json({ error: 'Interner Fehler' });
   }
 });
 
 router.post('/admin/login', authRateLimit, (req, res) => {
   const { username, password } = req.body;
-  if (!ADMIN_PASSWORD) {
-    return res.status(500).json({ error: 'Admin Login ist nicht konfiguriert' });
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    return res.status(400).json({ error: 'Benutzername und Passwort sind erforderlich' });
   }
-  if (username !== 'admin' || password !== ADMIN_PASSWORD) {
+
+  const user = findUserByUsername(username);
+  if (!user || !user.isAdmin || !isInitialAdmin(user)) {
     return res.status(401).json({ error: 'Falsche Anmeldedaten' });
   }
 
-  const user = findUserByUsername('admin');
-  if (!user) {
-    return res.status(401).json({ error: 'Admin nicht gefunden' });
+  const allowed = checkLoginAllowed(user);
+  if (!allowed.allowed) {
+    return res.status(403).json({ error: allowed.reason });
   }
 
+  if (!password || !verifyPassword(user, password)) {
+    recordFailedLogin(user);
+    return res.status(401).json({ error: 'Falsche Anmeldedaten' });
+  }
+
+  resetFailedLogins(user);
   const token = createToken(user);
   setAuthCookie(res, token);
   res.json({ ok: true, user: toSafeUser(user), token });

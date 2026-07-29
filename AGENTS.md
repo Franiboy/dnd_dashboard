@@ -1,7 +1,7 @@
 # AGENTS.md – D&D Dashboard
 
 Diese Datei beschreibt das Projekt, wichtige Konventionen und Arbeitsregeln für
-Assistenten/Entwickler. **Letzte Aktualisierung:** 2026-07-28.
+Assistenten/Entwickler. **Letzte Aktualisierung:** 2026-07-29.
 
 ## Projektübersicht
 
@@ -71,7 +71,7 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 |-------|-------|
 | `auth.ts` | Login, Discord-Callback, `/me`, Logout |
 | `admin.ts` | Admin-API, SSE `/admin/users/events`, SSE `/admin/logs/events` |
-| `ai.ts` | `POST /api/execute` – direkte Ausführung von KI-Tool-Aktionen (für Tests/Debug) |
+| `ai.ts` | `POST /api/execute` – direkte Ausführung von KI-Tool-Aktionen (nur Admin / Debug) |
 | `diary.ts` | CRUD für Tagebucheinträge, KI-Rewrite, Zusammenfassung, Entitäten; SSE für KI-Status |
 | `entities.ts` | Entitätsliste, Details, Aliase, Blacklist, Wissens- und Zusammenfassungs-CRUD |
 | `recordings.ts` | Discord-Aufnahme-Sessions, Transkripte, Trimming |
@@ -145,7 +145,8 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 - Umgebungsvariablen werden über `dotenv` aus `.env` geladen.
 - In Produktion liefert Express `dist/` aus und `trust proxy` ist aktiviert.
 - Feature-Flags (`aiEnabled`, `recordingEnabled`) werden aus `.env` und `version.ts` bestimmt.
-- Neue „Apps“ werden in `src/lib/apps.ts` und in der `disabledApps`-Logik in `server/users.ts` berücksichtigt.
+- Neue „Apps“ werden zentral in `src/lib/apps.ts` gepflegt und über die exportierte `isAppVisible()`-Hilfe in `AppSwitcher`, `Home` und `ProtectedRoute` verwendet, damit `disabledApps`, `adminOnly`, `hideForInitialAdmin` und `requiresFeature` überall konsistent geprüft werden.
+- Routen, die ein Feature-Flag (`requiresFeature`) benötigen, verwenden `ProtectedRoute` mit `appId` und `version` und zeigen während des Ladens von `/api/version` einen Ladezustand an.
 
 ## .env / Umgebungsvariablen
 
@@ -173,6 +174,9 @@ AI_MODEL=provider/GLM5.2
 # AI_CHEAP_MODEL=provider/GLM5.2
 # AI_OPENCODE_BIN=opencode
 
+# CORS / Frontend-Origin (optional)
+# CORS_ORIGIN=http://localhost:3001,https://example.com
+
 # MCP (optional)
 # MCP_TOKEN_SECRET=änder-dich-in-produktion
 ```
@@ -187,6 +191,7 @@ AI_MODEL=provider/GLM5.2
 - `AI_CHEAP_MODEL` wird für kurze KI-Aufgaben (Zusammenfassungen, Entitäten) verwendet.
 - `AI_OPENCODE_BIN` überschreibt den `opencode`-Befehl.
 - `MCP_TOKEN_SECRET` defaultet zu `JWT_SECRET`.
+- Optional: `CORS_ORIGIN` für erlaubte Cross-Origin-Origins (kommasepariert). Wenn nicht gesetzt, erlaubt die Entwicklungsumgebung nur `http://localhost:5173` und `http://localhost:3001`; in Produktion sind keine Cross-Origin-Anfragen erlaubt.
 - Optional: `VITE_SERVER_URL` für den Socket.io-Client im Frontend.
 - Optional: `DB_PATH=dnd_test.db` für Tests oder eine separate Datenbank.
 - Optional: `NODE_ENV=production` aktiviert statisches Serving von `dist/`.
@@ -216,6 +221,7 @@ AI_MODEL=provider/GLM5.2
 - Der Admin-Login ist über ein Easter Egg auf der Login-Seite erreichbar: 5x auf den Titel klicken.
 - Ursprünglicher Admin (`admin`) ist der einzige, der `/admin-login` benötigt;
   promoted Admins verwenden den normalen Discord-Login.
+  Der Login prüft den gespeicherten Passwort-Hash und wendet das gleiche Account-Lockout wie der Discord-Login an.
 - Promoted Admins können wie normale Spieler am Bingo teilnehmen.
 - Der Ursprungsadmin `admin` darf Bingo nicht als Spieler beitreten.
 - Admins können Spieler freigeben/sperren, Admin-Rechte vergeben/entziehen,
@@ -225,16 +231,16 @@ AI_MODEL=provider/GLM5.2
 
 ## App-Navigator
 
-Die sichtbaren Apps werden in `src/lib/apps.ts` gepflegt:
+Die sichtbaren Apps werden zentral in `src/lib/apps.ts` gepflegt. Der Ursprungsadmin (`admin`) sieht Apps mit `hideForInitialAdmin` nicht. Das `recordings`-Modul erfordert `recordingEnabled=true` (`requiresFeature`).
 
-| ID | Label | Route | Admin only | Disableable |
-|----|-------|-------|------------|-------------|
-| `dashboard` | Dashboard | `/` | nein | nein |
-| `notes` | Tagebuch | `/tagebuch` | nein | ja |
-| `bingo` | Bingo | `/bingo` | nein | ja |
-| `world` | Welt | `/welt` | nein | ja |
-| `recordings` | Aufnahmen | `/recordings` | ja | ja |
-| `admin` | Admin | `/admin` | implizit | nein |
+| ID | Label | Route | Admin only | Disableable | Hide for initial admin | Requires feature | Icon ID |
+|----|-------|-------|------------|-------------|------------------------|------------------|---------|
+| `dashboard` | Dashboard | `/` | nein | nein | ja | - | - |
+| `notes` | Tagebuch | `/tagebuch` | nein | ja | ja | - | - |
+| `bingo` | Bingo | `/bingo` | nein | ja | ja | - | - |
+| `world` | Welt | `/welt` | nein | ja | ja | - | - |
+| `recordings` | Aufnahmen | `/recordings` | ja | ja | nein | `recordingEnabled` | `recordings` |
+| `admin` | Admin | `/admin` | ja | nein | nein | - | `admin` |
 
 ## Bingo-Spielablauf
 
@@ -281,7 +287,7 @@ Neben Socket.io für das Bingo werden Zustands-Updates über **Server-Sent Event
 Das Muster ist überall gleich:
 
 1. Der Client öffnet einen `EventSource`-Stream zu einem `GET /api/.../events`-Endpunkt.
-2. Der Server hält die `Response` in einem `Set<Response>` (`sseClients`).
+2. Der Server hält offene `Response`-Objekte in einem `SseBroadcaster` (`server/utils/sse.ts`).
 3. Mutierende Endpunkte ändern den Zustand und rufen eine `notify...()`-Funktion auf,
    die den aktuellen Zustand an alle offenen Streams pusht.
 4. Der Client empfängt den Zustand über `addEventListener('<event>', ...)`.
@@ -293,14 +299,18 @@ Das Muster ist überall gleich:
 |----------|-------|---------|--------------|
 | `GET /api/admin/users/events` | `users` | `SafeUser[]` | Benutzerliste (Admin) |
 | `GET /api/admin/logs/events` | `logs` / `log` | `LogEntry[]` / `LogEntry` | Live-Logs (Admin) |
-| `GET /api/diary/:id/ai-status` | `log` | `{ message: string }` | KI-Fortschritt im Tagebuch |
+| `GET /api/recordings/events` | `status` / `sessions` / `progress` | Recording-Status und -Listen (Admin) |
+| `GET /api/diary/ai-events` | `log` / `connected` | `{ message: string }` | KI-Fortschritt im Tagebuch |
 
 ### Konventionen für neue SSE-Streams
 
 - Endpunkt: `GET /api/<bereich>/events`, mit `authMiddleware` und ggf. `requireAdmin` schützen.
 - Header setzen: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-Accel-Buffering: no`.
 - Initialen Zustand sofort schreiben.
-- `req.on('close', ...)` abonnieren, um die `Response` aus `sseClients` zu entfernen.
+- `SseBroadcaster.add(res)` verwenden; die zurückgegebene Cleanup-Funktion auf `req.on('close')`,
+  `res.on('close')` und `res.on('error')` registrieren.
+- `SseBroadcaster.broadcast(event, JSON.stringify(payload))` für Verteilungen verwenden;
+  damit werden disconnectete Clients automatisch entfernt.
 - Der Client verwendet `new EventSource('/api/<bereich>/events', { withCredentials: true })`, damit der `httpOnly`-JWT-Cookie mitgesendet wird.
 - Befehle/Änderungen vom Client laufen weiterhin über separate `fetch`/`POST`-Aufrufe, nicht über den SSE-Stream.
 

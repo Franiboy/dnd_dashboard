@@ -303,13 +303,30 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
   const [activeTab, setActiveTab] = useState<'summary' | 'aliases' | 'knowledge'>('summary');
 
   useEffect(() => {
+    setDetail(null);
+    setCanonical(name);
+    setAliases([]);
+    setKnowledge([]);
+    setSummary(null);
+    setMiniSummary(null);
+    setSummaryDirty(true);
+    setLoading(true);
+  }, [name, type]);
+
+  useEffect(() => {
     let cancelled = false;
     async function load() {
-      const canonicalName = detail?.canonical ?? name;
-      const [{ data: detailData }, { data: knowledgeData }, { data: summaryData }] = await Promise.all([
-        request<EntityDetail>(
-          `/api/entities/detail?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`,
-        ),
+      const { data: detailData } = await request<EntityDetail>(
+        `/api/entities/detail?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`,
+      );
+      if (cancelled) return;
+      if (!detailData) {
+        setLoading(false);
+        return;
+      }
+
+      const canonicalName = detailData.canonical;
+      const [{ data: knowledgeData }, { data: summaryData }] = await Promise.all([
         request<{ entries: EntityKnowledgeEntry[] }>(
           `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`,
         ),
@@ -318,12 +335,9 @@ function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProp
         ),
       ]);
       if (cancelled) return;
-      if (!detailData) {
-        setLoading(false);
-        return;
-      }
+
       setDetail(detailData);
-      setCanonical(detailData.canonical);
+      setCanonical(canonicalName);
       setAliases(detailData.aliases);
       setKnowledge(knowledgeData?.entries || []);
       setSummary(summaryData?.summary ?? null);

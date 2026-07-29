@@ -1,42 +1,22 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { useApi } from '../hooks/useApi';
-import { APPS } from '../lib/apps';
+import { APPS, isAppVisible } from '../lib/apps';
 import type { VersionInfo } from '../../shared/types';
 
-export function Home() {
+interface HomeProps {
+  version: VersionInfo | null | undefined;
+}
+
+export function Home({ version }: HomeProps) {
   const { user } = useAuth();
-  const { request } = useApi();
-  const [version, setVersion] = useState<VersionInfo | null>(null);
 
-  useEffect(() => {
-    request<VersionInfo>('/api/version', {}, false).then(({ data }) => {
-      if (data) setVersion(data);
-    });
-  }, [request]);
-
-  const isAppVisible = (id: string) => {
-    const app = APPS.find((a) => a.id === id);
-    if (!app) return false;
-    if (user?.disabledApps.includes(id)) return false;
-    if (app.adminOnly) {
-      if (!user?.isAdmin) return false;
-      if (id === 'recordings') return !!version?.recordingEnabled;
-      return true;
-    }
-    return true;
-  };
-
-  const homeAppIds = ['notes', 'world', 'bingo', 'recordings'];
-  const homeApps = APPS.filter((app) => homeAppIds.includes(app.id) && isAppVisible(app.id));
-
-  const appDescriptions: Record<string, string> = {
-    notes: 'Persönliche Tagebucheinträge pro Spieler hinterlegen und mit der KI überarbeiten lassen.',
-    world: 'Übersicht aller bekannten Personen, Organisationen und Orte.',
-    bingo: 'Aufgaben sammeln, Bingo-Runde starten und gegeneinander spielen.',
-    recordings: 'Discord-Sessions aufnehmen, transkribieren und als Text einsehen.',
-  };
+  const homeApps = APPS.filter(
+    (app) =>
+      app.id !== 'dashboard' &&
+      app.id !== 'admin' &&
+      user &&
+      isAppVisible(app, user, version),
+  );
 
   return (
     <div className="min-h-full p-6 flex flex-col items-center justify-center">
@@ -50,7 +30,7 @@ export function Home() {
             className="group block bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--accent)] transition"
           >
             <h2 className="text-2xl font-semibold text-[var(--text-h)] group-hover:text-[var(--accent)] transition">{app.label}</h2>
-            <p className="text-slate-400 mt-2">{appDescriptions[app.id] ?? ''}</p>
+            <p className="text-slate-400 mt-2">{app.description ?? ''}</p>
           </Link>
         ))}
       </div>

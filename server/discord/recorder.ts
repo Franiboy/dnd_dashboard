@@ -5,7 +5,10 @@ import { openSync, closeSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { createOpusDecoder, decodeOpusPacket, destroyOpusDecoder, writeWavFromPcm, removePcmFile, type PcmSegment } from './audio.js';
 import { createFile, updateFile } from '../repositories/recordings.js';
+import { createLogger } from '../logger.js';
 import type { RecordingFile } from '../../shared/types.js';
+
+const log = createLogger('discord-recorder');
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 2;
@@ -101,7 +104,7 @@ export async function startRecording(
   };
 
   connection.on('stateChange', (oldState, newState) => {
-    console.log(
+    log.info(
       `Voice connection state changed from ${oldState.status} to ${newState.status}` +
         ('reason' in newState && newState.reason ? ` (reason: ${newState.reason})` : ''),
     );
@@ -114,7 +117,7 @@ export async function startRecording(
       try {
         activeRecording.onDisconnect?.(activeRecording.sessionId);
       } catch (err) {
-        console.error('Disconnect callback failed:', err);
+        log.error('Disconnect callback failed:', err);
       }
     }
   });
@@ -123,7 +126,7 @@ export async function startRecording(
     try {
       handleSpeakingStart(guild, userId);
     } catch (err) {
-      console.error('Error handling speaking start:', err);
+      log.error('Error handling speaking start:', err);
     }
   });
 }
@@ -190,7 +193,7 @@ function handleSpeakingStart(guild: Guild, userId: string): void {
       writeSync(user.fd, pcm);
       user.currentSegmentLength += samples;
     } catch (err) {
-      console.error(`Opus decode error for ${user.displayName}:`, err);
+      log.error(`Opus decode error for ${user.displayName}:`, err);
       // Replace the decoder in case its internal state is corrupted, so
       // subsequent packets have a chance to decode successfully instead of
       // repeating the same failure and eventually crashing the process.
@@ -209,7 +212,7 @@ function handleSpeakingStart(guild: Guild, userId: string): void {
   });
 
   audioStream.on('error', (err) => {
-    console.error(`Audio stream error for ${user.displayName}:`, err);
+    log.error(`Audio stream error for ${user.displayName}:`, err);
     user.subscribed = false;
     user.audioStream = undefined;
   });

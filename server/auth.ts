@@ -2,12 +2,15 @@ import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 import type { User } from '../shared/types.js';
 import { findUserById } from './users.js';
+import { createLogger } from './logger.js';
+
+const log = createLogger('auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || '';
 const COOKIE_NAME = 'dnd_token';
 
 if (!JWT_SECRET) {
-  console.error('Fehler: JWT_SECRET ist nicht gesetzt. Bitte .env.example nach .env kopieren und anpassen.');
+  log.error('Fehler: JWT_SECRET ist nicht gesetzt. Bitte .env.example nach .env kopieren und anpassen.');
   process.exit(1);
 }
 

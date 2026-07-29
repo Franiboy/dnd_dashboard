@@ -1,10 +1,11 @@
-import { Router, type Response } from 'express';
+import { Router } from 'express';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
 import { improveRewrittenWithCommand, processDiaryEntryAi, rewriteTextWithAi } from '../ai/rewrite.js';
 import { deleteOpenCodeSession } from '../ai/opencode.js';
 import { deleteRewrittenFile, getRewrittenFilePath, readRewrittenFile } from '../diaryFiles.js';
 import { createLogger } from '../logger.js';
+import { SseBroadcaster, writeSse } from '../utils/sse.js';
 import {
   createDiaryEntry,
   getDiaryEntryById,
@@ -17,20 +18,22 @@ const log = createLogger('diaryRoutes');
 
 const SUMMARY_MAX_LENGTH = 500;
 
-const sseClients = new Map<string, Set<Response>>();
+const sseClients = new Map<string, SseBroadcaster>();
+
+function getUserBroadcaster(userId: string): SseBroadcaster {
+  let broadcaster = sseClients.get(userId);
+  if (!broadcaster) {
+    broadcaster = new SseBroadcaster();
+    sseClients.set(userId, broadcaster);
+  }
+  return broadcaster;
+}
 
 function sendDiaryAiStatus(userId: string, message: string) {
-  const clients = sseClients.get(userId);
-  if (!clients || clients.size === 0) return;
+  const broadcaster = sseClients.get(userId);
+  if (!broadcaster || broadcaster.size === 0) return;
 
-  const payload = JSON.stringify({ message });
-  for (const client of clients) {
-    try {
-      client.write(`event: log\ndata: ${payload}\n\n`);
-    } catch {
-      clients.delete(client);
-    }
-  }
+  broadcaster.broadcast('log', JSON.stringify({ message }));
 }
 
 function startProgressMessages(userId: string, initialMessage: string): () => void {
@@ -63,8 +66,8 @@ function mapOpencodeStatus(line: string): string | null {
 }
 
 function notifyDiaryAiLog(userId: string, raw: string) {
-  const clients = sseClients.get(userId);
-  if (!clients || clients.size === 0) return;
+  const broadcaster = sseClients.get(userId);
+  if (!broadcaster || broadcaster.size === 0) return;
 
   const messages = raw
     .split('\n')
@@ -85,16 +88,8 @@ function notifyDiaryAiLog(userId: string, raw: string) {
       return [];
     });
 
-  const dataPrefix = `event: log\ndata: `;
   for (const message of messages) {
-    const payload = JSON.stringify({ message });
-    for (const client of clients) {
-      try {
-        client.write(`${dataPrefix}${payload}\n\n`);
-      } catch {
-        clients.delete(client);
-      }
-    }
+    broadcaster.broadcast('log', JSON.stringify({ message }));
   }
 }
 
@@ -110,17 +105,23 @@ router.get('/ai-events', (req: AuthRequest, res) => {
   res.flushHeaders();
 
   const userId = req.user!.id;
-  if (!sseClients.has(userId)) {
-    sseClients.set(userId, new Set());
+  const broadcaster = getUserBroadcaster(userId);
+  const removeFromBroadcaster = broadcaster.add(res);
+  const cleanup = () => {
+    removeFromBroadcaster();
+    if (broadcaster.size === 0) {
+      sseClients.delete(userId);
+    }
+  };
+
+  if (!writeSse(res, 'connected', JSON.stringify({ ok: true }))) {
+    cleanup();
+    return;
   }
-  sseClients.get(userId)!.add(res);
 
-  res.write(`event: connected\n`);
-  res.write(`data: ${JSON.stringify({ ok: true })}\n\n`);
-
-  req.on('close', () => {
-    sseClients.get(userId)?.delete(res);
-  });
+  req.on('close', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
 });
 
 function isSummaryValid(summary: unknown): summary is string | null {
@@ -172,21 +173,6 @@ router.post('/entries', async (req: AuthRequest, res) => {
 
   const entry = createDiaryEntry(req.user.id, title, content);
   res.status(201).json({ entry });
-});
-
-router.get('/entries/:id', (req: AuthRequest, res) => {
-  if (!req.user) {
-    res.status(403).json({ error: 'Nicht autorisiert' });
-    return;
-  }
-
-  const id = Number(req.params.id);
-  const entry = getDiaryEntryById(id);
-  if (!entry || entry.userId !== req.user.id) {
-    res.status(404).json({ error: 'Eintrag nicht gefunden' });
-    return;
-  }
-  res.json({ entry });
 });
 
 router.put('/entries/:id', (req: AuthRequest, res) => {

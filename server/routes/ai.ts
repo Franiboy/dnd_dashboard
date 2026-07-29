@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
+import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { executeAiActions, parseAiActions } from '../ai/actions.js';
 
 const router = Router();
 
-router.use(authMiddleware, requireApproved);
+router.use(authMiddleware, requireAdmin);
 
 router.post('/execute', (req: AuthRequest, res) => {
   const { actions: rawActions } = req.body;

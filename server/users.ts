@@ -1,8 +1,10 @@
 import bcrypt from 'bcrypt';
 import type { SafeUser, User } from '../shared/types.js';
 import { db } from './database.js';
+import { createLogger } from './logger.js';
 
 const SALT_ROUNDS = 10;
+const log = createLogger('users');
 export const INITIAL_ADMIN_USERNAME = 'admin';
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
@@ -166,20 +168,20 @@ export function checkLoginAllowed(user: User): { allowed: true } | { allowed: fa
 
 export function ensureAdminUser(): SafeUser | null {
   if (!ADMIN_PASSWORD) {
-    console.error('Fehler: ADMIN_PASSWORD ist nicht gesetzt. Bitte .env.example nach .env kopieren und anpassen.');
+    log.error('Fehler: ADMIN_PASSWORD ist nicht gesetzt. Bitte .env.example nach .env kopieren und anpassen.');
     process.exit(1);
   }
 
   const existing = findUserByUsername(INITIAL_ADMIN_USERNAME);
   if (!existing) {
-    console.log('Creating default admin user:', INITIAL_ADMIN_USERNAME);
+    log.info('Creating default admin user:', INITIAL_ADMIN_USERNAME);
     const created = createAdminUser(INITIAL_ADMIN_USERNAME, 'Admin', ADMIN_PASSWORD);
     return created;
   }
 
   const valid = verifyPassword(existing, ADMIN_PASSWORD);
   if (!valid) {
-    console.log('Resetting admin password for:', INITIAL_ADMIN_USERNAME);
+    log.info('Resetting admin password for:', INITIAL_ADMIN_USERNAME);
     updateUserPassword(existing.id, ADMIN_PASSWORD);
   }
 
