@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { typeLabels } from '../lib/entityLabels';
+import { Tooltip } from './Tooltip';
 import type { EntityType, EntityMapping } from '../../shared/types';
 import { buildTriggers, findMatches, type Match, type Trigger } from '../lib/entityMatching';
 
@@ -39,15 +40,23 @@ interface EntityBadgeProps {
 
 function EntityBadge({ text, type, canonical, miniSummary }: EntityBadgeProps) {
   const { openEntity } = useEntityDialog();
-  const tooltip = miniSummary ? `${miniSummary}\n(${typeLabels[type]} öffnen)` : `${typeLabels[type]} öffnen`;
+  const tooltipContent = (
+    <div className="space-y-1">
+      {miniSummary && <p className="text-[var(--text-h)] leading-snug">{miniSummary}</p>}
+      <p className={`text-xs font-medium ${entityTextStyles[type]}`}>{typeLabels[type]} öffnen</p>
+    </div>
+  );
   return (
-    <span
-      onClick={() => openEntity(canonical, type)}
-      title={tooltip}
-      className={`cursor-pointer hover:underline transition ${entityTextStyles[type]}`}
-    >
-      {text}
-    </span>
+    <Tooltip content={tooltipContent}>
+      <button
+        type="button"
+        onClick={() => openEntity(canonical, type)}
+        className={`hover:underline transition bg-transparent border-0 p-0 m-0 text-left ${entityTextStyles[type]}`}
+        style={{ fontFamily: 'inherit', fontSize: 'inherit', lineHeight: 'inherit' }}
+      >
+        {text}
+      </button>
+    </Tooltip>
   );
 }
 
