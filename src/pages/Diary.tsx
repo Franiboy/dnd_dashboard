@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
+import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
 import { EntityRichText } from '../components/EntityRichText';
@@ -119,15 +119,15 @@ const badgeTypeMap: Record<BadgeListProps['variant'], EntityType> = {
 };
 
 function BadgeList({ items, variant }: BadgeListProps) {
-  const navigate = useNavigate();
+  const { openEntity } = useEntityDialog();
   if (items.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-2 mb-3">
       {items.map((item) => (
         <span
           key={item}
-          onClick={() => navigate('/welt', { state: { selectedEntity: { name: item, type: badgeTypeMap[variant] } } })}
-          title="In Welt öffnen"
+          onClick={() => openEntity(item, badgeTypeMap[variant])}
+          title="Öffnen"
           className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium cursor-pointer hover:brightness-110 transition ${badgeStyles[variant]}`}
         >
           {item}
