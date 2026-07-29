@@ -6,6 +6,9 @@ import { useError } from './hooks/useError';
 import { Layout } from './components/Layout';
 import { PendingApproval } from './components/PendingApproval';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { EntityDialogRouteSync } from './components/EntityDialogRouteSync';
+import { EntityDialogProvider } from './contexts/EntityDialogProvider';
+import { MappingsProvider } from './contexts/MappingsProvider';
 import { Login } from './pages/Login';
 import { AdminLogin } from './pages/AdminLogin';
 import { AuthCallback } from './pages/AuthCallback';
@@ -109,19 +112,24 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Layout user={user} version={version} onLogout={logout}>
-        <Suspense fallback={pageLoader}>
-          <Routes>
-            <Route path="/admin" element={<ProtectedRoute user={user} appId="admin" version={version}><Admin currentUser={user} /></ProtectedRoute>} />
-            <Route path="/" element={<Home version={version} />} />
-            <Route path="/tagebuch" element={<ProtectedRoute user={user} appId="notes" version={version}><Diary /></ProtectedRoute>} />
-            <Route path="/welt" element={<ProtectedRoute user={user} appId="world" version={version}><World /></ProtectedRoute>} />
-            <Route path="/recordings" element={<ProtectedRoute user={user} appId="recordings" version={version}><Recordings /></ProtectedRoute>} />
-            <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo" version={version}><Bingo token={token} user={user} /></ProtectedRoute>} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </Suspense>
-      </Layout>
+      <MappingsProvider>
+        <EntityDialogProvider>
+          <Layout user={user} version={version} onLogout={logout}>
+            <Suspense fallback={pageLoader}>
+              <Routes>
+                <Route path="/admin" element={<ProtectedRoute user={user} appId="admin" version={version}><Admin currentUser={user} /></ProtectedRoute>} />
+                <Route path="/" element={<Home version={version} />} />
+                <Route path="/tagebuch" element={<ProtectedRoute user={user} appId="notes" version={version}><Diary /></ProtectedRoute>} />
+                <Route path="/welt" element={<ProtectedRoute user={user} appId="world" version={version}><World /></ProtectedRoute>} />
+                <Route path="/recordings" element={<ProtectedRoute user={user} appId="recordings" version={version}><Recordings /></ProtectedRoute>} />
+                <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo" version={version}><Bingo token={token} user={user} /></ProtectedRoute>} />
+                <Route path="*" element={<Navigate to="/" />} />
+              </Routes>
+            </Suspense>
+          </Layout>
+          <EntityDialogRouteSync />
+        </EntityDialogProvider>
+      </MappingsProvider>
     </BrowserRouter>
   );
 }

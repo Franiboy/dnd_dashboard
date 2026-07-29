@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEntityDialog } from '../hooks/useEntityDialog';
+import { typeLabels } from '../lib/entityLabels';
 import type { EntityType, EntityMapping } from '../../shared/types';
 import { buildTriggers, findMatches, type Match, type Trigger } from '../lib/entityMatching';
 
@@ -11,12 +12,6 @@ const entityTextStyles: Record<EntityType, string> = {
   persons: 'text-[var(--accent)]',
   organizations: 'text-blue-400',
   locations: 'text-amber-400',
-};
-
-const typeLabels: Record<EntityType, string> = {
-  persons: 'Person',
-  organizations: 'Organisation',
-  locations: 'Ort',
 };
 
 function segmentText(input: string, matches: Match[]): Segment[] {
@@ -43,11 +38,11 @@ interface EntityBadgeProps {
 }
 
 function EntityBadge({ text, type, canonical, miniSummary }: EntityBadgeProps) {
-  const navigate = useNavigate();
-  const tooltip = miniSummary ? `${miniSummary}\n(${typeLabels[type]} in Welt öffnen)` : `${typeLabels[type]} in Welt öffnen`;
+  const { openEntity } = useEntityDialog();
+  const tooltip = miniSummary ? `${miniSummary}\n(${typeLabels[type]} öffnen)` : `${typeLabels[type]} öffnen`;
   return (
     <span
-      onClick={() => navigate('/welt', { state: { selectedEntity: { name: canonical, type } } })}
+      onClick={() => openEntity(canonical, type)}
       title={tooltip}
       className={`cursor-pointer hover:underline transition ${entityTextStyles[type]}`}
     >
