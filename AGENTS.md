@@ -3,6 +3,25 @@
 Diese Datei beschreibt das Projekt, wichtige Konventionen und Arbeitsregeln für
 Assistenten/Entwickler. **Letzte Aktualisierung:** 2026-07-29.
 
+## Kritische Arbeitsregeln für Assistenten
+
+Diese Regeln gelten vor jeder Code-Änderung und haben Vorrang.
+
+- **Jede Änderung in einem separaten Git Worktree auf einem eigenen Branch entwickeln.**
+  Nicht direkt in `main` arbeiten. Einen Worktree mit
+  `git worktree add <pfad> -b <branch-name>` anlegen, darin entwickeln und committen;
+  nach ausdrücklicher Bestätigung des Nutzers den Branch in `main` mergen und den
+  Worktree entfernen.
+- **Keine Commits ohne ausdrückliche Genehmigung des Nutzers.**
+- **Kein Push ohne ausdrückliche Genehmigung des Nutzers.**
+- **Kein Force-Push, keine Branch-Löschungen und keine History-Rewrites ohne Genehmigung.**
+- Vor jedem genehmigten Commit `git diff` prüfen.
+- Nie `.env`, Datenbanken (`*.db`), Secrets oder Build-Artefakte (`dist/`,
+  `dist-server/`) committen.
+- Änderungen nicht eigenmächtig in `main` auf Produktions-Umgebungen pushen.
+- Bei Unsicherheit vor dem Commit / Push beim Nutzer nachfragen.
+- Nach Abschluss einer Aufgabe kurze Zusammenfassung der Änderungen geben.
+
 ## Projektübersicht
 
 D&D Dashboard ist eine webbasierte Anwendung für Dungeons & Dragons-Sessions mit
@@ -397,23 +416,6 @@ Das Muster ist überall gleich:
 - `server/users.ts` enthält `INITIAL_ADMIN_USERNAME` und liest `ADMIN_PASSWORD` aus `.env`.
 - Sicherheitsrelevante Konfigurationen (`rateLimit`, `JWT_SECRET`, `ADMIN_PASSWORD`,
   `trust proxy`, `MCP_TOKEN_SECRET`) sollten nicht gelockert werden.
-
-## Entwicklungs- & Git-Workflow (Regeln für Assistenten)
-
-- **Jede Änderung in einem separaten Git Worktree auf einem eigenen Branch entwickeln.**
-  Nicht direkt in `main` arbeiten. Einen Worktree mit
-  `git worktree add <pfad> -b <branch-name>` anlegen, darin entwickeln und committen;
-  nach ausdrücklicher Bestätigung des Nutzers den Branch in `main` mergen und den
-  Worktree entfernen.
-- **Keine Commits ohne ausdrückliche Genehmigung des Nutzers.**
-- **Kein Push ohne ausdrückliche Genehmigung des Nutzers.**
-- **Kein Force-Push, keine Branch-Löschungen und keine History-Rewrites ohne Genehmigung.**
-- Vor jedem genehmigten Commit `git diff` prüfen.
-- Nie `.env`, Datenbanken (`*.db`), Secrets oder Build-Artefakte (`dist/`,
-  `dist-server/`) committen.
-- Änderungen nicht eigenmächtig in `main` auf Produktions-Umgebungen pushen.
-- Bei Unsicherheit vor dem Commit / Push beim Nutzer nachfragen.
-- Nach Abschluss einer Aufgabe kurze Zusammenfassung der Änderungen geben.
 
 ## Dokumentation
 
