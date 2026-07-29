@@ -11,7 +11,7 @@ interface AppSwitcherProps {
 export function AppSwitcher({ user, version }: AppSwitcherProps) {
   const location = useLocation();
 
-  const visibleApps = APPS.filter((app) => isAppVisible(app, user, version));
+  const visibleApps = APPS.filter((app) => app.id !== 'dashboard' && isAppVisible(app, user, version));
 
   return (
     <nav className="flex items-center gap-1">
