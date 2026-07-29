@@ -70,7 +70,7 @@ npx oxlint               # Optional: Oxlint manuell ausführen
 | Datei | Zweck |
 |-------|-------|
 | `auth.ts` | Login, Discord-Callback, `/me`, Logout |
-| `admin.ts` | Admin-API, SSE `/admin/users/events`, SSE `/admin/logs/events` |
+| `admin.ts` | Admin-API, SSE `/admin/users/events`, SSE `/admin/logs/events`, paginiertes `/admin/logs` |
 | `ai.ts` | `POST /api/execute` – direkte Ausführung von KI-Tool-Aktionen (nur Admin / Debug) |
 | `diary.ts` | CRUD für Tagebucheinträge, KI-Rewrite, Zusammenfassung, Entitäten; SSE für KI-Status |
 | `entities.ts` | Entitätsliste, Details, Aliase, Blacklist, Wissens- und Zusammenfassungs-CRUD |
@@ -177,6 +177,11 @@ AI_MODEL=provider/GLM5.2
 # CORS / Frontend-Origin (optional)
 # CORS_ORIGIN=http://localhost:3001,https://example.com
 
+# Logging (optional)
+# Maximale Anzahl persistenter Log-Einträge in der SQLite-Datenbank.
+# Älteste Einträge werden automatisch gelöscht, wenn das Limit überschritten wird.
+# LOG_RETENTION_MAX=100000
+
 # MCP (optional)
 # MCP_TOKEN_SECRET=änder-dich-in-produktion
 ```
@@ -195,6 +200,7 @@ AI_MODEL=provider/GLM5.2
 - Optional: `VITE_SERVER_URL` für den Socket.io-Client im Frontend.
 - Optional: `DB_PATH=dnd_test.db` für Tests oder eine separate Datenbank.
 - Optional: `NODE_ENV=production` aktiviert statisches Serving von `dist/`.
+- Optional: `LOG_RETENTION_MAX` begrenzt die Anzahl persistenter Log-Einträge (Standard: 100.000).
 
 ## Sicherheitshinweise
 
