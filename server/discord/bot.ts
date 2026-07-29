@@ -16,6 +16,9 @@ import {
 import type { RecordingChannel, RecordingSession } from '../../shared/types.js';
 import { BOT_TOKEN, GUILD_ID, RECORDINGS_DIR, isRecordingFeatureEnabled } from './config.js';
 import { emitSessionsUpdated, emitStatusUpdated } from './recordingsEvents.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('discord-bot');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMembers],
@@ -32,33 +35,33 @@ export function isBotEnabled(): boolean {
 
 export function startBot(): void {
   if (!isRecordingFeatureEnabled()) {
-    console.log('Discord bot not configured; voice recording disabled.');
+    log.info('Discord bot not configured; voice recording disabled.');
     return;
   }
 
   if (!isOpusAvailable()) {
-    console.warn('@discordjs/opus is not installed; voice recording will not work.');
+    log.warn('@discordjs/opus is not installed; voice recording will not work.');
   }
 
   ensureDir(RECORDINGS_DIR);
 
   client.once('clientReady', () => {
     botReady = true;
-    console.log(`Discord bot logged in as ${client.user?.tag}`);
+    log.info(`Discord bot logged in as ${client.user?.tag}`);
   });
 
   client.on('error', (err) => {
-    console.error('Discord bot error:', err);
+    log.error('Discord bot error:', err);
   });
 
   client.on('voiceStateUpdate', (_oldState, _newState) => {
     handleVoiceStateUpdate(_oldState, _newState).catch((err) => {
-      console.error('Voice state update handler failed:', err);
+      log.error('Voice state update handler failed:', err);
     });
   });
 
   client.login(BOT_TOKEN).catch((err) => {
-    console.error('Discord bot login failed:', err);
+    log.error('Discord bot login failed:', err);
   });
 }
 
@@ -178,9 +181,9 @@ async function autoStartRecording(channel: VoiceBasedChannel): Promise<void> {
 
   try {
     await beginRecording(channel.id, generateAutoSessionName(), 'auto');
-    console.log(`Auto-started recording in channel ${channel.name}`);
+    log.info(`Auto-started recording in channel ${channel.name}`);
   } catch (err) {
-    console.error(`Auto-start recording failed for channel ${channel.id}:`, err);
+    log.error(`Auto-start recording failed for channel ${channel.id}:`, err);
   }
 }
 
@@ -198,9 +201,9 @@ async function autoStopRecordingIfEmpty(channelId: string): Promise<void> {
 
   try {
     await finishRecording(active.sessionId);
-    console.log(`Auto-stopped recording in channel ${channel.name}`);
+    log.info(`Auto-stopped recording in channel ${channel.name}`);
   } catch (err) {
-    console.error(`Auto-stop recording failed for session ${active.sessionId}:`, err);
+    log.error(`Auto-stop recording failed for session ${active.sessionId}:`, err);
   }
 }
 
@@ -281,7 +284,7 @@ export async function beginRecording(
     try {
       await finishRecording(disconnectedSessionId);
     } catch (err) {
-      console.error(`Failed to finish recording after disconnect for session ${disconnectedSessionId}:`, err);
+      log.error(`Failed to finish recording after disconnect for session ${disconnectedSessionId}:`, err);
     }
   });
 

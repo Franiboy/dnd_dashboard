@@ -1,6 +1,9 @@
 import { listPendingTranscriptionSessions, getFilesBySessionId, updateSession } from '../repositories/recordings.js';
 import { runTranscription } from './transcriber.js';
 import { isRecordingFeatureEnabled } from './config.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('transcription-scheduler');
 
 let timeout: NodeJS.Timeout | null = null;
 let interval: NodeJS.Timeout | null = null;
@@ -24,7 +27,7 @@ async function processPendingTranscriptions(): Promise<void> {
     return;
   }
 
-  console.log(`[transcription scheduler] Processing ${sessions.length} pending session(s)`);
+  log.info(`[transcription scheduler] Processing ${sessions.length} pending session(s)`);
 
   for (const session of sessions) {
     updateSession(session.id, { status: 'processing' });
@@ -32,10 +35,10 @@ async function processPendingTranscriptions(): Promise<void> {
 
     try {
       await runTranscription(session.id, files);
-      console.log(`[transcription scheduler] Completed session ${session.id}`);
+      log.info(`[transcription scheduler] Completed session ${session.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[transcription scheduler] Failed session ${session.id}:`, err);
+      log.error(`[transcription scheduler] Failed session ${session.id}:`, err);
       updateSession(session.id, { status: 'error', error: message });
     }
   }
@@ -48,20 +51,20 @@ export function startTranscriptionScheduler(): void {
 
   // Process any backlog immediately on startup.
   processPendingTranscriptions().catch((err) => {
-    console.error('[transcription scheduler] Initial backlog processing failed:', err);
+    log.error('[transcription scheduler] Initial backlog processing failed:', err);
   });
 
   const delay = getDelayUntilNext2AM();
   const nextRun = new Date(Date.now() + delay).toISOString();
-  console.log(`[transcription scheduler] Next run at ${nextRun}`);
+  log.info(`[transcription scheduler] Next run at ${nextRun}`);
 
   timeout = setTimeout(() => {
     processPendingTranscriptions().catch((err) => {
-      console.error('[transcription scheduler] Scheduled run failed:', err);
+      log.error('[transcription scheduler] Scheduled run failed:', err);
     });
     interval = setInterval(() => {
       processPendingTranscriptions().catch((err) => {
-        console.error('[transcription scheduler] Scheduled run failed:', err);
+        log.error('[transcription scheduler] Scheduled run failed:', err);
       });
     }, 24 * 60 * 60 * 1000);
   }, delay);

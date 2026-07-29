@@ -4,6 +4,16 @@ import { createMcpSessionToken, type McpScope } from '../mcp/tokens.js';
 
 const log = createLogger('opencode');
 
+const MAX_OUTPUT_LENGTH = 200_000;
+
+function appendOutput(output: string, chunk: string): string {
+  if (!chunk) return output;
+  const combined = output + chunk;
+  if (combined.length <= MAX_OUTPUT_LENGTH) return combined;
+  const half = Math.floor(MAX_OUTPUT_LENGTH / 2);
+  return `${combined.slice(0, half)}\n... [output truncated] ...\n${combined.slice(-half)}`;
+}
+
 function getOpenCodeBin(): string {
   return process.env.AI_OPENCODE_BIN || 'opencode';
 }
@@ -80,17 +90,17 @@ export function runOpenCode({
 
     child.stdout?.on('data', (data) => {
       const line = data.toString();
-      output += line;
+      output = appendOutput(output, line);
       emitLog(line);
     });
     child.stderr?.on('data', (data) => {
       const line = data.toString();
-      output += line;
+      output = appendOutput(output, line);
       emitLog(line);
     });
     child.on('error', (err) => {
       const errorLine = `\nOpenCode spawn error: ${err.message}\n`;
-      output += errorLine;
+      output = appendOutput(output, errorLine);
       log.error(errorLine);
       emitLog(errorLine);
       resolve({ success: false, output, exitCode: -1, sessionId: sessionId ?? null });
@@ -98,9 +108,9 @@ export function runOpenCode({
     child.on('close', async (exitCode) => {
       const success = exitCode === 0;
       if (!success) {
-        const snippet = output.trim().slice(0, 500) || 'no output';
+        const snippet = output.trim().slice(-500) || 'no output';
         const errorLine = `OpenCode failed with exit code ${exitCode ?? 'unknown'}: ${snippet}`;
-        output += `\n${errorLine}\n`;
+        output = appendOutput(output, `\n${errorLine}\n`);
         log.warn(errorLine);
         resolve({ success, output, exitCode: exitCode ?? 1, sessionId: sessionId ?? null });
         return;

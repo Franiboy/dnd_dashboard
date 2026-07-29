@@ -1,6 +1,9 @@
 import { unlink } from 'node:fs/promises';
 import { getFilesBySessionId, updateFile } from '../repositories/recordings.js';
 import { emitSessionsUpdated } from './recordingsEvents.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('discord-files');
 
 export async function deleteSessionAudioFiles(sessionId: number): Promise<number> {
   const files = getFilesBySessionId(sessionId);
@@ -12,7 +15,7 @@ export async function deleteSessionAudioFiles(sessionId: number): Promise<number
         await unlink(file.wavPath);
         deleted++;
       } catch (err) {
-        console.warn(`Failed to delete audio file ${file.wavPath}:`, err);
+        log.warn(`Failed to delete audio file ${file.wavPath}:`, err);
       }
       updateFile(file.id, { wavPath: null });
     }
