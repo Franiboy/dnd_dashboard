@@ -21,14 +21,15 @@ export function Layout({ user, version, onLogout, children }: LayoutProps) {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <header className="relative z-10 flex items-center justify-between px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
-        <div className="flex items-center gap-3 font-semibold text-[var(--text-h)]">
+      <header className="relative z-10 flex items-center justify-center px-6 py-3 border-b border-[var(--border)] bg-[var(--panel)]">
+        <div className="absolute left-6 flex items-center gap-3 font-semibold text-[var(--text-h)]">
           {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
           <span>{user.displayName}</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <AppSwitcher user={user} version={version} />
+        <AppSwitcher user={user} version={version} />
+
+        <div className="absolute right-6">
           <HeaderAction onClick={onLogout} icon={logoutIcon} variant="danger">
             Logout
           </HeaderAction>
