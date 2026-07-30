@@ -1,38 +1,37 @@
 # D&D Dashboard
 
-Web-basiertes Dashboard für Dungeons & Dragons mit mehreren Modulen:
-Bingo, Tagebuch/Welt (KI-gestützt), Discord-Sprachaufzeichnungen und Admin-Verwaltung.
+Web-based dashboard for Dungeons & Dragons with multiple modules: Bingo, Diary/World (AI-assisted), Discord voice recordings and admin management.
 
 ## Features
 
-- Discord OAuth2 Login
-- Admin-Freigabe für neue Discord-Benutzer
-- JWT-Authentifizierung über Cookie und Auth-Header
-- Admin-Panel zur Benutzerverwaltung (Freigabe, Sperren, Admin-Rechte, Löschen, App-Freigaben)
-- Admin-Login über Easter Egg (5x auf den Titel klicken)
-- Echtzeit-Bingo mit Socket.io (Spielstart, Feldgröße, Reset)
-- Gemeinsamer Aufgaben-Pool
-- Spieler-Liste
-- Brute-Force-Schutz durch Rate-Limiting und Account-Lockout
-- Tagebucheinträge mit KI-gestütztem Umschreiben, Zusammenfassen und Entitätsextraktion
-- Wissensgraph für Personen, Organisationen und Orte
-- Discord-Bot für Sprachaufzeichnungen mit Whisper-Transkription
+- Discord OAuth2 login
+- Admin approval for new Discord users
+- JWT authentication via cookie and auth header
+- Admin panel for user management (approve, lock, admin rights, delete, app permissions)
+- Admin login via Easter egg (click the title 5 times)
+- Real-time Bingo with Socket.io (game start, grid size, reset)
+- Shared task pool
+- Player list
+- Brute-force protection via rate limiting and account lockout
+- Diary entries with AI-assisted rewriting, summarizing and entity extraction
+- Knowledge graph for people, organizations and places
+- Discord bot for voice recordings with Whisper transcription
 
 ## Tech Stack
 
 - **Backend:** Node.js 22+, Express 5, SQLite (better-sqlite3), Socket.io
 - **Frontend:** React 19, Vite, TypeScript, Tailwind CSS 4
-- **Echtzeit:** Socket.io, Server-Sent Events (SSE)
+- **Realtime:** Socket.io, Server-Sent Events (SSE)
 - **Auth:** JWT, bcrypt, Discord OAuth2
-- **KI/MCP:** OpenCode-CLI, `@modelcontextprotocol/sdk`, eigener MCP-Server
+- **AI/MCP:** OpenCode-CLI, `@modelcontextprotocol/sdk`, custom MCP server
 - **Discord:** discord.js, @discordjs/voice
 
-## Voraussetzungen
+## Requirements
 
 - Node.js >= 22
 - npm
-- Für KI: [OpenCode](https://github.com/opencode-ai/opencode) CLI installiert und im PATH
-- Für Aufnahmen: Discord-Bot-Token, Python + ffmpeg + OpenAI Whisper
+- For AI: [OpenCode](https://github.com/opencode-ai/opencode) CLI installed and in PATH
+- For recordings: Discord bot token, Python + ffmpeg + OpenAI Whisper
 
 ## Installation
 
@@ -40,35 +39,35 @@ Bingo, Tagebuch/Welt (KI-gestützt), Discord-Sprachaufzeichnungen und Admin-Verw
 npm install
 ```
 
-Kopiere die Beispiel-Umgebungsvariablen:
+Copy the example environment variables:
 
 ```bash
 cp .env.example .env
 ```
 
-Passe `.env` an:
+Adjust `.env`:
 
 ```bash
 PORT=3001
-JWT_SECRET=***REMOVED***
-ADMIN_PASSWORD=dein-sehr-sicheres-passwort
-DISCORD_CLIENT_ID=deine-client-id
-DISCORD_CLIENT_SECRET=dein-client-secret
+JWT_SECRET=change-me-in-production
+ADMIN_PASSWORD=your-very-secure-password
+DISCORD_CLIENT_ID=your-client-id
+DISCORD_CLIENT_SECRET=your-client-secret
 DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
 ```
 
-## Entwicklung
+## Development
 
-Starte Server und Client gemeinsam:
+Start server and client together:
 
 ```bash
 npm run dev
 ```
 
-- Client läuft auf http://localhost:5173
-- Server läuft auf http://localhost:3001
+- Client runs on http://localhost:5173
+- Server runs on http://localhost:3001
 
-Einzeln starten:
+Start individually:
 
 ```bash
 npm run server
@@ -81,104 +80,104 @@ npm run client
 npm run build
 ```
 
-Erzeugt `dist/` (Client) und `dist-server/` (Server).
+Generates `dist/` (client) and `dist-server/` (server).
 
-## Produktion
+## Production
 
 ```bash
 npm run build
 npm start
 ```
 
-Der Server liefert dann `dist/` aus und ist auf dem in `PORT` konfigurierten Port erreichbar (Standard 3001).
+The server then serves `dist/` and is reachable on the port configured in `PORT` (default 3001).
 
 ## Discord OAuth2
 
-Für den Discord Login musst du eine Anwendung im [Discord Developer Portal](https://discord.com/developers/applications) erstellen und folgende Werte in `.env` eintragen:
+For Discord login you need to create an application in the [Discord Developer Portal](https://discord.com/developers/applications) and set these values in `.env`:
 
 ```bash
-DISCORD_CLIENT_ID=deine-client-id
-DISCORD_CLIENT_SECRET=dein-client-secret
+DISCORD_CLIENT_ID=your-client-id
+DISCORD_CLIENT_SECRET=your-client-secret
 DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
 ```
 
-Füge unter `OAuth2 → Redirects` die URL `http://localhost:5173/auth/discord` hinzu.
+Add `http://localhost:5173/auth/discord` under `OAuth2 → Redirects`.
 
 ## Default Admin
 
-Beim ersten Start wird ein Admin-Account erstellt. Das Passwort wird aus der Umgebungsvariablen `ADMIN_PASSWORD` gelesen.
+An admin account is created on first start. The password is read from the environment variable `ADMIN_PASSWORD`.
 
 - Username: `admin`
-- Passwort: Wert aus `ADMIN_PASSWORD` in `.env`
+- Password: value of `ADMIN_PASSWORD` in `.env`
 
-Der Default Admin kann über ein Easter Egg erreicht werden: Auf der Login-Seite 5 Mal auf den Titel klicken, dann erscheint der Admin Login Link. Der Admin kann im Admin-Panel Benutzer freigeben, löschen, Admin-Rechte vergeben und einzelne Apps pro Benutzer deaktivieren.
+The default admin can be reached via an Easter egg: on the login page click the title 5 times, then the admin login link appears. The admin can approve, delete, grant admin rights and disable individual apps per user in the admin panel.
 
-## Datenbank
+## Database
 
-Die SQLite-Datenbank wird als `dnd.db` im Projektroot angelegt. Sie enthält Benutzer-, Spiel-, Tagebuch-, Entitäts- und Aufnahmedaten und ist in `.gitignore` eingetragen.
+The SQLite database is created as `dnd.db` in the project root. It contains user, game, diary, entity and recording data and is listed in `.gitignore`.
 
-Für Tests kann eine separate Datenbank verwendet werden:
+For tests a separate database can be used:
 
 ```bash
 DB_PATH=dnd_test.db npm run server
 ```
 
-Oder über das Script:
+Or via script:
 
 ```bash
 npm run test:server
 ```
 
-## KI / Tagebuch & Welt
+## AI / Diary & World
 
-Die KI-Funktionen benötigen `AI_PROVIDER=opencode` und ein gültiges `AI_MODEL`, z. B.:
+The AI features require `AI_PROVIDER=opencode` and a valid `AI_MODEL`, e.g.:
 
 ```bash
 AI_PROVIDER=opencode
 AI_MODEL=anthropic/claude-sonnet-4-20250514
-# Optional für günstigere Aufgaben:
+# Optional for cheaper tasks:
 AI_CHEAP_MODEL=openai/gpt-4.1-mini
 ```
 
-Optional kann `AI_OPENCODE_BIN` den Pfad zur OpenCode-CLI setzen.
+Optionally `AI_OPENCODE_BIN` can set the path to the OpenCode CLI.
 
-Die KI nutzt einen eigenen MCP-Server, um Tools wie `get_entity`, `set_diary_summary` und `create_knowledge` aufzurufen. Das Token dafür wird automatisch aus `JWT_SECRET` (oder `MCP_TOKEN_SECRET`) generiert.
+The AI uses a custom MCP server to call tools like `get_entity`, `set_diary_summary` and `create_knowledge`. The token for it is automatically generated from `JWT_SECRET` (or `MCP_TOKEN_SECRET`).
 
-## Aufnahmen
+## Recordings
 
-Für den Discord-Sprachaufzeichnungs-Bot:
+For the Discord voice recording bot:
 
 ```bash
-DISCORD_BOT_TOKEN=dein-bot-token
-DISCORD_GUILD_ID=deine-guild-id
+DISCORD_BOT_TOKEN=your-bot-token
+DISCORD_GUILD_ID=your-guild-id
 WHISPER_LANGUAGE=de
 WHISPER_MODEL=base
 ```
 
-Der Bot joint Voice-Channels und speichert Aufnahmen unter `recordings/`.
-Der Scheduler transkribiert abgeschlossene Aufnahmen automatisch mit OpenAI Whisper.
+The bot joins voice channels and stores recordings under `recordings/`. The scheduler automatically transcribes completed recordings with OpenAI Whisper.
 
-## Test
+## Tests
 
-Derzeit ist kein Test-Runner konfiguriert. Der Server kann mit einer separaten Test-Datenbank gestartet werden:
+Currently no test runner is configured. The server can be started with a separate test database:
 
 ```bash
 npm run test:server
 ```
 
-## Wichtige Dateien
+## Important Files
 
-- `server/index.ts` – Express- und Socket.io-Setup, API-Routen
-- `server/auth.ts` – JWT-Handling und Middleware
-- `server/users.ts` – Benutzerdatenbank und Authentifizierung
-- `server/database.ts` – SQLite-Verbindung
-- `server/game.ts` – Bingo-Spiel-Logik
-- `server/socket.ts` – Socket.io-Handler
-- `server/routes/` – API-Routen (auth, admin, diary, entities, recordings, ai)
-- `server/ai/` – KI-Prompts und OpenCode-Integration
-- `server/mcp/` – MCP-Server für KI-Tools
-- `server/discord/` – Discord-Bot und Aufnahmeverarbeitung
-- `shared/types.ts` – Gemeinsame TypeScript-Typen
-- `src/App.tsx` – React-App-Einstieg
-- `src/lib/apps.ts` – App-Definitionen
-- `AGENTS.md` – Ausführliche Entwicklerdokumentation
+- `server/index.ts` – Express and Socket.io setup, API routes
+- `server/auth.ts` – JWT handling and middleware
+- `server/users.ts` – user database and authentication
+- `server/database.ts` – SQLite connection
+- `server/game.ts` – Bingo game logic
+- `server/socket.ts` – Socket.io handlers
+- `server/routes/` – API routes (auth, admin, diary, entities, recordings, ai)
+- `server/ai/` – AI prompts and OpenCode integration
+- `server/mcp/` – MCP server for AI tools
+- `server/discord/` – Discord bot and recording processing
+- `shared/types.ts` – shared TypeScript types
+- `src/App.tsx` – React app entry
+- `src/lib/apps.ts` – app definitions
+- `AGENTS.md` – developer working rules and documentation index
+- `docs/` – detailed developer documentation (architecture, security, features, etc.)
