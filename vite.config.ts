@@ -7,7 +7,6 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
   define: {
     'process.env.NODE_ENV': JSON.stringify(mode === 'production' ? 'production' : 'development'),
-    'process.env.DRAGGABLE_DEBUG': 'undefined',
   },
   server: {
     proxy: {

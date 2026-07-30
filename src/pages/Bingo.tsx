@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { DashboardHeader } from '../components/DashboardHeader';
 import { Loading } from '../components/Loading';
 import { BingoDashboard } from '../components/BingoDashboard';
@@ -31,7 +31,6 @@ interface BingoProps {
 
 export function Bingo({ token, user }: BingoProps) {
   const { game, socket, playerId, bingo } = useSocket(token, user);
-  const [layoutResetKey, setLayoutResetKey] = useState(0);
 
   useEffect(() => {
     if (bingo) playBingoSound();
@@ -50,23 +49,10 @@ export function Bingo({ token, user }: BingoProps) {
   const player = game.players.find((p) => p.id === playerId);
   const needsJoin = !player;
   const isAdmin = user?.isAdmin || false;
-  const storageKey = user ? `bingo-layout-v2-${user.id}` : '';
-
-  const handleResetLayout = () => {
-    if (storageKey) localStorage.removeItem(storageKey);
-    setLayoutResetKey((k) => k + 1);
-  };
 
   return (
     <div className="h-full flex flex-col p-6">
-      <DashboardHeader
-        title="Bingo"
-        onReset={user ? handleResetLayout : undefined}
-        resetConfirmTitle="UI-Layout zurücksetzen?"
-        resetConfirmMessage={
-          <p>Das gespeicherte Bingo-Dashboard-Layout wird auf das Standard-Layout zurückgesetzt.</p>
-        }
-      />
+      <DashboardHeader title="Bingo" />
 
       {bingo && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
@@ -82,7 +68,6 @@ export function Bingo({ token, user }: BingoProps) {
         </div>
       ) : (
         <BingoDashboard
-          key={layoutResetKey}
           game={game}
           socket={socket}
           playerId={playerId}

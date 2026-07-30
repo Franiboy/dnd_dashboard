@@ -36,13 +36,11 @@
     "libsodium-wrappers": "^0.8.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-draggable": "^4.5.0",
-    "react-grid-layout": "^2.2.3",
     "react-quill-new": "^3.8.3",
-    "react-resizable": "^3.2.0",
     "react-router-dom": "^7.18.1",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
+    "tailwind-merge": "^3.6.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

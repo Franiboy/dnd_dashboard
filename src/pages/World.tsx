@@ -4,9 +4,8 @@ import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useError } from '../hooks/useError';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DashboardHeader } from '../components/DashboardHeader';
-import { DashboardLayout } from '../components/DashboardLayout';
-import { GridPanel } from '../components/GridPanel';
 import { Loading } from '../components/Loading';
+import { Panel } from '../components/Panel';
 import { Modal } from '../components/Modal';
 import { typeLabels, typeAccusative } from '../lib/entityLabels';
 import type { EntitiesResponse, EntityKnowledgeEntry, EntityType } from '../../shared/types';
@@ -343,7 +342,6 @@ export function World() {
   const [entities, setEntities] = useState<EntitiesResponse | null>(null);
   const [blacklists, setBlacklists] = useState<EntitiesResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [resetKey, setResetKey] = useState(0);
   const [dragPayload, setDragPayload] = useState<DragPayload | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionWorking, setActionWorking] = useState(false);
@@ -414,11 +412,6 @@ export function World() {
       load();
       loadBlacklists();
     }
-  }
-
-  function handleResetLayout() {
-    localStorage.removeItem('world-layout-v1');
-    setResetKey((k) => k + 1);
   }
 
   function handleDragStart(name: string, type: EntityType) {
@@ -529,13 +522,12 @@ export function World() {
     const isBlacklist = panelViews[type] === 'blacklist';
 
     return (
-      <div key={type}>
-        <GridPanel
+      <div key={type} className="h-full min-h-0">
+        <Panel
           title={isBlacklist ? `Blacklist – ${title}` : title}
           actions={
             <button
               type="button"
-              onMouseDown={(e) => e.stopPropagation()}
               onClick={() => toggleView(type)}
               title={isBlacklist ? 'Zur normalen Ansicht' : 'Blacklist anzeigen'}
               className="text-slate-500 hover:text-[var(--accent)] transition"
@@ -563,14 +555,14 @@ export function World() {
               onClickItem={handleEntityClick}
             />
           )}
-        </GridPanel>
+        </Panel>
       </div>
     );
   }
 
   return (
     <div className="h-full flex flex-col p-6">
-      <DashboardHeader title="Welt" onReset={handleResetLayout}>
+      <DashboardHeader title="Welt">
         <button
           type="button"
           onClick={() => setDistributeOpen(true)}
@@ -580,21 +572,11 @@ export function World() {
         </button>
       </DashboardHeader>
 
-      <DashboardLayout
-        key={resetKey}
-        storageKey="world-layout-v1"
-        defaultLayout={[
-          { i: 'persons', x: 0, y: 0, w: 4, h: 12, minW: 2, minH: 4 },
-          { i: 'organizations', x: 4, y: 0, w: 4, h: 12, minW: 2, minH: 4 },
-          { i: 'locations', x: 8, y: 0, w: 4, h: 12, minW: 2, minH: 4 },
-        ]}
-        className="flex-1 min-h-0"
-        fitHeight
-      >
+      <div className="grid grid-cols-1 lg:grid-cols-3 lg:grid-rows-1 gap-4 flex-1 min-h-0">
         {renderPanel('persons', 'Personen', 'Noch keine Personen vorhanden.')}
         {renderPanel('organizations', 'Organisationen', 'Noch keine Organisationen vorhanden.')}
         {renderPanel('locations', 'Orte', 'Noch keine Orte vorhanden.')}
-      </DashboardLayout>
+      </div>
 
       {pendingAction && (
         <ConfirmDialog
