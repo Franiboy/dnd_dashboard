@@ -1,11 +1,10 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 import traceback
 import wave
-
-
 def emit(event: dict) -> None:
     print(json.dumps(event), flush=True)
 
@@ -94,6 +93,25 @@ def compute_content_frames(wav_path: str) -> int:
         return 0
 
 
+def preprocess_audio(input_path: str) -> str:
+    normalized = input_path.replace(".wav", "_norm.wav")
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", input_path,
+                "-af", "highpass=f=80, lowpass=f=8000, afftdn=nf=-25, volume=2.0",
+                "-ar", "16000", "-ac", "1", "-sample_fmt", "s16",
+                normalized,
+            ],
+            capture_output=True, check=True,
+        )
+        emit({"type": "progress", "message": f"Audio preprocessed: {os.path.basename(input_path)}"})
+        return normalized
+    except subprocess.CalledProcessError:
+        emit({"type": "progress", "message": "Audio preprocessing failed, using original"})
+        return input_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="base")
@@ -103,6 +121,8 @@ def main() -> None:
     parser.add_argument("--trim-end", type=float, default=None)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--files", required=True, help="JSON array of {id, userId, wavPath, displayName}")
+    parser.add_argument("--initial-prompt", default=None)
+    parser.add_argument("--noise-reduce", type=lambda x: x.lower() == "true", default=True)
     args = parser.parse_args()
 
     patch_tqdm()
@@ -147,14 +167,27 @@ def main() -> None:
 
         emit({"type": "file_start", "index": i, "total": len(files), "name": display_name})
 
-        _progress.reset(compute_content_frames(wav_path))
+        audio_path = wav_path
+        if args.noise_reduce:
+            audio_path = preprocess_audio(wav_path)
+
+        _progress.reset(compute_content_frames(audio_path))
 
         try:
             result = model.transcribe(
-                wav_path,
+                audio_path,
                 language=args.language,
                 fp16=args.fp16,
                 verbose=False,
+                temperature=0.0,
+                compression_ratio_threshold=2.0,
+                logprob_threshold=-1.0,
+                no_speech_threshold=0.4,
+                condition_on_previous_text=False,
+                initial_prompt=args.initial_prompt,
+                beam_size=5,
+                best_of=5,
+                patience=1.0,
             )
 
             file_segments = []
