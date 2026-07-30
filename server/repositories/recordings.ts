@@ -1,5 +1,5 @@
 import { db } from '../database.js';
-import type { RecordingFile, RecordingSession } from '../../shared/types.js';
+import type { RecordingFile, RecordingSession, RecordingStatus } from '../../shared/types.js';
 
 interface CreateSessionInput {
   name: string;
@@ -72,6 +72,14 @@ export function listPendingTranscriptionSessions(): RecordingSession[] {
       "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC",
     )
     .all() as RecordingSession[];
+}
+
+export function listSessionsByStatus(status: RecordingStatus): RecordingSession[] {
+  return db
+    .prepare(
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds FROM recording_sessions WHERE status = ? ORDER BY started_at ASC',
+    )
+    .all(status) as RecordingSession[];
 }
 
 export function updateSession(

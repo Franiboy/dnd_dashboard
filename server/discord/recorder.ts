@@ -44,6 +44,7 @@ interface ActiveRecording {
 }
 
 let activeRecording: ActiveRecording | null = null;
+let stopPromise: Promise<RecordingFile[]> | null = null;
 
 export function isRecording(): boolean {
   return activeRecording !== null;
@@ -219,61 +220,92 @@ function handleSpeakingStart(guild: Guild, userId: string): void {
 }
 
 export async function stopRecording(): Promise<RecordingFile[]> {
+  if (stopPromise) return stopPromise;
+
   const rec = activeRecording;
   if (!rec) {
     throw new Error('Es läuft keine Aufnahme');
   }
-  if (rec.stopping) {
-    return [];
-  }
 
   rec.stopping = true;
-  rec.connection.receiver.speaking.removeAllListeners();
-  rec.connection.destroy();
+  stopPromise = (async () => {
+    try {
+      rec.connection.receiver.speaking.removeAllListeners();
+      rec.connection.destroy();
 
-  const files: RecordingFile[] = [];
+      const files: RecordingFile[] = [];
 
-  for (const user of rec.users.values()) {
-    if (user.audioStream && !user.audioStream.destroyed) {
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(resolve, 500);
-        user.audioStream!.once('end', () => {
-          clearTimeout(timeout);
-          resolve();
-        });
-      }).catch(() => {
-        // ignore
-      });
+      for (const user of rec.users.values()) {
+        let fdClosed = false;
+        try {
+          if (user.audioStream && !user.audioStream.destroyed) {
+            await new Promise<void>((resolve) => {
+              const timeout = setTimeout(resolve, 500);
+              user.audioStream!.once('end', () => {
+                clearTimeout(timeout);
+                resolve();
+              });
+            }).catch(() => {
+              // ignore
+            });
+          }
+
+          if (user.currentSegmentStart !== null && user.currentSegmentLength > 0) {
+            user.segments.push({ startSample: user.currentSegmentStart, length: user.currentSegmentLength });
+          }
+
+          closeSync(user.fd);
+          fdClosed = true;
+          destroyOpusDecoder(user.decoder);
+
+          const wavPath = user.pcmPath.replace(/\.pcm$/, '.wav');
+          await writeWavFromPcm(user.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH, user.segments);
+          await removePcmFile(user.pcmPath);
+
+          let duration: number | null = null;
+          try {
+            const fileStat = await import('node:fs/promises').then((m) => m.stat(wavPath));
+            duration = getWavDurationSeconds(fileStat.size);
+          } catch (statErr) {
+            log.warn(`Could not stat ${wavPath} for ${user.displayName}:`, statErr);
+          }
+
+          updateFile(user.fileId, { wavPath, duration });
+
+          files.push({
+            id: user.fileId,
+            sessionId: rec.sessionId,
+            userId: user.userId,
+            displayName: user.displayName,
+            pcmPath: user.pcmPath,
+            wavPath,
+            duration,
+            transcriptPath: null,
+          });
+        } catch (err) {
+          log.error(`Failed to finalize audio for ${user.displayName} (${user.userId}):`, err);
+        } finally {
+          if (!fdClosed) {
+            try {
+              closeSync(user.fd);
+            } catch {
+              // fd may already be closed or invalid
+            }
+          }
+          try {
+            destroyOpusDecoder(user.decoder);
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      return files;
+    } finally {
+      activeRecording = null;
+      stopPromise = null;
     }
+  })();
 
-    if (user.currentSegmentStart !== null && user.currentSegmentLength > 0) {
-      user.segments.push({ startSample: user.currentSegmentStart, length: user.currentSegmentLength });
-    }
-
-    closeSync(user.fd);
-    destroyOpusDecoder(user.decoder);
-
-    const wavPath = user.pcmPath.replace(/\.pcm$/, '.wav');
-    await writeWavFromPcm(user.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH, user.segments);
-    await removePcmFile(user.pcmPath);
-
-    const fileStat = await import('node:fs/promises').then((m) => m.stat(wavPath));
-    const duration = getWavDurationSeconds(fileStat.size);
-
-    updateFile(user.fileId, { wavPath, duration });
-
-    files.push({
-      id: user.fileId,
-      sessionId: rec.sessionId,
-      userId: user.userId,
-      displayName: user.displayName,
-      pcmPath: user.pcmPath,
-      wavPath,
-      duration,
-      transcriptPath: null,
-    });
-  }
-
-  activeRecording = null;
-  return files;
+  return stopPromise;
 }
