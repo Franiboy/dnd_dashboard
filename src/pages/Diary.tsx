@@ -552,7 +552,7 @@ export function Diary() {
       showSuccess('Zusammenfassung aktualisiert.');
       cancelSummaryEdit();
     } else if (error) {
-      // Fehler wird bereits durch useApi angezeigt.
+      // Error is already displayed by useApi.
     }
   }
 

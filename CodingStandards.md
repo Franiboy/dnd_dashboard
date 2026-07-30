@@ -1,106 +1,106 @@
 # Coding Standards – D&D Dashboard
 
-Diese Datei fasst die wichtigsten Code-Konventionen und Qualitätsrichtlinien für das Projekt zusammen.
-Sie ergänzt `AGENTS.md` und gilt für Client- und Server-Code.
+This file summarizes the most important code conventions and quality guidelines for the project. It complements `AGENTS.md` and applies to client and server code.
 
-## Allgemein
+## General
 
-- **Sprache:** TypeScript mit `strict: true` in allen `tsconfig.*.json`.
-- **Module:** ESM (`"type": "module"` in `package.json`).
-- **Formatierung:** Konsistente Einrückung (2 Leerzeichen) und semantische Leerzeilen. Keine expliziten Linter-Regeln außer `oxlint`.
-- **Kommentare:** Keine überflüssigen Kommentare. Code sollte selbsterklärend sein. Nur komplexe Business-Regeln oder Workarounds kurz erklären.
+- **Language:** TypeScript with `strict: true` in all `tsconfig.*.json`.
+- **Modules:** ESM (`"type": "module"` in `package.json`).
+- **Formatting:** Consistent indentation (2 spaces) and semantic blank lines. No explicit linter rules besides `oxlint`.
+- **Comments:** No superfluous comments. Code should be self-explanatory. Only briefly explain complex business rules or workarounds.
+- **Natural language:** All comments and commit messages must be in English.
 
 ## Server (`server/`)
 
 ### Imports
 
-- Server-Imports verwenden **immer `.js`-Suffixe** (ESM / NodeNext), auch bei `.ts`-Quelldateien:
+- Server imports **always use `.js` suffixes** (ESM / NodeNext), even for `.ts` source files:
 
   ```ts
   import { db } from './database.js';
   import type { User } from '../shared/types.js';
   ```
 
-- `import type` für reine Typ-Imports verwenden.
+- Use `import type` for pure type imports.
 
-### Architektur
+### Architecture
 
-- **Repository-Pattern** für Datenbankzugriff bevorzugen (siehe `server/repositories/`).
-- Geschäftslogik nicht direkt in Routes ablegen, sondern in Repositories oder dedizierte Service-Dateien auslagern.
-- Express-Routes exportieren ein `Router` als Default-Export.
+- Prefer the **repository pattern** for database access (see `server/repositories/`).
+- Do not put business logic directly in routes; move it to repositories or dedicated service files.
+- Express routes export a `Router` as default export.
 
-### Fehlerbehandlung
+### Error Handling
 
-- Explizite Fehlerantworten mit aussagekräftigen, aber nicht zu detaillierten Meldungen.
-- `try/catch` nur dort, wo tatsächlich etwas schiefgehen kann (Datenbank, Dateisystem, externe Prozesse).
-- Keine Stack-Traces oder interne Fehlerdetails an den Client senden.
+- Explicit error responses with meaningful but not overly detailed messages.
+- Use `try/catch` only where things can actually fail (database, file system, external processes).
+- Do not send stack traces or internal error details to the client.
 
 ### Logging
 
-- Immer `createLogger('category')` aus `server/logger.ts` verwenden.
-- Keine `console.log`/`console.error` im Produktivcode (Ausnahmen: Startup- und Shutdown-Meldungen in `index.ts`).
-- Log-Kategorien kurz und prägnant wählen, z. B. `diaryRoutes`, `opencode`, `mcp-server`.
+- Always use `createLogger('category')` from `server/logger.ts`.
+- No `console.log`/`console.error` in production code (exceptions: startup and shutdown messages in `index.ts`).
+- Choose short, concise log categories, e.g. `diaryRoutes`, `opencode`, `mcp-server`.
 
-### Datenbank
+### Database
 
-- `db.prepare(...)` mit parametrisierten Queries verwenden; keine String-Concatenation bei Bedingungen, außer bei dynamisch zusammengesetzten `IN`-Listen.
-- Migrationen in `server/migrations.ts` ablegen, nie manuell Schema-Änderungen außerhalb von Migrationen.
+- Use `db.prepare(...)` with parameterized queries; no string concatenation for conditions, except for dynamically composed `IN` lists.
+- Put migrations in `server/migrations.ts`, never make manual schema changes outside of migrations.
 
-### KI / MCP
+### AI / MCP
 
-- KI-Prompts zentral in `server/ai/rewrite.ts` oder `server/ai/knowledge.ts` pflegen.
-- Prompts müssen klar trennen: Rolle → Aufgabe → Tools → Regeln → Input.
-- Neue MCP-Tools in `server/mcp/index.ts` registrieren und der passenden Scope-Gruppe zuordnen (`server/mcp/tokens.ts`).
-- `zod` für Parameter-Validierung in MCP-Tools verwenden.
+- Maintain AI prompts centrally in `server/ai/rewrite.ts` or `server/ai/knowledge.ts`.
+- Prompts must clearly separate: role → task → tools → rules → input.
+- Register new MCP tools in `server/mcp/index.ts` and assign them to the correct scope group (`server/mcp/tokens.ts`).
+- Use `zod` for parameter validation in MCP tools.
 
-### Sicherheit
+### Security
 
-- Secrets niemals loggen oder an den Client senden.
-- Auth-Middleware (`authMiddleware`, `requireAdmin`, `requireApproved`) konsistent verwenden.
-- Rate-Limiting nicht abschalten oder lockern.
+- Never log or send secrets to the client.
+- Use auth middleware (`authMiddleware`, `requireAdmin`, `requireApproved`) consistently.
+- Do not disable or loosen rate limiting.
 
 ## Client (`src/`)
 
 ### Imports
 
-- Client-Imports verwenden **kein `.js`-Suffix**:
+- Client imports **do not use `.js` suffixes**:
 
   ```ts
   import { useAuth } from './hooks/useAuth';
   ```
 
-- Absolute Imports über `@/` sind nicht konfiguriert; relative Pfade verwenden.
+- Absolute imports via `@/` are not configured; use relative paths.
 
-### Komponenten
+### Components
 
-- Komponenten als Funktionskomponenten mit TypeScript-Typen schreiben.
-- Gemeinsam genutzte Komponenten in `src/components/`, Seiten in `src/pages/`.
-- Custom Hooks in `src/hooks/`.
-- Globale Zustände in `src/contexts/`.
+- Write components as function components with TypeScript types.
+- Shared components in `src/components/`, pages in `src/pages/`.
+- Custom hooks in `src/hooks/`.
+- Global states in `src/contexts/`.
 
 ### Tailwind CSS
 
-- Utility-Klassen bevorzugen; eigene CSS-Dateien nur wenn nötig.
-- Konsistente Abstände und Farben über Tailwind-Standardwerte verwenden.
+- Prefer utility classes; custom CSS files only when necessary.
+- Use consistent spacing and colors via Tailwind defaults.
 
-### API-Aufrufe
+### API Calls
 
-- `useApi` für HTTP-Requests verwenden, damit Fehler automatisch als Toast angezeigt werden.
-- SSE-Endpunkte mit `withCredentials: true` abonnieren.
+- Use `useApi` for HTTP requests so errors are automatically shown as toasts.
+- Subscribe to SSE endpoints with `withCredentials: true`.
 
 ## Shared (`shared/`)
 
-- Hier leben alle TypeScript-Typen und Interfaces, die Frontend und Backend gemeinsam nutzen.
-- Keine Runtime-Logik in `shared/` ablegen.
-- Server-Imports aus `shared/` verwenden `.js`-Suffixe.
+- All TypeScript types and interfaces shared by frontend and backend live here.
+- No runtime logic in `shared/`.
+- Server imports from `shared/` use `.js` suffixes.
 
 ## Scripts (`scripts/`)
 
-- Build- und Hilfsscripts mit `tsx` ausführbar.
-- Keine sensiblen Daten in Scripts schreiben.
+- Build and helper scripts are executable with `tsx`.
+- Do not write sensitive data in scripts.
 
 ## Git
 
-- Keine Secrets, Datenbanken, Build-Artefakte oder Logs committen.
-- Commit-Messages kurz und auf Deutsch oder Englisch; im Projekt wird Deutsch bevorzugt.
-- Vor jedem Commit `git diff` prüfen.
+- Do not commit secrets, databases, build artifacts or logs.
+- Commit messages must be short and in English.
+- Check `git diff` before every commit.

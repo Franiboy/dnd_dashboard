@@ -1,3 +1,8 @@
+# Environment Variables
+
+Copy `.env.example` to `.env` and adjust the values:
+
+```bash
 PORT=3001
 JWT_SECRET=change-me-in-production
 # Required: password for the default 'admin' account
@@ -45,3 +50,22 @@ AI_MODEL=
 # MCP (optional, used for AI tool use)
 # If not set, JWT_SECRET is used.
 # MCP_TOKEN_SECRET=change-me-in-production
+```
+
+## Variable Reference
+
+- `PORT` is optional, default is `3001`.
+- `JWT_SECRET` must be set, otherwise the server will not start.
+- `ADMIN_PASSWORD` must be set, otherwise `ensureAdminUser()` will not start.
+- `DISCORD_*` must be configured for Discord login.
+- `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` enable the recording bot.
+- `WHISPER_*` configure local transcription.
+- `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `anthropic/claude-sonnet-4-20250514`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled.
+- `AI_CHEAP_MODEL` is used for short AI tasks (summaries, entities).
+- `AI_OPENCODE_BIN` overrides the `opencode` command.
+- `MCP_TOKEN_SECRET` defaults to `JWT_SECRET`.
+- Optional: `CORS_ORIGIN` for allowed cross-origin origins (comma-separated). If not set, development allows only `http://localhost:5173` and `http://localhost:3001`; in production no cross-origin requests are allowed.
+- Optional: `VITE_SERVER_URL` for the Socket.io client in the frontend.
+- Optional: `DB_PATH=dnd_test.db` for tests or a separate database.
+- Optional: `NODE_ENV=production` enables static serving of `dist/`.
+- Optional: `LOG_RETENTION_MAX` limits the number of persistent log entries (default: 100,000).
