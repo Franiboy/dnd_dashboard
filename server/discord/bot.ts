@@ -1,7 +1,7 @@
 import { Client, GatewayIntentBits, type VoiceBasedChannel, type VoiceState } from 'discord.js';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isOpusAvailable, makeSessionDir, ensureDir, writeWavFromPcm } from './audio.js';
+import { isOpusAvailable, makeSessionDir, ensureDir, writeWavFromPcm, removePcmFile } from './audio.js';
 import { startRecording, stopRecording, isRecording, getActiveRecording } from './recorder.js';
 import {
   createSession,
@@ -11,6 +11,7 @@ import {
   createFile,
   updateFile,
   getRecordingConfig,
+  listSessionsByStatus,
 } from '../repositories/recordings.js';
 
 import type { RecordingChannel, RecordingSession } from '../../shared/types.js';
@@ -67,6 +68,16 @@ export function startBot(): void {
 
 export function getBotStatus(): { ready: boolean; enabled: boolean } {
   return { ready: botReady, enabled: isBotEnabled() };
+}
+
+export async function stopBot(): Promise<void> {
+  try {
+    await client.destroy();
+  } catch (err) {
+    log.error('Discord client destroy failed:', err);
+  } finally {
+    botReady = false;
+  }
 }
 
 export function getMonitoredChannel(): { channelId: string | null; channelName: string | null } {
@@ -321,18 +332,53 @@ async function recoverRecording(sessionId: number): Promise<RecordingSession> {
   const recovered: { id: number; wavPath: string; duration: number }[] = [];
 
   for (const file of dbFiles) {
-    if (file.wavPath) continue;
     try {
-      await stat(file.pcmPath);
-    } catch {
-      continue;
+      const wavPath = file.pcmPath.replace(/\.pcm$/, '.wav');
+      let resolvedWavPath: string | null = null;
+      let resolvedDuration: number | null = null;
+
+      // Prefer the source PCM if it still exists: re-convert to ensure the WAV is fresh.
+      let pcmExists = false;
+      try {
+        await stat(file.pcmPath);
+        pcmExists = true;
+      } catch {
+        // pcm missing
+      }
+
+      if (pcmExists) {
+        await writeWavFromPcm(file.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
+        await removePcmFile(file.pcmPath);
+        const fileStat = await stat(wavPath);
+        resolvedDuration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
+        resolvedWavPath = wavPath;
+      } else if (file.wavPath) {
+        try {
+          const fileStat = await stat(file.wavPath);
+          resolvedWavPath = file.wavPath;
+          resolvedDuration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
+        } catch {
+          // recorded wav missing too
+        }
+      } else {
+        try {
+          const fileStat = await stat(wavPath);
+          resolvedWavPath = wavPath;
+          resolvedDuration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
+        } catch {
+          // no audio data for this file
+        }
+      }
+
+      if (resolvedWavPath !== null) {
+        if (resolvedWavPath !== file.wavPath || resolvedDuration !== file.duration) {
+          updateFile(file.id, { wavPath: resolvedWavPath, duration: resolvedDuration });
+        }
+        recovered.push({ id: file.id, wavPath: resolvedWavPath, duration: resolvedDuration ?? 0 });
+      }
+    } catch (err) {
+      log.error(`Failed to recover file ${file.id} for session ${sessionId}:`, err);
     }
-    const wavPath = file.pcmPath.replace(/\.pcm$/, '.wav');
-    await writeWavFromPcm(file.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
-    const fileStat = await stat(wavPath);
-    const duration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
-    updateFile(file.id, { wavPath, duration });
-    recovered.push({ id: file.id, wavPath, duration });
   }
 
   let filesOnDisk: string[] = [];
@@ -346,15 +392,20 @@ async function recoverRecording(sessionId: number): Promise<RecordingSession> {
     if (!fileName.endsWith('.pcm')) continue;
     const pcmPath = join(directory, fileName);
     if (knownPcmPaths.has(pcmPath)) continue;
-    const match = fileName.match(/^user-(.+)\.pcm$/);
-    const userId = match ? match[1] : fileName.replace(/\.pcm$/, '');
-    const fileRow = createFile({ sessionId, userId, displayName: userId, pcmPath });
-    const wavPath = pcmPath.replace(/\.pcm$/, '.wav');
-    await writeWavFromPcm(pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
-    const fileStat = await stat(wavPath);
-    const duration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
-    updateFile(fileRow.id, { wavPath, duration });
-    recovered.push({ id: fileRow.id, wavPath, duration });
+    try {
+      const match = fileName.match(/^user-(.+)\.pcm$/);
+      const userId = match ? match[1] : fileName.replace(/\.pcm$/, '');
+      const fileRow = createFile({ sessionId, userId, displayName: userId, pcmPath });
+      const wavPath = pcmPath.replace(/\.pcm$/, '.wav');
+      await writeWavFromPcm(pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
+      await removePcmFile(pcmPath);
+      const fileStat = await stat(wavPath);
+      const duration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
+      updateFile(fileRow.id, { wavPath, duration });
+      recovered.push({ id: fileRow.id, wavPath, duration });
+    } catch (err) {
+      log.error(`Failed to recover on-disk file ${fileName} for session ${sessionId}:`, err);
+    }
   }
 
   const stoppedAt = new Date().toISOString();
@@ -368,7 +419,43 @@ async function recoverRecording(sessionId: number): Promise<RecordingSession> {
   emitStatusUpdated();
   emitSessionsUpdated();
 
-  return getSessionById(sessionId)!;
+  const updated = getSessionById(sessionId);
+  if (!updated) {
+    throw new Error('Aufnahme nicht gefunden');
+  }
+  return updated;
+}
+
+export async function recoverAllRecordings(): Promise<void> {
+  let recordingSessions: RecordingSession[];
+  try {
+    recordingSessions = listSessionsByStatus('recording');
+  } catch (err) {
+    log.error('Failed to list recording sessions for recovery:', err);
+    return;
+  }
+
+  if (recordingSessions.length === 0) {
+    return;
+  }
+
+  log.info(`Recovering ${recordingSessions.length} recording session(s) after restart/shutdown`);
+
+  for (const session of recordingSessions) {
+    try {
+      const active = getActiveRecording();
+      if (active && active.sessionId === session.id) {
+        await finishRecording(session.id);
+      } else {
+        await recoverRecording(session.id);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(`Failed to recover recording session ${session.id}:`, err);
+      updateSession(session.id, { status: 'error', stoppedAt: new Date().toISOString(), error: message });
+      emitSessionsUpdated();
+    }
+  }
 }
 
 export async function finishRecording(sessionId: number): Promise<RecordingSession> {
@@ -380,14 +467,33 @@ export async function finishRecording(sessionId: number): Promise<RecordingSessi
     throw new Error('Diese Session ist nicht aktiv');
   }
 
-  await stopRecording();
+  const files = await stopRecording();
+
+  const session = getSessionById(sessionId);
+  if (!session) {
+    throw new Error('Aufnahme nicht gefunden');
+  }
+  if (session.status !== 'recording') {
+    return session;
+  }
+
   const stoppedAt = new Date().toISOString();
+  if (files.length === 0) {
+    updateSession(sessionId, { status: 'error', stoppedAt, error: 'Keine Audio-Daten aufgezeichnet.' });
+    emitSessionsUpdated();
+    throw new Error('Keine Audio-Daten aufgezeichnet');
+  }
+
   updateSession(sessionId, { status: 'pending_transcription', stoppedAt });
 
   emitStatusUpdated();
   emitSessionsUpdated();
 
-  return getSessionById(sessionId)!;
+  const updated = getSessionById(sessionId);
+  if (!updated) {
+    throw new Error('Aufnahme nicht gefunden');
+  }
+  return updated;
 }
 
 export { getActiveRecording };

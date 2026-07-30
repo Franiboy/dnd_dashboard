@@ -18,8 +18,9 @@ import recordingsRouter from './routes/recordings.js';
 import { setupSocket } from './socket.js';
 import { getVersion } from './version.js';
 import { runMigrations } from './migrations.js';
-import { startBot } from './discord/bot.js';
+import { startBot, recoverAllRecordings, stopBot } from './discord/bot.js';
 import { startTranscriptionScheduler, stopTranscriptionScheduler } from './discord/scheduler.js';
+import { resetInterruptedTranscriptions, stopAllTranscriptions } from './discord/transcriber.js';
 import {
   startEntitySummaryScheduler,
   stopEntitySummaryScheduler,
@@ -83,6 +84,12 @@ app.use('/api', (req, res, next) => {
 // Run schema migrations and ensure admin user exists at startup
 runMigrations();
 ensureAdminUser();
+try {
+  await recoverAllRecordings();
+  resetInterruptedTranscriptions();
+} catch (err) {
+  logger.error('Failed to recover recordings on startup:', err);
+}
 startBot();
 startTranscriptionScheduler();
 startDiarySummaryScheduler();
@@ -120,28 +127,45 @@ http.listen(PORT, () => {
 
 let isShuttingDown = false;
 
-function shutdown(signal: string) {
+async function shutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`\n${signal} received, shutting down gracefully...`);
+
+  // Close the server immediately so no new connections come in while we
+  // finish active work. Keep the process alive until cleanup is done.
+  const serverClosed = new Promise<void>((resolve) => {
+    io.close(() => {
+      resolve();
+    });
+  });
+
+  // Safety net covering the entire shutdown sequence (cleanup, recovery, server close).
+  const forceExit = setTimeout(() => {
+    console.log('Forcing shutdown...');
+    process.exit(0);
+  }, 30000);
+
+  await stopAllTranscriptions().catch((err) => {
+    logger.error('Failed to stop transcriptions:', err);
+  });
+
+  await recoverAllRecordings().catch((err) => {
+    logger.error('Failed to recover recordings:', err);
+  });
+
+  await stopBot().catch((err) => {
+    logger.error('Failed to stop Discord bot:', err);
+  });
+
   stopTranscriptionScheduler();
   stopDiarySummaryScheduler();
   stopEntitySummaryScheduler();
   stopSessionCleanupScheduler();
 
-  // Force close after 1.5s even if sockets are still open
-  const forceExit = setTimeout(() => {
-    console.log('Forcing shutdown...');
-    process.exit(0);
-  }, 1500);
-
-  // Close Socket.io to drop active connections
-  io.close(() => {
-    http.close(() => {
-      clearTimeout(forceExit);
-      process.exit(0);
-    });
-  });
+  await serverClosed;
+  clearTimeout(forceExit);
+  process.exit(0);
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));

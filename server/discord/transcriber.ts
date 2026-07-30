@@ -1,11 +1,11 @@
-import { spawn, execSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { updateFile, updateSession, getSessionById } from '../repositories/recordings.js';
+import { updateFile, updateSession, getSessionById, listSessionsByStatus } from '../repositories/recordings.js';
 import { emitSessionsUpdated, emitProgressUpdated } from './recordingsEvents.js';
 import { createLogger } from '../logger.js';
-import type { RecordingFile, TranscriptionProgress } from '../../shared/types.js';
+import type { RecordingFile, RecordingSession, TranscriptionProgress } from '../../shared/types.js';
 
 const log = createLogger('transcriber');
 
@@ -24,11 +24,9 @@ function appendStderr(buffer: string, chunk: string, maxLength: number): string 
 function findPythonCommand(): string {
   const candidates = [process.env.PYTHON_COMMAND, 'python3', 'python'].filter((cmd): cmd is string => Boolean(cmd));
   for (const cmd of candidates) {
-    try {
-      execSync(`${cmd} --version`, { stdio: 'ignore' });
+    const result = spawnSync(cmd, ['--version'], { stdio: 'ignore' });
+    if (result.status === 0) {
       return cmd;
-    } catch {
-      // try next
     }
   }
   return process.env.PYTHON_COMMAND || 'python3';
@@ -55,9 +53,15 @@ function findTranscribeScript(): string {
 const TRANSCRIBE_SCRIPT = findTranscribeScript();
 
 const transcriptionProgress = new Map<number, TranscriptionProgress>();
+const activeChildren = new Set<ChildProcess>();
+let shuttingDown = false;
 
 export function getTranscriptionProgress(sessionId: number): TranscriptionProgress | null {
   return transcriptionProgress.get(sessionId) ?? null;
+}
+
+export function isShuttingDown(): boolean {
+  return shuttingDown;
 }
 
 function setTranscriptionProgress(sessionId: number, progress: TranscriptionProgress): void {
@@ -68,6 +72,86 @@ function setTranscriptionProgress(sessionId: number, progress: TranscriptionProg
 function clearTranscriptionProgress(sessionId: number): void {
   transcriptionProgress.delete(sessionId);
   emitProgressUpdated(sessionId, null);
+}
+
+export function resetInterruptedTranscriptions(): number {
+  let sessions: RecordingSession[];
+  try {
+    sessions = listSessionsByStatus('processing');
+  } catch (err) {
+    log.error('Failed to list processing transcription sessions:', err);
+    return 0;
+  }
+
+  if (sessions.length === 0) {
+    return 0;
+  }
+
+  for (const session of sessions) {
+    updateSession(session.id, { status: 'pending_transcription', error: null });
+  }
+
+  log.info(`Reset ${sessions.length} interrupted transcription session(s) to pending`);
+  emitSessionsUpdated();
+  return sessions.length;
+}
+
+export async function stopAllTranscriptions(): Promise<void> {
+  shuttingDown = true;
+
+  if (activeChildren.size === 0) {
+    return;
+  }
+
+  log.info(`Stopping ${activeChildren.size} active transcription process(es)`);
+
+  const children = Array.from(activeChildren);
+  const promises: Promise<void>[] = [];
+  for (const child of children) {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      promises.push(waitForChildExit(child));
+    } else {
+      activeChildren.delete(child);
+    }
+  }
+
+  await Promise.all(promises).catch((err) => {
+    log.error('Error stopping transcription processes:', err);
+  });
+}
+
+function waitForChildExit(child: ChildProcess): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      activeChildren.delete(child);
+      resolve();
+    };
+
+    if (child.exitCode !== null || child.signalCode !== null) {
+      settle();
+      return;
+    }
+
+    let killTimeout: NodeJS.Timeout | null = null;
+    const termTimeout = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL');
+        killTimeout = setTimeout(settle, 1000);
+      } else {
+        settle();
+      }
+    }, 2000);
+
+    child.once('exit', () => {
+      clearTimeout(termTimeout);
+      if (killTimeout) clearTimeout(killTimeout);
+      settle();
+    });
+  });
 }
 
 type ScriptEvent =
@@ -128,6 +212,7 @@ function runTranscriptionScript(
     let finalResult: { transcript: string | null; transcriptPath: string | null; files: { id: number; userId: string; transcriptPath: string }[]; errors: string[] } | null = null;
 
     const child = spawn(PYTHON_COMMAND, args, { stdio: 'pipe' });
+    activeChildren.add(child);
     let stderrBuffer = '';
 
     child.stdout?.on('data', (data: Buffer) => {
@@ -178,10 +263,12 @@ function runTranscriptionScript(
     });
 
     child.on('error', (err) => {
+      activeChildren.delete(child);
       reject(err);
     });
 
     child.on('close', (code) => {
+      activeChildren.delete(child);
       if (code !== 0) {
         reject(new Error(stderrBuffer || `Python transcription script exited with code ${code}`));
         return;
@@ -198,6 +285,13 @@ function runTranscriptionScript(
 }
 
 export async function runTranscription(sessionId: number, files: RecordingFile[]): Promise<void> {
+  if (shuttingDown) {
+    updateSession(sessionId, { status: 'pending_transcription', error: null });
+    clearTranscriptionProgress(sessionId);
+    emitSessionsUpdated();
+    return;
+  }
+
   const session = getSessionById(sessionId);
   if (!session) return;
 
@@ -224,8 +318,12 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
     }
     emitSessionsUpdated();
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    updateSession(sessionId, { status: 'error', error: `Transkription fehlgeschlagen: ${message}` });
+    if (shuttingDown) {
+      updateSession(sessionId, { status: 'pending_transcription', error: null });
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      updateSession(sessionId, { status: 'error', error: `Transkription fehlgeschlagen: ${message}` });
+    }
     emitSessionsUpdated();
   } finally {
     clearTranscriptionProgress(sessionId);
