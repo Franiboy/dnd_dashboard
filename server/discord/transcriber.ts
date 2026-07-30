@@ -12,6 +12,8 @@ const log = createLogger('transcriber');
 const WHISPER_MODEL = process.env.WHISPER_MODEL || 'base';
 const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE || 'de';
 const WHISPER_FP16 = process.env.WHISPER_FP16 === 'true';
+const WHISPER_INITIAL_PROMPT = process.env.WHISPER_INITIAL_PROMPT || undefined;
+const WHISPER_NOISE_REDUCE = process.env.WHISPER_NOISE_REDUCE !== 'false';
 const MAX_STDERR_LENGTH = 5000;
 
 function appendStderr(buffer: string, chunk: string, maxLength: number): string {
@@ -199,10 +201,16 @@ function runTranscriptionScript(
     outputDir,
     '--files',
     filesArg,
+    '--noise-reduce',
+    String(WHISPER_NOISE_REDUCE),
   ];
 
   if (trimEnd !== Infinity) {
     args.push('--trim-end', String(trimEnd));
+  }
+
+  if (WHISPER_INITIAL_PROMPT) {
+    args.push('--initial-prompt', WHISPER_INITIAL_PROMPT);
   }
 
   return new Promise((resolve, reject) => {
