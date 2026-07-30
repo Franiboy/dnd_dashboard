@@ -1,5 +1,5 @@
 import { listPendingTranscriptionSessions, getFilesBySessionId, updateSession } from '../repositories/recordings.js';
-import { runTranscription } from './transcriber.js';
+import { runTranscription, isShuttingDown } from './transcriber.js';
 import { isRecordingFeatureEnabled } from './config.js';
 import { createLogger } from '../logger.js';
 
@@ -30,6 +30,11 @@ async function processPendingTranscriptions(): Promise<void> {
   log.info(`[transcription scheduler] Processing ${sessions.length} pending session(s)`);
 
   for (const session of sessions) {
+    if (isShuttingDown()) {
+      log.info('[transcription scheduler] Shutdown in progress, stopping backlog processing');
+      break;
+    }
+
     updateSession(session.id, { status: 'processing' });
     const files = getFilesBySessionId(session.id);
 
