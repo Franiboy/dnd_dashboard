@@ -27,7 +27,7 @@ function findPythonCommand(): string {
   const candidates = [process.env.PYTHON_COMMAND, 'python3', 'python'].filter((cmd): cmd is string => Boolean(cmd));
   for (const cmd of candidates) {
     const result = spawnSync(cmd, ['--version'], { stdio: 'ignore' });
-    if (result.status === 0) {
+    if (result.status === 0 && !result.error) {
       return cmd;
     }
   }
