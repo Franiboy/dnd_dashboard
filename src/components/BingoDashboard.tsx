@@ -1,5 +1,6 @@
 import type { BingoGame, Player, SafeUser } from '../../shared/types';
 import type { Socket } from '../types';
+import { BingoAiSuggestions } from './BingoAiSuggestions';
 import { BingoGrid } from './BingoGrid';
 import { Panel } from './Panel';
 import { PlayerList } from './PlayerList';
@@ -134,22 +135,29 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
         />
       </Panel>
 
-      {isSetup ? (
-        <Panel title="Aufgaben-Pool" className="min-h-0">
-          <TaskPool
-            game={game}
-            socket={socket}
-            isSetup={isSetup}
-            currentUser={user}
-            className="h-full flex flex-col"
-            listClassName="flex-1 min-h-0 overflow-auto"
-          />
-        </Panel>
-      ) : isPlaying && isAdmin ? (
-        <Panel title="Aufgaben-Status" className="min-h-0">
-          <TaskStatus game={game} socket={socket} />
-        </Panel>
-      ) : null}
+      <div className="flex flex-col gap-4 min-h-0">
+        {isSetup ? (
+          <>
+            <Panel title="Aufgaben-Pool" className="min-h-0 flex-[2] h-auto">
+              <TaskPool
+                game={game}
+                socket={socket}
+                isSetup={isSetup}
+                currentUser={user}
+                className="h-full flex flex-col"
+                listClassName="flex-1 min-h-0 overflow-auto"
+              />
+            </Panel>
+            <Panel title="KI-Vorschläge" className="min-h-0 flex-1 h-auto">
+              <BingoAiSuggestions isSetup={isSetup} />
+            </Panel>
+          </>
+        ) : isPlaying && isAdmin ? (
+          <Panel title="Aufgaben-Status" className="min-h-0">
+            <TaskStatus game={game} socket={socket} />
+          </Panel>
+        ) : null}
+      </div>
     </div>
   );
 }

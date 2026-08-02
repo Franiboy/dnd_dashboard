@@ -48,7 +48,7 @@ This file summarizes the most important code conventions and quality guidelines 
 
 ### AI / MCP
 
-- Maintain AI prompts centrally in `server/ai/rewrite.ts` or `server/ai/knowledge.ts`.
+- Maintain AI prompts centrally in `server/ai/` (e.g. `server/ai/rewrite.ts`, `server/ai/knowledge.ts`, `server/ai/bingoSuggestions.ts`).
 - Prompts must clearly separate: role → task → tools → rules → input.
 - Register new MCP tools in `server/mcp/index.ts` and assign them to the correct scope group (`server/mcp/tokens.ts`).
 - Use `zod` for parameter validation in MCP tools.
