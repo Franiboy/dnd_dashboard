@@ -5,6 +5,11 @@ Copy `.env.example` to `.env` and adjust the values:
 ```bash
 PORT=3001
 JWT_SECRET=change-me-in-production
+# Number of days until the dashboard login session expires (default: 7)
+JWT_EXPIRES_IN_DAYS=7
+# Required if Discord OAuth is configured. Must be a base64-encoded 32-byte key.
+# Generate with: openssl rand -base64 32
+TOKEN_ENCRYPTION_KEY=
 # Required: password for the default 'admin' account
 ADMIN_PASSWORD=
 DISCORD_CLIENT_ID=
@@ -64,8 +69,11 @@ AI_MODEL=
 
 - `PORT` is optional, default is `3001`.
 - `JWT_SECRET` must be set, otherwise the server will not start.
+- `JWT_EXPIRES_IN_DAYS` controls how long a dashboard login session remains valid (default: 7).
+- `TOKEN_ENCRYPTION_KEY` is required when Discord OAuth is configured. It is used to encrypt stored Discord access/refresh tokens at rest. It must be a base64-encoded 32-byte key (e.g. the output of `openssl rand -base64 32`).
 - `ADMIN_PASSWORD` must be set, otherwise `ensureAdminUser()` will not start.
 - `DISCORD_*` must be configured for Discord login.
+- `DISCORD_TOKEN_REFRESH_INTERVAL_MS` controls how often stored Discord OAuth tokens are refreshed and profile data is synced (default: 3600000, 1 hour).
 - `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` enable the recording bot.
 - `WHISPER_*` configure local transcription.
 - `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `anthropic/claude-sonnet-4-20250514`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled.
