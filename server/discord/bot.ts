@@ -1,7 +1,17 @@
 import { Client, GatewayIntentBits, type VoiceBasedChannel, type VoiceState } from 'discord.js';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isOpusAvailable, makeSessionDir, ensureDir, writeWavFromPcm, removePcmFile } from './audio.js';
+import {
+  isOpusAvailable,
+  makeSessionDir,
+  ensureDir,
+  writeWavFromPcm,
+  removePcmFile,
+  removeSegmentFile,
+  getWavDurationSeconds,
+  readSegmentState,
+  type PcmSegment,
+} from './audio.js';
 import { startRecording, stopRecording, isRecording, getActiveRecording } from './recorder.js';
 import {
   createSession,
@@ -305,6 +315,67 @@ export async function beginRecording(
   return getSessionById(session.id)!;
 }
 
+function reconstructSegments(
+  pcmPath: string,
+  pcmSize: number,
+  sampleRate: number,
+  channels: number,
+  bitDepth: number,
+): PcmSegment[] | undefined {
+  const state = readSegmentState(pcmPath);
+  if (!state || state.version !== 1 || !Array.isArray(state.segments)) {
+    return undefined;
+  }
+
+  const validSegments: PcmSegment[] = [];
+  for (const segment of state.segments) {
+    if (
+      segment &&
+      Number.isFinite(segment.startSample) &&
+      Number.isInteger(segment.startSample) &&
+      segment.startSample >= 0 &&
+      Number.isFinite(segment.length) &&
+      Number.isInteger(segment.length) &&
+      segment.length > 0
+    ) {
+      validSegments.push({ startSample: segment.startSample, length: segment.length });
+    }
+  }
+
+  if (validSegments.length === 0) {
+    return undefined;
+  }
+
+  validSegments.sort((a, b) => a.startSample - b.startSample);
+
+  const bytesPerSample = (channels * bitDepth) / 8;
+  const totalSamples = Math.floor(pcmSize / bytesPerSample);
+  const closedSamples = validSegments.reduce((sum, segment) => sum + segment.length, 0);
+  const currentLength = Math.max(0, totalSamples - closedSamples);
+
+  if (currentLength > 0) {
+    const maxEnd =
+      validSegments.length > 0
+        ? validSegments[validSegments.length - 1].startSample +
+          validSegments[validSegments.length - 1].length
+        : 0;
+    let currentStart = state.currentStart;
+    if (
+      typeof currentStart !== 'number' ||
+      !Number.isFinite(currentStart) ||
+      !Number.isInteger(currentStart) ||
+      currentStart < 0
+    ) {
+      currentStart = maxEnd;
+    } else if (currentStart < maxEnd) {
+      currentStart = maxEnd;
+    }
+    return [...validSegments, { startSample: currentStart, length: currentLength }];
+  }
+
+  return validSegments;
+}
+
 async function recoverRecording(sessionId: number): Promise<RecordingSession> {
   const session = getSessionById(sessionId);
   if (!session) {
@@ -326,7 +397,6 @@ async function recoverRecording(sessionId: number): Promise<RecordingSession> {
   const SAMPLE_RATE = 48000;
   const CHANNELS = 2;
   const BIT_DEPTH = 16;
-  const bytesPerSecond = (SAMPLE_RATE * CHANNELS * BIT_DEPTH) / 8;
 
   const dbFiles = getFilesBySessionId(sessionId);
   const recovered: { id: number; wavPath: string; duration: number }[] = [];
@@ -338,33 +408,34 @@ async function recoverRecording(sessionId: number): Promise<RecordingSession> {
       let resolvedDuration: number | null = null;
 
       // Prefer the source PCM if it still exists: re-convert to ensure the WAV is fresh.
-      let pcmExists = false;
+      let pcmStat: { size: number } | null = null;
       try {
-        await stat(file.pcmPath);
-        pcmExists = true;
+        pcmStat = await stat(file.pcmPath);
       } catch {
         // pcm missing
       }
 
-      if (pcmExists) {
-        await writeWavFromPcm(file.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
+      if (pcmStat) {
+        const segments = reconstructSegments(file.pcmPath, pcmStat.size, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
+        await writeWavFromPcm(file.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH, segments);
         await removePcmFile(file.pcmPath);
-        const fileStat = await stat(wavPath);
-        resolvedDuration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
+        removeSegmentFile(file.pcmPath);
+        await stat(wavPath);
+        resolvedDuration = getWavDurationSeconds(wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
         resolvedWavPath = wavPath;
       } else if (file.wavPath) {
         try {
-          const fileStat = await stat(file.wavPath);
+          await stat(file.wavPath);
           resolvedWavPath = file.wavPath;
-          resolvedDuration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
+          resolvedDuration = getWavDurationSeconds(file.wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
         } catch {
           // recorded wav missing too
         }
       } else {
         try {
-          const fileStat = await stat(wavPath);
+          await stat(wavPath);
           resolvedWavPath = wavPath;
-          resolvedDuration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
+          resolvedDuration = getWavDurationSeconds(wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
         } catch {
           // no audio data for this file
         }
@@ -397,10 +468,12 @@ async function recoverRecording(sessionId: number): Promise<RecordingSession> {
       const userId = match ? match[1] : fileName.replace(/\.pcm$/, '');
       const fileRow = createFile({ sessionId, userId, displayName: userId, pcmPath });
       const wavPath = pcmPath.replace(/\.pcm$/, '.wav');
-      await writeWavFromPcm(pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
+      const pcmStat = await stat(pcmPath);
+      const segments = reconstructSegments(pcmPath, pcmStat.size, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
+      await writeWavFromPcm(pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH, segments);
       await removePcmFile(pcmPath);
-      const fileStat = await stat(wavPath);
-      const duration = Math.max(0, fileStat.size - 44) / bytesPerSecond;
+      removeSegmentFile(pcmPath);
+      const duration = getWavDurationSeconds(wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
       updateFile(fileRow.id, { wavPath, duration });
       recovered.push({ id: fileRow.id, wavPath, duration });
     } catch (err) {
