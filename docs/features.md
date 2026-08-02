@@ -82,4 +82,5 @@
 - A scheduler (`server/discord/scheduler.ts`) transcribes finished recordings with OpenAI Whisper.
 - Transcripts can be trimmed and saved as text.
 - Recordings are only visible to admins.
-- On startup, interrupted recordings and transcriptions are recovered and resumed automatically. On shutdown, active recordings are finalized and active transcription processes are stopped cleanly.
+- On startup, interrupted recordings and transcriptions are recovered and resumed automatically. Segment metadata is persisted alongside each PCM file so recovered WAVs keep their original timing/gaps.
+- On shutdown, active recordings are finalized and active transcription processes are stopped cleanly.

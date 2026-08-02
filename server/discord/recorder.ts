@@ -3,7 +3,17 @@ import type { AudioReceiveStream, VoiceConnection } from '@discordjs/voice';
 import type { Guild, VoiceBasedChannel } from 'discord.js';
 import { openSync, closeSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
-import { createOpusDecoder, decodeOpusPacket, destroyOpusDecoder, writeWavFromPcm, removePcmFile, type PcmSegment } from './audio.js';
+import {
+  createOpusDecoder,
+  decodeOpusPacket,
+  destroyOpusDecoder,
+  writeWavFromPcm,
+  removePcmFile,
+  removeSegmentFile,
+  getWavDurationSeconds,
+  writeSegmentState,
+  type PcmSegment,
+} from './audio.js';
 import { createFile, updateFile } from '../repositories/recordings.js';
 import { createLogger } from '../logger.js';
 import type { RecordingFile } from '../../shared/types.js';
@@ -60,10 +70,16 @@ function getDisplayName(guild: Guild, userId: string): string {
   return member?.displayName ?? member?.user.username ?? cachedUser?.username ?? userId;
 }
 
-function getWavDurationSeconds(wavFileSize: number): number {
-  const pcmBytes = Math.max(0, wavFileSize - 44);
-  const bytesPerSecond = (SAMPLE_RATE * CHANNELS * BIT_DEPTH) / 8;
-  return pcmBytes / bytesPerSecond;
+function persistSegments(user: ActiveUser): void {
+  try {
+    writeSegmentState(user.pcmPath, {
+      version: 1,
+      segments: user.segments,
+      currentStart: user.currentSegmentStart,
+    });
+  } catch (err) {
+    log.error(`Failed to persist segment state for ${user.displayName}:`, err);
+  }
 }
 
 export async function startRecording(
@@ -182,12 +198,14 @@ function handleSpeakingStart(guild: Guild, userId: string): void {
       if (user.currentSegmentStart === null) {
         user.currentSegmentStart = currentSample;
         user.currentSegmentLength = 0;
+        persistSegments(user);
       } else {
         const expectedSample = user.currentSegmentStart + user.currentSegmentLength;
         if (currentSample > expectedSample + JITTER_SAMPLES) {
           user.segments.push({ startSample: user.currentSegmentStart, length: user.currentSegmentLength });
           user.currentSegmentStart = currentSample;
           user.currentSegmentLength = 0;
+          persistSegments(user);
         }
       }
 
@@ -261,13 +279,13 @@ export async function stopRecording(): Promise<RecordingFile[]> {
           const wavPath = user.pcmPath.replace(/\.pcm$/, '.wav');
           await writeWavFromPcm(user.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH, user.segments);
           await removePcmFile(user.pcmPath);
+          removeSegmentFile(user.pcmPath);
 
           let duration: number | null = null;
           try {
-            const fileStat = await import('node:fs/promises').then((m) => m.stat(wavPath));
-            duration = getWavDurationSeconds(fileStat.size);
+            duration = getWavDurationSeconds(wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
           } catch (statErr) {
-            log.warn(`Could not stat ${wavPath} for ${user.displayName}:`, statErr);
+            log.warn(`Could not read duration from ${wavPath} for ${user.displayName}:`, statErr);
           }
 
           updateFile(user.fileId, { wavPath, duration });
