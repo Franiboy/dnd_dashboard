@@ -86,9 +86,14 @@ runMigrations();
 ensureAdminUser();
 try {
   await recoverAllRecordings();
-  resetInterruptedTranscriptions();
 } catch (err) {
   logger.error('Failed to recover recordings on startup:', err);
+}
+
+try {
+  resetInterruptedTranscriptions();
+} catch (err) {
+  logger.error('Failed to reset interrupted transcriptions on startup:', err);
 }
 startBot();
 startTranscriptionScheduler();
