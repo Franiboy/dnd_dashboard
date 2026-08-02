@@ -15,9 +15,10 @@ interface TaskPoolProps {
   className?: string;
   listClassName?: string;
   currentUser?: SafeUser | null;
+  playerId?: string | null;
 }
 
-export function TaskPool({ game, socket, isSetup, className, listClassName, currentUser }: TaskPoolProps) {
+export function TaskPool({ game, socket, isSetup, className, listClassName, currentUser, playerId }: TaskPoolProps) {
   const { request } = useApi();
   const [text, setText] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
@@ -31,6 +32,11 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
   const [showHidden, setShowHidden] = useState(false);
   const ownerId = currentUser?.id;
   const assignableUsers = users.filter((u) => !u.isInitialAdmin);
+
+  const player = game.players.find((p) => p.id === playerId);
+  const placedTaskIds = new Set<string>(
+    player?.board?.flat().filter((cell) => cell.taskId).map((cell) => cell.taskId!) ?? [],
+  );
 
   const visibleTasks = game.tasks.filter(
     (task) => !task.isPrivate || (ownerId && task.assignedTo?.includes(ownerId)) || showHidden,
@@ -149,9 +155,11 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
               if (!isSetup) return;
               e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'task', taskId: task.id }));
             }}
-            className={`flex justify-between items-center px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] ${
-              isSetup ? 'cursor-grab active:cursor-grabbing' : ''
-            }`}
+            className={`flex justify-between items-center px-3 py-2 rounded border transition ${
+              placedTaskIds.has(task.id)
+                ? 'bg-[var(--accent-dim)] border-[var(--accent)]'
+                : 'bg-slate-900/50 border-[var(--border)]'
+            } ${isSetup ? 'cursor-grab active:cursor-grabbing' : ''}`}
           >
             <span className="text-[var(--text-h)]">
               {task.text}
