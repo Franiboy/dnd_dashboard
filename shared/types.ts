@@ -201,3 +201,10 @@ export interface EntityKnowledgeEntry {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface BingoSuggestion {
+  id: number;
+  text: string;
+  source: string;
+  createdAt: string;
+}

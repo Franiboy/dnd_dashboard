@@ -32,10 +32,18 @@ WHISPER_MODEL=base
 AI_PROVIDER=opencode
 # Set to a real model, e.g. anthropic/claude-sonnet-4-20250514
 AI_MODEL=
-# Optional: cheaper model for short AI tasks like diary summaries.
+# Optional: cheaper model for short AI tasks like diary summaries and bingo suggestions.
 # If not set, AI_MODEL is used.
 # AI_CHEAP_MODEL=openai/gpt-4.1-mini
 # AI_OPENCODE_BIN=opencode
+
+# Bingo AI suggestions (optional)
+# Number of suggestions to keep pre-generated in the pool.
+# BINGO_SUGGESTION_TARGET=20
+# Threshold at which the pool is refilled in the background.
+# BINGO_SUGGESTION_THRESHOLD=5
+# Number of suggestions generated per refill batch.
+# BINGO_SUGGESTION_BATCH=15
 
 # CORS / frontend origin (optional)
 # In production, only allows requests from the given origins (comma-separated).
@@ -62,7 +70,9 @@ AI_MODEL=
 - `WHISPER_*` configure local transcription.
 - `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `anthropic/claude-sonnet-4-20250514`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled.
 - `AI_CHEAP_MODEL` is used for short AI tasks (summaries, entities).
+- `AI_CHEAP_MODEL` is also used for bingo suggestion generation.
 - `AI_OPENCODE_BIN` overrides the `opencode` command.
+- `BINGO_SUGGESTION_TARGET`, `BINGO_SUGGESTION_THRESHOLD`, and `BINGO_SUGGESTION_BATCH` configure the pre-generated suggestion pool (defaults: 20, 5, 15).
 - `MCP_TOKEN_SECRET` defaults to `JWT_SECRET`.
 - Optional: `CORS_ORIGIN` for allowed cross-origin origins (comma-separated). If not set, development allows only `http://localhost:5173` and `http://localhost:3001`; in production no cross-origin requests are allowed.
 - Optional: `VITE_SERVER_URL` for the Socket.io client in the frontend.

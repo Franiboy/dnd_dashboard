@@ -12,6 +12,7 @@ import { ensureAdminUser } from './users.js';
 import adminRouter from './routes/admin.js';
 import authRouter from './routes/auth.js';
 import aiRouter from './routes/ai.js';
+import bingoRouter from './routes/bingo.js';
 import diaryRouter from './routes/diary.js';
 import entitiesRouter from './routes/entities.js';
 import recordingsRouter from './routes/recordings.js';
@@ -33,6 +34,10 @@ import {
   startSessionCleanupScheduler,
   stopSessionCleanupScheduler,
 } from './scheduler/sessionCleanup.js';
+import {
+  startBingoSuggestionScheduler,
+  stopBingoSuggestionScheduler,
+} from './scheduler/bingoSuggestions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,6 +61,7 @@ const http = createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
   cors: { origin: corsOrigin, credentials: true },
 });
+app.set('io', io);
 
 const PORT = process.env.PORT || 3001;
 
@@ -95,6 +101,7 @@ startTranscriptionScheduler();
 startDiarySummaryScheduler();
 startEntitySummaryScheduler();
 startSessionCleanupScheduler();
+startBingoSuggestionScheduler();
 
 app.get('/api/version', (req, res) => {
   res.json(getVersion());
@@ -103,6 +110,7 @@ app.get('/api/version', (req, res) => {
 app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/bingo', bingoRouter);
 app.use('/api/diary', diaryRouter);
 app.use('/api/entities', entitiesRouter);
 app.use('/api/recordings', recordingsRouter);
@@ -162,6 +170,7 @@ async function shutdown(signal: string) {
   stopDiarySummaryScheduler();
   stopEntitySummaryScheduler();
   stopSessionCleanupScheduler();
+  stopBingoSuggestionScheduler();
 
   await serverClosed;
   clearTimeout(forceExit);
