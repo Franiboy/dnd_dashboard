@@ -99,9 +99,13 @@ For Discord login you need to create an application in the [Discord Developer Po
 DISCORD_CLIENT_ID=your-client-id
 DISCORD_CLIENT_SECRET=your-client-secret
 DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
+# Must be set for Discord OAuth; generate with: openssl rand -base64 32
+TOKEN_ENCRYPTION_KEY=your-base64-encoded-32-byte-key
 ```
 
 Add `http://localhost:5173/auth/discord` under `OAuth2 → Redirects`.
+
+Profile data (display name and avatar) and access/refresh tokens are refreshed automatically in the background; `DISCORD_TOKEN_REFRESH_INTERVAL_MS` controls the interval (default: 3600000 ms = 1 hour).
 
 ## Default Admin
 

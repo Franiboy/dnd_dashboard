@@ -1,11 +1,17 @@
 import bcrypt from 'bcrypt';
+import crypto from 'node:crypto';
 import type { SafeUser, User } from '../shared/types.js';
 import { db } from './database.js';
 import { createLogger } from './logger.js';
+import { decrypt, encrypt, isEncryptionConfigured } from './encryption.js';
 
 const SALT_ROUNDS = 10;
 const log = createLogger('users');
 export const INITIAL_ADMIN_USERNAME = 'admin';
+
+// Column list for user rows; avoid loading encrypted Discord token columns when they are not needed.
+const USER_COLUMNS =
+  'id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, disabled_apps, failed_login_attempts, locked_until, created_at';
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 const MAX_FAILED_ATTEMPTS = 5;
@@ -65,7 +71,7 @@ export function createDiscordUser(discordId: string, username: string, displayNa
   db.prepare(
     'INSERT INTO users (id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, disabled_apps, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(id, username.trim().toLowerCase(), displayName.trim(), null, discordId, avatarUrl, 0, 0, '[]', 0, null, new Date().toISOString());
-  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)));
+  return toSafeUser(rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id)));
 }
 
 export function createAdminUser(username: string, displayName: string, password: string): SafeUser {
@@ -74,7 +80,7 @@ export function createAdminUser(username: string, displayName: string, password:
   db.prepare(
     'INSERT INTO users (id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, disabled_apps, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(id, username.trim().toLowerCase(), displayName.trim(), passwordHash, null, null, 1, 1, '[]', 0, null, new Date().toISOString());
-  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)));
+  return toSafeUser(rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id)));
 }
 
 export function updateUserPassword(id: string, password: string): SafeUser | null {
@@ -82,21 +88,21 @@ export function updateUserPassword(id: string, password: string): SafeUser | nul
   if (!user) return null;
   const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
-  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
+  return toSafeUser(rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!);
 }
 
 export function findUserByUsername(username: string): User | null {
-  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username.trim().toLowerCase());
+  const row = db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE username = ?').get(username.trim().toLowerCase());
   return row ? rowToUser(row) : null;
 }
 
 export function findUserByDiscordId(discordId: string): User | null {
-  const row = db.prepare('SELECT * FROM users WHERE discord_id = ?').get(discordId);
+  const row = db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE discord_id = ?').get(discordId);
   return row ? rowToUser(row) : null;
 }
 
 export function findUserById(id: string): User | null {
-  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const row = db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id);
   return row ? rowToUser(row) : null;
 }
 
@@ -106,7 +112,7 @@ export function verifyPassword(user: User, password: string): boolean {
 }
 
 export function getAllUsers(): SafeUser[] {
-  const rows = db.prepare('SELECT * FROM users ORDER BY created_at DESC').all() as any[];
+  const rows = db.prepare('SELECT ' + USER_COLUMNS + ' FROM users ORDER BY created_at DESC').all() as any[];
   return rows.map((r) => toSafeUser(rowToUser(r)));
 }
 
@@ -114,14 +120,14 @@ export function setUserApproved(id: string, approved: boolean): SafeUser | null 
   const user = findUserById(id);
   if (!user) return null;
   db.prepare('UPDATE users SET is_approved = ? WHERE id = ?').run(approved ? 1 : 0, id);
-  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
+  return toSafeUser(rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!);
 }
 
 export function setUserAdmin(id: string, isAdmin: boolean): SafeUser | null {
   const user = findUserById(id);
   if (!user) return null;
   db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(isAdmin ? 1 : 0, id);
-  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
+  return toSafeUser(rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!);
 }
 
 export function setUserDisabledApps(id: string, disabledApps: string[]): SafeUser | null {
@@ -129,14 +135,70 @@ export function setUserDisabledApps(id: string, disabledApps: string[]): SafeUse
   if (!user) return null;
   const value = JSON.stringify(disabledApps.map((app) => String(app)));
   db.prepare('UPDATE users SET disabled_apps = ? WHERE id = ?').run(value, id);
-  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
+  return toSafeUser(rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!);
 }
 
 export function updateDiscordProfile(id: string, displayName: string, avatarUrl: string | null): SafeUser | null {
   const user = findUserById(id);
   if (!user) return null;
   db.prepare('UPDATE users SET display_name = ?, avatar_url = ? WHERE id = ?').run(displayName.trim(), avatarUrl, id);
-  return toSafeUser(rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id))!);
+  return toSafeUser(rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!);
+}
+
+export interface DiscordTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: Date | null;
+}
+
+export function storeDiscordTokens(id: string, accessToken: string, refreshToken: string, expiresAt: Date): void {
+  if (!isEncryptionConfigured()) {
+    throw new Error('Cannot store Discord tokens: TOKEN_ENCRYPTION_KEY is not configured or invalid');
+  }
+  if (Number.isNaN(expiresAt.getTime())) {
+    throw new Error('expiresAt is invalid');
+  }
+
+  const encryptedAccessToken = encrypt(accessToken);
+  const encryptedRefreshToken = encrypt(refreshToken);
+
+  db.prepare(
+    'UPDATE users SET discord_access_token = ?, discord_refresh_token = ?, discord_token_expires_at = ? WHERE id = ?'
+  ).run(encryptedAccessToken, encryptedRefreshToken, expiresAt.toISOString(), id);
+}
+
+export function getDiscordTokens(id: string): DiscordTokens | null {
+  if (!isEncryptionConfigured()) return null;
+
+  const row = db.prepare('SELECT discord_access_token, discord_refresh_token, discord_token_expires_at FROM users WHERE id = ?').get(id) as
+    | { discord_access_token: string | null; discord_refresh_token: string | null; discord_token_expires_at: string | null }
+    | undefined;
+  if (!row || !row.discord_access_token || !row.discord_refresh_token) return null;
+
+  const accessToken = decrypt(row.discord_access_token);
+  const refreshToken = decrypt(row.discord_refresh_token);
+  if (!accessToken || !refreshToken) return null;
+
+  let expiresAt: Date | null = null;
+  if (row.discord_token_expires_at) {
+    const parsed = new Date(row.discord_token_expires_at);
+    if (!Number.isNaN(parsed.getTime())) {
+      expiresAt = parsed;
+    }
+  }
+
+  return { accessToken, refreshToken, expiresAt };
+}
+
+export function clearDiscordTokens(id: string): void {
+  db.prepare('UPDATE users SET discord_access_token = NULL, discord_refresh_token = NULL, discord_token_expires_at = NULL WHERE id = ?').run(id);
+}
+
+export function getUsersWithDiscordTokens(): { id: string; discordId: string }[] {
+  const rows = db
+    .prepare('SELECT id, discord_id FROM users WHERE discord_refresh_token IS NOT NULL AND discord_id IS NOT NULL')
+    .all() as { id: string; discord_id: string }[];
+  return rows.map((r) => ({ id: r.id, discordId: r.discord_id }));
 }
 
 export function deleteUser(id: string): boolean {
@@ -145,8 +207,14 @@ export function deleteUser(id: string): boolean {
 }
 
 export function recordFailedLogin(user: User): void {
-  const attempts = user.failedLoginAttempts + 1;
-  let lockedUntil: string | null = user.lockedUntil;
+  // Do not extend an active lockout; once it expires, start a fresh attempt window.
+  if (isLocked(user)) return;
+  let attempts = user.failedLoginAttempts + 1;
+  if (user.lockedUntil) {
+    attempts = 1;
+  }
+
+  let lockedUntil: string | null = null;
   if (attempts >= MAX_FAILED_ATTEMPTS) {
     const until = new Date();
     until.setMinutes(until.getMinutes() + LOCKOUT_MINUTES);

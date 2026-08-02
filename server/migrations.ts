@@ -374,6 +374,21 @@ const migrations: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_level_id ON logs (level, id);`);
     },
   },
+  {
+    name: 'add_discord_token_columns_to_users',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'discord_access_token')) {
+        db.exec('ALTER TABLE users ADD COLUMN discord_access_token TEXT');
+      }
+      if (!columns.some((c) => c.name === 'discord_refresh_token')) {
+        db.exec('ALTER TABLE users ADD COLUMN discord_refresh_token TEXT');
+      }
+      if (!columns.some((c) => c.name === 'discord_token_expires_at')) {
+        db.exec('ALTER TABLE users ADD COLUMN discord_token_expires_at TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations() {

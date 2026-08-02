@@ -33,6 +33,12 @@ import {
   startSessionCleanupScheduler,
   stopSessionCleanupScheduler,
 } from './scheduler/sessionCleanup.js';
+import {
+  startDiscordTokenRefreshScheduler,
+  stopDiscordTokenRefreshScheduler,
+} from './scheduler/discordTokenRefresh.js';
+import { isDiscordOAuthConfigured } from './discord/oauth.js';
+import { isEncryptionConfigured } from './encryption.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,18 +89,35 @@ app.use('/api', (req, res, next) => {
 
 // Run schema migrations and ensure admin user exists at startup
 runMigrations();
+
+if (isDiscordOAuthConfigured() && !isEncryptionConfigured()) {
+  logger.error(
+    'Discord OAuth is configured but TOKEN_ENCRYPTION_KEY is missing or invalid. ' +
+      'Set TOKEN_ENCRYPTION_KEY in .env to a base64-encoded 32-byte key (e.g. openssl rand -base64 32).',
+  );
+  process.exit(1);
+}
+
 ensureAdminUser();
+
 try {
   await recoverAllRecordings();
-  resetInterruptedTranscriptions();
 } catch (err) {
   logger.error('Failed to recover recordings on startup:', err);
 }
+
+try {
+  resetInterruptedTranscriptions();
+} catch (err) {
+  logger.error('Failed to reset interrupted transcriptions on startup:', err);
+}
 startBot();
+
 startTranscriptionScheduler();
 startDiarySummaryScheduler();
 startEntitySummaryScheduler();
 startSessionCleanupScheduler();
+startDiscordTokenRefreshScheduler();
 
 app.get('/api/version', (req, res) => {
   res.json(getVersion());
@@ -162,6 +185,7 @@ async function shutdown(signal: string) {
   stopDiarySummaryScheduler();
   stopEntitySummaryScheduler();
   stopSessionCleanupScheduler();
+  stopDiscordTokenRefreshScheduler();
 
   await serverClosed;
   clearTimeout(forceExit);
