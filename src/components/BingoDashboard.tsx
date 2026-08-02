@@ -144,6 +144,7 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
                 socket={socket}
                 isSetup={isSetup}
                 currentUser={user}
+                playerId={playerId}
                 className="h-full flex flex-col"
                 listClassName="flex-1 min-h-0 overflow-auto"
               />
