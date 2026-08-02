@@ -23,6 +23,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | `auth.ts` | Login, Discord callback, `/me`, logout |
 | `admin.ts` | Admin API, SSE `/admin/users/events`, SSE `/admin/logs/events`, paginated `/admin/logs` |
 | `ai.ts` | `POST /api/execute` – direct execution of AI tool actions (admin/debug only) |
+| `bingo.ts` | AI bingo suggestions: list, accept, reject, refresh |
 | `diary.ts` | CRUD for diary entries, AI rewrite, summary, entities; SSE for AI status |
 | `entities.ts` | Entity list, details, aliases, blacklist, knowledge and summary CRUD |
 | `recordings.ts` | Discord recording sessions, transcripts, trimming |
@@ -32,6 +33,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | File | Purpose |
 |------|---------|
 | `games.ts` | SQLite game state storage (JSON in `games` table) |
+| `bingoSuggestions.ts` | Pending, accepted and rejected AI bingo suggestions |
 | `diary.ts` | Diary entries, entities, aliases, search, canonical name resolution |
 | `entityKnowledge.ts` | Knowledge entries for entities (CRUD, soft-delete) |
 | `entitySummaries.ts` | AI-generated entity summaries |
@@ -42,6 +44,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | File | Purpose |
 |------|---------|
 | `ai/config.ts` | Checks whether AI is enabled (`AI_PROVIDER=opencode` + valid `AI_MODEL`) |
+| `ai/bingoSuggestions.ts` | Prompts and pool management for AI bingo suggestions |
 | `ai/opencode.ts` | Spawns `opencode run` with MCP token and scopes |
 | `ai/rewrite.ts` | Prompts for rewrite, summary and entity extraction |
 | `ai/knowledge.ts` | Prompts for knowledge distribution and entity summaries |
@@ -53,6 +56,7 @@ This document describes the high-level structure of the D&D Dashboard.
 
 | File | Purpose |
 |------|---------|
+| `scheduler/bingoSuggestions.ts` | Keeps the AI bingo suggestion pool filled in the background |
 | `scheduler/entitySummaries.ts` | Starts AI-generated entity summaries in the background |
 | `discord/bot.ts` | Starts the Discord bot and joins voice channels for recordings |
 | `discord/recorder.ts` | Records Discord audio and stores PCM files |
@@ -68,7 +72,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | `src/main.tsx` | Root render |
 | `src/lib/apps.ts` | App metadata (Dashboard, Diary, Bingo, World, Recordings, Admin) |
 | `src/pages/` | Pages: Login, AdminLogin, AuthCallback, Home, Bingo, Diary, World, Recordings, Admin |
-| `src/components/` | Reusable components (Layout, ProtectedRoute, ConfirmDialog, Toast, LogPanel, …) |
+| `src/components/` | Reusable components (Layout, ProtectedRoute, ConfirmDialog, Toast, LogPanel, BingoAiSuggestions, …) |
 | `src/hooks/useAuth.ts` | Auth hook |
 | `src/hooks/useSocket.ts` | Socket.io hook |
 | `src/hooks/useApi.ts` | `fetch` wrapper with automatic error toast display |
