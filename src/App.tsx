@@ -27,7 +27,7 @@ interface PublicRoutesProps {
   error: string | null;
   loginAdmin: (username: string, password: string) => Promise<boolean>;
   startDiscordLogin: () => Promise<string | null>;
-  handleDiscordCallback: (code: string) => Promise<{ ok: boolean; message?: string }>;
+  handleDiscordCallback: (code: string, state: string) => Promise<{ ok: boolean; pending?: boolean; message?: string }>;
   checkApproved: () => Promise<boolean>;
 }
 
@@ -58,7 +58,7 @@ function PublicRoutes({
 }
 
 function App() {
-  const { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved } = useAuth();
+  const { user, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved } = useAuth();
   const [version, setVersion] = useState<VersionInfo | null | undefined>(undefined);
 
   useEffect(() => {
@@ -122,7 +122,7 @@ function App() {
                 <Route path="/tagebuch" element={<ProtectedRoute user={user} appId="notes" version={version}><Diary /></ProtectedRoute>} />
                 <Route path="/welt" element={<ProtectedRoute user={user} appId="world" version={version}><World /></ProtectedRoute>} />
                 <Route path="/recordings" element={<ProtectedRoute user={user} appId="recordings" version={version}><Recordings /></ProtectedRoute>} />
-                <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo" version={version}><Bingo token={token} user={user} /></ProtectedRoute>} />
+                <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo" version={version}><Bingo user={user} /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </Suspense>

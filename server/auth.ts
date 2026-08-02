@@ -8,6 +8,14 @@ const log = createLogger('auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || '';
 const COOKIE_NAME = 'dnd_token';
+const OAUTH_STATE_COOKIE_NAME = 'dnd_oauth_state';
+const OAUTH_STATE_MAX_AGE_MS = 5 * 60 * 1000;
+
+// Session lifetime is configurable in days; defaults to 7 days.
+const parsedJwtExpiresInDays = Number(process.env.JWT_EXPIRES_IN_DAYS || 7);
+const JWT_EXPIRES_IN_DAYS = Number.isFinite(parsedJwtExpiresInDays) && parsedJwtExpiresInDays > 0 ? parsedJwtExpiresInDays : 7;
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const TOKEN_MAX_AGE_MS = JWT_EXPIRES_IN_DAYS * MS_PER_DAY;
 
 if (!JWT_SECRET) {
   log.error('Fehler: JWT_SECRET ist nicht gesetzt. Bitte .env.example nach .env kopieren und anpassen.');
@@ -19,12 +27,15 @@ export interface AuthRequest extends Request {
 }
 
 export function createToken(user: User): string {
-  return jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ userId: user.id }, JWT_SECRET, {
+    algorithm: 'HS256',
+    expiresIn: `${JWT_EXPIRES_IN_DAYS}d`,
+  });
 }
 
 export function verifyToken(token: string): { userId: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: string };
+    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { userId: string };
   } catch {
     return null;
   }
@@ -38,16 +49,18 @@ function buildCookieOptions(res: Response): {
   const hostname = res.req?.hostname;
   const isLocalhost = hostname === 'localhost';
   const domain = isLocalhost ? 'localhost' : undefined;
+  const secure = res.req?.secure === true;
 
   const base: import('express').CookieOptions = {
     httpOnly: true,
     sameSite: 'lax',
+    secure,
   };
 
   return {
     set: {
       ...base,
-      maxAge: 1000 * 60 * 60 * 24 * 7,
+      maxAge: TOKEN_MAX_AGE_MS,
       domain,
     },
     clearHostOnly: { ...base, path: '/' },
@@ -77,15 +90,61 @@ export function clearAuthCookie(res: Response): void {
   }
 }
 
+export function setOAuthStateCookie(res: Response, state: string): void {
+  const { set, clearHostOnly, clearDomain } = buildCookieOptions(res);
+
+  // Clear stale state cookies first to avoid ambiguity on localhost.
+  res.clearCookie(OAUTH_STATE_COOKIE_NAME, clearHostOnly);
+  if (clearDomain) {
+    res.clearCookie(OAUTH_STATE_COOKIE_NAME, clearDomain);
+  }
+
+  res.cookie(OAUTH_STATE_COOKIE_NAME, state, { ...set, maxAge: OAUTH_STATE_MAX_AGE_MS });
+}
+
+export function clearOAuthStateCookie(res: Response): void {
+  const { clearHostOnly, clearDomain } = buildCookieOptions(res);
+
+  res.clearCookie(OAUTH_STATE_COOKIE_NAME, clearHostOnly);
+  if (clearDomain) {
+    res.clearCookie(OAUTH_STATE_COOKIE_NAME, clearDomain);
+  }
+}
+
+export function getOAuthStateCookie(req: Request): string | null {
+  const value = req.cookies?.[OAUTH_STATE_COOKIE_NAME];
+  return typeof value === 'string' ? value : null;
+}
+
+function decodeCookieValue(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
 function getCookieTokens(req: Request): string[] {
-  const header = req.headers.cookie;
-  if (!header || typeof header !== 'string') return [];
+  // Express with cookie-parser exposes req.cookies; Socket.io handshakes only have headers.cookie.
+  const parsedCookies = (req as any).cookies;
+  if (parsedCookies && typeof parsedCookies[COOKIE_NAME] === 'string') {
+    const value = parsedCookies[COOKIE_NAME];
+    if (value) return [value];
+  }
+
+  const header = req.headers?.cookie;
+  if (typeof header !== 'string') return [];
+
   const tokens: string[] = [];
   for (const part of header.split(';')) {
-    const [name, value] = part.trim().split('=');
-    if (name === COOKIE_NAME && value) {
-      tokens.push(decodeURIComponent(value));
-    }
+    const trimmed = part.trim();
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex === -1) continue;
+    const name = trimmed.slice(0, eqIndex);
+    if (name !== COOKIE_NAME) continue;
+    const value = trimmed.slice(eqIndex + 1);
+    const decoded = value ? decodeCookieValue(value) : null;
+    if (decoded) tokens.push(decoded);
   }
   return tokens;
 }
