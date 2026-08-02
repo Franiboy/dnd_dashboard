@@ -5,7 +5,6 @@ import type { SafeUser } from '../../shared/types';
 export function useAuth() {
   const { showError } = useError();
   const [user, setUser] = useState<SafeUser | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('dnd_token'));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,8 +19,6 @@ export function useAuth() {
       const data = await res.json();
       if (res.ok) {
         setUser(data.user);
-        setToken(data.token);
-        localStorage.setItem('dnd_token', data.token);
         setError(null);
         return true;
       }
@@ -35,31 +32,28 @@ export function useAuth() {
     }
   };
 
-  const handleDiscordCallback = async (code: string): Promise<{ ok: boolean; message?: string }> => {
+  const handleDiscordCallback = async (code: string, state: string): Promise<{ ok: boolean; pending?: boolean; message?: string }> => {
     try {
       const res = await fetch('/api/auth/discord/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, state }),
         credentials: 'include',
       });
       const data = await res.json();
       if (res.ok) {
         setUser(data.user);
-        setToken(data.token);
-        localStorage.setItem('dnd_token', data.token);
         setError(null);
         return { ok: true };
       }
-      if (res.status === 403 && data.user && data.token) {
+      if (res.status === 403 && data.user) {
         setUser(data.user);
-        setToken(data.token);
-        localStorage.setItem('dnd_token', data.token);
-        return { ok: false, message: data.error || 'Account wurde noch nicht freigegeben' };
+        return { ok: false, pending: true, message: data.error || 'Account wurde noch nicht freigegeben' };
       }
-      setError(data.error || 'Discord Login fehlgeschlagen');
-      showError(data.error || 'Discord Login fehlgeschlagen');
-      return { ok: false };
+      const message = data.error || 'Discord Login fehlgeschlagen';
+      setError(message);
+      showError(message);
+      return { ok: false, message };
     } catch {
       setError('Server nicht erreichbar');
       showError('Server nicht erreichbar');
@@ -85,15 +79,12 @@ export function useAuth() {
   const logout = async () => {
     await fetch('/api/logout', { method: 'POST', credentials: 'include' });
     setUser(null);
-    setToken(null);
-    localStorage.removeItem('dnd_token');
+    setError(null);
   };
 
   const checkApproved = async (): Promise<boolean> => {
     try {
-      const headers: Record<string, string> = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch('/api/me', { headers, credentials: 'include' });
+      const res = await fetch('/api/me', { credentials: 'include' });
       if (!res.ok) return false;
       const data = await res.json();
       if (data.user?.isApproved) {
@@ -108,27 +99,23 @@ export function useAuth() {
 
   const fetchMe = useCallback(async () => {
     try {
-      const headers: Record<string, string> = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch('/api/me', { headers, credentials: 'include' });
+      const res = await fetch('/api/me', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
         setError(null);
       } else {
         setUser(null);
-        localStorage.removeItem('dnd_token');
-        setToken(null);
       }
     } catch {
       setUser(null);
     }
     setLoading(false);
-  }, [token, setUser, setToken, setLoading, setError]);
+  }, [setUser, setLoading, setError]);
 
   useEffect(() => {
     fetchMe();
   }, [fetchMe]);
 
-  return { user, token, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, setError };
+  return { user, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, setError };
 }

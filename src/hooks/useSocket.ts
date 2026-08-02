@@ -5,7 +5,7 @@ import type { BingoGame, ClientToServerEvents, ServerToClientEvents, SafeUser } 
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || '';
 
-export function useSocket(token: string | null, user: SafeUser | null) {
+export function useSocket(user: SafeUser | null) {
   const { showError } = useError();
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const [game, setGame] = useState<BingoGame | null>(null);
@@ -17,7 +17,6 @@ export function useSocket(token: string | null, user: SafeUser | null) {
     if (!user) return;
 
     const socket = io(SERVER_URL || undefined, {
-      auth: token ? { token } : undefined,
       withCredentials: true,
       reconnection: true,
     });
@@ -52,7 +51,7 @@ export function useSocket(token: string | null, user: SafeUser | null) {
       joinedRef.current = false;
       socket.disconnect();
     };
-  }, [token, user, showError]);
+  }, [user, showError]);
 
   return {
     socket: socketRef.current,

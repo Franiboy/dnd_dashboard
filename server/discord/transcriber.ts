@@ -285,15 +285,20 @@ function runTranscriptionScript(
 }
 
 export async function runTranscription(sessionId: number, files: RecordingFile[]): Promise<void> {
-  if (shuttingDown) {
-    updateSession(sessionId, { status: 'pending_transcription', error: null });
-    clearTranscriptionProgress(sessionId);
-    emitSessionsUpdated();
-    return;
-  }
-
   const session = getSessionById(sessionId);
   if (!session) return;
+  const originalStatus = session.status;
+  const originalError = session.error;
+  const resetStatus = originalStatus === 'processing' ? 'pending_transcription' : originalStatus;
+
+  if (shuttingDown) {
+    if (originalStatus === 'processing') {
+      updateSession(sessionId, { status: resetStatus, error: null });
+      emitSessionsUpdated();
+    }
+    clearTranscriptionProgress(sessionId);
+    return;
+  }
 
   updateSession(sessionId, { status: 'processing', error: null });
   emitSessionsUpdated();
@@ -308,7 +313,7 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
       updateFile(file.id, { transcriptPath: file.transcriptPath });
     }
 
-    if (result.transcript) {
+    if (result.transcript !== null) {
       updateSession(sessionId, { status: 'completed', transcript: result.transcript });
     } else {
       updateSession(sessionId, {
@@ -319,7 +324,7 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
     emitSessionsUpdated();
   } catch (err) {
     if (shuttingDown) {
-      updateSession(sessionId, { status: 'pending_transcription', error: null });
+      updateSession(sessionId, { status: resetStatus, error: originalError });
     } else {
       const message = err instanceof Error ? err.message : String(err);
       updateSession(sessionId, { status: 'error', error: `Transkription fehlgeschlagen: ${message}` });
