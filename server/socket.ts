@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io';
-import type { ClientToServerEvents, ServerToClientEvents, User } from '../shared/types.js';
+import type { BingoGame, ClientToServerEvents, ServerToClientEvents, User } from '../shared/types.js';
 import { getToken, verifyToken } from './auth.js';
 import {
   addTask,
@@ -20,25 +20,25 @@ import {
 } from './game.js';
 import { findUserById } from './users.js';
 
+export function getGameForUser(user: User): BingoGame {
+  const current = getGame();
+  if (user.isAdmin) return current;
+  return { ...current, tasks: current.tasks.filter((t) => !t.isPrivate || t.assignedTo?.includes(user.id)) };
+}
+
+export function broadcastGameState(io: Server<ClientToServerEvents, ServerToClientEvents>): void {
+  for (const socket of io.sockets.sockets.values()) {
+    const socketUser = (socket as any).user as User | undefined;
+    if (!socketUser) continue;
+    socket.emit('state', getGameForUser(socketUser));
+  }
+}
+
 export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvents>) {
   const socketPlayerMap = new Map<string, string>();
 
-  function getGameForUser(user: User) {
-    const current = getGame();
-    if (user.isAdmin) return current;
-    return { ...current, tasks: current.tasks.filter((t) => !t.isPrivate || t.assignedTo?.includes(user.id)) };
-  }
-
   function broadcastState() {
-    const current = getGame();
-    for (const socket of io.sockets.sockets.values()) {
-      const socketUser = (socket as any).user as User | undefined;
-      if (!socketUser) continue;
-      socket.emit(
-        'state',
-        socketUser.isAdmin ? current : { ...current, tasks: current.tasks.filter((t) => !t.isPrivate || t.assignedTo?.includes(socketUser.id)) },
-      );
-    }
+    broadcastGameState(io);
   }
 
   io.use((socket, next) => {

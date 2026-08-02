@@ -11,7 +11,18 @@
 7. **Bingo:** Once a row, column or diagonal is fully confirmed the player wins. A `bingo` event is emitted with the player name.
 8. **New round:** Admin can end and reset the game (`resetGame`); tasks are kept, boards are cleared.
 
-### Important Socket.io Events
+## Bingo AI Suggestions
+
+When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps a pre-generated pool of bingo task suggestions.
+
+- The pool is maintained in the background and refilled when it drops below `BINGO_SUGGESTION_THRESHOLD` (default: 5).
+- Suggestions are generated from world context: entities (people, organizations, places) with summaries and knowledge, and the current bingo task pool.
+- During setup, a right-hand panel shows the pending suggestions. Users can accept a suggestion to add it as a public task or reject it to remove it.
+- Accepting a suggestion adds the task to the game, removes the suggestion, and broadcasts the updated game state via Socket.io.
+- The pool is filled on startup and checked every minute, so suggestions are usually available without waiting.
+- Suggestions use the `AI_CHEAP_MODEL` if set, otherwise `AI_MODEL`.
+
+## Important Socket.io Events
 
 **Server → Client (`ServerToClientEvents`):**
 

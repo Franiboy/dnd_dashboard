@@ -374,6 +374,33 @@ const migrations: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_logs_level_id ON logs (level, id);`);
     },
   },
+  {
+    name: 'create_bingo_suggestions_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS bingo_suggestions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          text TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'ai',
+          created_at TEXT NOT NULL
+        );
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_bingo_suggestions_created_at ON bingo_suggestions (created_at);`);
+    },
+  },
+  {
+    name: 'add_bingo_suggestion_status_columns',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(bingo_suggestions)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'accepted_at')) {
+        db.exec('ALTER TABLE bingo_suggestions ADD COLUMN accepted_at TEXT');
+      }
+      if (!columns.some((c) => c.name === 'rejected_at')) {
+        db.exec('ALTER TABLE bingo_suggestions ADD COLUMN rejected_at TEXT');
+      }
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_bingo_suggestions_status ON bingo_suggestions (accepted_at, rejected_at, created_at);`);
+    },
+  },
 ];
 
 export function runMigrations() {

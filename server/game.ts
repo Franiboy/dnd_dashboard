@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'crypto';
-import type { BingoGame, Cell, Player } from '../shared/types.js';
+import type { BingoGame, Cell, Player, Task } from '../shared/types.js';
 import { loadGame, saveGame } from './repositories/games.js';
 import { runMigrations } from './migrations.js';
 
@@ -61,16 +61,17 @@ function isValidBoard(board: Cell[][], size: number, userId?: string): boolean {
 export function addTask(
   text: string,
   { isPrivate = false, assignedTo = [] }: { isPrivate?: boolean; assignedTo?: string[] } = {},
-): BingoGame {
-  game.tasks.push({
+): Task {
+  const task: Task = {
     id: createId(),
     text: text.trim(),
     createdAt: new Date().toISOString(),
     isPrivate,
     assignedTo,
-  });
+  };
+  game.tasks.push(task);
   persist();
-  return game;
+  return task;
 }
 
 export function updateTask(
