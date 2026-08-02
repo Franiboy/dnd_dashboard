@@ -2,7 +2,7 @@
 
 - New users must be approved by an admin before they can log in.
 - The Bingo name is automatically taken from the account display name (`displayName`).
-- Display-name changes are updated on the next Discord login via `updateDiscordProfile` in `server/users.ts`. A separate profile update (`PUT /api/me`) is currently not implemented.
+- Display-name and avatar changes are updated on the next scheduled Discord token refresh or the next Discord login via `updateDiscordProfile` in `server/users.ts`. A separate profile update (`PUT /api/me`) is currently not implemented.
 - `Ctrl+C` in `npm run dev` stops both processes; for stuck processes use `lsof -i :3001` / `lsof -i :5173` and `kill -9 <PID>`.
 - A rejected (`isApproved = false`) Discord user can log in again after approval without being recreated.
 - `ensureAdminUser()` does not start if `ADMIN_PASSWORD` is missing.

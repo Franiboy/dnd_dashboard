@@ -25,12 +25,11 @@ function playBingoSound() {
 }
 
 interface BingoProps {
-  token: string | null;
   user: SafeUser | null;
 }
 
-export function Bingo({ token, user }: BingoProps) {
-  const { game, socket, playerId, bingo } = useSocket(token, user);
+export function Bingo({ user }: BingoProps) {
+  const { game, socket, playerId, bingo } = useSocket(user);
 
   useEffect(() => {
     if (bingo) playBingoSound();

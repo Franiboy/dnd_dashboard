@@ -9,7 +9,8 @@ This document describes the high-level structure of the D&D Dashboard.
 | `server/index.ts` | Express and Socket.io setup, router mounting, shutdown handler, scheduler/bot startup |
 | `server/auth.ts` | JWT creation/validation, auth middleware, admin middleware, rate limiting |
 | `server/database.ts` | Central `better-sqlite3` connection (`dnd.db`) with WAL and foreign keys |
-| `server/users.ts` | SQLite user management, password hashing, account lockout, Discord profile updates |
+| `server/encryption.ts` | Symmetric encryption helpers for sensitive tokens (AES-256-GCM) |
+| `server/users.ts` | SQLite user management, password hashing, account lockout, Discord profile and encrypted token storage |
 | `server/migrations.ts` | Database schema migrations on startup |
 | `server/logger.ts` | Centralized, categorized logger with in-memory buffer and SSE subscription |
 | `server/version.ts` | Returns active feature flags (`aiEnabled`, `recordingEnabled`) |
@@ -58,6 +59,8 @@ This document describes the high-level structure of the D&D Dashboard.
 | `discord/recorder.ts` | Records Discord audio and stores PCM files |
 | `discord/transcriber.ts` | Runs Whisper transcription |
 | `discord/scheduler.ts` | Processes pending transcriptions |
+| `discord/oauth.ts` | Discord OAuth2 token exchange, refresh and profile sync |
+| `scheduler/discordTokenRefresh.ts` | Periodic refresh of stored Discord OAuth tokens |
 | `discord/audio.ts` / `files.ts` / `recordingsEvents.ts` | Audio processing, file management, events |
 
 ## Frontend (`src/`)
