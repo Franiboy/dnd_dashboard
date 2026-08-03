@@ -125,6 +125,8 @@ export interface RecordingSession {
   error: string | null;
   trimStartSeconds: number | null;
   trimEndSeconds: number | null;
+  transcribedTrimStartSeconds: number | null;
+  transcribedTrimEndSeconds: number | null;
   hasWavFiles?: boolean;
   files?: RecordingFile[];
 }
