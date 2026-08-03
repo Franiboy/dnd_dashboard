@@ -1,5 +1,6 @@
 import type { EntityKnowledgeEntry, EntityType } from '../../shared/types.js';
 import { db } from '../database.js';
+import { sanitizePlainText } from '../utils/sanitizeHtml.js';
 import { markEntitySummaryDirty, renameEntitySummary } from './entitySummaries.js';
 
 const selectColumns = `id, entity_type AS entityType, entity_name AS entityName, title, content, source, status, status_reason AS statusReason, created_at AS createdAt, updated_at AS updatedAt`;
@@ -67,8 +68,8 @@ export function createEntityKnowledge(
     .run(
       entityType,
       entityName,
-      title ? title.trim() : null,
-      content.trim(),
+      title ? sanitizePlainText(title) : null,
+      sanitizePlainText(content),
       source,
       'active',
       null,
@@ -92,11 +93,11 @@ export function updateEntityKnowledge(
 
   if (updates.title !== undefined) {
     fields.push('title = ?');
-    values.push(updates.title ? updates.title.trim() : null);
+    values.push(updates.title ? sanitizePlainText(updates.title) : null);
   }
   if (updates.content !== undefined) {
     fields.push('content = ?');
-    values.push(updates.content.trim());
+    values.push(sanitizePlainText(updates.content));
   }
   if (fields.length === 0) return existing;
 

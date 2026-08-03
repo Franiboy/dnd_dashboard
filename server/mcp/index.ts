@@ -29,7 +29,9 @@ import {
 import { getEntitySummary, setEntitySummary } from '../repositories/entitySummaries.js';
 import { writeRewrittenFile } from '../diaryFiles.js';
 import { normalizeToHtml } from '../ai/rewrite.js';
+import { sanitizeHtml } from '../utils/sanitizeHtml.js';
 import { verifyMcpSessionToken, type McpScope } from './tokens.js';
+import type { DiaryEntry } from '../../shared/types.js';
 
 const log = createLogger('mcp-server');
 
@@ -67,6 +69,25 @@ function error(message: string): { content: Array<{ type: 'text'; text: string }
   return { content: [{ type: 'text', text: message }], isError: true };
 }
 
+const sessionUserId = payload?.userId ?? null;
+const sessionIsAdmin = payload?.isAdmin ?? false;
+
+function canAccessDiaryEntry(entry: DiaryEntry | null): boolean {
+  if (!entry) return false;
+  if (!sessionUserId) return false;
+  if (sessionIsAdmin) return true;
+  return entry.userId === sessionUserId;
+}
+
+function getDiaryEntryWithAccess(entryId: number): DiaryEntry | null {
+  const entry = getDiaryEntryById(entryId);
+  return canAccessDiaryEntry(entry) ? entry : null;
+}
+
+function diaryAccessError(): ReturnType<typeof error> {
+  return error('Zugriff auf den Tagebucheintrag verweigert');
+}
+
 if (requireScope('diary:summarize')) {
   server.tool(
     'set_diary_summary',
@@ -77,6 +98,8 @@ if (requireScope('diary:summarize')) {
     },
     async ({ entryId, summary }) => {
       try {
+        const entry = getDiaryEntryWithAccess(entryId);
+        if (!entry) return diaryAccessError();
         updateDiaryEntry(entryId, { summary: summary.trim() });
         return success(`Zusammenfassung für Eintrag ${entryId} gesetzt.`);
       } catch (err) {
@@ -96,7 +119,9 @@ if (requireScope('diary:rewrite')) {
     },
     async ({ entryId, html }) => {
       try {
-        writeRewrittenFile(entryId, normalizeToHtml(html));
+        const entry = getDiaryEntryWithAccess(entryId);
+        if (!entry) return diaryAccessError();
+        writeRewrittenFile(entryId, normalizeToHtml(sanitizeHtml(html)));
         return success(`Rewrite für Eintrag ${entryId} gespeichert.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Speichern des Rewrites');
@@ -116,6 +141,8 @@ if (requireScope('entity:extract')) {
     },
     async ({ entryId, type, name }) => {
       try {
+        const entry = getDiaryEntryWithAccess(entryId);
+        if (!entry) return diaryAccessError();
         const canonical = ensureEntityExists(type, name);
         const current = getEntryEntities(entryId);
         const existing = new Set<string>(current[type]);
@@ -203,8 +230,8 @@ if (requireScope('diary:read')) {
     },
     async ({ entryId }) => {
       try {
-        const entry = getDiaryEntryById(entryId);
-        if (!entry) return error('Tagebucheintrag nicht gefunden');
+        const entry = getDiaryEntryWithAccess(entryId);
+        if (!entry) return diaryAccessError();
         const lines = [
           `ID: ${entry.id}`,
           `Titel: ${entry.title}`,
@@ -233,7 +260,8 @@ if (requireScope('diary:read')) {
     },
     async ({ query, limit }) => {
       try {
-        const entries = searchDiaryEntries(query, limit ?? 5);
+        if (!sessionUserId) return error('Kein Benutzerkontext vorhanden');
+        const entries = searchDiaryEntries(query, sessionIsAdmin ? undefined : sessionUserId, limit ?? 5);
         if (entries.length === 0) return success('Keine Tagebucheinträge gefunden.');
         const lines = entries.map((e) => {
           const plain = stripHtml(e.content);
@@ -255,8 +283,8 @@ if (requireScope('diary:read')) {
     },
     async ({ entryId, limit }) => {
       try {
-        const entry = getDiaryEntryById(entryId);
-        if (!entry) return error('Tagebucheintrag nicht gefunden');
+        const entry = getDiaryEntryWithAccess(entryId);
+        if (!entry) return diaryAccessError();
         const entries = listPreviousDiaryEntriesByUser(entry.userId, entry.createdAt, limit ?? 3);
         if (entries.length === 0) return success('Keine vorherigen Tagebucheinträge gefunden.');
         const lines = entries.map((e) => {
@@ -313,7 +341,10 @@ if (requireScope('entity:read')) {
         }
         const summary = getEntitySummary(type, canonical);
         const knowledge = listActiveEntityKnowledge(type, canonical);
-        const diaryEntries = includeDiaryEntries !== false ? listDiaryEntryContentsByEntity(type, canonical) : [];
+        const diaryEntries =
+          includeDiaryEntries !== false
+            ? listDiaryEntryContentsByEntity(type, canonical, sessionIsAdmin ? undefined : sessionUserId ?? undefined)
+            : [];
 
         const lines: string[] = [`Entität: ${canonical} (${type})`];
         lines.push(`Zusammenfassung: ${summary?.summary ?? '-'}`);

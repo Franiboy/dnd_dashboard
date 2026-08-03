@@ -62,7 +62,7 @@ function getCorsOrigin(): string[] | boolean {
 const corsOrigin = getCorsOrigin();
 
 const app = express();
-app.set('trust proxy', 1);
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1');
 const http = createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
   cors: { origin: corsOrigin, credentials: true },
