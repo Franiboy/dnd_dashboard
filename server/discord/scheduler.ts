@@ -54,11 +54,6 @@ export function startTranscriptionScheduler(): void {
     return;
   }
 
-  // Process any backlog immediately on startup.
-  processPendingTranscriptions().catch((err) => {
-    log.error('[transcription scheduler] Initial backlog processing failed:', err);
-  });
-
   const delay = getDelayUntilNext2AM();
   const nextRun = new Date(Date.now() + delay).toISOString();
   log.info(`[transcription scheduler] Next run at ${nextRun}`);
