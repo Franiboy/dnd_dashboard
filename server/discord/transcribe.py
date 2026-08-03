@@ -6,8 +6,10 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import traceback
 import wave
+
 def emit(event: dict) -> None:
     print(json.dumps(event), flush=True)
 
@@ -84,16 +86,6 @@ def patch_model_decode(model) -> None:
         return original_decode(segment, *args, **kwargs)
 
     model.decode = patched_decode
-
-
-def compute_content_frames(wav_path: str) -> int:
-    try:
-        with wave.open(wav_path, "rb") as wf:
-            framerate = wf.getframerate() or 1
-            duration = wf.getnframes() / framerate
-        return max(0, int(duration * _FRAMES_PER_SECOND))
-    except Exception:
-        return 0
 
 
 def preprocess_audio(input_path: str) -> str:
@@ -210,6 +202,205 @@ def _write_segments(transcript_path: str, segments: list[dict]) -> None:
         pass
 
 
+def _get_audio_duration(wav_path: str) -> float:
+    try:
+        with wave.open(wav_path, "rb") as wf:
+            return wf.getnframes() / max(1, wf.getframerate())
+    except Exception:
+        return 0.0
+
+
+def _detect_silence(
+    input_path: str,
+    noise_db: float,
+    min_duration: float,
+    errors: list[str],
+) -> list[tuple[float, float]] | None:
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", input_path,
+                "-af", f"silencedetect=noise={noise_db}dB:d={min_duration}",
+                "-f", "null", "-",
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        stderr = result.stderr or ""
+
+        if result.returncode != 0:
+            errors.append(f"VAD (silencedetect) failed for {os.path.basename(input_path)}: {stderr.strip()[:500]}")
+            return None
+
+        starts = [float(m) for m in re.findall(r"silence_start:\s*([\d.]+)", stderr)]
+        ends = [float(m) for m in re.findall(r"silence_end:\s*([\d.]+)", stderr)]
+        duration = _get_audio_duration(input_path)
+
+        intervals: list[tuple[float, float]] = []
+        for i, start in enumerate(starts):
+            end = ends[i] if i < len(ends) else duration
+            if end > start:
+                intervals.append((start, end))
+        return intervals
+    except Exception as e:
+        errors.append(f"VAD (silencedetect) error for {os.path.basename(input_path)}: {e}")
+        return None
+
+
+def _compute_speech_intervals(
+    input_path: str,
+    silence_intervals: list[tuple[float, float]] | None,
+    min_speech_duration: float,
+    gap_merge: float,
+) -> list[tuple[float, float]]:
+    duration = _get_audio_duration(input_path)
+    if duration <= 0:
+        return []
+
+    if silence_intervals is None or not silence_intervals:
+        return [(0.0, duration)] if duration >= min_speech_duration else []
+
+    silence = sorted(silence_intervals)
+    speech: list[tuple[float, float]] = []
+    cursor = 0.0
+    for s, e in silence:
+        if s > cursor:
+            speech.append((cursor, min(s, duration)))
+        cursor = max(cursor, e)
+    if cursor < duration:
+        speech.append((cursor, duration))
+
+    if gap_merge > 0 and len(speech) > 1:
+        merged: list[tuple[float, float]] = [speech[0]]
+        for s, e in speech[1:]:
+            prev_s, prev_e = merged[-1]
+            if s - prev_e <= gap_merge:
+                merged[-1] = (prev_s, e)
+            else:
+                merged.append((s, e))
+        speech = merged
+
+    return [(s, e) for s, e in speech if (e - s) >= min_speech_duration]
+
+
+def _extract_audio_segment(input_path: str, output_path: str, start: float, end: float) -> None:
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-i", input_path,
+            "-ss", str(start), "-to", str(end),
+            "-ar", "16000", "-ac", "1", "-sample_fmt", "s16",
+            output_path,
+        ],
+        capture_output=True, check=True,
+    )
+
+
+def _is_likely_hallucination(seg: dict, no_speech_prob_threshold: float) -> bool:
+    text = str(seg.get("text", "")).strip()
+    if not text:
+        return True
+
+    no_speech_prob = float(seg.get("no_speech_prob", 0.0))
+    avg_logprob = float(seg.get("avg_logprob", 0.0))
+    word_count = len(text.split())
+
+    # Very short, low-confidence segments that Whisper invented during silence.
+    if word_count <= 2 and no_speech_prob > no_speech_prob_threshold:
+        return True
+    if word_count <= 2 and avg_logprob < -1.0:
+        return True
+
+    return False
+
+
+def _transcribe_file(
+    model,
+    audio_path: str,
+    display_name: str,
+    args: argparse.Namespace,
+) -> tuple[list[dict], list[str]]:
+    errors: list[str] = []
+    silence_intervals = _detect_silence(
+        audio_path,
+        noise_db=args.vad_noise_db,
+        min_duration=args.vad_min_silence,
+        errors=errors,
+    )
+    speech_intervals = _compute_speech_intervals(
+        audio_path,
+        silence_intervals,
+        min_speech_duration=args.vad_min_speech,
+        gap_merge=args.vad_gap_merge,
+    )
+
+    if not speech_intervals:
+        return [], errors
+
+    total_frames = sum(int((end - start) * _FRAMES_PER_SECOND) for start, end in speech_intervals)
+    _progress.reset(total_frames)
+
+    file_segments: list[dict] = []
+    duration = _get_audio_duration(audio_path)
+
+    # If the whole file is one continuous speech segment (e.g. VAD disabled or
+    # ffmpeg unavailable), transcribe it directly without re-encoding.
+    direct_transcribe = (
+        len(speech_intervals) == 1
+        and abs(speech_intervals[0][0] - 0.0) < 0.01
+        and abs(speech_intervals[0][1] - duration) < 0.01
+    )
+
+    with tempfile.TemporaryDirectory(prefix="whisper_chunks_") as tmpdir:
+        for i, (start, end) in enumerate(speech_intervals):
+            chunk_path = os.path.join(tmpdir, f"chunk_{i:04d}.wav")
+            try:
+                if direct_transcribe:
+                    chunk_path = audio_path
+                else:
+                    _extract_audio_segment(audio_path, chunk_path, start, end)
+            except FileNotFoundError as e:
+                errors.append(f"Chunk {i} for {display_name}: ffmpeg not found ({e})")
+                continue
+            except subprocess.CalledProcessError as e:
+                stderr = e.stderr.decode("utf-8", errors="ignore") if isinstance(e.stderr, bytes) else str(e.stderr or "")
+                errors.append(f"Chunk {i} for {display_name}: ffmpeg extraction failed: {stderr.strip()[:500]}")
+                continue
+
+            try:
+                result = model.transcribe(
+                    chunk_path,
+                    language=args.language,
+                    fp16=args.fp16,
+                    verbose=False,
+                    temperature=0.0,
+                    compression_ratio_threshold=1.8,
+                    logprob_threshold=-0.9,
+                    no_speech_threshold=0.6,
+                    condition_on_previous_text=False,
+                    initial_prompt=args.initial_prompt,
+                    beam_size=5,
+                    best_of=5,
+                    patience=1.0,
+                )
+
+                for seg in result.get("segments", []):
+                    rel_start = float(seg.get("start", 0.0))
+                    rel_end = float(seg.get("end", 0.0))
+                    seg["start"] = start + rel_start
+                    seg["end"] = min(end, start + rel_end)
+                    seg["speaker"] = display_name
+
+                    if _is_likely_hallucination(seg, args.filter_no_speech_prob):
+                        continue
+
+                    file_segments.append(seg)
+            except Exception as e:
+                errors.append(f"Chunk {i} for {display_name}: Whisper transcription failed: {e}")
+                continue
+
+    file_segments.sort(key=lambda s: float(s["start"]))
+    return file_segments, errors
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="base")
@@ -222,6 +413,11 @@ def main() -> None:
     parser.add_argument("--completed-files", default="[]", help="JSON array of already completed {id, userId, wavPath, displayName, transcriptPath}")
     parser.add_argument("--initial-prompt", default=None)
     parser.add_argument("--noise-reduce", type=lambda x: x.lower() == "true", default=True)
+    parser.add_argument("--vad-noise-db", type=float, default=-40.0)
+    parser.add_argument("--vad-min-silence", type=float, default=0.5)
+    parser.add_argument("--vad-min-speech", type=float, default=0.3)
+    parser.add_argument("--vad-gap-merge", type=float, default=0.0)
+    parser.add_argument("--filter-no-speech-prob", type=float, default=0.9)
     args = parser.parse_args()
 
     patch_tqdm()
@@ -292,33 +488,21 @@ def main() -> None:
         if args.noise_reduce:
             audio_path = preprocess_audio(wav_path)
 
-        _progress.reset(compute_content_frames(audio_path))
-
         try:
-            result = model.transcribe(
-                audio_path,
-                language=args.language,
-                fp16=args.fp16,
-                verbose=False,
-                temperature=0.0,
-                compression_ratio_threshold=2.0,
-                logprob_threshold=-1.0,
-                no_speech_threshold=0.4,
-                condition_on_previous_text=False,
-                initial_prompt=args.initial_prompt,
-                beam_size=5,
-                best_of=5,
-                patience=1.0,
-            )
+            file_segments, file_errors = _transcribe_file(model, audio_path, display_name, args)
+            for error in file_errors:
+                errors.append(f"{display_name}: {error}")
+                emit({"type": "file_error", "index": i, "error": error})
 
-            file_segments = []
-            for seg in result.get("segments", []):
+            if not file_segments:
+                # Fall back to a single empty transcript file so the file is marked as completed.
+                file_segments = []
+
+            for seg in file_segments:
                 if seg["end"] <= trim_start or seg["start"] >= trim_end:
                     continue
                 seg["start"] = max(seg["start"], trim_start)
                 seg["end"] = min(seg["end"], trim_end)
-                seg["speaker"] = display_name
-                file_segments.append(seg)
                 all_segments.append(seg)
 
             speaker_lines = [

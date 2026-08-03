@@ -91,6 +91,7 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 - The bot joins a voice channel and records each speaker as a separate PCM file.
 - Recordings are stored in the `recordings/` directory.
 - A scheduler (`server/discord/scheduler.ts`) transcribes finished recordings with OpenAI Whisper.
+- Before transcription, long silent sections are detected and removed with ffmpeg VAD so Whisper only processes actual speech, which reduces repeated hallucinations.
 - Transcripts can be trimmed and saved as text.
 - Recordings are only visible to admins.
 - On startup, interrupted recordings and transcriptions are recovered and resumed automatically. Segment metadata is persisted alongside each PCM file so recovered WAVs keep their original timing/gaps.
