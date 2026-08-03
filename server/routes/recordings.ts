@@ -201,6 +201,8 @@ router.post('/:id/trim-transcript', async (req, res) => {
     transcript: newTranscript,
     trimStartSeconds: startSeconds !== undefined ? startSeconds : session.trimStartSeconds,
     trimEndSeconds: endSeconds !== undefined ? endSeconds : session.trimEndSeconds,
+    transcribedTrimStartSeconds: startSeconds !== undefined ? startSeconds : session.transcribedTrimStartSeconds,
+    transcribedTrimEndSeconds: endSeconds !== undefined ? endSeconds : session.transcribedTrimEndSeconds,
   });
   emitSessionsUpdated();
 
@@ -224,9 +226,6 @@ router.post('/:id/transcribe', (req, res) => {
     res.status(400).json({ error: 'Keine Audio-Dateien für diese Session vorhanden' });
     return;
   }
-
-  updateSession(id, { trimStartSeconds: null, trimEndSeconds: null });
-  emitSessionsUpdated();
 
   runTranscription(id, files).catch((err) => {
     log.error(`Manual transcription failed for session ${id}:`, err);

@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import traceback
@@ -112,6 +115,101 @@ def preprocess_audio(input_path: str) -> str:
         return input_path
 
 
+def _get_segments_path(transcript_path: str) -> str:
+    return transcript_path.replace(".txt", ".segments.json")
+
+
+def _parse_timestamp_to_seconds(ts: str) -> float | None:
+    parts = ts.split(":")
+    if len(parts) == 2:
+        return int(parts[0]) * 60 + int(parts[1])
+    if len(parts) == 3:
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    return None
+
+
+def _parse_transcript_txt(transcript_path: str, display_name: str, trim_start: float, trim_end: float) -> list[dict] | None:
+    try:
+        with open(transcript_path, "r", encoding="utf-8") as f:
+            lines = [line.rstrip("\n") for line in f if line.strip()]
+    except Exception:
+        return None
+
+    parsed: list[tuple[float, str]] = []
+    for line in lines:
+        match = re.match(r"^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*(.*)$", line)
+        if not match:
+            continue
+        ts, text = match.groups()
+        seconds = _parse_timestamp_to_seconds(ts)
+        if seconds is None:
+            continue
+        parsed.append((seconds, text))
+
+    if not parsed:
+        return None
+
+    segments = []
+    for i, (start, text) in enumerate(parsed):
+        if start < trim_start or start >= trim_end:
+            continue
+        next_start = parsed[i + 1][0] if i + 1 < len(parsed) else start + 2.0
+        end = min(next_start, trim_end)
+        segments.append({
+            "start": max(start, trim_start),
+            "end": end,
+            "text": text,
+            "speaker": display_name,
+        })
+    return segments if segments else None
+
+
+def _load_completed_segments(transcript_path: str, display_name: str, trim_start: float, trim_end: float) -> list[dict] | None:
+    segments_path = _get_segments_path(transcript_path)
+    try:
+        if os.path.exists(segments_path) and os.path.getsize(segments_path) > 0:
+            with open(segments_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list) and data:
+                segments = []
+                for seg in data:
+                    if not isinstance(seg, dict):
+                        continue
+                    start = float(seg.get("start", 0))
+                    end = float(seg.get("end", 0))
+                    text = str(seg.get("text", ""))
+                    speaker = str(seg.get("speaker", display_name))
+                    if end <= trim_start or start >= trim_end:
+                        continue
+                    segments.append({
+                        "start": max(start, trim_start),
+                        "end": min(end, trim_end),
+                        "text": text,
+                        "speaker": display_name if display_name else speaker,
+                    })
+                if segments:
+                    return segments
+    except Exception:
+        pass
+
+    try:
+        if os.path.exists(transcript_path) and os.path.getsize(transcript_path) > 0:
+            return _parse_transcript_txt(transcript_path, display_name, trim_start, trim_end)
+    except Exception:
+        pass
+
+    return None
+
+
+def _write_segments(transcript_path: str, segments: list[dict]) -> None:
+    try:
+        segments_path = _get_segments_path(transcript_path)
+        with open(segments_path, "w", encoding="utf-8") as f:
+            json.dump(segments, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="base")
@@ -121,6 +219,7 @@ def main() -> None:
     parser.add_argument("--trim-end", type=float, default=None)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--files", required=True, help="JSON array of {id, userId, wavPath, displayName}")
+    parser.add_argument("--completed-files", default="[]", help="JSON array of already completed {id, userId, wavPath, displayName, transcriptPath}")
     parser.add_argument("--initial-prompt", default=None)
     parser.add_argument("--noise-reduce", type=lambda x: x.lower() == "true", default=True)
     args = parser.parse_args()
@@ -139,6 +238,14 @@ def main() -> None:
     except json.JSONDecodeError as e:
         emit({"type": "error", "error": f"Invalid files JSON: {e}"})
         sys.exit(1)
+
+    try:
+        completed_files_arg = json.loads(args.completed_files) if args.completed_files else []
+    except json.JSONDecodeError as e:
+        emit({"type": "error", "error": f"Invalid completed files JSON: {e}"})
+        sys.exit(1)
+
+    completed_by_id = {str(item.get("id")): item for item in completed_files_arg if item.get("id") is not None}
 
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
@@ -166,6 +273,20 @@ def main() -> None:
         display_name = file_info.get("displayName", f"Speaker {i + 1}")
 
         emit({"type": "file_start", "index": i, "total": len(files), "name": display_name})
+
+        completed_info = completed_by_id.get(str(file_id))
+        loaded_segments = None
+        if completed_info and completed_info.get("transcriptPath"):
+            loaded_segments = _load_completed_segments(
+                completed_info["transcriptPath"], display_name, trim_start, trim_end
+            )
+
+        if loaded_segments:
+            transcript_path = completed_info["transcriptPath"]
+            all_segments.extend(loaded_segments)
+            completed_files.append({"id": file_id, "userId": user_id, "transcriptPath": transcript_path})
+            emit({"type": "file_complete", "index": i, "id": file_id, "userId": user_id, "transcriptPath": transcript_path})
+            continue
 
         audio_path = wav_path
         if args.noise_reduce:
@@ -207,6 +328,8 @@ def main() -> None:
             transcript_path = os.path.join(output_dir, f"speaker-{user_id}.txt")
             with open(transcript_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(speaker_lines))
+
+            _write_segments(transcript_path, file_segments)
 
             completed_files.append({"id": file_id, "userId": user_id, "transcriptPath": transcript_path})
             emit({"type": "file_complete", "index": i, "id": file_id, "userId": user_id, "transcriptPath": transcript_path})
