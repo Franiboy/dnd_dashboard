@@ -70,7 +70,7 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
   );
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr_320px] xl:grid-rows-1 gap-4 flex-1 min-h-0">
+    <div className="grid grid-cols-1 xl:grid-cols-[260px_minmax(420px,1fr)_minmax(420px,1.5fr)] xl:grid-rows-1 gap-4 flex-1 min-h-0">
       <div className="flex flex-col gap-4 min-h-0">
         <Panel title="Spieler" className="flex-1 min-h-0">
           <PlayerList game={game} playerId={playerId} />
@@ -144,6 +144,7 @@ export function BingoDashboard({ game, socket, playerId, player, user, isAdmin, 
                 socket={socket}
                 isSetup={isSetup}
                 currentUser={user}
+                playerId={playerId}
                 className="h-full flex flex-col"
                 listClassName="flex-1 min-h-0 overflow-auto"
               />
