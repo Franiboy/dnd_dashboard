@@ -156,28 +156,23 @@ function getBearerToken(req: Request): string | null {
   return value.replace(/^Bearer\s+/i, '');
 }
 
-export function getToken(req: Request): string | null {
-  const candidates = [...getCookieTokens(req)];
+export function getAuthenticatedUser(req: Request, extraTokens: string[] = []): User | null {
+  const candidates = [...extraTokens, ...getCookieTokens(req)];
   const bearer = getBearerToken(req);
   if (bearer) candidates.push(bearer);
 
   for (const token of candidates) {
     const payload = verifyToken(token);
-    if (payload && findUserById(payload.userId)) {
-      return token;
+    if (payload) {
+      const user = findUserById(payload.userId);
+      if (user) return user;
     }
   }
   return null;
 }
 
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
-  const token = getToken(req);
-  if (!token) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const payload = verifyToken(token);
-  const user = payload ? findUserById(payload.userId) : null;
+  const user = getAuthenticatedUser(req);
   if (!user) {
     res.status(401).json({ error: 'Unauthorized' });
     return;

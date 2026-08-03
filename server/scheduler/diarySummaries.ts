@@ -17,7 +17,7 @@ async function processDirtyDiaryEntries() {
   log.info(`Processing ${dirty.length} dirty diary entries`);
   for (const entry of dirty) {
     try {
-      await processDiaryEntryAi(entry.id);
+      await processDiaryEntryAi(entry.id, { id: entry.userId });
     } catch (err) {
       log.warn(`Failed to process diary entry ${entry.id}: ${err}`);
     }

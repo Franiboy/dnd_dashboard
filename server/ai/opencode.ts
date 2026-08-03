@@ -1,6 +1,6 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createLogger } from '../logger.js';
-import { createMcpSessionToken, type McpScope } from '../mcp/tokens.js';
+import { createMcpSessionToken, type McpScope, type McpSessionUser } from '../mcp/tokens.js';
 
 const log = createLogger('opencode');
 
@@ -25,6 +25,7 @@ export interface OpenCodeOptions {
   title?: string;
   sessionId?: string;
   scopes?: McpScope[];
+  user?: McpSessionUser;
   onLog?: (line: string) => void;
 }
 
@@ -42,14 +43,15 @@ export function runOpenCode({
   title,
   sessionId,
   scopes,
+  user,
   onLog,
 }: OpenCodeOptions): Promise<OpenCodeResult> {
   const bin = getOpenCodeBin();
   const args = ['run'];
 
-  const mcpToken = scopes && scopes.length > 0 ? createMcpSessionToken(scopes) : undefined;
+  const mcpToken = scopes && scopes.length > 0 ? createMcpSessionToken(scopes, user) : undefined;
   if (mcpToken) {
-    log.info(`Created MCP session token with scopes: ${scopes?.join(', ')}`);
+    log.info(`Created MCP session token with scopes: ${scopes?.join(', ')}${user ? `, user: ${user.id}` : ''}`);
   }
 
   if (sessionId) {
@@ -155,8 +157,7 @@ export async function deleteOpenCodeSession(sessionId: string): Promise<void> {
   const bin = getOpenCodeBin();
   log.info(`Deleting opencode session: ${sessionId}`);
   try {
-    const { execSync } = await import('node:child_process');
-    execSync(`${bin} session delete ${sessionId}`, {
+    execFileSync(bin, ['session', 'delete', sessionId], {
       encoding: 'utf-8',
       timeout: 30_000,
     });
@@ -176,8 +177,7 @@ export interface OpenCodeSession {
 export async function listOpenCodeSessions(): Promise<OpenCodeSession[]> {
   const bin = getOpenCodeBin();
   try {
-    const { execSync } = await import('node:child_process');
-    const output = execSync(`${bin} session list --format json`, {
+    const output = execFileSync(bin, ['session', 'list', '--format', 'json'], {
       encoding: 'utf-8',
       maxBuffer: 50 * 1024 * 1024,
     });

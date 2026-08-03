@@ -1,5 +1,6 @@
 import type { EntityType } from '../../shared/types.js';
 import { db } from '../database.js';
+import { sanitizePlainText } from '../utils/sanitizeHtml.js';
 
 export interface EntitySummary {
   entityType: EntityType;
@@ -53,8 +54,8 @@ export function setEntitySummary(
   ).run(
     entityType,
     entityName,
-    summary ? summary.trim() : null,
-    miniSummary !== undefined ? (miniSummary ? miniSummary.trim() : null) : null,
+    summary ? sanitizePlainText(summary) : null,
+    miniSummary !== undefined ? (miniSummary ? sanitizePlainText(miniSummary) : null) : null,
     isDirty ? 1 : 0,
     now,
   );

@@ -12,9 +12,16 @@ export type McpScope =
   | 'entity:summary'
   | 'knowledge:distribute';
 
+export interface McpSessionUser {
+  id: string;
+  isAdmin?: boolean;
+}
+
 export interface McpSessionTokenInput {
   sessionId: string;
   scopes: McpScope[];
+  userId?: string;
+  isAdmin?: boolean;
 }
 
 export interface McpSessionPayload extends McpSessionTokenInput {
@@ -30,17 +37,21 @@ function getSecret(): string {
   return secret;
 }
 
-export function createMcpSessionToken(scopes: McpScope[]): string {
+export function createMcpSessionToken(scopes: McpScope[], user?: McpSessionUser): string {
   const secret = getSecret();
   const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const payload: McpSessionTokenInput = { sessionId, scopes };
+  if (user) {
+    payload.userId = user.id;
+    payload.isAdmin = user.isAdmin ?? false;
+  }
   return jwt.sign(payload, secret, { expiresIn: '10m' });
 }
 
 export function verifyMcpSessionToken(token: string): McpSessionPayload | null {
   const secret = getSecret();
   try {
-    const decoded = jwt.verify(token, secret) as McpSessionPayload;
+    const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as McpSessionPayload;
     if (!Array.isArray(decoded.scopes)) {
       log.warn('MCP token has no scopes');
       return null;

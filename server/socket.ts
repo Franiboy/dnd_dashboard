@@ -1,6 +1,6 @@
 import type { Server } from 'socket.io';
 import type { BingoGame, ClientToServerEvents, ServerToClientEvents, User } from '../shared/types.js';
-import { getToken, verifyToken } from './auth.js';
+import { getAuthenticatedUser } from './auth.js';
 import {
   addTask,
   confirmTask,
@@ -18,7 +18,6 @@ import {
   updateBoard,
   updateTask,
 } from './game.js';
-import { findUserById } from './users.js';
 
 export function getGameForUser(user: User): BingoGame {
   const current = getGame();
@@ -42,11 +41,8 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
   }
 
   io.use((socket, next) => {
-    const token = socket.handshake.auth?.token || getToken(socket.handshake as any);
-    if (!token) return next(new Error('Unauthorized'));
-    const payload = verifyToken(token);
-    if (!payload) return next(new Error('Unauthorized'));
-    const user = findUserById(payload.userId);
+    const authToken = typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined;
+    const user = getAuthenticatedUser(socket.handshake as any, authToken ? [authToken] : []);
     if (!user || !user.isApproved) return next(new Error('Unauthorized'));
     (socket as any).user = user;
     next();
