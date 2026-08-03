@@ -20,6 +20,8 @@ data/diary
 *.db-*
 opencode.json
 .playwright-mcp/
+__pycache__/
+*.pyc
 
 # Editor directories and files
 .vscode/*

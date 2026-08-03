@@ -75,7 +75,7 @@ AI_MODEL=
 - `DISCORD_*` must be configured for Discord login.
 - `DISCORD_TOKEN_REFRESH_INTERVAL_MS` controls how often stored Discord OAuth tokens are refreshed and profile data is synced (default: 3600000, 1 hour).
 - `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` enable the recording bot.
-- `WHISPER_*` configure local transcription.
+- `WHISPER_*` configure local transcription. `WHISPER_VAD_*` tune the ffmpeg silence detector that removes long pauses before Whisper processes the audio, which greatly reduces repeated hallucinations.
 - `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `anthropic/claude-sonnet-4-20250514`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled.
 - `AI_CHEAP_MODEL` is used for short AI tasks (summaries, entities).
 - `AI_CHEAP_MODEL` is also used for bingo suggestion generation.

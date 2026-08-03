@@ -15,6 +15,18 @@ const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE || 'de';
 const WHISPER_FP16 = process.env.WHISPER_FP16 === 'true';
 const WHISPER_INITIAL_PROMPT = process.env.WHISPER_INITIAL_PROMPT || undefined;
 const WHISPER_NOISE_REDUCE = process.env.WHISPER_NOISE_REDUCE !== 'false';
+function envNumber(name: string, defaultValue: number): number {
+  const value = process.env[name];
+  if (value === undefined || value === '') return defaultValue;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? defaultValue : parsed;
+}
+
+const WHISPER_VAD_NOISE_DB = envNumber('WHISPER_VAD_NOISE_DB', -40);
+const WHISPER_VAD_MIN_SILENCE = envNumber('WHISPER_VAD_MIN_SILENCE', 0.5);
+const WHISPER_VAD_MIN_SPEECH = envNumber('WHISPER_VAD_MIN_SPEECH', 0.3);
+const WHISPER_VAD_GAP_MERGE = envNumber('WHISPER_VAD_GAP_MERGE', 0);
+const WHISPER_FILTER_NO_SPEECH_PROB = envNumber('WHISPER_FILTER_NO_SPEECH_PROB', 0.9);
 const MAX_STDERR_LENGTH = 5000;
 
 function appendStderr(buffer: string, chunk: string, maxLength: number): string {
@@ -251,6 +263,16 @@ function runTranscriptionScript(
     completedFilesArg,
     '--noise-reduce',
     String(WHISPER_NOISE_REDUCE),
+    '--vad-noise-db',
+    String(WHISPER_VAD_NOISE_DB),
+    '--vad-min-silence',
+    String(WHISPER_VAD_MIN_SILENCE),
+    '--vad-min-speech',
+    String(WHISPER_VAD_MIN_SPEECH),
+    '--vad-gap-merge',
+    String(WHISPER_VAD_GAP_MERGE),
+    '--filter-no-speech-prob',
+    String(WHISPER_FILTER_NO_SPEECH_PROB),
   ];
 
   if (trimEnd !== Infinity) {
@@ -298,6 +320,8 @@ function runTranscriptionScript(
           });
         } else if (event.type === 'file_complete') {
           updateFile(event.id, { transcriptPath: event.transcriptPath });
+        } else if (event.type === 'file_error') {
+          log.error(`Transcription error for file ${currentFileIndex} (${currentFileName}): ${event.error}`);
         } else if (event.type === 'complete') {
           finalResult = {
             transcript: event.transcript,
@@ -395,6 +419,9 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
     }
 
     if (result.transcript !== null) {
+      if (result.errors.length > 0) {
+        log.warn(`Transcription session ${sessionId} completed with errors: ${result.errors.join('; ')}`);
+      }
       updateSession(sessionId, {
         status: 'completed',
         transcript: result.transcript,
