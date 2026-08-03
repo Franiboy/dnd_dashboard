@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
+import { useAuth } from '../hooks/useAuth';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
 import { EntityRichText } from '../components/EntityRichText';
-import { applyEntityHighlights, stripEntityBadges } from '../components/EntityQuillBlot';
+import { applyEntityHighlights } from '../components/EntityQuillBlot';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
@@ -14,6 +15,9 @@ import type { DiaryEntry, EntityType, VersionInfo } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 const SUMMARY_MAX_LENGTH = 500;
+const SERVER_SAVE_DELAY_MS = 1500;
+
+const DRAFT_KEY_PREFIX = 'diary-draft-';
 
 interface DiaryFormData {
   title: string;
@@ -37,6 +41,29 @@ function ensureHtml(text: string): string {
     .split(/\n\n+/)
     .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
     .join('');
+}
+
+function normalizeDraftHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  for (const span of Array.from(doc.querySelectorAll('span.ql-entity'))) {
+    const parent = span.parentNode;
+    if (!parent) continue;
+    while (span.firstChild) parent.insertBefore(span.firstChild, span);
+    parent.removeChild(span);
+  }
+  const textNodes: CharacterData[] = [];
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode as CharacterData);
+  }
+  for (const node of textNodes) {
+    node.data = node.data.replace(/[\p{Zs}]/gu, ' ');
+  }
+  return doc.body.innerHTML.trim();
+}
+
+function isEmptyHtml(html: string): boolean {
+  return !stripHtml(html).trim();
 }
 
 function createTableHtml(rows: number, cols: number): string {
@@ -139,9 +166,13 @@ function BadgeList({ items, variant }: BadgeListProps) {
 
 export function Diary() {
   const { request } = useApi();
+  const { user } = useAuth();
   const { mappings } = useEntityMappings();
   const { showSuccess, showError } = useError();
+  const draftKeyPrefix = user?.id ? `${DRAFT_KEY_PREFIX}${user.id}-` : DRAFT_KEY_PREFIX;
+  const getDraftKey = (entryId: number, kind: 'original' | 'rewritten') => `${draftKeyPrefix}${entryId}-${kind}`;
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
+  const entriesRef = useRef(entries);
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -150,10 +181,16 @@ export function Diary() {
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
-  const draftOriginalRef = useRef<Record<number, string>>({});
-  const draftRewrittenRef = useRef<Record<number, string>>({});
+  const [draftOriginal, setDraftOriginal] = useState<Record<number, { raw: string; normalized: string }>>({});
+  const [draftRewritten, setDraftRewritten] = useState<Record<number, { raw: string; normalized: string }>>({});
   const quillRefs = useRef<Record<number, ReactQuill>>({});
   const highlightTimeouts = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const autoSaveTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const serverSaveTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const draftRawRefs = useRef<{ original: Record<number, string>; rewritten: Record<number, string> }>({
+    original: {},
+    rewritten: {},
+  });
   const [editingTitleId, setEditingTitleId] = useState<number | null>(null);
   const [editingTitleText, setEditingTitleText] = useState('');
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null);
@@ -165,6 +202,53 @@ export function Diary() {
   const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [aiOperation, setAiOperation] = useState(false);
   const sseReadyRef = useRef(Promise.resolve());
+
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
+
+  useEffect(() => {
+    function flushServerSaves() {
+      for (const [id, raw] of Object.entries(draftRawRefs.current.original)) {
+        const content = normalizeDraftHtml(raw);
+        const current = entriesRef.current.find((e) => e.id === Number(id));
+        if (!current || content === normalizeDraftHtml(current.content) || isEmptyHtml(content)) continue;
+        try {
+          fetch(`/api/diary/entries/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: ensureHtml(content) }),
+            credentials: 'include',
+            keepalive: true,
+          });
+        } catch {
+          // Best-effort flush on page unload.
+        }
+      }
+    }
+
+    function savePendingDrafts() {
+      for (const kind of ['original', 'rewritten'] as const) {
+        for (const [id, raw] of Object.entries(draftRawRefs.current[kind])) {
+          const key = `${draftKeyPrefix}${id}-${kind}`;
+          if (isEmptyHtml(normalizeDraftHtml(raw))) {
+            localStorage.removeItem(key);
+          } else {
+            try {
+              localStorage.setItem(key, raw);
+            } catch {
+              // ignore quota errors
+            }
+          }
+        }
+      }
+      flushServerSaves();
+    }
+    window.addEventListener('beforeunload', savePendingDrafts);
+    return () => {
+      window.removeEventListener('beforeunload', savePendingDrafts);
+    };
+  }, [draftKeyPrefix]);
 
   const loadEntries = useCallback(async () => {
     const { data, error } = await request<{ entries: DiaryEntry[] }>('/api/diary/entries');
@@ -213,16 +297,17 @@ export function Diary() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      for (const entry of entries) {
-        if (!expandedIds.has(entry.id)) continue;
-        const reactQuill = quillRefs.current[entry.id];
+      for (const id of expandedIds) {
+        const entry = entriesRef.current.find((e) => e.id === id);
+        if (!entry) continue;
+        const reactQuill = quillRefs.current[id];
         if (!reactQuill) continue;
         const quill = reactQuill.getEditor();
         if (quill) applyEntityHighlights(quill, mappings);
       }
     }, 100);
     return () => clearTimeout(timer);
-  }, [entries, mappings, expandedIds]);
+  }, [mappings, expandedIds]);
 
 
   function resetForm() {
@@ -294,6 +379,10 @@ export function Diary() {
     setWorking(false);
     if (!error) {
       setEntries((prev) => prev.filter((e) => e.id !== id));
+      localStorage.removeItem(getDraftKey(id, 'original'));
+      localStorage.removeItem(getDraftKey(id, 'rewritten'));
+      delete draftRawRefs.current.original[id];
+      delete draftRawRefs.current.rewritten[id];
       showSuccess('Eintrag gelöscht.');
     }
   }
@@ -311,7 +400,7 @@ export function Diary() {
     setAiOperation(false);
     setProcessingRewriteId(null);
     if (data) {
-      cancelEntryEdit(entry);
+      cancelEntryEdit(entry, 'rewritten');
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
       setViewRewritten(entry.id, true);
       setAiStatus(null);
@@ -338,7 +427,7 @@ export function Diary() {
     setAiOperation(false);
     setProcessingCommandId(null);
     if (data) {
-      cancelEntryEdit(entry);
+      cancelEntryEdit(entry, 'rewritten');
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
       setViewRewritten(entry.id, true);
       setRewriteCommands((prev) => ({ ...prev, [entry.id]: '' }));
@@ -371,25 +460,84 @@ export function Diary() {
     }
   }
 
-  function hasDraft(entry: DiaryEntry): boolean {
+  function getEditingContent(entry: DiaryEntry): string {
     if (viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath) {
-      return draftRewrittenRef.current[entry.id] !== undefined && draftRewrittenRef.current[entry.id] !== (entry.rewrittenContent ?? '');
+      const raw = draftRewritten[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'rewritten'));
+      return raw ?? entry.rewrittenContent ?? '';
     }
-    return draftOriginalRef.current[entry.id] !== undefined && draftOriginalRef.current[entry.id] !== entry.content;
+    const raw = draftOriginal[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'original'));
+    return raw ?? entry.content;
   }
 
-  function cancelEntryEdit(entry: DiaryEntry) {
-    delete draftOriginalRef.current[entry.id];
-    delete draftRewrittenRef.current[entry.id];
+  function cancelEntryEdit(entry: DiaryEntry, kind?: 'original' | 'rewritten') {
+    const kinds: Array<'original' | 'rewritten'> = kind ? [kind] : ['original', 'rewritten'];
+    for (const k of kinds) {
+      const key = getDraftKey(entry.id, k);
+      localStorage.removeItem(key);
+      const timeoutKey = `${entry.id}-${k}`;
+      clearTimeout(autoSaveTimeouts.current[timeoutKey]);
+      delete autoSaveTimeouts.current[timeoutKey];
+      if (k === 'original') {
+        const serverKey = `${entry.id}-original`;
+        clearTimeout(serverSaveTimeouts.current[serverKey]);
+        delete serverSaveTimeouts.current[serverKey];
+      }
+      delete draftRawRefs.current[k][entry.id];
+      if (k === 'original') {
+        setDraftOriginal((prev) => {
+          if (!prev[entry.id]) return prev;
+          const next = { ...prev };
+          delete next[entry.id];
+          return next;
+        });
+      } else {
+        setDraftRewritten((prev) => {
+          if (!prev[entry.id]) return prev;
+          const next = { ...prev };
+          delete next[entry.id];
+          return next;
+        });
+      }
+    }
   }
 
-  function handleQuillChange(entryId: number, value: string, source: string, kind: 'original' | 'rewritten') {
-    const ref = kind === 'original' ? draftOriginalRef : draftRewrittenRef;
-    ref.current[entryId] = stripEntityBadges(value);
+  function scheduleDraftSave(entry: DiaryEntry, kind: 'original' | 'rewritten', raw: string, normalized: string) {
+    const key = getDraftKey(entry.id, kind);
+    const timeoutKey = `${entry.id}-${kind}`;
+    clearTimeout(autoSaveTimeouts.current[timeoutKey]);
+    const canonical = normalizeDraftHtml(kind === 'original' ? entry.content : (entry.rewrittenContent ?? ''));
+    if (normalized === canonical || isEmptyHtml(normalized)) {
+      localStorage.removeItem(key);
+      delete autoSaveTimeouts.current[timeoutKey];
+      delete draftRawRefs.current[kind][entry.id];
+      return;
+    }
+    autoSaveTimeouts.current[timeoutKey] = setTimeout(() => {
+      try {
+        localStorage.setItem(key, raw);
+      } catch {
+        // ignore quota errors
+      }
+      delete autoSaveTimeouts.current[timeoutKey];
+    }, 500);
+  }
+
+  function handleQuillChange(entry: DiaryEntry, value: string, source: string, kind: 'original' | 'rewritten') {
+    const setDraft = kind === 'original' ? setDraftOriginal : setDraftRewritten;
+    const normalized = normalizeDraftHtml(value);
+    setDraft((prev) => {
+      if (prev[entry.id]?.raw === value) return prev;
+      return { ...prev, [entry.id]: { raw: value, normalized } };
+    });
     if (source === 'user') {
-      const reactQuill = quillRefs.current[entryId];
+      draftRawRefs.current[kind][entry.id] = value;
+      scheduleDraftSave(entry, kind, value, normalized);
+      if (kind === 'original') {
+        scheduleServerSave(entry, value);
+      }
+      const reactQuill = quillRefs.current[entry.id];
       const quill = reactQuill?.getEditor();
-      if (quill) scheduleEntityHighlights(quill, entryId);
+      if (quill) scheduleEntityHighlights(quill, entry.id);
     }
   }
 
@@ -402,31 +550,72 @@ export function Diary() {
     }, 300);
   }
 
-  async function handleSaveOriginal(entry: DiaryEntry) {
-    const content = stripEntityBadges(draftOriginalRef.current[entry.id] ?? entry.content);
-    if (content === entry.content) {
-      cancelEntryEdit(entry);
-      return;
-    }
-    setWorking(true);
+  function clearServerSaveTimeout(entryId: number) {
+    const timeoutKey = `${entryId}-original`;
+    clearTimeout(serverSaveTimeouts.current[timeoutKey]);
+    delete serverSaveTimeouts.current[timeoutKey];
+  }
+
+  function scheduleServerSave(entry: DiaryEntry, raw: string) {
+    const timeoutKey = `${entry.id}-original`;
+    clearTimeout(serverSaveTimeouts.current[timeoutKey]);
+    serverSaveTimeouts.current[timeoutKey] = setTimeout(() => {
+      delete serverSaveTimeouts.current[timeoutKey];
+      saveOriginalToServer(entry, raw, false);
+    }, SERVER_SAVE_DELAY_MS);
+  }
+
+  async function saveOriginalToServer(entry: DiaryEntry, rawDraft: string, notifyError = true): Promise<boolean> {
+    const content = normalizeDraftHtml(rawDraft);
+    const currentEntry = entriesRef.current.find((e) => e.id === entry.id) ?? entry;
+    const canonical = normalizeDraftHtml(currentEntry.content);
+    if (content === canonical || isEmptyHtml(content)) return false;
+
     const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: ensureHtml(content) }),
     });
-    setWorking(false);
-    if (data) {
-      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
-      cancelEntryEdit(entry);
-      showSuccess('Eintrag gespeichert.');
-    } else if (error) {
-      setFormError(error);
+
+    if (error) {
+      if (notifyError) showError(error);
+      return false;
     }
+
+    if (data?.entry) {
+      setEntries((prev) =>
+        prev.map((e) => {
+          if (e.id !== entry.id) return e;
+          if (e.updatedAt && data.entry.updatedAt < e.updatedAt) return e;
+          return data.entry;
+        }),
+      );
+      const rawAtSend = draftRawRefs.current.original[entry.id] ?? rawDraft;
+      const noNewerChanges = draftRawRefs.current.original[entry.id] === rawAtSend;
+      const savedMatchesDraft =
+        noNewerChanges && normalizeDraftHtml(rawAtSend) === normalizeDraftHtml(data.entry.content);
+      if (noNewerChanges) {
+        localStorage.removeItem(getDraftKey(entry.id, 'original'));
+        delete draftRawRefs.current.original[entry.id];
+      }
+      if (!savedMatchesDraft) {
+        setDraftOriginal((prev) => {
+          if (!prev[entry.id]) return prev;
+          const next = { ...prev };
+          delete next[entry.id];
+          return next;
+        });
+      }
+      return true;
+    }
+
+    return false;
   }
 
   async function handleAcceptRewritten(entry: DiaryEntry) {
-    const content = stripEntityBadges(draftRewrittenRef.current[entry.id] ?? (entry.rewrittenContent ?? ''));
-    if (!entry.rewrittenFilePath || !content) return;
+    const rawDraft = draftRewritten[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'rewritten'));
+    const content = rawDraft ? normalizeDraftHtml(rawDraft) : normalizeDraftHtml(entry.rewrittenContent ?? '');
+    if (!entry.rewrittenFilePath || isEmptyHtml(content)) return;
     setWorking(true);
     const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
       method: 'PUT',
@@ -438,6 +627,11 @@ export function Diary() {
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
       setViewRewritten(entry.id, false);
       cancelEntryEdit(entry);
+      setTimeout(() => {
+        const reactQuill = quillRefs.current[entry.id];
+        const quill = reactQuill?.getEditor();
+        if (quill) applyEntityHighlights(quill, mappings);
+      }, 50);
       showSuccess('Überarbeitung übernommen.');
     } else if (error) {
       setFormError(error);
@@ -455,7 +649,12 @@ export function Diary() {
     if (data) {
       setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
       setViewRewritten(entry.id, false);
-      cancelEntryEdit(entry);
+      cancelEntryEdit(entry, 'rewritten');
+      setTimeout(() => {
+        const reactQuill = quillRefs.current[entry.id];
+        const quill = reactQuill?.getEditor();
+        if (quill) applyEntityHighlights(quill, mappings);
+      }, 50);
     } else if (error) {
       setFormError(error);
     }
@@ -470,6 +669,26 @@ export function Diary() {
         if (data) {
           setEntries((prev) => prev.map((e) => (e.id === id ? data.entry : e)));
         }
+      }
+      setDraftOriginal((prev) => {
+        if (prev[id]) return prev;
+        const saved = localStorage.getItem(getDraftKey(id, 'original'));
+        if (!saved) return prev;
+        return { ...prev, [id]: { raw: saved, normalized: normalizeDraftHtml(saved) } };
+      });
+      setDraftRewritten((prev) => {
+        if (prev[id]) return prev;
+        const saved = localStorage.getItem(getDraftKey(id, 'rewritten'));
+        if (!saved) return prev;
+        return { ...prev, [id]: { raw: saved, normalized: normalizeDraftHtml(saved) } };
+      });
+    } else {
+      const entry = entries.find((e) => e.id === id);
+      const rawDraft =
+        draftRawRefs.current.original[id] ?? draftOriginal[id]?.raw ?? localStorage.getItem(getDraftKey(id, 'original'));
+      if (entry && rawDraft) {
+        clearServerSaveTimeout(id);
+        await saveOriginalToServer(entry, rawDraft, false);
       }
     }
     setExpandedIds((prev) => {
@@ -830,8 +1049,8 @@ export function Diary() {
                               if (el) quillRefs.current[entry.id] = el;
                             }}
                             theme="snow"
-                            value={entry.rewrittenContent ?? ''}
-                            onChange={(value, _delta, source) => handleQuillChange(entry.id, value, source, 'rewritten')}
+                            value={getEditingContent(entry)}
+                            onChange={(value, _delta, source) => handleQuillChange(entry, value, source, 'rewritten')}
                             modules={quillModules}
                             formats={quillFormats}
                             readOnly={working}
@@ -841,7 +1060,7 @@ export function Diary() {
                             <Button
                               variant="accent"
                               onClick={() => handleAcceptRewritten(entry)}
-                              disabled={working || !stripHtml(draftRewrittenRef.current[entry.id] ?? (entry.rewrittenContent ?? '')).trim()}
+                              disabled={working || !stripHtml(getEditingContent(entry)).trim()}
                             >
                               Übernehmen
                             </Button>
@@ -861,31 +1080,13 @@ export function Diary() {
                               if (el) quillRefs.current[entry.id] = el;
                             }}
                             theme="snow"
-                            value={entry.content}
-                            onChange={(value, _delta, source) => handleQuillChange(entry.id, value, source, 'original')}
+                            value={getEditingContent(entry)}
+                            onChange={(value, _delta, source) => handleQuillChange(entry, value, source, 'original')}
                             modules={quillModules}
                             formats={quillFormats}
                             readOnly={working}
                             className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)] mb-2"
                           />
-                          {hasDraft(entry) && (
-                            <div className="flex items-center justify-end gap-2">
-                              <Button
-                                variant="accent"
-                                onClick={() => handleSaveOriginal(entry)}
-                                disabled={working || !stripHtml(draftOriginalRef.current[entry.id] ?? entry.content).trim()}
-                              >
-                                Speichern
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                onClick={() => cancelEntryEdit(entry)}
-                                disabled={working}
-                              >
-                                Abbrechen
-                              </Button>
-                            </div>
-                          )}
                         </div>
                       )}
 

@@ -3,6 +3,7 @@ import type { DiaryEntities } from '../ai/rewrite.js';
 import { stripHtml } from '../ai/rewrite.js';
 import { db } from '../database.js';
 import { readRewrittenFile } from '../diaryFiles.js';
+import { sanitizeHtml, sanitizePlainText } from '../utils/sanitizeHtml.js';
 import { mergeEntityKnowledge, renameEntityKnowledge } from './entityKnowledge.js';
 import { mergeEntitySummary } from './entitySummaries.js';
 
@@ -429,7 +430,7 @@ export function createDiaryEntry(
     .prepare(
       'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
-    .run(userId, title.trim(), content.trim(), summary ? summary.trim() : null, 1, now, now);
+    .run(userId, sanitizePlainText(title), sanitizeHtml(content).trim(), summary ? sanitizePlainText(summary) : null, 1, now, now);
   return getDiaryEntryById(Number(result.lastInsertRowid))!;
 }
 
@@ -480,37 +481,43 @@ export function listPreviousDiaryEntriesByUser(
 
 export function searchDiaryEntries(
   query: string,
+  userId?: string,
   limit = 5,
 ): { id: number; title: string; content: string; createdAt: string }[] {
   const escaped = query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
   const like = `%${escaped}%`;
-  const rows = db
-    .prepare(
-      `SELECT id, title, content, created_at AS createdAt
+  const params: (string | number)[] = [like, like];
+  let sql = `SELECT id, title, content, created_at AS createdAt
        FROM diary_entries
-       WHERE title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\'
-       ORDER BY created_at DESC
-       LIMIT ?`,
-    )
-    .all(like, like, limit) as { id: number; title: string; content: string; createdAt: string }[];
+       WHERE (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')`;
+  if (userId) {
+    sql += ' AND user_id = ?';
+    params.push(userId);
+  }
+  sql += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(limit);
+  const rows = db.prepare(sql).all(...params) as { id: number; title: string; content: string; createdAt: string }[];
   return rows;
 }
 
 export function listDiaryEntryContentsByEntity(
   type: keyof DiaryEntities,
   name: string,
+  userId?: string,
 ): { id: number; title: string; content: string; createdAt: string }[] {
   const { table, linkTable, column } = entityConfig[type];
-  const rows = db
-    .prepare(
-      `SELECT de.id, de.title, de.content, de.created_at AS createdAt
+  const params: (string | number)[] = [name];
+  let sql = `SELECT de.id, de.title, de.content, de.created_at AS createdAt
        FROM diary_entries de
        JOIN ${linkTable} l ON l.diary_entry_id = de.id
        JOIN ${table} e ON e.id = l.${column}
-       WHERE e.name = ? COLLATE NOCASE
-       ORDER BY de.created_at DESC`,
-    )
-    .all(name) as { id: number; title: string; content: string; createdAt: string }[];
+       WHERE e.name = ? COLLATE NOCASE`;
+  if (userId) {
+    sql += ' AND de.user_id = ?';
+    params.push(userId);
+  }
+  sql += ' ORDER BY de.created_at DESC';
+  const rows = db.prepare(sql).all(...params) as { id: number; title: string; content: string; createdAt: string }[];
   return rows;
 }
 
@@ -531,11 +538,11 @@ export function updateDiaryEntry(
 
   if (updates.title !== undefined) {
     fields.push('title = ?');
-    values.push(updates.title.trim());
+    values.push(sanitizePlainText(updates.title));
   }
   if (updates.content !== undefined) {
     fields.push('content = ?');
-    values.push(updates.content.trim());
+    values.push(sanitizeHtml(updates.content).trim());
     // Content changed -> AI summary/entities need reprocessing.
     fields.push('ai_dirty = ?');
     values.push(1);
@@ -544,11 +551,11 @@ export function updateDiaryEntry(
   }
   if (updates.summary !== undefined) {
     fields.push('summary = ?');
-    values.push(updates.summary ? updates.summary.trim() : null);
+    values.push(updates.summary ? sanitizePlainText(updates.summary) : null);
   }
   if (updates.rewrittenContent !== undefined) {
     fields.push('rewritten_content = ?');
-    values.push(updates.rewrittenContent ? updates.rewrittenContent.trim() : null);
+    values.push(updates.rewrittenContent ? sanitizeHtml(updates.rewrittenContent).trim() : null);
   }
   if (updates.rewrittenFilePath !== undefined) {
     fields.push('rewritten_file_path = ?');

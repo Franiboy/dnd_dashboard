@@ -204,14 +204,11 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
       res.status(400).json({ error: 'Inhalt darf nicht leer sein' });
       return;
     }
-    if (existing.rewrittenContent) {
-      const fileContent = readRewrittenFile(id);
-      updates.content = fileContent ?? content;
+    updates.content = content;
+    if (existing.rewrittenFilePath || existing.rewrittenContent) {
       updates.rewrittenContent = null;
       updates.rewrittenFilePath = null;
       updates.rewriteSessionId = null;
-    } else {
-      updates.content = content;
     }
   }
   if (summary !== undefined) {
@@ -222,13 +219,20 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
     updates.summary = summary;
   }
   if (rewrittenContent !== undefined) {
-    const clearing = typeof rewrittenContent === 'string' ? !rewrittenContent : true;
-    if (clearing && existing.rewrittenContent) {
-      updates.rewrittenContent = null;
-      updates.rewrittenFilePath = null;
-      updates.rewriteSessionId = null;
+    const isString = typeof rewrittenContent === 'string';
+    const clearing = isString ? !rewrittenContent.trim() : true;
+    if (clearing) {
+      if (existing.rewrittenFilePath || existing.rewrittenContent) {
+        updates.rewrittenContent = null;
+        updates.rewrittenFilePath = null;
+        updates.rewriteSessionId = null;
+      }
     } else {
-      updates.rewrittenContent = typeof rewrittenContent === 'string' ? rewrittenContent : null;
+      updates.rewrittenContent = rewrittenContent;
+      if (existing.rewrittenFilePath) {
+        updates.rewrittenFilePath = null;
+        updates.rewriteSessionId = null;
+      }
     }
   }
 
@@ -306,6 +310,7 @@ router.post('/entries/:id/rewrite', async (req: AuthRequest, res) => {
       existing.content,
       existing.rewrittenContent,
       existing.rewriteSessionId ?? null,
+      req.user,
       undefined,
       onLog,
     );
@@ -379,6 +384,7 @@ router.post('/entries/:id/rewrite-command', async (req: AuthRequest, res) => {
       existing.rewrittenContent || readRewrittenFile(id) || '',
       command.trim(),
       existing.rewriteSessionId,
+      req.user,
       undefined,
       onLog,
     );
@@ -430,7 +436,7 @@ router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const success = await processDiaryEntryAi(existing.id, undefined, onLog);
+    const success = await processDiaryEntryAi(existing.id, req.user, undefined, onLog);
     if (!success) {
       res.status(500).json({ error: 'KI-Verarbeitung ist fehlgeschlagen' });
       return;

@@ -19,6 +19,7 @@ data/diary
 .venv
 *.db-*
 opencode.json
+.playwright-mcp/
 
 # Editor directories and files
 .vscode/*

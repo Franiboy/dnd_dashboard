@@ -16,7 +16,8 @@
     "build": "tsc -b && vite build && npm run build:server && npm run build:version",
     "start": "node dist-server/server/index.js",
     "preview": "vite preview",
-    "test:server": "DB_PATH=dnd_test.db npm run server"
+    "test:server": "DB_PATH=dnd_test.db npm run server",
+    "lint": "oxlint"
   },
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",
@@ -29,15 +30,18 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "discord.js": "^14.26.5",
+    "dompurify": "~3.4.12",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
+    "isomorphic-dompurify": "^3.19.0",
     "jsonwebtoken": "^9.0.3",
     "libsodium-wrappers": "^0.8.4",
+    "quill": "2.0.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-quill-new": "^3.8.3",
-    "react-router-dom": "^7.18.1",
+    "react-quill-new": "~3.7.0",
+    "react-router-dom": "~7.18.2",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.6.0",
@@ -61,5 +65,8 @@
     "tsx": "^4.23.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
+  },
+  "overrides": {
+    "quill": "2.0.2"
   }
 }

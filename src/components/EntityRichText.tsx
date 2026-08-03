@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { typeLabels } from '../lib/entityLabels';
 import { Tooltip } from './Tooltip';
@@ -149,7 +150,11 @@ function nodeToReact(node: Node, triggers: Trigger[], key: string): React.ReactN
 }
 
 function parseHtmlToReact(html: string, triggers: Trigger[]): React.ReactNode[] {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const sanitized = DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    ADD_ATTR: ['style'],
+  });
+  const doc = new DOMParser().parseFromString(sanitized, 'text/html');
   const result: React.ReactNode[] = [];
   doc.body.childNodes.forEach((child, idx) => {
     const processed = nodeToReact(child, triggers, `root-${idx}`);

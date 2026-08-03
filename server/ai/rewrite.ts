@@ -1,4 +1,5 @@
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
+import type { McpSessionUser } from '../mcp/tokens.js';
 import { readRewrittenFile } from '../diaryFiles.js';
 import { clearDiaryEntryDirty, getDiaryEntryById, getEntryEntities } from '../repositories/diary.js';
 import { markEntitySummaryDirty } from '../repositories/entitySummaries.js';
@@ -38,6 +39,7 @@ export async function rewriteTextWithAi(
   originalHtml: string,
   existingRewrittenContent: string | null,
   existingSessionId: string | null,
+  user: McpSessionUser,
   model?: string,
   onLog?: (line: string) => void,
 ): Promise<RewriteResult> {
@@ -93,6 +95,7 @@ export async function rewriteTextWithAi(
     sessionId: existingSessionId || undefined,
     title,
     scopes: ['diary:read', 'entity:read', 'diary:rewrite'],
+    user,
     onLog,
   });
 
@@ -122,6 +125,7 @@ export async function improveRewrittenWithCommand(
   existingRewrittenContent: string,
   command: string,
   sessionId: string,
+  user: McpSessionUser,
   model?: string,
   onLog?: (line: string) => void,
 ): Promise<RewriteResult> {
@@ -168,6 +172,7 @@ export async function improveRewrittenWithCommand(
     model: model || process.env.AI_MODEL || 'provider/GLM5.2',
     sessionId,
     scopes: ['diary:read', 'entity:read', 'diary:rewrite'],
+    user,
     onLog,
   });
 
@@ -189,6 +194,7 @@ export async function improveRewrittenWithCommand(
 export async function summarizeTextWithAi(
   entryId: number,
   text: string,
+  user: McpSessionUser,
   model?: string,
   onLog?: (line: string) => void,
 ): Promise<string | null> {
@@ -233,6 +239,7 @@ export async function summarizeTextWithAi(
     model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
     title: `dnd-diary-summarize-${entryId}-${Date.now()}`,
     scopes: ['diary:read', 'entity:read', 'diary:summarize'],
+    user,
     onLog,
   });
 
@@ -271,6 +278,7 @@ export interface DiaryEntities {
 export async function extractEntitiesFromDiary(
   entryId: number,
   text: string,
+  user: McpSessionUser,
   model?: string,
   onLog?: (line: string) => void,
 ): Promise<DiaryEntities> {
@@ -311,6 +319,7 @@ export async function extractEntitiesFromDiary(
     model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
     title: `dnd-diary-entities-${entryId}-${Date.now()}`,
     scopes: ['entity:read', 'entity:extract'],
+    user,
     onLog,
   });
 
@@ -327,6 +336,7 @@ export async function extractEntitiesFromDiary(
 
 export async function processDiaryEntryAi(
   entryId: number,
+  user: McpSessionUser,
   model?: string,
   onLog?: (line: string) => void,
 ): Promise<boolean> {
@@ -338,8 +348,8 @@ export async function processDiaryEntryAi(
 
   log.info(`Processing AI for diary entry ${entryId}`);
   const [summary, entities] = await Promise.all([
-    summarizeTextWithAi(entryId, entry.content, model, onLog),
-    extractEntitiesFromDiary(entryId, entry.content, model, onLog),
+    summarizeTextWithAi(entryId, entry.content, user, model, onLog),
+    extractEntitiesFromDiary(entryId, entry.content, user, model, onLog),
   ]);
 
   for (const name of entities.persons) markEntitySummaryDirty('persons', name);
