@@ -1,8 +1,9 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { updateFile, updateSession, getSessionById, listSessionsByStatus } from '../repositories/recordings.js';
+import { updateFile, updateSession, getSessionById, listSessionsByStatus, clearFileTranscriptPathsBySession } from '../repositories/recordings.js';
 import { emitSessionsUpdated, emitProgressUpdated } from './recordingsEvents.js';
 import { createLogger } from '../logger.js';
 import type { RecordingFile, RecordingSession, TranscriptionProgress } from '../../shared/types.js';
@@ -156,6 +157,44 @@ function waitForChildExit(child: ChildProcess): Promise<void> {
   });
 }
 
+async function isTranscriptFileValid(transcriptPath: string): Promise<boolean> {
+  try {
+    const fileStat = await stat(transcriptPath);
+    return fileStat.isFile() && fileStat.size > 0;
+  } catch {
+    return false;
+  }
+}
+
+function trimValuesChanged(session: RecordingSession, trimStart: number, trimEnd: number): boolean {
+  return (
+    session.transcribedTrimStartSeconds === null ||
+    session.transcribedTrimEndSeconds === null ||
+    session.transcribedTrimStartSeconds !== trimStart ||
+    session.transcribedTrimEndSeconds !== trimEnd
+  );
+}
+
+async function buildResumePlan(
+  files: RecordingFile[],
+): Promise<{ completedFiles: RecordingFile[]; pendingFiles: RecordingFile[] }> {
+  const completedFiles: RecordingFile[] = [];
+  const pendingFiles: RecordingFile[] = [];
+
+  for (const file of files) {
+    if (!file.wavPath) {
+      continue;
+    }
+    if (file.transcriptPath && (await isTranscriptFileValid(file.transcriptPath))) {
+      completedFiles.push(file);
+    } else {
+      pendingFiles.push(file);
+    }
+  }
+
+  return { completedFiles, pendingFiles };
+}
+
 type ScriptEvent =
   | { type: 'file_start'; index: number; total: number; name: string }
   | { type: 'progress'; current: number; total: number }
@@ -180,11 +219,18 @@ function runTranscriptionScript(
   files: RecordingFile[],
   trimStart: number,
   trimEnd: number,
+  completedFiles: RecordingFile[],
 ): Promise<{ transcript: string | null; transcriptPath: string | null; files: { id: number; userId: string; transcriptPath: string }[]; errors: string[] }> {
   const filesArg = JSON.stringify(
     files
       .filter((f) => f.wavPath)
       .map((f) => ({ id: f.id, userId: f.userId, wavPath: f.wavPath, displayName: f.displayName })),
+  );
+
+  const completedFilesArg = JSON.stringify(
+    completedFiles
+      .filter((f) => f.wavPath && f.transcriptPath)
+      .map((f) => ({ id: f.id, userId: f.userId, wavPath: f.wavPath, displayName: f.displayName, transcriptPath: f.transcriptPath })),
   );
 
   const args = [
@@ -201,6 +247,8 @@ function runTranscriptionScript(
     outputDir,
     '--files',
     filesArg,
+    '--completed-files',
+    completedFilesArg,
     '--noise-reduce',
     String(WHISPER_NOISE_REDUCE),
   ];
@@ -248,6 +296,8 @@ function runTranscriptionScript(
             framesCurrent: event.current,
             framesTotal: event.total,
           });
+        } else if (event.type === 'file_complete') {
+          updateFile(event.id, { transcriptPath: event.transcriptPath });
         } else if (event.type === 'complete') {
           finalResult = {
             transcript: event.transcript,
@@ -308,21 +358,49 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
     return;
   }
 
-  updateSession(sessionId, { status: 'processing', error: null });
-  emitSessionsUpdated();
-
   const trimStart = session.trimStartSeconds ?? 0;
   const trimEnd = session.trimEndSeconds ?? Infinity;
 
+  if (trimValuesChanged(session, trimStart, trimEnd)) {
+    clearFileTranscriptPathsBySession(session.id);
+    files = files.map((file) => ({ ...file, transcriptPath: null }));
+  }
+
+  updateSession(sessionId, {
+    status: 'processing',
+    error: null,
+    transcribedTrimStartSeconds: trimStart,
+    transcribedTrimEndSeconds: trimEnd,
+  });
+  emitSessionsUpdated();
+
   try {
-    const result = await runTranscriptionScript(sessionId, session.directory, files, trimStart, trimEnd);
+    const { completedFiles, pendingFiles } = await buildResumePlan(files);
+
+    if (completedFiles.length === 0 && pendingFiles.length === 0) {
+      updateSession(sessionId, {
+        status: 'error',
+        error: 'Keine Audio-Dateien für diese Session vorhanden',
+      });
+      emitSessionsUpdated();
+      return;
+    }
+
+    log.info(`Transcription session ${sessionId}: ${completedFiles.length} completed, ${pendingFiles.length} pending`);
+
+    const result = await runTranscriptionScript(sessionId, session.directory, files, trimStart, trimEnd, completedFiles);
 
     for (const file of result.files) {
       updateFile(file.id, { transcriptPath: file.transcriptPath });
     }
 
     if (result.transcript !== null) {
-      updateSession(sessionId, { status: 'completed', transcript: result.transcript });
+      updateSession(sessionId, {
+        status: 'completed',
+        transcript: result.transcript,
+        transcribedTrimStartSeconds: trimStart,
+        transcribedTrimEndSeconds: trimEnd,
+      });
     } else {
       updateSession(sessionId, {
         status: 'error',
