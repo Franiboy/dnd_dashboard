@@ -227,7 +227,7 @@ router.post('/:id/transcribe', (req, res) => {
     return;
   }
 
-  runTranscription(id, files).catch((err) => {
+  runTranscription(id, files, { force: true }).catch((err) => {
     log.error(`Manual transcription failed for session ${id}:`, err);
   });
 
