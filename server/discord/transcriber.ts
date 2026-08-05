@@ -292,52 +292,62 @@ function runTranscriptionScript(
     const child = spawn(PYTHON_COMMAND, args, { stdio: 'pipe' });
     activeChildren.add(child);
     let stderrBuffer = '';
+    let stdoutBuffer = '';
+
+    const handleEvent = (event: ScriptEvent) => {
+      if (event.type === 'file_start') {
+        currentFileIndex = event.index + 1;
+        totalFiles = event.total;
+        currentFileName = event.name;
+        setTranscriptionProgress(sessionId, {
+          currentFile: currentFileIndex,
+          totalFiles,
+          fileName: currentFileName,
+          framesCurrent: 0,
+          framesTotal: 0,
+        });
+      } else if (event.type === 'progress') {
+        setTranscriptionProgress(sessionId, {
+          currentFile: currentFileIndex,
+          totalFiles,
+          fileName: currentFileName,
+          framesCurrent: event.current,
+          framesTotal: event.total,
+        });
+      } else if (event.type === 'file_complete') {
+        updateFile(event.id, { transcriptPath: event.transcriptPath });
+      } else if (event.type === 'file_error') {
+        log.error(`Transcription error for file ${currentFileIndex} (${currentFileName}): ${event.error}`);
+      } else if (event.type === 'complete') {
+        finalResult = {
+          transcript: event.transcript,
+          transcriptPath: event.transcriptPath,
+          files: event.files,
+          errors: event.errors,
+        };
+      } else if (event.type === 'error') {
+        finalResult = {
+          transcript: null,
+          transcriptPath: null,
+          files: [],
+          errors: [event.error],
+        };
+      }
+    };
+
+    const processStdoutChunk = (chunk: string) => {
+      stdoutBuffer += chunk;
+      let newlineIndex: number;
+      while ((newlineIndex = stdoutBuffer.indexOf('\n')) !== -1) {
+        const line = stdoutBuffer.slice(0, newlineIndex);
+        stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+        const event = parseEvent(line);
+        if (event) handleEvent(event);
+      }
+    };
 
     child.stdout?.on('data', (data: Buffer) => {
-      const lines = data.toString().split('\n');
-      for (const line of lines) {
-        const event = parseEvent(line);
-        if (!event) continue;
-
-        if (event.type === 'file_start') {
-          currentFileIndex = event.index + 1;
-          totalFiles = event.total;
-          currentFileName = event.name;
-          setTranscriptionProgress(sessionId, {
-            currentFile: currentFileIndex,
-            totalFiles,
-            fileName: currentFileName,
-            framesCurrent: 0,
-            framesTotal: 0,
-          });
-        } else if (event.type === 'progress') {
-          setTranscriptionProgress(sessionId, {
-            currentFile: currentFileIndex,
-            totalFiles,
-            fileName: currentFileName,
-            framesCurrent: event.current,
-            framesTotal: event.total,
-          });
-        } else if (event.type === 'file_complete') {
-          updateFile(event.id, { transcriptPath: event.transcriptPath });
-        } else if (event.type === 'file_error') {
-          log.error(`Transcription error for file ${currentFileIndex} (${currentFileName}): ${event.error}`);
-        } else if (event.type === 'complete') {
-          finalResult = {
-            transcript: event.transcript,
-            transcriptPath: event.transcriptPath,
-            files: event.files,
-            errors: event.errors,
-          };
-        } else if (event.type === 'error') {
-          finalResult = {
-            transcript: null,
-            transcriptPath: null,
-            files: [],
-            errors: [event.error],
-          };
-        }
-      }
+      processStdoutChunk(data.toString());
     });
 
     child.stderr?.on('data', (data: Buffer) => {
@@ -354,6 +364,12 @@ function runTranscriptionScript(
       if (code !== 0) {
         reject(new Error(stderrBuffer || `Python transcription script exited with code ${code}`));
         return;
+      }
+
+      processStdoutChunk('');
+      if (stdoutBuffer.trim()) {
+        const event = parseEvent(stdoutBuffer);
+        if (event) handleEvent(event);
       }
 
       if (finalResult) {
