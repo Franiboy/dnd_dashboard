@@ -382,12 +382,17 @@ function runTranscriptionScript(
   });
 }
 
-export async function runTranscription(sessionId: number, files: RecordingFile[]): Promise<void> {
+export async function runTranscription(
+  sessionId: number,
+  files: RecordingFile[],
+  options?: { force?: boolean },
+): Promise<void> {
   const session = getSessionById(sessionId);
   if (!session) return;
   const originalStatus = session.status;
   const originalError = session.error;
   const resetStatus = originalStatus === 'processing' ? 'pending_transcription' : originalStatus;
+  const force = options?.force ?? false;
 
   if (shuttingDown) {
     if (originalStatus === 'processing') {
@@ -401,7 +406,7 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
   const trimStart = session.trimStartSeconds ?? 0;
   const trimEnd = session.trimEndSeconds ?? Infinity;
 
-  if (trimValuesChanged(session, trimStart, trimEnd)) {
+  if (force || trimValuesChanged(session, trimStart, trimEnd)) {
     clearFileTranscriptPathsBySession(session.id);
     files = files.map((file) => ({ ...file, transcriptPath: null }));
   }
@@ -415,7 +420,9 @@ export async function runTranscription(sessionId: number, files: RecordingFile[]
   emitSessionsUpdated();
 
   try {
-    const { completedFiles, pendingFiles } = await buildResumePlan(files);
+    const { completedFiles, pendingFiles } = force
+      ? { completedFiles: [] as RecordingFile[], pendingFiles: files.filter((f) => f.wavPath) }
+      : await buildResumePlan(files);
 
     if (completedFiles.length === 0 && pendingFiles.length === 0) {
       updateSession(sessionId, {
