@@ -36,6 +36,7 @@ const client = new Client({
 });
 
 let botReady = false;
+let botLoginStopped = false;
 let cachedChannels: RecordingChannel[] | null = null;
 let channelsCachedAt = 0;
 const CHANNEL_CACHE_TTL = 60_000;
@@ -71,9 +72,31 @@ export function startBot(): void {
     });
   });
 
-  client.login(BOT_TOKEN).catch((err) => {
-    log.error('Discord bot login failed:', err);
-  });
+  void loginWithRetry();
+}
+
+const LOGIN_RETRY_MAX_DELAY_MS = 60_000;
+
+async function loginWithRetry(): Promise<void> {
+  let delayMs = 5_000;
+  let attempt = 1;
+
+  while (!botLoginStopped) {
+    if (client.isReady()) {
+      return;
+    }
+
+    try {
+      await client.login(BOT_TOKEN);
+      return;
+    } catch (err) {
+      if (botLoginStopped) return;
+      log.error(`Discord bot login failed (attempt ${attempt}), retrying in ${Math.round(delayMs / 1000)}s:`, err);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      delayMs = Math.min(delayMs * 2, LOGIN_RETRY_MAX_DELAY_MS);
+      attempt += 1;
+    }
+  }
 }
 
 export function getBotStatus(): { ready: boolean; enabled: boolean } {
@@ -81,6 +104,7 @@ export function getBotStatus(): { ready: boolean; enabled: boolean } {
 }
 
 export async function stopBot(): Promise<void> {
+  botLoginStopped = true;
   try {
     await client.destroy();
   } catch (err) {
