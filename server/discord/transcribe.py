@@ -320,6 +320,16 @@ def _tokenize(text: str) -> list[str]:
     return [word for word in re.sub(r"[^a-zäöüß0-9 ]", " ", text.lower()).split()]
 
 
+_WORD_CORRECTIONS = (("pott", "bot"),)
+
+
+def _apply_corrections(text: str) -> str:
+    for wrong, right in _WORD_CORRECTIONS:
+        pattern = re.compile(rf"\b{wrong}\b", re.IGNORECASE)
+        text = pattern.sub(lambda m: right.capitalize() if m.group(0)[:1].isupper() else right, text)
+    return text
+
+
 def _is_prompt_echo(text: str, initial_prompt: str) -> bool:
     seg_words = _tokenize(text)
     prompt_words = _tokenize(initial_prompt)
@@ -549,7 +559,7 @@ def main() -> None:
                 all_segments.append(seg)
 
             speaker_lines = [
-                f"[{format_timestamp(seg['start'])}] {seg['text'].strip()}"
+                f"[{format_timestamp(seg['start'])}] {_apply_corrections(seg['text']).strip()}"
                 for seg in file_segments
             ]
             transcript_path = os.path.join(output_dir, f"speaker-{user_id}.txt")
@@ -568,7 +578,7 @@ def main() -> None:
     if all_segments:
         all_segments.sort(key=lambda s: s["start"])
         transcript_lines = [
-            f"[{format_timestamp(seg['start'])}] {seg['speaker']}: {seg['text'].strip()}"
+            f"[{format_timestamp(seg['start'])}] {seg['speaker']}: {_apply_corrections(seg['text']).strip()}"
             for seg in all_segments
         ]
         transcript = "\n".join(transcript_lines)
