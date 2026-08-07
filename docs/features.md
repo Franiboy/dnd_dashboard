@@ -49,7 +49,8 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 ### Diary (`/tagebuch`)
 
 - Users can create, edit and delete HTML-based diary entries.
-- AI can rewrite entries (`rewriteTextWithAi`) and refine them with a command (`improveRewrittenWithCommand`).
+- Users select an active person (a `persons` entity) in the header. The selection is stored per user (`users.active_person`, endpoint `PUT /api/me/active-person`); the diary page forces a selection if none is set.
+- AI can rewrite entries (`rewriteTextWithAi`) and refine them with a command (`improveRewrittenWithCommand`). Prompts write from the perspective of the user's active person (Ich-Perspektive).
 - AI generates a short summary (`summarizeTextWithAi`, max. 500 characters).
 - AI extracts people, organizations and places (`extractEntitiesFromDiary`).
 - Rewrites are stored as files under `rewritten/` (`server/diaryFiles.ts`).

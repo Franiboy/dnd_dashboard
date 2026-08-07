@@ -14,6 +14,7 @@ import {
 } from '../auth.js';
 import { getGame } from '../game.js';
 import { createLogger } from '../logger.js';
+import { db } from '../database.js';
 import {
   DISCORD_REDIRECT_URI,
   DiscordOAuthError,
@@ -30,6 +31,7 @@ import {
   isInitialAdmin,
   recordFailedLogin,
   resetFailedLogins,
+  setUserActivePerson,
   storeDiscordTokens,
   toSafeUser,
   updateDiscordProfile,
@@ -177,6 +179,26 @@ router.post('/logout', (req, res) => {
 
 router.get('/me', authMiddleware, (req: AuthRequest, res) => {
   res.json({ ok: true, user: toSafeUser(req.user!) });
+});
+
+router.put('/me/active-person', authMiddleware, (req: AuthRequest, res) => {
+  const { name } = req.body;
+  const personName = typeof name === 'string' && name.trim() ? name.trim() : null;
+
+  if (personName) {
+    const row = db.prepare('SELECT 1 FROM persons WHERE name = ? COLLATE NOCASE').get(personName) as { '1': number } | undefined;
+    if (!row) {
+      res.status(400).json({ error: 'Person existiert nicht' });
+      return;
+    }
+  }
+
+  const user = setUserActivePerson(req.user!.id, personName);
+  if (!user) {
+    res.status(500).json({ error: 'Speichern fehlgeschlagen' });
+    return;
+  }
+  res.json({ ok: true, user });
 });
 
 router.get('/state', authMiddleware, (req: AuthRequest, res) => {

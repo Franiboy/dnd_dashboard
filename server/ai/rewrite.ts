@@ -34,6 +34,16 @@ export interface RewriteResult {
   sessionId: string | null;
 }
 
+function personaLines(activePerson: string | null | undefined): string[] {
+  if (!activePerson) return [];
+  return [
+    'Perspektive:',
+    `- Dieser Tagebucheintrag stammt aus der Sicht von "${activePerson}".`,
+    `- Schreibe den Text konsequent aus der Ich-Perspektive von "${activePerson}".`,
+    `- Verwende Ton, Wortwahl und Wissen, die zu "${activePerson}" passen, ohne die gegebenen Fakten zu verändern.`,
+  ];
+}
+
 export async function rewriteTextWithAi(
   entryId: number,
   originalHtml: string,
@@ -59,6 +69,7 @@ export async function rewriteTextWithAi(
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
     `Aufgabe: ${mode === 'rewrite' ? 'Schreibe' : 'Verbessere'} den folgenden deutschen Tagebucheintrag in HTML-Format.`,
+    ...personaLines(user.activePerson),
     '',
     'Verfügbare Tools:',
     `- set_diary_rewrite(entryId=${entryId}, html): Speichert das umgeschriebene HTML. MUSST du am Ende genau ein einziges Mal aufrufen.`,
@@ -135,6 +146,7 @@ export async function improveRewrittenWithCommand(
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
     'Aufgabe: Verbessere einen bereits umgeschriebenen deutschen Tagebucheintrag basierend auf einem Benutzerbefehl.',
+    ...personaLines(user.activePerson),
     '',
     'Verfügbare Tools:',
     `- set_diary_rewrite(entryId=${entryId}, html): Speichert das bearbeitete HTML. MUSST du am Ende genau ein einziges Mal aufrufen.`,
@@ -210,6 +222,7 @@ export async function summarizeTextWithAi(
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
     'Aufgabe: Erstelle eine sehr grobe Zusammenfassung des folgenden deutschen Tagebucheintrags.',
+    ...personaLines(user.activePerson),
     '',
     'Verfügbare Tools:',
     `- set_diary_summary(entryId=${entryId}, summary): Speichert die Zusammenfassung. MUSST du am Ende genau einmal aufrufen.`,

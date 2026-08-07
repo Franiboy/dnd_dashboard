@@ -82,6 +82,10 @@ export function useAuth() {
     setError(null);
   };
 
+  const updateUser = (updates: Partial<SafeUser>) => {
+    setUser((prev) => (prev ? { ...prev, ...updates } : prev));
+  };
+
   const checkApproved = async (): Promise<boolean> => {
     try {
       const res = await fetch('/api/me', { credentials: 'include' });
@@ -117,5 +121,5 @@ export function useAuth() {
     fetchMe();
   }, [fetchMe]);
 
-  return { user, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, setError };
+  return { user, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, updateUser, setError };
 }
