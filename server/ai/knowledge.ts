@@ -1,4 +1,5 @@
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
+import { getCheapModel } from './modelConfig.js';
 import { listAllKnowledge } from '../repositories/entityKnowledge.js';
 import { getEntitySummary } from '../repositories/entitySummaries.js';
 import { stripHtml } from './rewrite.js';
@@ -100,7 +101,7 @@ export async function distributeKnowledgeFromText(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
+    model: model || getCheapModel(),
     title: `dnd-distribute-knowledge-${Date.now()}`,
     scopes: ['entity:read', 'knowledge:distribute'],
     onLog,
@@ -167,7 +168,7 @@ export async function generateEntitySummary(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || process.env.AI_CHEAP_MODEL || process.env.AI_MODEL || 'provider/GLM5.2',
+    model: model || getCheapModel(),
     title: `dnd-entity-summary-${entityType}-${entityName}-${Date.now()}`,
     scopes: ['entity:read', 'entity:summary'],
     onLog,
