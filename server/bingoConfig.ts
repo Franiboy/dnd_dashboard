@@ -1,4 +1,4 @@
-import { isValidModel } from './ai/config.js';
+import { getCheapModel } from './ai/modelConfig.js';
 
 const DEFAULT_TARGET_POOL_SIZE = 20;
 const DEFAULT_REFILL_THRESHOLD = 5;
@@ -22,9 +22,5 @@ export function getGenerationBatchSize(): number {
 }
 
 export function getBingoModel(): string {
-  if (isValidModel(process.env.AI_CHEAP_MODEL)) {
-    return process.env.AI_CHEAP_MODEL.trim();
-  }
-  // isAiEnabled() already validates that AI_MODEL is set before this is called.
-  return process.env.AI_MODEL?.trim() || '';
+  return getCheapModel();
 }

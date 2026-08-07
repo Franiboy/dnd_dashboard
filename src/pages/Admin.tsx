@@ -9,6 +9,14 @@ import { AppIcon } from '../components/AppIcon';
 import { APPS } from '../lib/apps';
 import type { SafeUser } from '../../shared/types';
 
+interface AiModelConfig {
+  models: string[];
+  normalModel: string;
+  cheapModel: string;
+  normalModelOverridden: boolean;
+  cheapModelOverridden: boolean;
+}
+
 interface AdminProps {
   currentUser: SafeUser;
 }
@@ -21,6 +29,8 @@ export function Admin({ currentUser }: AdminProps) {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<{ id: string; endpoint: string } | null>(null);
   const [managingAppsFor, setManagingAppsFor] = useState<SafeUser | null>(null);
+  const [aiModels, setAiModels] = useState<AiModelConfig | null>(null);
+  const [aiSaving, setAiSaving] = useState(false);
 
   const isActionLoading = (id: string, endpoint: string) =>
     actionLoading?.id === id && actionLoading?.endpoint === endpoint;
@@ -48,6 +58,41 @@ export function Admin({ currentUser }: AdminProps) {
   useEffect(() => {
     if (error) showError(error);
   }, [error, showError]);
+
+  const loadAiModels = async () => {
+    const { data } = await request<AiModelConfig>('/api/admin/ai/models', undefined, false);
+    if (data) setAiModels(data);
+  };
+
+  useEffect(() => {
+    loadAiModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const saveAiModels = async () => {
+    if (!aiModels) return;
+    setAiSaving(true);
+    const { data, error: saveError } = await request<AiModelConfig>('/api/admin/ai/models', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ normalModel: aiModels.normalModel, cheapModel: aiModels.cheapModel }),
+    });
+    setAiSaving(false);
+    if (data) {
+      setAiModels(data);
+    } else if (saveError) {
+      setError(saveError);
+    }
+  };
+
+  const refreshAiModels = async () => {
+    const { data } = await request<{ models: string[] }>('/api/admin/ai/models/refresh', {
+      method: 'POST',
+    });
+    if (data && aiModels) {
+      setAiModels({ ...aiModels, models: data.models });
+    }
+  };
 
   const action = async (id: string, endpoint: string, body?: object) => {
     setActionLoading({ id, endpoint });
@@ -303,6 +348,78 @@ export function Admin({ currentUser }: AdminProps) {
               </table>
             )}
           </div>
+          <div className="mt-6 bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-[var(--text-h)]">KI-Modelle</h2>
+              <button
+                type="button"
+                onClick={refreshAiModels}
+                disabled={!aiModels}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 text-[var(--text-h)] hover:bg-slate-600 transition disabled:opacity-50"
+              >
+                Aktualisieren
+              </button>
+            </div>
+
+            {!aiModels ? (
+              <Loading text="Modelle werden geladen..." />
+            ) : (
+              <div className="space-y-4">
+                {aiModels.models.length === 0 && (
+                  <p className="text-sm text-slate-500">
+                    Keine Modelle verfügbar. Prüfe, dass opencode installiert ist und erreichbar ist.
+                  </p>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Normales Modell</label>
+                    <select
+                      value={aiModels.normalModel}
+                      onChange={(e) => setAiModels((prev) => (prev ? { ...prev, normalModel: e.target.value } : prev))}
+                      className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
+                    >
+                      {aiModels.models.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                    {aiModels.normalModelOverridden && (
+                      <p className="text-xs text-[var(--accent)] mt-1">Überschreibt die .env-Konfiguration</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Cheap-Modell</label>
+                    <select
+                      value={aiModels.cheapModel}
+                      onChange={(e) => setAiModels((prev) => (prev ? { ...prev, cheapModel: e.target.value } : prev))}
+                      className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
+                    >
+                      {aiModels.models.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                    {aiModels.cheapModelOverridden && (
+                      <p className="text-xs text-[var(--accent)] mt-1">Überschreibt die .env-Konfiguration</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={saveAiModels}
+                    disabled={aiSaving}
+                    className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+                  >
+                    {aiSaving ? <Loading text="" size="sm" /> : 'Speichern'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="mt-6">
             <LogPanel />
           </div>

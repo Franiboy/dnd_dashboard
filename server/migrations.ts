@@ -417,6 +417,19 @@ const migrations: Migration[] = [
     },
   },
   {
+    name: 'create_ai_settings_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS ai_settings (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          normal_model TEXT,
+          cheap_model TEXT,
+          updated_at TEXT
+        );
+      `);
+    },
+  },
+  {
     name: 'add_users_active_person',
     run: () => {
       const columns = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];

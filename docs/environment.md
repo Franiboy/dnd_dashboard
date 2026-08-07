@@ -36,10 +36,10 @@ WHISPER_MODEL=base
 # AI (optional)
 AI_PROVIDER=opencode
 # Set to a real model, e.g. anthropic/claude-sonnet-4-20250514
-AI_MODEL=
+AI_MODEL=opencode/deepseek-v4-flash-free
 # Optional: cheaper model for short AI tasks like diary summaries and bingo suggestions.
 # If not set, AI_MODEL is used.
-# AI_CHEAP_MODEL=openai/gpt-4.1-mini
+AI_CHEAP_MODEL=opencode/deepseek-v4-flash-free
 # AI_OPENCODE_BIN=opencode
 
 # Bingo AI suggestions (optional)
@@ -76,10 +76,11 @@ AI_MODEL=
 - `DISCORD_TOKEN_REFRESH_INTERVAL_MS` controls how often stored Discord OAuth tokens are refreshed and profile data is synced (default: 3600000, 1 hour).
 - `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` enable the recording bot.
 - `WHISPER_*` configure local transcription. `WHISPER_VAD_*` tune the ffmpeg silence detector that removes long pauses before Whisper processes the audio, which greatly reduces repeated hallucinations.
-- `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `anthropic/claude-sonnet-4-20250514`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled.
+- `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `opencode/deepseek-v4-flash-free`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled.
 - `AI_CHEAP_MODEL` is used for short AI tasks (summaries, entities).
 - `AI_CHEAP_MODEL` is also used for bingo suggestion generation.
 - `AI_OPENCODE_BIN` overrides the `opencode` command.
+- Normal and cheap model can also be overridden persistently at runtime in the Admin UI (section "KI-Modelle"). The selected values are stored in the `ai_settings` table and take precedence over `AI_MODEL` / `AI_CHEAP_MODEL`.
 - `BINGO_SUGGESTION_TARGET`, `BINGO_SUGGESTION_THRESHOLD`, and `BINGO_SUGGESTION_BATCH` configure the pre-generated suggestion pool (defaults: 20, 5, 15).
 - `MCP_TOKEN_SECRET` defaults to `JWT_SECRET`.
 - Optional: `CORS_ORIGIN` for allowed cross-origin origins (comma-separated). If not set, development allows only `http://localhost:5173` and `http://localhost:3001`; in production no cross-origin requests are allowed.
