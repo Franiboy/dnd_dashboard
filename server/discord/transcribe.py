@@ -29,18 +29,35 @@ _N_FRAMES = 1500
 
 class DecodeProgress:
     def __init__(self) -> None:
-        self.count = 0
         self.total = 0
+        self.completed = 0
+        self.chunk_budget = 0
+        self.chunk_credited = 0
 
     def reset(self, total: int) -> None:
-        self.count = 0
         self.total = max(0, total)
+        self.completed = 0
+        self.chunk_budget = 0
+        self.chunk_credited = 0
+
+    def begin_chunk(self, frames: int) -> None:
+        self.chunk_budget = max(0, frames)
+        self.chunk_credited = 0
 
     def tick(self) -> None:
-        self.count += 1
-        if self.total > 0:
-            current = min(self.total, self.count * _N_FRAMES)
-            emit({"type": "progress", "current": current, "total": self.total})
+        if self.total <= 0 or self.chunk_budget <= 0:
+            return
+        self.chunk_credited = min(self.chunk_budget, self.chunk_credited + _N_FRAMES)
+        current = min(self.total, self.completed + self.chunk_credited)
+        emit({"type": "progress", "current": current, "total": self.total})
+
+    def end_chunk(self) -> None:
+        if self.chunk_budget <= 0:
+            return
+        self.completed = min(self.total, self.completed + self.chunk_budget)
+        self.chunk_budget = 0
+        self.chunk_credited = 0
+        emit({"type": "progress", "current": self.completed, "total": self.total})
 
 
 _progress = DecodeProgress()
@@ -375,6 +392,7 @@ def _transcribe_file(
                 continue
 
             try:
+                _progress.begin_chunk(int((end - start) * _FRAMES_PER_SECOND))
                 result = model.transcribe(
                     chunk_path,
                     language=args.language,
@@ -390,6 +408,7 @@ def _transcribe_file(
                     best_of=5,
                     patience=1.0,
                 )
+                _progress.end_chunk()
 
                 for seg in result.get("segments", []):
                     rel_start = float(seg.get("start", 0.0))
