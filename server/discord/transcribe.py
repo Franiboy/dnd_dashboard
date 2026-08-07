@@ -9,6 +9,7 @@ import sys
 import tempfile
 import traceback
 import wave
+from difflib import SequenceMatcher
 
 def emit(event: dict) -> None:
     print(json.dumps(event), flush=True)
@@ -315,15 +316,29 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"[^a-zäöüß0-9]", "", text.lower())
 
 
+def _tokenize(text: str) -> list[str]:
+    return [word for word in re.sub(r"[^a-zäöüß0-9 ]", " ", text.lower()).split()]
+
+
+def _is_prompt_echo(text: str, initial_prompt: str) -> bool:
+    seg_words = _tokenize(text)
+    prompt_words = _tokenize(initial_prompt)
+    if not seg_words or not prompt_words:
+        return False
+
+    matcher = SequenceMatcher(None, seg_words, prompt_words, autojunk=False)
+    matched = sum(size for _, _, size in matcher.get_matching_blocks())
+    min_matched = max(5, int(len(seg_words) * 0.5))
+    return matched >= min_matched and matched >= len(seg_words) * 0.5
+
+
 def _is_likely_hallucination(seg: dict, no_speech_prob_threshold: float, initial_prompt: str | None) -> bool:
     text = str(seg.get("text", "")).strip()
     if not text:
         return True
 
-    if initial_prompt:
-        normalized_seg = _normalize_text(text)
-        if normalized_seg and normalized_seg in _normalize_text(initial_prompt):
-            return True
+    if initial_prompt and _is_prompt_echo(text, initial_prompt):
+        return True
 
     no_speech_prob = float(seg.get("no_speech_prob", 0.0))
     avg_logprob = float(seg.get("avg_logprob", 0.0))
