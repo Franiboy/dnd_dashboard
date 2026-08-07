@@ -417,6 +417,15 @@ const migrations: Migration[] = [
     },
   },
   {
+    name: 'add_users_active_person',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'active_person')) {
+        db.exec('ALTER TABLE users ADD COLUMN active_person TEXT');
+      }
+    },
+  },
+  {
     name: 'add_recording_session_transcribed_trim',
     run: () => {
       const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];

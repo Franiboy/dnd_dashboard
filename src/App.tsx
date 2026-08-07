@@ -58,7 +58,7 @@ function PublicRoutes({
 }
 
 function App() {
-  const { user, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved } = useAuth();
+  const { user, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, updateUser } = useAuth();
   const [version, setVersion] = useState<VersionInfo | null | undefined>(undefined);
 
   useEffect(() => {
@@ -114,7 +114,7 @@ function App() {
     <BrowserRouter>
       <MappingsProvider>
         <EntityDialogProvider>
-          <Layout user={user} version={version} onLogout={logout}>
+          <Layout user={user} version={version} onLogout={logout} onUserChange={updateUser}>
             <Suspense fallback={pageLoader}>
               <Routes>
                 <Route path="/admin" element={<ProtectedRoute user={user} appId="admin" version={version}><Admin currentUser={user} /></ProtectedRoute>} />
