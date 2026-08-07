@@ -2,6 +2,8 @@ import { Router, type Response } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getRecentLogs, getLogsPaginated, subscribeLogs } from '../logger.js';
 import type { LogEntry, LogLevel } from '../../shared/types.js';
+import { clearModelCache, getCheapModel, getNormalModel, isValidModel, listAvailableModels } from '../ai/modelConfig.js';
+import { getAiModelSettings, setAiModelSettings } from '../repositories/aiSettings.js';
 import {
   deleteUser,
   findUserById,
@@ -162,6 +164,58 @@ router.delete('/users/:id', authMiddleware, requireAdmin, (req: AuthRequest, res
   if (!success) return res.status(404).json({ error: 'User nicht gefunden' });
   notifyUserUpdate();
   res.json({ ok: true });
+});
+
+router.get('/ai/models', authMiddleware, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const models = await listAvailableModels();
+    const settings = getAiModelSettings();
+    res.json({
+      models,
+      normalModel: getNormalModel(),
+      cheapModel: getCheapModel(),
+      normalModelOverridden: isValidModel(settings.normalModel),
+      cheapModelOverridden: isValidModel(settings.cheapModel),
+    });
+  } catch {
+    res.status(500).json({ error: 'Modelle konnten nicht geladen werden' });
+  }
+});
+
+router.post('/ai/models/refresh', authMiddleware, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    clearModelCache();
+    const models = await listAvailableModels(true);
+    res.json({ models });
+  } catch {
+    res.status(500).json({ error: 'Modelle konnten nicht aktualisiert werden' });
+  }
+});
+
+router.put('/ai/models', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const { normalModel, cheapModel } = req.body;
+  const normalize = (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
+
+  const normal = normalize(normalModel);
+  const cheap = normalize(cheapModel);
+
+  if (normal && !isValidModel(normal)) {
+    res.status(400).json({ error: 'Ungültiges Modell' });
+    return;
+  }
+  if (cheap && !isValidModel(cheap)) {
+    res.status(400).json({ error: 'Ungültiges Modell' });
+    return;
+  }
+
+  const settings = setAiModelSettings(normal, cheap);
+  res.json({
+    normalModel: getNormalModel(),
+    cheapModel: getCheapModel(),
+    normalModelOverridden: isValidModel(settings.normalModel),
+    cheapModelOverridden: isValidModel(settings.cheapModel),
+  });
 });
 
 export default router;
