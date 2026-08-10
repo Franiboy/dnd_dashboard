@@ -8,14 +8,14 @@ interface HomeProps {
 }
 
 export function Home({ version }: HomeProps) {
-  const { user } = useAuth();
+  const { effectiveUser } = useAuth();
 
   const homeApps = APPS.filter(
     (app) =>
       app.id !== 'dashboard' &&
       app.id !== 'admin' &&
-      user &&
-      isAppVisible(app, user, version),
+      effectiveUser &&
+      isAppVisible(app, effectiveUser, version),
   );
 
   return (

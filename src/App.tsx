@@ -58,7 +58,7 @@ function PublicRoutes({
 }
 
 function App() {
-  const { user, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, updateUser } = useAuth();
+  const { user, effectiveUser, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, updateUser } = useAuth();
   const [version, setVersion] = useState<VersionInfo | null | undefined>(undefined);
 
   useEffect(() => {
@@ -80,7 +80,7 @@ function App() {
     );
   }
 
-  if (!user) {
+  if (!effectiveUser) {
     return (
       <BrowserRouter>
         <PublicRoutes
@@ -94,10 +94,10 @@ function App() {
     );
   }
 
-  if (!user.isApproved && !user.isAdmin) {
+  if (!effectiveUser.isApproved && !effectiveUser.isAdmin) {
     return (
       <PendingApproval
-        user={{ displayName: user.displayName, avatarUrl: user.avatarUrl }}
+        user={{ displayName: effectiveUser.displayName, avatarUrl: effectiveUser.avatarUrl }}
         onCheckApproved={checkApproved}
         onLogout={logout}
       />
@@ -110,19 +110,21 @@ function App() {
     </div>
   );
 
+  const currentUser = user!;
+
   return (
     <BrowserRouter>
       <MappingsProvider>
         <EntityDialogProvider>
-          <Layout user={user} version={version} onLogout={logout} onUserChange={updateUser}>
+          <Layout user={effectiveUser} version={version} realUser={currentUser} onLogout={logout} onUserChange={updateUser}>
             <Suspense fallback={pageLoader}>
               <Routes>
-                <Route path="/admin" element={<ProtectedRoute user={user} appId="admin" version={version}><Admin currentUser={user} /></ProtectedRoute>} />
+                <Route path="/admin" element={<ProtectedRoute user={currentUser} appId="admin" version={version}><Admin currentUser={currentUser} /></ProtectedRoute>} />
                 <Route path="/" element={<Home version={version} />} />
-                <Route path="/tagebuch" element={<ProtectedRoute user={user} appId="notes" version={version}><Diary /></ProtectedRoute>} />
-                <Route path="/welt" element={<ProtectedRoute user={user} appId="world" version={version}><World /></ProtectedRoute>} />
-                <Route path="/sessions" element={<ProtectedRoute user={user} appId="sessions" version={version}><Sessions user={user} /></ProtectedRoute>} />
-                <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo" version={version}><Bingo user={user} /></ProtectedRoute>} />
+                <Route path="/tagebuch" element={<ProtectedRoute user={effectiveUser} appId="notes" version={version}><Diary /></ProtectedRoute>} />
+                <Route path="/welt" element={<ProtectedRoute user={effectiveUser} appId="world" version={version}><World /></ProtectedRoute>} />
+                <Route path="/sessions" element={<ProtectedRoute user={effectiveUser} appId="sessions" version={version}><Sessions user={effectiveUser} /></ProtectedRoute>} />
+                <Route path="/bingo" element={<ProtectedRoute user={effectiveUser} appId="bingo" version={version}><Bingo user={effectiveUser} /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </Suspense>
