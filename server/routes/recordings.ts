@@ -308,14 +308,19 @@ router.post('/:id/improve-transcript', requireAdmin, async (req: AuthRequest, re
 
   const stopProgress = startProgressMessages('KI verbessert das Transkript...');
   try {
-    const result = await improveSessionTranscriptWithAi(id, session.transcript, req.user!, undefined, notifyAiLog);
+    const result = await improveSessionTranscriptWithAi(id, req.user!, undefined, notifyAiLog);
     if (result.transcript === null) {
       log.error(`improveSessionTranscriptWithAi returned null for session ${id}`);
       res.status(500).json({ error: 'KI-Verbesserung ist fehlgeschlagen' });
       return;
     }
+    const transcriptPath = join(session.directory, 'transcript.txt');
+    await writeFile(transcriptPath, result.transcript);
+    updateSession(id, {
+      transcript: result.transcript,
+      transcriptImprovedAt: new Date().toISOString(),
+    });
     broadcastAiLog('Transkript verbessert.');
-    updateSession(id, { transcriptImprovedAt: new Date().toISOString() });
     emitSessionsUpdated();
     res.json({ session: getSessionById(id) });
   } catch (err) {
