@@ -2,13 +2,12 @@ import 'dotenv/config';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { createLogger } from '../logger.js';
 import { runMigrations } from '../migrations.js';
 import '../database.js';
 import { stripHtml } from '../ai/rewrite.js';
-import { getSessionById, updateSession } from '../repositories/recordings.js';
+import { getSessionById } from '../repositories/recordings.js';
+import { writeImprovedTranscript } from '../sessionFiles.js';
 import {
   ensureEntityExists,
   findEntityCanonicalName,
@@ -133,6 +132,27 @@ if (requireScope('diary:rewrite')) {
   );
 }
 
+if (requireScope('session:read')) {
+  server.tool(
+    'get_session_transcript',
+    'Liefert das aktuelle Transkript einer Sessions-Aufnahme.',
+    {
+      sessionId: z.number().int().positive(),
+    },
+    async ({ sessionId }) => {
+      try {
+        if (!sessionIsAdmin) return error('Nur Admins dürfen Transkripte lesen');
+        const session = getSessionById(sessionId);
+        if (!session) return error('Session nicht gefunden');
+        if (!session.transcript) return error('Kein Transkript vorhanden');
+        return success(session.transcript);
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Laden des Transkripts');
+      }
+    },
+  );
+}
+
 if (requireScope('session:rewrite')) {
   server.tool(
     'set_session_transcript',
@@ -144,11 +164,9 @@ if (requireScope('session:rewrite')) {
     async ({ sessionId, text }) => {
       try {
         if (!sessionIsAdmin) return error('Nur Admins dürfen Transkripte verändern');
-        const session = getSessionById(sessionId);
-        if (!session) return error('Session nicht gefunden');
-        const transcriptPath = join(session.directory, 'transcript.txt');
-        await writeFile(transcriptPath, text, 'utf-8');
-        updateSession(sessionId, { transcript: text });
+        if (!writeImprovedTranscript(sessionId, text)) {
+          return error('Session nicht gefunden');
+        }
         return success(`Transkript für Session ${sessionId} gespeichert.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Speichern des Transkripts');

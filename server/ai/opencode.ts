@@ -46,6 +46,9 @@ export function runOpenCode({
   user,
   onLog,
 }: OpenCodeOptions): Promise<OpenCodeResult> {
+  if (prompt.length > 50_000) {
+    log.warn(`Prompt is very long (${prompt.length} chars) and is passed as a CLI argument; read large content via MCP tools instead`);
+  }
   const bin = getOpenCodeBin();
   const args = ['run'];
 
