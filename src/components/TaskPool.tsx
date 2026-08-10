@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { BingoGame, SafeUser, Task } from '../../shared/types';
 import type { Socket } from '../types';
 import { useApi } from '../hooks/useApi';
+import { BingoAiSuggestions } from './BingoAiSuggestions';
 import { Loading } from './Loading';
 import { Modal } from './Modal';
 import { Toggle } from './Toggle';
@@ -30,6 +31,7 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
   const [editingIsPrivate, setEditingIsPrivate] = useState(false);
   const [editingAssignedTo, setEditingAssignedTo] = useState<string[]>([]);
   const [showHidden, setShowHidden] = useState(false);
+  const [activeTab, setActiveTab] = useState<'tasks' | 'suggestions'>('tasks');
   const ownerId = currentUser?.id;
   const assignableUsers = users.filter((u) => !u.isInitialAdmin);
 
@@ -95,8 +97,35 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
     setEditingAssignedTo([]);
   };
 
-  return (
-    <div className={`h-full flex flex-col ${className || ''}`}>
+  const tabs = (
+    <div className="flex items-center gap-2 shrink-0 mb-2">
+      <button
+        type="button"
+        onClick={() => setActiveTab('tasks')}
+        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+          activeTab === 'tasks'
+            ? 'bg-[var(--accent)] text-slate-900'
+            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-[var(--text-h)]'
+        }`}
+      >
+        Aufgaben
+      </button>
+      <button
+        type="button"
+        onClick={() => setActiveTab('suggestions')}
+        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+          activeTab === 'suggestions'
+            ? 'bg-[var(--accent)] text-slate-900'
+            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-[var(--text-h)]'
+        }`}
+      >
+        Vorschläge
+      </button>
+    </div>
+  );
+
+  const taskList = (
+    <>
       {isSetup && (
         <div className="flex flex-col gap-3 mb-2">
           <div className="flex gap-2">
@@ -194,6 +223,18 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
             onChange={setShowHidden}
             label="Versteckte Aufgaben anzeigen"
           />
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className={`h-full flex flex-col ${className || ''}`}>
+      {tabs}
+      {activeTab === 'tasks' && taskList}
+      {activeTab === 'suggestions' && (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <BingoAiSuggestions isSetup={isSetup} />
         </div>
       )}
 

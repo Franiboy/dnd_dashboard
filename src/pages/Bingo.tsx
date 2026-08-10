@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { DashboardHeader } from '../components/DashboardHeader';
 import { Loading } from '../components/Loading';
 import { BingoDashboard } from '../components/BingoDashboard';
 import type { SafeUser } from '../../shared/types';
@@ -50,9 +49,7 @@ export function Bingo({ user }: BingoProps) {
   const isAdmin = user?.isAdmin || false;
 
   return (
-    <div className="h-full flex flex-col p-6">
-      <DashboardHeader title="Bingo" />
-
+    <div className="h-full flex flex-col p-4 sm:p-6">
       {bingo && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
           <div className="bg-[var(--accent)] text-slate-900 text-5xl font-black px-10 py-6 rounded-2xl shadow-2xl animate-bounce">

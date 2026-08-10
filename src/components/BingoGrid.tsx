@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { BingoGame, Cell } from '../../shared/types';
 import type { Socket } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -17,27 +17,10 @@ export function BingoGrid({ game, socket, playerId, className, controls }: Bingo
   const [draggedCell, setDraggedCell] = useState<{ r: number; c: number } | null>(null);
   const [isOverDelete, setIsOverDelete] = useState(false);
   const [pendingTask, setPendingTask] = useState<{ id: string; action: 'confirm' | 'unconfirm' } | null>(null);
-  const gridContainerRef = useRef<HTMLDivElement>(null);
-  const [squareSize, setSquareSize] = useState(0);
 
   useEffect(() => {
     if (!draggedCell) setIsOverDelete(false);
   }, [draggedCell]);
-
-  useLayoutEffect(() => {
-    const el = gridContainerRef.current;
-    if (!el) return;
-
-    const update = () => {
-      const rect = el.getBoundingClientRect();
-      setSquareSize(Math.min(rect.width, rect.height));
-    };
-
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   const taskMap = new Map(game.tasks.map((t) => [t.id, t]));
   const isDrafting = game.status === 'setup';
@@ -142,16 +125,10 @@ export function BingoGrid({ game, socket, playerId, className, controls }: Bingo
 
   return (
     <div className={`flex flex-col ${className || ''}`}>
-      <div
-        ref={gridContainerRef}
-        className="flex-1 min-h-0 flex items-center justify-center overflow-hidden"
-      >
-        <div
-          style={{ width: squareSize, height: squareSize }}
-          className="max-w-full max-h-full"
-        >
+      <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+        <div className="w-full max-h-full aspect-square">
           <div
-            className="grid gap-2 w-full h-full"
+            className="grid gap-1.5 sm:gap-2 w-full h-full p-1"
             style={{
               gridTemplateColumns: `repeat(${board.length}, minmax(0, 1fr))`,
               gridTemplateRows: `repeat(${board.length}, minmax(0, 1fr))`,
@@ -177,7 +154,7 @@ export function BingoGrid({ game, socket, playerId, className, controls }: Bingo
                     onClick={() => openTaskAction(cell.taskId, !!cell.confirmedBy)}
                     title={task?.text || (canEdit && isEmpty ? 'Leeres Feld' : '')}
                     className={`
-                      relative p-2 min-h-0 min-w-0 overflow-hidden rounded-xl border flex flex-col items-center justify-center text-center gap-1
+                      relative p-1 sm:p-2 min-h-0 min-w-0 overflow-hidden rounded-lg sm:rounded-xl border flex flex-col items-center justify-center text-center gap-0.5 sm:gap-1
                       transition select-none break-words
                       ${cell.confirmedBy ? 'bg-[var(--accent-dim)] border-[var(--accent)]' : 'bg-slate-900 border-[var(--border)]'}
                       ${canEdit ? 'cursor-move' : 'cursor-default'}
@@ -186,7 +163,7 @@ export function BingoGrid({ game, socket, playerId, className, controls }: Bingo
                   >
                     {task ? (
                       <span
-                        className={`text-sm leading-tight ${cell.confirmedBy ? 'text-[var(--accent)]' : 'text-[var(--text-h)]'}`}
+                        className={`text-xs sm:text-sm leading-tight ${cell.confirmedBy ? 'text-[var(--accent)]' : 'text-[var(--text-h)]'}`}
                         style={{
                           display: '-webkit-box',
                           WebkitLineClamp: 3,
@@ -197,10 +174,10 @@ export function BingoGrid({ game, socket, playerId, className, controls }: Bingo
                         {task.text}
                       </span>
                     ) : (
-                      <span className="text-slate-600 text-sm">{canEdit ? '+' : '?'}</span>
+                      <span className="text-slate-600 text-xs sm:text-sm">{canEdit ? '+' : '?'}</span>
                     )}
                     {cell.confirmedBy && (
-                      <span className="text-xs text-[var(--accent)] mt-1 font-semibold truncate max-w-full">
+                      <span className="text-[10px] sm:text-xs text-[var(--accent)] mt-0.5 font-semibold truncate max-w-full">
                         ✓ {cell.confirmedBy}
                       </span>
                     )}
@@ -211,7 +188,7 @@ export function BingoGrid({ game, socket, playerId, className, controls }: Bingo
           </div>
         </div>
       </div>
-      <div className="shrink-0 h-28 flex flex-col justify-between mt-3">
+      <div className="shrink-0 flex flex-col justify-between mt-2 sm:mt-3 gap-2">
         {canEdit && draggedCell ? (
           <div
             onDragOver={(e) => {
@@ -220,7 +197,7 @@ export function BingoGrid({ game, socket, playerId, className, controls }: Bingo
             }}
             onDragLeave={() => setIsOverDelete(false)}
             onDrop={handleDeleteDrop}
-            className={`h-full rounded-xl border-2 border-dashed flex items-center justify-center text-sm transition select-none
+            className={`h-14 sm:h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-xs sm:text-sm transition select-none
               ${isOverDelete ? 'bg-red-900/40 border-red-500 text-red-500' : 'bg-red-900/20 border-[var(--danger)] text-[var(--danger)]'}`}
           >
             Aufgabe hierher ziehen zum Entfernen
