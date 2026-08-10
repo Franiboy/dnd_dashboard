@@ -6,6 +6,7 @@ import { BingoAiSuggestions } from './BingoAiSuggestions';
 import { Loading } from './Loading';
 import { Modal } from './Modal';
 import { Toggle } from './Toggle';
+import { Tooltip } from './Tooltip';
 import { UserCheckboxList } from './UserCheckboxList';
 import { UserInline } from './UserInline';
 
@@ -327,6 +328,11 @@ function TaskListItem({
       ref={actionsRef}
       className={`flex shrink-0 items-center gap-3 ${twoLine ? 'self-end pt-1' : ''}`}
     >
+      {task.isPrivate && (
+        <Tooltip content={<UserInline users={users} userIds={task.assignedTo} />}>
+          <span className="text-slate-400">🔒</span>
+        </Tooltip>
+      )}
       <button onClick={() => onEdit(task)} className="text-slate-400 hover:text-[var(--text-h)] text-sm">
         Bearbeiten
       </button>
@@ -350,12 +356,6 @@ function TaskListItem({
     >
       <span ref={textRef} className="min-w-0 flex-1 break-words text-[var(--text-h)]">
         {task.text}
-        {task.isPrivate && (
-          <span className="ml-2 inline-flex items-center gap-1 text-xs text-slate-400">
-            <span>🔒</span>
-            <UserInline users={users} userIds={task.assignedTo} />
-          </span>
-        )}
       </span>
       {isSetup && actionButtons}
     </li>
