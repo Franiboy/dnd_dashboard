@@ -91,21 +91,28 @@ export function Layout({ user, realUser, version, onLogout, onUserChange, childr
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <header ref={headerRef} className="relative z-10 flex items-center justify-center px-6 py-2 border-b border-[var(--border)] bg-[var(--panel)]">
-        <div className="absolute left-6 flex items-center gap-2 font-semibold text-[var(--text-h)]">
-          {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-6 h-6 rounded-full" />}
-          <div className="flex items-center gap-2">
-            <span className="text-sm">{user.displayName}</span>
+      <header ref={headerRef} className="relative z-10 flex items-center gap-2 px-3 sm:px-6 py-2 border-b border-[var(--border)] bg-[var(--panel)]">
+        {/* Left: user + active character */}
+        <div className="flex min-w-0 items-center gap-2 font-semibold text-[var(--text-h)]">
+          {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-6 h-6 rounded-full shrink-0" />}
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="hidden md:inline truncate text-sm">{user.displayName}</span>
             {selectElement(
               false,
-              'max-w-[10rem] bg-slate-800 border border-[var(--border)] rounded-lg px-2 py-0.5 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50',
+              'max-w-[9rem] min-w-0 bg-slate-800 border border-[var(--border)] rounded-lg px-2 py-0.5 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50',
             )}
           </div>
         </div>
 
-        <AppSwitcher user={user} version={version} />
+        {/* Center: app switcher, scrollable on narrow screens */}
+        <div className="flex min-w-0 flex-1 justify-center">
+          <div className="flex min-w-0 max-w-full overflow-x-auto">
+            <AppSwitcher user={user} version={version} />
+          </div>
+        </div>
 
-        <div className="absolute right-6">
+        {/* Right: logout */}
+        <div className="flex shrink-0 items-center">
           <HeaderAction onClick={onLogout} icon={logoutIcon} variant="danger">
             Logout
           </HeaderAction>
