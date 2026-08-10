@@ -450,6 +450,15 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: 'add_recording_session_ai_improved',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'transcript_improved_at')) {
+        db.exec('ALTER TABLE recording_sessions ADD COLUMN transcript_improved_at TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations() {

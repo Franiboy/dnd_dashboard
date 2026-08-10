@@ -5,6 +5,8 @@ import { authMiddleware, requireAdmin, requireApproved, type AuthRequest } from 
 import { getBotStatus, getAllVoiceChannels, finishRecording, getActiveRecording, getMonitoredChannel } from '../discord/bot.js';
 import { runTranscription, getTranscriptionProgress } from '../discord/transcriber.js';
 import { isRecordingFeatureEnabled } from '../discord/config.js';
+import { isAiEnabled } from '../ai/config.js';
+import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
 import { onSessionsUpdated, onStatusUpdated, onProgressUpdated, emitSessionsUpdated } from '../discord/recordingsEvents.js';
 import { getSessionById, listSessions, getFilesBySessionId, getRecordingConfig, setRecordingConfig, deleteSession, updateSession } from '../repositories/recordings.js';
 import { createLogger } from '../logger.js';
@@ -33,6 +35,60 @@ function broadcastSessions(): void {
 
 function broadcastProgress(sessionId: number, progress: unknown): void {
   sseClients.broadcast('progress', JSON.stringify({ sessionId, progress }));
+}
+
+function broadcastAiLog(message: string): void {
+  sseClients.broadcast('aiLog', JSON.stringify({ message }));
+}
+
+function mapOpencodeStatus(line: string): string | null {
+  const [action] = line.split('·').map((s) => s.trim());
+  switch (action.toLowerCase()) {
+    case 'build':
+      return 'KI-Modell wird geladen...';
+    case 'run':
+      return 'KI-Anfrage wird ausgeführt...';
+    default:
+      return `KI arbeitet: ${action}`;
+  }
+}
+
+function notifyAiLog(raw: string): void {
+  const messages = raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line)
+    .flatMap((line) => {
+      const statusMatch = line.match(/^>\s*(.+)$/);
+      if (statusMatch) {
+        const mapped = mapOpencodeStatus(statusMatch[1]);
+        return mapped ? [mapped] : [];
+      }
+      if (/^(error|fehler|warn|warning|opencode|spawn)/i.test(line)) {
+        return [line];
+      }
+      return [];
+    });
+
+  for (const message of messages) {
+    broadcastAiLog(message);
+  }
+}
+
+function startProgressMessages(initialMessage: string): () => void {
+  const messages = [
+    'KI prüft Entitäten und Tagebücher...',
+    'KI verbessert das Transkript...',
+    'KI arbeitet noch...',
+    'Fast fertig...',
+  ];
+  let index = 0;
+  broadcastAiLog(initialMessage);
+  const interval = setInterval(() => {
+    broadcastAiLog(messages[index % messages.length]);
+    index++;
+  }, 3000);
+  return () => clearInterval(interval);
 }
 
 onStatusUpdated(() => broadcastStatus());
@@ -232,6 +288,42 @@ router.post('/:id/transcribe', requireAdmin, (req, res) => {
   });
 
   res.json({ message: 'Transkription wird im Hintergrund gestartet' });
+});
+
+router.post('/:id/improve-transcript', requireAdmin, async (req: AuthRequest, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+  if (session.status !== 'completed' || !session.transcript) {
+    res.status(400).json({ error: 'Kein Transkript vorhanden' });
+    return;
+  }
+  if (!isAiEnabled()) {
+    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
+    return;
+  }
+
+  const stopProgress = startProgressMessages('KI verbessert das Transkript...');
+  try {
+    const result = await improveSessionTranscriptWithAi(id, session.transcript, req.user!, undefined, notifyAiLog);
+    if (result.transcript === null) {
+      log.error(`improveSessionTranscriptWithAi returned null for session ${id}`);
+      res.status(500).json({ error: 'KI-Verbesserung ist fehlgeschlagen' });
+      return;
+    }
+    broadcastAiLog('Transkript verbessert.');
+    updateSession(id, { transcriptImprovedAt: new Date().toISOString() });
+    emitSessionsUpdated();
+    res.json({ session: getSessionById(id) });
+  } catch (err) {
+    log.error(`Unexpected error during transcript improvement of session ${id}:`, err);
+    res.status(500).json({ error: 'KI-Verbesserung ist fehlgeschlagen' });
+  } finally {
+    stopProgress();
+  }
 });
 
 router.get('/:id/progress', (req, res) => {
