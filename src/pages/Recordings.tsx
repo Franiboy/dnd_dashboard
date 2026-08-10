@@ -29,6 +29,8 @@ export function Sessions({ user }: SessionsProps) {
   const [visibleTranscripts, setVisibleTranscripts] = useState<Set<number>>(new Set());
   const [loadingTranscript, setLoadingTranscript] = useState<Set<number>>(new Set());
   const [sessionToDelete, setSessionToDelete] = useState<number | null>(null);
+  const [improvingId, setImprovingId] = useState<number | null>(null);
+  const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<
     Record<number, { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null>
   >({});
@@ -56,6 +58,11 @@ export function Sessions({ user }: SessionsProps) {
           progress: { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null;
         };
         setTranscriptionProgress((prev) => ({ ...prev, [data.sessionId]: data.progress }));
+      });
+
+      eventSource.addEventListener('aiLog', (event) => {
+        const data = JSON.parse((event as MessageEvent).data) as { message: string };
+        setAiStatus(data.message);
       });
 
       eventSource.onerror = () => {
@@ -139,6 +146,25 @@ export function Sessions({ user }: SessionsProps) {
     setVisibleTranscripts((prev) => new Set(prev).add(sessionId));
   }
 
+  async function improveTranscript(sessionId: number) {
+    setWorking(true);
+    setImprovingId(sessionId);
+    setAiStatus('KI verbessert das Transkript...');
+    const { data, error } = await request<{ session: RecordingSession }>(
+      `/api/recordings/${sessionId}/improve-transcript`,
+      { method: 'POST' },
+    );
+    setWorking(false);
+    setImprovingId(null);
+    if (data) {
+      if (visibleTranscripts.has(sessionId)) {
+        setLoadedTranscripts((prev) => ({ ...prev, [sessionId]: data.session.transcript }));
+      }
+    } else if (error) {
+      setAiStatus(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-full flex items-center justify-center">
@@ -154,6 +180,13 @@ export function Sessions({ user }: SessionsProps) {
         <BackButton />
       </div>
 
+      {user.isAdmin && aiStatus && (
+        <div className="mb-4 p-3 rounded-lg bg-[var(--accent)]/20 text-[var(--text-h)] text-sm flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
+          {aiStatus}
+        </div>
+      )}
+
       <div className="space-y-4">
         {sessions.length === 0 && <p className="text-slate-400">Noch keine Sessions vorhanden.</p>}
         {sessions.map((session) => (
@@ -166,6 +199,9 @@ export function Sessions({ user }: SessionsProps) {
                 <h3 className="text-lg font-semibold text-[var(--text-h)]">{session.name}</h3>
                 <p className="text-sm text-slate-400">
                   {new Date(session.startedAt).toLocaleString('de-DE')} · Status: {session.status}
+                  {session.transcriptImprovedAt && (
+                    <span className="ml-2 text-xs font-medium text-[var(--accent)]">✓ KI-optimiert</span>
+                  )}
                 </p>
                 {session.status === 'processing' && (
                   <div className="mt-1">
@@ -204,6 +240,19 @@ export function Sessions({ user }: SessionsProps) {
                         onClick={() => startTranscriptionNow(session.id)}
                       >
                         {session.status === 'error' ? 'Transkription wiederholen' : 'Jetzt transkribieren'}
+                      </Button>
+                    )}
+                    {session.status === 'completed' && (
+                      <Button
+                        variant="secondary"
+                        disabled={working || improvingId === session.id}
+                        onClick={() => improveTranscript(session.id)}
+                      >
+                        {improvingId === session.id
+                          ? 'Verbessern...'
+                          : session.transcriptImprovedAt
+                            ? 'Skript erneut verbessern'
+                            : 'Skript verbessern'}
                       </Button>
                     )}
                   </>

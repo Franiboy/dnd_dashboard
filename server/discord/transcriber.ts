@@ -450,6 +450,7 @@ export async function runTranscription(
         transcript: result.transcript,
         transcribedTrimStartSeconds: trimStart,
         transcribedTrimEndSeconds: trimEnd,
+        transcriptImprovedAt: null,
       });
     } else {
       updateSession(sessionId, {
