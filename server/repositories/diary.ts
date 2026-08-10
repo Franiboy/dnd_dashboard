@@ -885,10 +885,13 @@ export function clearDiaryEntryDirty(id: number, processedAt?: string): void {
   db.prepare('UPDATE diary_entries SET ai_dirty = 0, ai_processed_at = ? WHERE id = ?').run(ts, id);
 }
 
-export function listDirtyDiaryEntries(limit = 10): DiaryEntry[] {
-  const rows = db
-    .prepare('SELECT * FROM diary_entries WHERE ai_dirty = 1 ORDER BY created_at DESC LIMIT ?')
-    .all(limit) as Record<string, unknown>[];
+export function listDirtyDiaryEntries(limit?: number): DiaryEntry[] {
+  const hasLimit = limit !== undefined && limit > 0;
+  const sql = hasLimit
+    ? 'SELECT * FROM diary_entries WHERE ai_dirty = 1 ORDER BY created_at DESC LIMIT ?'
+    : 'SELECT * FROM diary_entries WHERE ai_dirty = 1 ORDER BY created_at DESC';
+  const params = hasLimit ? [limit] : [];
+  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
   const entryIds = rows.map((row) => row.id as number);
   const entitiesMap = buildEntryEntitiesMap(entryIds);
   return rows.map((row) =>
