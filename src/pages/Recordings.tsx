@@ -6,12 +6,6 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useApi } from '../hooks/useApi';
 import type { RecordingSession, SafeUser, VersionInfo } from '../../shared/types';
 
-interface StatusResponse {
-  bot: { ready: boolean; enabled: boolean };
-  active: { sessionId: number; channelId: string } | null;
-  monitoredChannel?: { channelId: string | null; channelName: string | null } | null;
-}
-
 interface SessionsProps {
   user: SafeUser;
 }
@@ -28,7 +22,6 @@ function parseTimestamp(ts: string): number | null {
 
 export function Sessions({ user }: SessionsProps) {
   const { request } = useApi();
-  const [status, setStatus] = useState<StatusResponse | null>(null);
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -50,11 +43,6 @@ export function Sessions({ user }: SessionsProps) {
       }
 
       eventSource = new EventSource('/api/recordings/events', { withCredentials: true });
-
-      eventSource.addEventListener('status', (event) => {
-        const data = JSON.parse((event as MessageEvent).data) as StatusResponse;
-        setStatus(data);
-      });
 
       eventSource.addEventListener('sessions', (event) => {
         const data = JSON.parse((event as MessageEvent).data) as { sessions: RecordingSession[] };
@@ -159,9 +147,6 @@ export function Sessions({ user }: SessionsProps) {
     );
   }
 
-  const monitoredChannel = status?.monitoredChannel;
-  const monitoredName = monitoredChannel?.channelName ?? monitoredChannel?.channelId ?? 'nicht konfiguriert';
-
   return (
     <div className="min-h-full p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -169,29 +154,6 @@ export function Sessions({ user }: SessionsProps) {
         <BackButton />
       </div>
 
-      {!status?.bot.enabled && (
-        <div className="mb-6 p-4 rounded-lg bg-[var(--warning)]/20 text-[var(--text-h)]">
-          Discord-Bot ist nicht konfiguriert. Trage DISCORD_BOT_TOKEN und DISCORD_GUILD_ID in die .env ein.
-        </div>
-      )}
-
-      {status?.bot.enabled && !status.bot.ready && (
-        <div className="mb-6 p-4 rounded-lg bg-[var(--warning)]/20 text-[var(--text-h)]">
-          Discord-Bot verbindet...
-        </div>
-      )}
-
-      {status?.bot.enabled && status.bot.ready && (
-        <div className="mb-6 p-4 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/20 text-[var(--text-h)]">
-          {status?.active
-            ? `Aktuell wird in ${monitoredName} aufgezeichnet.`
-            : monitoredChannel?.channelId
-              ? `Bereit für Aufnahme in ${monitoredName}. Die Aufnahme startet automatisch, sobald jemand den Channel betritt.`
-              : 'Der überwachte Voice-Channel wurde noch nicht konfiguriert.'}
-        </div>
-      )}
-
-      <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Sessions</h2>
       <div className="space-y-4">
         {sessions.length === 0 && <p className="text-slate-400">Noch keine Sessions vorhanden.</p>}
         {sessions.map((session) => (
