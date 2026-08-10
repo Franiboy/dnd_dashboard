@@ -231,7 +231,7 @@ export function BingoDashboard({
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      <SideDrawer side="right" width="18rem" fitContent maxWidth="24rem">
+      <SideDrawer side="right" width="18rem" fitContent maxWidth="min(28rem, calc(100vw - 16rem))">
         <SideDrawerItem id="bingo-players" label="Spieler" icon={<span>👤</span>}>
           <PlayerList game={game} playerId={playerId} />
         </SideDrawerItem>
