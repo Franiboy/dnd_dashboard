@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import type { BingoGame, Cell } from '../../shared/types';
+import type { BingoGame, Cell, Task } from '../../shared/types';
 import type { Socket } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Modal } from './Modal';
 
 interface BingoGridProps {
   game: BingoGame;
@@ -9,14 +10,16 @@ interface BingoGridProps {
   playerId: string | null;
   className?: string;
   controls?: ReactNode;
+  availableTasks?: Task[];
 }
 
-export function BingoGrid({ game, socket, playerId, className, controls }: BingoGridProps) {
+export function BingoGrid({ game, socket, playerId, className, controls, availableTasks }: BingoGridProps) {
   const player = game.players.find((p) => p.id === playerId);
   const board = player?.board;
   const [draggedCell, setDraggedCell] = useState<{ r: number; c: number } | null>(null);
   const [isOverDelete, setIsOverDelete] = useState(false);
   const [pendingTask, setPendingTask] = useState<{ id: string; action: 'confirm' | 'unconfirm' } | null>(null);
+  const [fillingCell, setFillingCell] = useState<{ r: number; c: number } | null>(null);
 
   useEffect(() => {
     if (!draggedCell) setIsOverDelete(false);
@@ -100,6 +103,33 @@ export function BingoGrid({ game, socket, playerId, className, controls }: Bingo
     }
   };
 
+  const placeTask = (taskId: string) => {
+    setFillingCell(null);
+    if (!canEdit || !board || !socket) return;
+    const task = taskMap.get(taskId);
+    if (task?.isPrivate && (!player?.userId || !task.assignedTo?.includes(player.userId))) return;
+    const { r, c } = fillingCell!;
+    const newBoard = board.map((row) => row.map((cell) => ({ ...cell })));
+    // Remove the task from any other cell to avoid duplicates within the board
+    for (let i = 0; i < newBoard.length; i++) {
+      for (let j = 0; j < newBoard[i].length; j++) {
+        if (newBoard[i][j].taskId === taskId) {
+          newBoard[i][j] = { ...newBoard[i][j], taskId: null };
+        }
+      }
+    }
+    newBoard[r][c] = { ...newBoard[r][c], taskId };
+    updateBoard(newBoard);
+  };
+
+  const handleCellClick = (taskId: string | null, isConfirmed: boolean, r: number, c: number) => {
+    if (canEdit && !taskId) {
+      setFillingCell({ r, c });
+      return;
+    }
+    openTaskAction(taskId, isConfirmed);
+  };
+
   const submit = () => {
     if (!pendingTask || !socket) return;
     if (pendingTask.action === 'confirm' && player?.status === 'bingo') {
@@ -151,7 +181,7 @@ export function BingoGrid({ game, socket, playerId, className, controls }: Bingo
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => handleDrop(e, r, c)}
                     onDragEnd={() => setDraggedCell(null)}
-                    onClick={() => openTaskAction(cell.taskId, !!cell.confirmedBy)}
+                    onClick={() => handleCellClick(cell.taskId, !!cell.confirmedBy, r, c)}
                     title={task?.text || (canEdit && isEmpty ? 'Leeres Feld' : '')}
                     className={`
                       relative p-1 sm:p-2 min-h-0 min-w-0 overflow-hidden rounded-lg sm:rounded-xl border flex flex-col items-center justify-center text-center gap-0.5 sm:gap-1
@@ -244,6 +274,54 @@ export function BingoGrid({ game, socket, playerId, className, controls }: Bingo
           </p>
         </ConfirmDialog>
       )}
+
+      {fillingCell && (
+        <TaskSelectModal
+          tasks={availableTasks ?? []}
+          placedTaskIds={new Set(
+            board?.flat().filter((cell) => cell.taskId).map((cell) => cell.taskId!) ?? [],
+          )}
+          onSelect={placeTask}
+          onClose={() => setFillingCell(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function TaskSelectModal({
+  tasks,
+  placedTaskIds,
+  onSelect,
+  onClose,
+}: {
+  tasks: Task[];
+  placedTaskIds: Set<string>;
+  onSelect: (taskId: string) => void;
+  onClose: () => void;
+}) {
+  const available = tasks.filter((t) => !placedTaskIds.has(t.id));
+
+  return (
+    <Modal isOpen onClose={onClose} title="Aufgabe auswählen">
+      {available.length === 0 ? (
+        <p className="text-slate-500">Keine verfügbaren Aufgaben. Füge zuerst Aufgaben hinzu.</p>
+      ) : (
+        <ul className="max-h-80 space-y-2 overflow-auto">
+          {available.map((task) => (
+            <li key={task.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(task.id)}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded border border-[var(--border)] bg-slate-900/50 text-left text-[var(--text-h)] hover:bg-slate-800 transition"
+              >
+                <span className="min-w-0 break-words">{task.text}</span>
+                {task.isPrivate && <span className="shrink-0 text-xs">🔒</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
   );
 }

@@ -161,6 +161,12 @@ export function BingoDashboard({
 
   const fieldPanelActions = isAdmin && isSetup ? <SetupControls game={game} socket={socket} /> : undefined;
 
+  // Tasks the current user may place on their board: all tasks for admins, otherwise
+  // public tasks plus private tasks assigned to the user.
+  const availableTasks = isAdmin
+    ? game.tasks
+    : game.tasks.filter((task) => !task.isPrivate || (user.id && task.assignedTo?.includes(user.id)));
+
   const boardControls = (
     <BoardControls
       socket={socket}
@@ -179,6 +185,7 @@ export function BingoDashboard({
         playerId={playerId}
         className="flex-1 min-h-0"
         controls={boardControls}
+        availableTasks={availableTasks}
       />
     </Panel>
   );

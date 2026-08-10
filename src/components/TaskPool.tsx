@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { BingoGame, SafeUser, Task } from '../../shared/types';
 import type { Socket } from '../types';
 import { useApi } from '../hooks/useApi';
@@ -134,12 +134,12 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && add()}
               placeholder="Neue Aufgabe..."
-              className="flex-1 px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="min-w-0 flex-1 px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
             <button
               onClick={add}
               disabled={!text.trim() || (isPrivate && assignedTo.length === 0)}
-              className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
+              className="shrink-0 whitespace-nowrap px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
             >
               Hinzufügen
             </button>
@@ -177,42 +177,15 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
           </li>
         )}
         {visibleTasks.map((task) => (
-          <li
+          <TaskListItem
             key={task.id}
-            draggable={isSetup}
-            onDragStart={(e) => {
-              if (!isSetup) return;
-              e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'task', taskId: task.id }));
-            }}
-            className={`flex justify-between items-center px-3 py-2 rounded border transition ${
-              placedTaskIds.has(task.id)
-                ? 'bg-[var(--accent-dim)] border-[var(--accent)]'
-                : 'bg-slate-900/50 border-[var(--border)]'
-            } ${isSetup ? 'cursor-grab active:cursor-grabbing' : ''}`}
-          >
-            <span className="text-[var(--text-h)]">
-              {task.text}
-              {task.isPrivate && (
-                <span className="ml-2 inline-flex items-center gap-1 text-xs text-slate-400">
-                  <span>🔒</span>
-                  <UserInline users={users} userIds={task.assignedTo} />
-                </span>
-              )}
-            </span>
-            {isSetup && (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => startEdit(task)}
-                  className="text-slate-400 hover:text-[var(--text-h)] text-sm"
-                >
-                  Bearbeiten
-                </button>
-                <button onClick={() => remove(task.id)} className="text-[var(--danger)] hover:text-red-300 text-sm">
-                  Entfernen
-                </button>
-              </div>
-            )}
-          </li>
+            task={task}
+            users={users}
+            isSetup={isSetup}
+            placed={placedTaskIds.has(task.id)}
+            onEdit={startEdit}
+            onRemove={remove}
+          />
         ))}
       </ul>
 
@@ -294,5 +267,97 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
         </Modal>
       )}
     </div>
+  );
+}
+
+function TaskListItem({
+  task,
+  users,
+  isSetup,
+  placed,
+  onEdit,
+  onRemove,
+}: {
+  task: Task;
+  users: SafeUser[];
+  isSetup: boolean;
+  placed: boolean;
+  onEdit: (task: Task) => void;
+  onRemove: (id: string) => void;
+}) {
+  const rowRef = useRef<HTMLLIElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const [twoLine, setTwoLine] = useState(false);
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+
+    const update = () => {
+      const textEl = textRef.current;
+      const actionsEl = actionsRef.current;
+      if (!textEl || !actionsEl) return;
+
+      // Measure the text's natural (max-content) width beside the actions.
+      const prevFlex = textEl.style.flex;
+      const prevWidth = textEl.style.width;
+      textEl.style.flex = 'none';
+      textEl.style.width = 'max-content';
+      const textWidth = textEl.scrollWidth;
+      textEl.style.flex = prevFlex;
+      textEl.style.width = prevWidth;
+
+      const cs = getComputedStyle(row);
+      const padding = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) || 0;
+      const gap = parseFloat(cs.columnGap) || 12;
+      const available = row.clientWidth - padding - gap - actionsEl.offsetWidth;
+
+      setTwoLine(textWidth > available);
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(row);
+    return () => ro.disconnect();
+  }, []);
+
+  const actionButtons = (
+    <div
+      ref={actionsRef}
+      className={`flex shrink-0 items-center gap-3 ${twoLine ? 'self-end pt-1' : ''}`}
+    >
+      <button onClick={() => onEdit(task)} className="text-slate-400 hover:text-[var(--text-h)] text-sm">
+        Bearbeiten
+      </button>
+      <button onClick={() => onRemove(task.id)} className="text-[var(--danger)] hover:text-red-300 text-sm">
+        Entfernen
+      </button>
+    </div>
+  );
+
+  return (
+    <li
+      ref={rowRef}
+      draggable={isSetup}
+      onDragStart={(e) => {
+        if (!isSetup) return;
+        e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'task', taskId: task.id }));
+      }}
+      className={`${twoLine ? 'flex flex-col' : 'flex items-center'} px-3 py-2 rounded border transition ${
+        placed ? 'bg-[var(--accent-dim)] border-[var(--accent)]' : 'bg-slate-900/50 border-[var(--border)]'
+      } ${isSetup ? 'cursor-grab active:cursor-grabbing' : ''}`}
+    >
+      <span ref={textRef} className="min-w-0 flex-1 break-words text-[var(--text-h)]">
+        {task.text}
+        {task.isPrivate && (
+          <span className="ml-2 inline-flex items-center gap-1 text-xs text-slate-400">
+            <span>🔒</span>
+            <UserInline users={users} userIds={task.assignedTo} />
+          </span>
+        )}
+      </span>
+      {isSetup && actionButtons}
+    </li>
   );
 }
