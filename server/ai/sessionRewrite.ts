@@ -1,11 +1,22 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createLogger } from '../logger.js';
 import { getSessionById } from '../repositories/recordings.js';
-import { deleteImprovedTranscript, readImprovedTranscript } from '../sessionFiles.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
 import { getNormalModel } from './modelConfig.js';
 import { runOpenCode } from './opencode.js';
 
 const log = createLogger('sessionRewrite');
+
+const BASE_DIR = join(process.cwd(), 'data', 'sessions');
+
+function getWorkDir(sessionId: number): string {
+  return join(BASE_DIR, String(sessionId));
+}
+
+function getWorkFile(sessionId: number): string {
+  return join(getWorkDir(sessionId), 'transcript.txt');
+}
 
 export interface SessionRewriteResult {
   transcript: string | null;
@@ -23,30 +34,28 @@ export async function improveSessionTranscriptWithAi(
     return { transcript: null };
   }
 
-  deleteImprovedTranscript(sessionId);
-  log.info(`Starting transcript improvement for session ${sessionId}`);
+  const workFile = getWorkFile(sessionId);
+  mkdirSync(getWorkDir(sessionId), { recursive: true });
+  writeFileSync(workFile, session.transcript, 'utf-8');
+
+  log.info(`Starting transcript improvement for session ${sessionId} (${session.transcript.length} bytes)`);
 
   const prompt = [
-    'Du bist ein Assistent für ein D&D-Sessions-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+    'Du bist ein Assistent für ein D&D-Sessions-System. Du arbeitest mit Dateien und antwortest prägnant auf Deutsch.',
     '',
     `Aufgabe: Verbessere das Transkript der D&D-Session ${sessionId}.`,
     '',
-    'Verfügbare Tools:',
-    `- get_session_transcript(sessionId=${sessionId}): Liefert das aktuelle Transkript. MUSST du zuerst aufrufen, um den Inhalt zu lesen.`,
-    `- set_session_transcript(sessionId=${sessionId}, text): Speichert das verbesserte Transkript. MUSST du am Ende genau ein einziges Mal aufrufen.`,
-    '- list_entities(type?): Listet alle bekannten Entitäten (Personen, Organisationen, Orte).',
-    '- get_entity(type, name): Liefert Zusammenfassung, Wissen und Schreibweisen zu einer Entität.',
-    '- search_diary_entries(query): Sucht in den Tagebüchern der Spieler.',
+    'Vorgehen:',
+    `1. Lies die Datei ${workFile} mit dem read-Tool.`,
+    '2. Korrigiere offensichtliche Fehler der Spracherkennung direkt in dieser Datei mit dem edit-Tool: falsch geschriebene Namen, falsche oder verwechslte Wörter und versehentlich eingedeutschte oder fälschlich englische Wörter.',
+    '3. Nutze bei Unsicherheiten zu Namen und Begriffen die Tools list_entities, get_entity und search_diary_entries, um die korrekten Schreibweisen zu ermitteln.',
+    '4. Prüfe danach mit dem read-Tool, ob deine Korrekturen gespeichert sind. Danach bist du fertig.',
     '',
     'Wichtig:',
-    '- Korrigiere offensichtliche Fehler der Spracherkennung: falsch geschriebene Namen, falsche oder verwechslte Wörter und versehentlich eingedeutschte oder fälschlich englische Wörter.',
-    '- Nutze die bekannten Entitäten und die Tagebücher der Spieler, um die korrekten Namen und Begriffe zu ermitteln. Rufe list_entities, get_entity und search_diary_entries für erwähnte Personen, Orte und Organisationen auf, wenn dir Schreibweisen unsicher sind.',
     '- BEHALTE das Format exakt bei: Behalte alle Zeitstempel ([MM:SS] oder [HH:MM:SS]) und die Zeilenstruktur unverändert. Ändere nur den gesprochenen Text innerhalb einer Zeile. Füge keine Zeilen hinzu und entferne keine Zeilen.',
     '- Verändere keine Fakten oder Ereignisse und erfinde nichts, was nicht gesprochen wurde.',
-    '- Gib nach dem Tool-Aufruf nur eine kurze Bestätigung aus, nicht das Transkript selbst.',
-    '- DU MUSST get_session_transcript aufrufen, um das Transkript zu lesen, und die Entitäts-/Tagebuch-Tools nutzen, um unsichere Namen und Begriffe zu prüfen, BEVOR du set_session_transcript aufrufst.',
-    '',
-    'Transkript: Lies es mit get_session_transcript ein. Der Inhalt wird nicht hier eingebettet.',
+    `- Bearbeite NUR die Datei ${workFile} mit kleinen edit-Operationen. Schreibe die Datei nicht komplett neu und gib das Transkript nicht in deiner Antwort aus.`,
+    '- Arbeite zügig: Recherchiere höchstens kurz, wenn dir eine Schreibweise unsicher ist, aber schließe die Bearbeitung der Datei unbedingt ab.',
   ].join('\n');
 
   const result = await runOpenCode({
@@ -54,7 +63,7 @@ export async function improveSessionTranscriptWithAi(
     worktreePath: process.cwd(),
     model: model || getNormalModel(),
     title: `dnd-session-rewrite-${sessionId}-${Date.now()}`,
-    scopes: ['entity:read', 'diary:read', 'session:read', 'session:rewrite'],
+    scopes: ['entity:read', 'diary:read'],
     user,
     onLog,
   });
@@ -64,9 +73,9 @@ export async function improveSessionTranscriptWithAi(
     return { transcript: null };
   }
 
-  const improved = readImprovedTranscript(sessionId);
-  if (!improved) {
-    log.warn(`No improved transcript saved for session ${sessionId}`);
+  const improved = readFileSync(workFile, 'utf-8');
+  if (!improved.trim() || improved === session.transcript) {
+    log.warn(`Transcript unchanged for session ${sessionId}`);
     return { transcript: null };
   }
 

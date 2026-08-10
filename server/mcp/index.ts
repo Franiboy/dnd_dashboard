@@ -6,8 +6,6 @@ import { createLogger } from '../logger.js';
 import { runMigrations } from '../migrations.js';
 import '../database.js';
 import { stripHtml } from '../ai/rewrite.js';
-import { getSessionById } from '../repositories/recordings.js';
-import { writeImprovedTranscript } from '../sessionFiles.js';
 import {
   ensureEntityExists,
   findEntityCanonicalName,
@@ -127,49 +125,6 @@ if (requireScope('diary:rewrite')) {
         return success(`Rewrite für Eintrag ${entryId} gespeichert.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Speichern des Rewrites');
-      }
-    },
-  );
-}
-
-if (requireScope('session:read')) {
-  server.tool(
-    'get_session_transcript',
-    'Liefert das aktuelle Transkript einer Sessions-Aufnahme.',
-    {
-      sessionId: z.number().int().positive(),
-    },
-    async ({ sessionId }) => {
-      try {
-        if (!sessionIsAdmin) return error('Nur Admins dürfen Transkripte lesen');
-        const session = getSessionById(sessionId);
-        if (!session) return error('Session nicht gefunden');
-        if (!session.transcript) return error('Kein Transkript vorhanden');
-        return success(session.transcript);
-      } catch (err) {
-        return error(err instanceof Error ? err.message : 'Fehler beim Laden des Transkripts');
-      }
-    },
-  );
-}
-
-if (requireScope('session:rewrite')) {
-  server.tool(
-    'set_session_transcript',
-    'Speichert das verbesserte Transkript einer Sessions-Aufnahme.',
-    {
-      sessionId: z.number().int().positive(),
-      text: z.string().min(1),
-    },
-    async ({ sessionId, text }) => {
-      try {
-        if (!sessionIsAdmin) return error('Nur Admins dürfen Transkripte verändern');
-        if (!writeImprovedTranscript(sessionId, text)) {
-          return error('Session nicht gefunden');
-        }
-        return success(`Transkript für Session ${sessionId} gespeichert.`);
-      } catch (err) {
-        return error(err instanceof Error ? err.message : 'Fehler beim Speichern des Transkripts');
       }
     },
   );
