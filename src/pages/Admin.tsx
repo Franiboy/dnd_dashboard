@@ -7,7 +7,13 @@ import { LogPanel } from '../components/LogPanel';
 import { Modal } from '../components/Modal';
 import { AppIcon } from '../components/AppIcon';
 import { APPS } from '../lib/apps';
-import type { SafeUser } from '../../shared/types';
+import type { RecordingChannel, SafeUser } from '../../shared/types';
+
+interface RecordingStatus {
+  bot: { ready: boolean; enabled: boolean };
+  active: { sessionId: number; channelId: string } | null;
+  monitoredChannel?: { channelId: string | null; channelName: string | null } | null;
+}
 
 interface AiModelConfig {
   models: string[];
@@ -31,6 +37,11 @@ export function Admin({ currentUser }: AdminProps) {
   const [managingAppsFor, setManagingAppsFor] = useState<SafeUser | null>(null);
   const [aiModels, setAiModels] = useState<AiModelConfig | null>(null);
   const [aiSaving, setAiSaving] = useState(false);
+  const [recordingStatus, setRecordingStatus] = useState<RecordingStatus | null>(null);
+  const [recordingChannels, setRecordingChannels] = useState<RecordingChannel[]>([]);
+  const [selectedRecordingChannel, setSelectedRecordingChannel] = useState('');
+  const [recordingLoading, setRecordingLoading] = useState(true);
+  const [recordingSaving, setRecordingSaving] = useState(false);
 
   const isActionLoading = (id: string, endpoint: string) =>
     actionLoading?.id === id && actionLoading?.endpoint === endpoint;
@@ -92,6 +103,39 @@ export function Admin({ currentUser }: AdminProps) {
     if (data && aiModels) {
       setAiModels({ ...aiModels, models: data.models });
     }
+  };
+
+  const loadRecordingConfig = async () => {
+    setRecordingLoading(true);
+    const [{ data: statusData }, { data: channelsData }, { data: configData }] = await Promise.all([
+      request<RecordingStatus>('/api/recordings/status'),
+      request<{ channels: RecordingChannel[] }>('/api/recordings/channels'),
+      request<{ channelId: string | null }>('/api/recordings/config'),
+    ]);
+    if (statusData) setRecordingStatus(statusData);
+    if (channelsData) setRecordingChannels(channelsData.channels);
+    if (configData) setSelectedRecordingChannel(configData.channelId ?? '');
+    setRecordingLoading(false);
+  };
+
+  useEffect(() => {
+    loadRecordingConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const saveRecordingConfig = async () => {
+    setRecordingSaving(true);
+    const { data } = await request<{ channelId: string | null }>('/api/recordings/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelId: selectedRecordingChannel || null }),
+    });
+    if (data) {
+      setSelectedRecordingChannel(data.channelId ?? '');
+      const { data: statusData } = await request<RecordingStatus>('/api/recordings/status');
+      if (statusData) setRecordingStatus(statusData);
+    }
+    setRecordingSaving(false);
   };
 
   const action = async (id: string, endpoint: string, body?: object) => {
@@ -416,6 +460,67 @@ export function Admin({ currentUser }: AdminProps) {
                     {aiSaving ? <Loading text="" size="sm" /> : 'Speichern'}
                   </button>
                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5">
+            <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Sessions</h2>
+
+            {recordingLoading ? (
+              <Loading text="Konfiguration wird geladen..." />
+            ) : (
+              <div className="space-y-4">
+                {!recordingStatus?.bot.enabled && (
+                  <p className="text-sm text-slate-500">
+                    Discord-Bot ist nicht konfiguriert. Trage DISCORD_BOT_TOKEN und DISCORD_GUILD_ID in die .env ein.
+                  </p>
+                )}
+
+                {recordingStatus?.bot.enabled && !recordingStatus.bot.ready && (
+                  <p className="text-sm text-slate-500">Discord-Bot verbindet...</p>
+                )}
+
+                {recordingStatus?.bot.enabled && recordingStatus.bot.ready && (
+                  <div className="flex flex-col sm:flex-row gap-4 items-end">
+                    <div className="flex-1 w-full">
+                      <label className="block text-sm text-slate-400 mb-1">Überwachter Voice-Channel</label>
+                      <select
+                        value={selectedRecordingChannel}
+                        onChange={(e) => setSelectedRecordingChannel(e.target.value)}
+                        disabled={recordingChannels.length === 0}
+                        className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
+                      >
+                        <option value="">
+                          {recordingChannels.length === 0 ? 'Keine Voice-Channels verfügbar' : 'Bitte wählen'}
+                        </option>
+                        {recordingChannels.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.participants.length} online)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={saveRecordingConfig}
+                      disabled={recordingSaving}
+                      className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+                    >
+                      {recordingSaving ? <Loading text="" size="sm" /> : 'Speichern'}
+                    </button>
+                  </div>
+                )}
+
+                {recordingStatus?.bot.enabled && recordingStatus.bot.ready && (
+                  <p className="text-sm text-slate-400">
+                    {recordingStatus.active
+                      ? `Aktuell wird in ${recordingStatus.monitoredChannel?.channelName ?? recordingStatus.monitoredChannel?.channelId ?? 'Unbekannt'} aufgezeichnet.`
+                      : recordingStatus.monitoredChannel?.channelId
+                        ? `Bereit für Aufnahme in ${recordingStatus.monitoredChannel.channelName ?? recordingStatus.monitoredChannel.channelId}. Die Aufnahme startet automatisch, sobald jemand den Channel betritt.`
+                        : 'Wähle einen Channel aus, damit Aufnahmen automatisch gestartet werden.'}
+                  </p>
+                )}
               </div>
             )}
           </div>

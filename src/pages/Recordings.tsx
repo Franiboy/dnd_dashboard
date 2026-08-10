@@ -4,12 +4,16 @@ import { Loading } from '../components/Loading';
 import { BackButton } from '../components/BackButton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useApi } from '../hooks/useApi';
-import type { RecordingChannel, RecordingSession, VersionInfo } from '../../shared/types';
+import type { RecordingSession, SafeUser, VersionInfo } from '../../shared/types';
 
 interface StatusResponse {
   bot: { ready: boolean; enabled: boolean };
   active: { sessionId: number; channelId: string } | null;
   monitoredChannel?: { channelId: string | null; channelName: string | null } | null;
+}
+
+interface SessionsProps {
+  user: SafeUser;
 }
 
 function parseTimestamp(ts: string): number | null {
@@ -22,12 +26,10 @@ function parseTimestamp(ts: string): number | null {
   return parseInt(a, 10) * 60 + parseInt(b, 10);
 }
 
-export function Recordings() {
+export function Sessions({ user }: SessionsProps) {
   const { request } = useApi();
   const [status, setStatus] = useState<StatusResponse | null>(null);
-  const [channels, setChannels] = useState<RecordingChannel[]>([]);
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
-  const [selectedChannel, setSelectedChannel] = useState('');
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [loadedTranscripts, setLoadedTranscripts] = useState<Record<number, string | null>>({});
@@ -46,14 +48,6 @@ export function Recordings() {
         setLoading(false);
         return;
       }
-
-      request<{ channels: RecordingChannel[] }>('/api/recordings/channels', {}, false).then(({ data }) => {
-        if (data) setChannels(data.channels);
-      });
-
-      request<{ channelId: string | null }>('/api/recordings/config', {}, false).then(({ data }) => {
-        if (data) setSelectedChannel(data.channelId ?? '');
-      });
 
       eventSource = new EventSource('/api/recordings/events', { withCredentials: true });
 
@@ -86,19 +80,6 @@ export function Recordings() {
       eventSource?.close();
     };
   }, [request]);
-
-  async function saveConfig() {
-    setWorking(true);
-    const { data } = await request<{ channelId: string | null }>('/api/recordings/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channelId: selectedChannel || null }),
-    });
-    if (data) {
-      setSelectedChannel(data.channelId ?? '');
-    }
-    setWorking(false);
-  }
 
   async function startTranscriptionNow(sessionId: number) {
     setWorking(true);
@@ -184,7 +165,7 @@ export function Recordings() {
   return (
     <div className="min-h-full p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-[var(--text-h)]">Aufnahmen</h1>
+        <h1 className="text-3xl font-bold text-[var(--text-h)]">Sessions</h1>
         <BackButton />
       </div>
 
@@ -200,47 +181,19 @@ export function Recordings() {
         </div>
       )}
 
-      <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 mb-8">
-        <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Konfiguration</h2>
-        <div className="flex flex-col sm:flex-row gap-4 items-end">
-          <div className="flex-1 w-full">
-            <label className="block text-sm text-slate-400 mb-1">Überwachter Voice-Channel</label>
-            <select
-              value={selectedChannel}
-              onChange={(e) => setSelectedChannel(e.target.value)}
-              disabled={channels.length === 0 || !status?.bot.ready}
-              className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
-            >
-              <option value="">
-                {channels.length === 0 ? 'Keine Voice-Channels verfügbar' : 'Bitte wählen'}
-              </option>
-              {channels.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.participants.length} online)
-                </option>
-              ))}
-            </select>
-          </div>
-          <Button
-            variant="accent"
-            disabled={working || !status?.bot.ready}
-            onClick={saveConfig}
-          >
-            Speichern
-          </Button>
-        </div>
-        <p className="text-sm text-slate-400 mt-3">
+      {status?.bot.enabled && status.bot.ready && (
+        <div className="mb-6 p-4 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/20 text-[var(--text-h)]">
           {status?.active
             ? `Aktuell wird in ${monitoredName} aufgezeichnet.`
             : monitoredChannel?.channelId
               ? `Bereit für Aufnahme in ${monitoredName}. Die Aufnahme startet automatisch, sobald jemand den Channel betritt.`
-              : 'Wähle einen Channel aus, damit Aufnahmen automatisch gestartet werden.'}
-        </p>
-      </div>
+              : 'Der überwachte Voice-Channel wurde noch nicht konfiguriert.'}
+        </div>
+      )}
 
       <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Sessions</h2>
       <div className="space-y-4">
-        {sessions.length === 0 && <p className="text-slate-400">Noch keine Aufnahmen vorhanden.</p>}
+        {sessions.length === 0 && <p className="text-slate-400">Noch keine Sessions vorhanden.</p>}
         {sessions.map((session) => (
           <div
             key={session.id}
@@ -280,14 +233,18 @@ export function Recordings() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {(session.status === 'pending_transcription' || session.status === 'error' || session.status === 'completed') && (
-                  <Button
-                    variant="secondary"
-                    disabled={working}
-                    onClick={() => startTranscriptionNow(session.id)}
-                  >
-                    {session.status === 'error' ? 'Transkription wiederholen' : 'Jetzt transkribieren'}
-                  </Button>
+                {user.isAdmin && (
+                  <>
+                    {(session.status === 'pending_transcription' || session.status === 'error' || session.status === 'completed') && (
+                      <Button
+                        variant="secondary"
+                        disabled={working}
+                        onClick={() => startTranscriptionNow(session.id)}
+                      >
+                        {session.status === 'error' ? 'Transkription wiederholen' : 'Jetzt transkribieren'}
+                      </Button>
+                    )}
+                  </>
                 )}
                 {session.status === 'completed' && (
                   <Button
@@ -298,13 +255,15 @@ export function Recordings() {
                     {visibleTranscripts.has(session.id) ? 'Transkript ausblenden' : 'Transkript anzeigen'}
                   </Button>
                 )}
-                <Button
-                  variant="danger"
-                  disabled={working}
-                  onClick={() => startDeleteSession(session.id)}
-                >
-                  Löschen
-                </Button>
+                {user.isAdmin && (
+                  <Button
+                    variant="danger"
+                    disabled={working}
+                    onClick={() => startDeleteSession(session.id)}
+                  >
+                    Löschen
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -344,22 +303,26 @@ export function Recordings() {
                           {hasTimestamp && (
                             <div className="flex items-center gap-1 shrink-0 pt-0.5">
                               <span className="text-[var(--accent)] font-mono text-xs select-none">{timestamp}</span>
-                              <button
-                                type="button"
-                                onClick={() => trimTranscriptFromStart(session.id, seconds)}
-                                title="Alles vor diesem Zeitstempel entfernen"
-                                className="text-[10px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-[var(--accent)] hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
-                              >
-                                Start
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => trimTranscriptToEnd(session.id, seconds)}
-                                title="Alles nach diesem Zeitstempel entfernen"
-                                className="text-[10px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-[var(--accent)] hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
-                              >
-                                Ende
-                              </button>
+                              {user.isAdmin && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => trimTranscriptFromStart(session.id, seconds)}
+                                    title="Alles vor diesem Zeitstempel entfernen"
+                                    className="text-[10px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-[var(--accent)] hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
+                                  >
+                                    Start
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => trimTranscriptToEnd(session.id, seconds)}
+                                    title="Alles nach diesem Zeitstempel entfernen"
+                                    className="text-[10px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-[var(--accent)] hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
+                                  >
+                                    Ende
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                           <span className="break-words">{hasTimestamp ? rest : line}</span>
@@ -384,7 +347,7 @@ export function Recordings() {
 
       {sessionToDelete !== null && (
         <ConfirmDialog
-          title="Aufnahme löschen"
+          title="Session löschen"
           confirmLabel="Löschen"
           cancelLabel="Abbrechen"
           variant="danger"
@@ -392,7 +355,7 @@ export function Recordings() {
           onConfirm={confirmDeleteSession}
           onCancel={() => setSessionToDelete(null)}
         >
-          <p>Möchtest du die Aufnahme wirklich löschen?</p>
+          <p>Möchtest du die Session wirklich löschen?</p>
         </ConfirmDialog>
       )}
     </div>

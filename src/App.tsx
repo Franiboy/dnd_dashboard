@@ -18,7 +18,7 @@ import type { VersionInfo } from '../shared/types';
 const Bingo = lazy(() => import('./pages/Bingo').then((m) => ({ default: m.Bingo })));
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })));
 const Diary = lazy(() => import('./pages/Diary').then((m) => ({ default: m.Diary })));
-const Recordings = lazy(() => import('./pages/Recordings').then((m) => ({ default: m.Recordings })));
+const Sessions = lazy(() => import('./pages/Recordings').then((m) => ({ default: m.Sessions })));
 const World = lazy(() => import('./pages/World').then((m) => ({ default: m.World })));
 
 const PUBLIC_PATHS = ['/', '/admin-login', '/auth/discord'];
@@ -121,7 +121,7 @@ function App() {
                 <Route path="/" element={<Home version={version} />} />
                 <Route path="/tagebuch" element={<ProtectedRoute user={user} appId="notes" version={version}><Diary /></ProtectedRoute>} />
                 <Route path="/welt" element={<ProtectedRoute user={user} appId="world" version={version}><World /></ProtectedRoute>} />
-                <Route path="/recordings" element={<ProtectedRoute user={user} appId="recordings" version={version}><Recordings /></ProtectedRoute>} />
+                <Route path="/sessions" element={<ProtectedRoute user={user} appId="sessions" version={version}><Sessions user={user} /></ProtectedRoute>} />
                 <Route path="/bingo" element={<ProtectedRoute user={user} appId="bingo" version={version}><Bingo user={user} /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
