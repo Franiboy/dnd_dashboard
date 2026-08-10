@@ -23,13 +23,9 @@ import { startBot, recoverAllRecordings, stopBot } from './discord/bot.js';
 import { startTranscriptionScheduler, stopTranscriptionScheduler } from './discord/scheduler.js';
 import { resetInterruptedTranscriptions, stopAllTranscriptions } from './discord/transcriber.js';
 import {
-  startEntitySummaryScheduler,
-  stopEntitySummaryScheduler,
-} from './scheduler/entitySummaries.js';
-import {
-  startDiarySummaryScheduler,
-  stopDiarySummaryScheduler,
-} from './scheduler/diarySummaries.js';
+  startSummaryScheduler,
+  stopSummaryScheduler,
+} from './scheduler/summaryScheduler.js';
 import {
   startSessionCleanupScheduler,
   stopSessionCleanupScheduler,
@@ -120,8 +116,7 @@ try {
 startBot();
 
 startTranscriptionScheduler();
-startDiarySummaryScheduler();
-startEntitySummaryScheduler();
+startSummaryScheduler();
 startSessionCleanupScheduler();
 startBingoSuggestionScheduler();
 startDiscordTokenRefreshScheduler();
@@ -190,8 +185,7 @@ async function shutdown(signal: string) {
   });
 
   stopTranscriptionScheduler();
-  stopDiarySummaryScheduler();
-  stopEntitySummaryScheduler();
+  stopSummaryScheduler();
   stopSessionCleanupScheduler();
   stopBingoSuggestionScheduler();
   stopDiscordTokenRefreshScheduler();
