@@ -217,35 +217,57 @@ export function BingoDashboard({
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      <SideDrawer side="right" width="18rem">
+      <SideDrawer side="right" width="18rem" fitContent maxWidth="24rem">
         <SideDrawerItem id="bingo-players" label="Spieler" icon={<span>👤</span>}>
           <PlayerList game={game} playerId={playerId} />
         </SideDrawerItem>
+
+        {isPlaying && (
+          <SideDrawerItem id="bingo-tasks" label="Aufgaben" icon={<span>📋</span>}>
+            {isAdmin ? (
+              <TaskStatus game={game} socket={socket} />
+            ) : (
+              <p className="text-slate-400">Warte bis der Spielleiter das Spiel beendet.</p>
+            )}
+          </SideDrawerItem>
+        )}
       </SideDrawer>
 
       {/* Desktop layout */}
-      <div className="hidden md:grid md:grid-cols-[1.5fr_1fr] lg:grid-cols-[1.75fr_1fr] gap-4 flex-1 min-h-0">
-        {fieldPanel}
-        {taskPanel}
-      </div>
+      {isPlaying ? (
+        <div className="hidden md:block flex-1 min-h-0">{fieldPanel}</div>
+      ) : (
+        <div className="hidden md:grid md:grid-cols-[1.5fr_1fr] lg:grid-cols-[1.75fr_1fr] gap-4 flex-1 min-h-0">
+          {fieldPanel}
+          {taskPanel}
+        </div>
+      )}
 
       {/* Mobile layout */}
       <div className="md:hidden flex flex-col flex-1 min-h-0 gap-3">
-        <div className="flex items-center gap-2 shrink-0">
-          {tabs.map((tab) => (
-            <TabButton key={tab.id} active={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
-              {tab.label}
-            </TabButton>
-          ))}
-        </div>
+        {isPlaying ? (
+          // During play the field takes the full width; tasks live in the SideDrawer.
+          <div className="flex-1 min-h-0">{fieldPanel}</div>
+        ) : (
+          // Setup: field and tasks via tabs.
+          <>
+            <div className="flex items-center gap-2 shrink-0">
+              {tabs.map((tab) => (
+                <TabButton key={tab.id} active={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
+                  {tab.label}
+                </TabButton>
+              ))}
+            </div>
 
-        {activeTab === 'field' && fieldPanel}
+            {activeTab === 'field' && <div className="flex-1 min-h-0">{fieldPanel}</div>}
 
-        {activeTab === 'tasks' && (taskPanel ?? (
-          <Panel title="Aufgaben" className="flex-1 min-h-0">
-            <p className="text-slate-400">Warte auf Spielstart...</p>
-          </Panel>
-        ))}
+            {activeTab === 'tasks' && (taskPanel ?? (
+              <Panel title="Aufgaben" className="flex-1 min-h-0">
+                <p className="text-slate-400">Warte auf Spielstart...</p>
+              </Panel>
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
