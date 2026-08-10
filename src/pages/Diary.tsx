@@ -876,29 +876,41 @@ export function Diary() {
                     </div>
                   </div>
 
-                  <div className="mb-3 p-3 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/20">
+                  <div className={`mb-3 p-3 rounded-lg border ${entry.aiDirty ? 'bg-amber-900/20 border-amber-500/30' : 'bg-[var(--accent)]/10 border-[var(--accent)]/20'}`}>
                     <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm font-semibold text-[var(--accent)]">Zusammenfassung</p>
+                      <p className={`text-sm font-semibold ${entry.aiDirty ? 'text-amber-500' : 'text-[var(--accent)]'}`}>Zusammenfassung</p>
                       {editingSummaryId !== entry.id && (
                         <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            title="Zusammenfassung neu generieren"
-                            onClick={() => handleGenerateSummary(entry)}
-                            disabled={working}
-                            className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
-                          >
-                            {processingSummaryId === entry.id ? (
-                              <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                              </svg>
-                            ) : (
-                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                                <path d="M21 4v6h-6" />
-                              </svg>
-                            )}
-                          </button>
+                          {entry.aiDirty || !entry.summary ? (
+                            <button
+                              type="button"
+                              title="Zusammenfassung aktualisieren"
+                              onClick={() => handleGenerateSummary(entry)}
+                              disabled={working || processingSummaryId === entry.id}
+                              className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
+                            >
+                              {processingSummaryId === entry.id ? 'Wird generiert...' : entry.summary ? 'Aktualisieren' : 'Generieren'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              title="Zusammenfassung neu generieren"
+                              onClick={() => handleGenerateSummary(entry)}
+                              disabled={working}
+                              className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
+                            >
+                              {processingSummaryId === entry.id ? (
+                                <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                </svg>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                  <path d="M21 4v6h-6" />
+                                </svg>
+                              )}
+                            </button>
+                          )}
                           <button
                             type="button"
                             title="Zusammenfassung bearbeiten"
@@ -935,9 +947,16 @@ export function Diary() {
                         </div>
                       </div>
                     ) : entry.summary ? (
-                      <p className="text-slate-300 text-sm whitespace-pre-wrap">
-                        <EntityRichText content={entry.summary} mappings={mappings} isHtml={false} />
-                      </p>
+                      <div className="space-y-1">
+                        <p className="text-slate-300 text-sm whitespace-pre-wrap">
+                          <EntityRichText content={entry.summary} mappings={mappings} isHtml={false} />
+                        </p>
+                        {entry.aiDirty && (
+                          <p className="text-xs text-amber-500 italic">
+                            Zusammenfassung ist veraltet und sollte aktualisiert werden.
+                          </p>
+                        )}
+                      </div>
                     ) : (
                       <p className="text-slate-500 text-sm italic">Noch keine Zusammenfassung vorhanden.</p>
                     )}
