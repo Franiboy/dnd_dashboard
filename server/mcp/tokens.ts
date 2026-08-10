@@ -11,6 +11,7 @@ export type McpScope =
   | 'entity:extract'
   | 'entity:summary'
   | 'knowledge:distribute'
+  | 'session:read'
   | 'session:rewrite';
 
 export interface McpSessionUser {
