@@ -16,7 +16,7 @@ interface SideDrawerProps {
   width?: string;
   maxWidth?: string;
   fitContent?: boolean;
-  children: ReactElement<SideDrawerItemProps> | ReactElement<SideDrawerItemProps>[];
+  children: ReactNode;
 }
 
 export function SideDrawer({ side = 'right', width = '18rem', maxWidth = 'calc(100vw - 16rem)', fitContent = false, children }: SideDrawerProps) {
