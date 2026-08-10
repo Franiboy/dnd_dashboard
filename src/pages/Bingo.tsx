@@ -48,12 +48,20 @@ export function Bingo({ user }: BingoProps) {
   const needsJoin = !player;
   const isAdmin = user?.isAdmin || false;
 
+  // The Bingo banner persists as long as someone has Bingo; the round stays active
+  // until the admin ends it (resetGame).
+  const bingoPlayers = game.players.filter((p) => p.status === 'bingo');
+  const hasBingo = bingoPlayers.length > 0;
+  const bingoLabel = bingoPlayers.length === 1
+    ? `${bingoPlayers[0].name} hat BINGO!`
+    : `${bingoPlayers.map((p) => p.name).join(' & ')} haben BINGO!`;
+
   return (
     <div className="h-full flex flex-col p-4 sm:p-6">
-      {bingo && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-          <div className="bg-[var(--accent)] text-slate-900 text-5xl font-black px-10 py-6 rounded-2xl shadow-2xl animate-bounce">
-            {bingo} hat BINGO!
+      {hasBingo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="bg-[var(--accent)] text-slate-900 text-4xl sm:text-5xl font-black px-10 py-6 rounded-2xl shadow-2xl animate-bounce text-center max-w-full">
+            {bingoLabel}
           </div>
         </div>
       )}

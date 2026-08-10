@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { BingoGame, Player, SafeUser } from '../../shared/types';
 import type { Socket } from '../types';
 import { BingoGrid } from './BingoGrid';
+import { ConfirmDialog } from './ConfirmDialog';
 import { SideDrawer, SideDrawerItem } from './SideDrawer';
 import { Panel } from './Panel';
 import { PlayerList } from './PlayerList';
@@ -89,11 +90,7 @@ function BoardControls({
   isSetup: boolean;
   isPlaying: boolean;
 }) {
-  const reset = () => {
-    if (confirm('Neue Runde starten? Aufgaben bleiben erhalten, die Bretter werden zurückgesetzt.')) {
-      socket?.emit('resetGame');
-    }
-  };
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const lockButton = player && isSetup && (
     <button
@@ -109,17 +106,34 @@ function BoardControls({
   );
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-3">
-      {lockButton}
-      {isPlaying && isAdmin && (
-        <button
-          onClick={reset}
-          className="px-4 py-2 rounded bg-[var(--danger)] text-white font-semibold hover:bg-red-400 transition text-sm"
+    <>
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        {lockButton}
+        {isPlaying && isAdmin && (
+          <button
+            onClick={() => setShowResetConfirm(true)}
+            className="px-4 py-2 rounded bg-[var(--danger)] text-white font-semibold hover:bg-red-400 transition text-sm"
+          >
+            Beenden & neue Runde
+          </button>
+        )}
+      </div>
+
+      {showResetConfirm && (
+        <ConfirmDialog
+          title="Neue Runde starten?"
+          confirmLabel="Starten"
+          variant="danger"
+          onConfirm={() => {
+            setShowResetConfirm(false);
+            socket?.emit('resetGame');
+          }}
+          onCancel={() => setShowResetConfirm(false)}
         >
-          Beenden & neue Runde
-        </button>
+          <p>Aufgaben bleiben erhalten, die Bretter werden zurückgesetzt.</p>
+        </ConfirmDialog>
       )}
-    </div>
+    </>
   );
 }
 
