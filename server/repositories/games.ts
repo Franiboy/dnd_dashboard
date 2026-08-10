@@ -4,7 +4,11 @@ import { db } from '../database.js';
 export function loadGame(): BingoGame | null {
   const row = db.prepare('SELECT data FROM games WHERE id = 1').get() as { data: string } | undefined;
   if (!row) return null;
-  return JSON.parse(row.data);
+  const parsed = JSON.parse(row.data) as BingoGame;
+  for (const player of parsed.players) {
+    if (player.wins === undefined) player.wins = 0;
+  }
+  return parsed;
 }
 
 export function saveGame(game: BingoGame): void {

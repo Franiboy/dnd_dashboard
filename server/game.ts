@@ -136,6 +136,7 @@ export function joinPlayer(name: string, userId?: string, avatarUrl?: string | n
     locked: false,
     online: true,
     joinedAt: new Date().toISOString(),
+    wins: 0,
   };
   game.players.push(player);
   persist();
@@ -259,8 +260,9 @@ export function confirmTask(sourcePlayerId: string, taskId: string, confirmedByN
         }
       }
     }
-    if (playerChanged && hasBingo(player.board)) {
+    if (playerChanged && hasBingo(player.board) && player.status !== 'bingo') {
       player.status = 'bingo';
+      player.wins = (player.wins ?? 0) + 1;
     }
   }
 
