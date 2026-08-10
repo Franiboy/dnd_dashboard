@@ -16,6 +16,7 @@ dist-ssr
 *.db
 recordings
 data/diary
+data/sessions
 .venv
 *.db-*
 opencode.json
