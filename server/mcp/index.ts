@@ -2,10 +2,13 @@ import 'dotenv/config';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { createLogger } from '../logger.js';
 import { runMigrations } from '../migrations.js';
 import '../database.js';
 import { stripHtml } from '../ai/rewrite.js';
+import { getSessionById, updateSession } from '../repositories/recordings.js';
 import {
   ensureEntityExists,
   findEntityCanonicalName,
@@ -125,6 +128,30 @@ if (requireScope('diary:rewrite')) {
         return success(`Rewrite für Eintrag ${entryId} gespeichert.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Speichern des Rewrites');
+      }
+    },
+  );
+}
+
+if (requireScope('session:rewrite')) {
+  server.tool(
+    'set_session_transcript',
+    'Speichert das verbesserte Transkript einer Sessions-Aufnahme.',
+    {
+      sessionId: z.number().int().positive(),
+      text: z.string().min(1),
+    },
+    async ({ sessionId, text }) => {
+      try {
+        if (!sessionIsAdmin) return error('Nur Admins dürfen Transkripte verändern');
+        const session = getSessionById(sessionId);
+        if (!session) return error('Session nicht gefunden');
+        const transcriptPath = join(session.directory, 'transcript.txt');
+        await writeFile(transcriptPath, text, 'utf-8');
+        updateSession(sessionId, { transcript: text });
+        return success(`Transkript für Session ${sessionId} gespeichert.`);
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Speichern des Transkripts');
       }
     },
   );

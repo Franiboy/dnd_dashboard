@@ -130,6 +130,7 @@ export interface RecordingSession {
   trimEndSeconds: number | null;
   transcribedTrimStartSeconds: number | null;
   transcribedTrimEndSeconds: number | null;
+  transcriptImprovedAt: string | null;
   hasWavFiles?: boolean;
   files?: RecordingFile[];
 }
