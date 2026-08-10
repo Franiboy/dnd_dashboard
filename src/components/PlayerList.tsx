@@ -23,6 +23,12 @@ export function PlayerList({ game, playerId, className }: PlayerListProps) {
             <span className="flex items-center gap-2 text-[var(--text-h)] font-medium">
               <Avatar src={p.avatarUrl} name={p.name} className="w-7 h-7" />
               {p.name} {p.id === playerId && '(Du)'}
+              <span
+                className="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-400"
+                title={`${p.wins ?? 0} ${(p.wins ?? 0) === 1 ? 'Sieg' : 'Siege'}`}
+              >
+                {p.wins ?? 0} {(p.wins ?? 0) === 1 ? 'Sieg' : 'Siege'}
+              </span>
             </span>
             <span className="flex items-center gap-2">
               {p.locked && (

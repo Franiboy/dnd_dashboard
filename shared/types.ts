@@ -21,6 +21,7 @@ export interface Player {
   locked: boolean;
   online: boolean;
   joinedAt: string;
+  wins?: number;
 }
 
 export interface BingoGame {
