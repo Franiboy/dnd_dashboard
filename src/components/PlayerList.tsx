@@ -17,7 +17,7 @@ export function PlayerList({ game, playerId, className }: PlayerListProps) {
         {onlinePlayers.map((p) => (
           <li
             key={p.id}
-            className={`flex items-center justify-between px-3 py-2 rounded border ${
+            className={`flex items-center justify-between gap-3 px-3 py-2 rounded border ${
               p.id === playerId ? 'border-[var(--accent)]' : 'border-[var(--border)]'
             }`}
           >
