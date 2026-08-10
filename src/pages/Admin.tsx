@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
+import { useAuth } from '../hooks/useAuth';
 import { useError } from '../hooks/useError';
 import { BackButton } from '../components/BackButton';
 import { Loading } from '../components/Loading';
@@ -29,6 +30,7 @@ interface AdminProps {
 
 export function Admin({ currentUser }: AdminProps) {
   const { request } = useApi();
+  const { setViewAsUser } = useAuth();
   const { showError } = useError();
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -345,6 +347,14 @@ export function Admin({ currentUser }: AdminProps) {
                                 ) : (
                                   'Sperren'
                                 )}
+                              </button>
+                            )}
+                            {u.isApproved && !isOwn(u) && (
+                              <button
+                                onClick={() => setViewAsUser(u)}
+                                className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
+                              >
+                                Ansicht simulieren
                               </button>
                             )}
                             <button

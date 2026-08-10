@@ -5,8 +5,10 @@ import type { SafeUser } from '../../shared/types';
 export function useAuth() {
   const { showError } = useError();
   const [user, setUser] = useState<SafeUser | null>(null);
+  const [viewAsUser, setViewAsUser] = useState<SafeUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const effectiveUser = viewAsUser ?? user;
 
   const loginAdmin = async (username: string, password: string): Promise<boolean> => {
     try {
@@ -79,6 +81,7 @@ export function useAuth() {
   const logout = async () => {
     await fetch('/api/logout', { method: 'POST', credentials: 'include' });
     setUser(null);
+    setViewAsUser(null);
     setError(null);
   };
 
@@ -121,5 +124,20 @@ export function useAuth() {
     fetchMe();
   }, [fetchMe]);
 
-  return { user, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, updateUser, setError };
+  return {
+    user,
+    effectiveUser,
+    viewAsUser,
+    setViewAsUser,
+    clearViewAsUser: () => setViewAsUser(null),
+    loading,
+    error,
+    loginAdmin,
+    handleDiscordCallback,
+    startDiscordLogin,
+    logout,
+    checkApproved,
+    updateUser,
+    setError,
+  };
 }
