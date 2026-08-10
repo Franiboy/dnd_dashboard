@@ -1,7 +1,7 @@
 import { Router, type Response, type NextFunction } from 'express';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
+import { authMiddleware, requireAdmin, requireApproved, type AuthRequest } from '../auth.js';
 import { getBotStatus, getAllVoiceChannels, finishRecording, getActiveRecording, getMonitoredChannel } from '../discord/bot.js';
 import { runTranscription, getTranscriptionProgress } from '../discord/transcriber.js';
 import { isRecordingFeatureEnabled } from '../discord/config.js';
@@ -47,7 +47,7 @@ function requireRecordingFeature(_req: AuthRequest, res: Response, next: NextFun
   next();
 }
 
-router.use(authMiddleware, requireAdmin, requireRecordingFeature);
+router.use(authMiddleware, requireApproved, requireRecordingFeature);
 
 router.get('/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -72,7 +72,7 @@ router.get('/status', (_req, res) => {
   res.json({ bot: getBotStatus(), active: getActiveRecording(), monitoredChannel: getMonitoredChannel() });
 });
 
-router.get('/channels', async (_req, res) => {
+router.get('/channels', requireAdmin, async (_req, res) => {
   try {
     const channels = await getAllVoiceChannels();
     res.json({ channels });
@@ -86,11 +86,11 @@ router.get('/', (_req, res) => {
   res.json({ sessions });
 });
 
-router.get('/config', (_req, res) => {
+router.get('/config', requireAdmin, (_req, res) => {
   res.json(getRecordingConfig());
 });
 
-router.post('/config', (req: AuthRequest, res) => {
+router.post('/config', requireAdmin, (req: AuthRequest, res) => {
   const { channelId } = req.body;
   if (channelId !== undefined && channelId !== null && typeof channelId !== 'string') {
     res.status(400).json({ error: 'channelId muss ein String oder null sein' });
@@ -111,7 +111,7 @@ router.get('/:id', (req, res) => {
   res.json({ session: { ...session, files } });
 });
 
-router.post('/:id/stop', async (req, res) => {
+router.post('/:id/stop', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   try {
     const session = await finishRecording(id);
@@ -121,7 +121,7 @@ router.post('/:id/stop', async (req, res) => {
   }
 });
 
-router.put('/:id/trim', (req, res) => {
+router.put('/:id/trim', requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   const session = getSessionById(id);
   if (!session) {
@@ -162,7 +162,7 @@ function parseTimestamp(ts: string): number | null {
   return parseInt(a, 10) * 60 + parseInt(b, 10);
 }
 
-router.post('/:id/trim-transcript', async (req, res) => {
+router.post('/:id/trim-transcript', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const session = getSessionById(id);
   if (!session) {
@@ -209,7 +209,7 @@ router.post('/:id/trim-transcript', async (req, res) => {
   res.json({ session: getSessionById(id) });
 });
 
-router.post('/:id/transcribe', (req, res) => {
+router.post('/:id/transcribe', requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   const session = getSessionById(id);
   if (!session) {
@@ -246,7 +246,7 @@ router.get('/:id/progress', (req, res) => {
   res.json({ sessionId: id, status: session.status, progress });
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const session = getSessionById(id);
   if (!session) {

@@ -51,14 +51,12 @@ export const APPS: AppMeta[] = [
     hideForInitialAdmin: true,
   },
   {
-    id: 'recordings',
-    label: 'Aufnahmen',
-    path: '/recordings',
+    id: 'sessions',
+    label: 'Sessions',
+    path: '/sessions',
     description: 'Discord-Sessions aufnehmen, transkribieren und als Text einsehen.',
     disableable: true,
-    adminOnly: true,
     requiresFeature: 'recordingEnabled',
-    iconId: 'recordings',
   },
   { id: 'admin', label: 'Admin', path: '/admin', adminOnly: true, iconId: 'admin' },
 ];
