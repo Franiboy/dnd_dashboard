@@ -4,18 +4,22 @@ import { AppSwitcher } from './AppSwitcher';
 import { HeaderAction } from './HeaderAction';
 import { Loading } from './Loading';
 import { useApi } from '../hooks/useApi';
+import { useAuth } from '../hooks/useAuth';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 
 interface LayoutProps {
   user: SafeUser;
+  realUser?: SafeUser | null;
   version: VersionInfo | null | undefined;
   onLogout: () => void;
   onUserChange: (updates: Partial<SafeUser>) => void;
   children: ReactNode;
 }
 
-export function Layout({ user, version, onLogout, onUserChange, children }: LayoutProps) {
+export function Layout({ user, realUser, version, onLogout, onUserChange, children }: LayoutProps) {
+  const isSimulating = realUser !== undefined && realUser !== null && realUser.id !== user.id;
   const { request } = useApi();
+  const { clearViewAsUser } = useAuth();
   const location = useLocation();
   const [persons, setPersons] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -48,7 +52,8 @@ export function Layout({ user, version, onLogout, onUserChange, children }: Layo
     <select
       value={user.activePerson ?? ''}
       onChange={(e) => handleSelectPerson(e.target.value)}
-      disabled={disabled || saving}
+      disabled={disabled || saving || isSimulating}
+      title={isSimulating ? 'Personenauswahl ist im Simulationsmodus deaktiviert' : undefined}
       className={className}
     >
       <option value="">Person wählen</option>
@@ -90,6 +95,20 @@ export function Layout({ user, version, onLogout, onUserChange, children }: Layo
           </HeaderAction>
         </div>
       </header>
+      {isSimulating && (
+        <div className="bg-[var(--warning)]/20 border-b border-[var(--warning)]/40 px-6 py-2 flex items-center justify-between">
+          <span className="text-sm text-[var(--text-h)]">
+            Du simulierst die Ansicht von <strong>{user.displayName}</strong>.
+          </span>
+          <button
+            type="button"
+            onClick={clearViewAsUser}
+            className="text-sm font-semibold text-[var(--warning)] hover:underline"
+          >
+            Zurück zu {realUser?.displayName}
+          </button>
+        </div>
+      )}
       <main className="flex-1 min-h-0 overflow-auto">{children}</main>
 
       {forced && (
