@@ -174,7 +174,7 @@ export function Sessions({ user }: SessionsProps) {
   }
 
   return (
-    <div className="min-h-full p-6 max-w-4xl mx-auto">
+    <div className="min-h-full p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-[var(--text-h)]">Sessions</h1>
         <BackButton />
