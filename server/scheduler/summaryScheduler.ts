@@ -1,5 +1,6 @@
 import { createLogger } from '../logger.js';
 import { processPendingSessions } from './sessionAi.js';
+import { processSessionToDiary } from './sessionToDiary.js';
 import { processDirtyDiaryEntries } from './diarySummaries.js';
 import { processDirtySummaries } from './entitySummaries.js';
 
@@ -20,6 +21,11 @@ async function processNightlySummaries() {
     await processPendingSessions();
   } catch (err) {
     log.error(`Session AI processing failed: ${err}`);
+  }
+  try {
+    await processSessionToDiary();
+  } catch (err) {
+    log.error(`Session-to-diary transfer failed: ${err}`);
   }
   try {
     await processDirtyDiaryEntries();

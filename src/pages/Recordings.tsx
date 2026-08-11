@@ -4,9 +4,13 @@ import { Loading } from '../components/Loading';
 import { BackButton } from '../components/BackButton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useApi } from '../hooks/useApi';
+import { useAuth } from '../hooks/useAuth';
 import { useEntityMappings } from '../hooks/useEntityMappings';
+import { useError } from '../hooks/useError';
 import { EntityRichText } from '../components/EntityRichText';
-import type { RecordingSession, SafeUser, VersionInfo } from '../../shared/types';
+import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
+import { Toggle } from '../components/Toggle';
+import type { DiaryEntry, RecordingSession, SafeUser, VersionInfo } from '../../shared/types';
 
 interface SessionsProps {
   user: SafeUser;
@@ -24,7 +28,9 @@ function parseTimestamp(ts: string): number | null {
 
 export function Sessions({ user }: SessionsProps) {
   const { request } = useApi();
+  const { updateUser } = useAuth();
   const { mappings } = useEntityMappings();
+  const { showSuccess, showError } = useError();
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -34,6 +40,7 @@ export function Sessions({ user }: SessionsProps) {
   const [sessionToDelete, setSessionToDelete] = useState<number | null>(null);
   const [improvingId, setImprovingId] = useState<number | null>(null);
   const [summarizingId, setSummarizingId] = useState<number | null>(null);
+  const [draftingId, setDraftingId] = useState<number | null>(null);
   const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<
     Record<number, { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null>
@@ -188,6 +195,45 @@ export function Sessions({ user }: SessionsProps) {
     }
   }
 
+  async function importToDiary(sessionId: number) {
+    setWorking(true);
+    setDraftingId(sessionId);
+    setAiStatus('KI überführt Session ins Tagebuch...');
+    const { data, error } = await request<{ entry: DiaryEntry }>(
+      `/api/recordings/${sessionId}/diary-draft`,
+      { method: 'POST' },
+    );
+    setWorking(false);
+    setDraftingId(null);
+    if (data) {
+      showSuccess('KI-Vorschlag wurde im Tagebuch erstellt. Bitte im Tagebuch prüfen und bestätigen.');
+      setAiStatus(null);
+    } else if (error) {
+      showError(error);
+      setAiStatus(null);
+    }
+  }
+
+  async function updateSessionDiarySettings(updates: Partial<Pick<SafeUser, 'autoSessionToDiary' | 'autoAcceptSessionDiary'>>) {
+    const next = {
+      autoSessionToDiary: updates.autoSessionToDiary ?? user.autoSessionToDiary,
+      autoAcceptSessionDiary: updates.autoAcceptSessionDiary ?? user.autoAcceptSessionDiary,
+    };
+    const { data, error } = await request<{ user: SafeUser }>(
+      '/api/me/session-diary-settings',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      },
+    );
+    if (data) {
+      updateUser(data.user);
+    } else if (error) {
+      showError(error);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-full flex items-center justify-center">
@@ -203,7 +249,40 @@ export function Sessions({ user }: SessionsProps) {
         <BackButton />
       </div>
 
-      {user.isAdmin && aiStatus && (
+      <SideDrawer side="right">
+        <SideDrawerItem
+          id="config"
+          label="Einstellungen"
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          }
+        >
+          <div className="p-2 space-y-6">
+            <h3 className="text-lg font-semibold text-[var(--text-h)]">Tagebuch-Automatisierung</h3>
+            <div className="space-y-4">
+              <Toggle
+                checked={user.autoSessionToDiary}
+                onChange={(checked) => updateSessionDiarySettings({ autoSessionToDiary: checked })}
+                label="Fertige Sessions automatisch in mein Tagebuch übertragen"
+              />
+              <Toggle
+                checked={user.autoAcceptSessionDiary}
+                disabled={!user.autoSessionToDiary}
+                onChange={(checked) => updateSessionDiarySettings({ autoAcceptSessionDiary: checked })}
+                label="KI-Entwurf ohne Prüfung direkt als Tagebuchnotiz übernehmen"
+              />
+            </div>
+            <p className="text-xs text-slate-400">
+              Wenn die automatische Übertragung aktiv ist, legt der Nightly-Job aus jeder fertigen Session einen Tagebucheintrag an. Ist zusätzlich „direkt übernehmen“ aktiv, wird der KI-Text sofort als endgültiger Inhalt gespeichert und der Tagebuch-Zusammenfassungs-Job kann ihn direkt verarbeiten.
+            </p>
+          </div>
+        </SideDrawerItem>
+      </SideDrawer>
+
+      {aiStatus && (
         <div className="mb-4 p-3 rounded-lg bg-[var(--accent)]/20 text-[var(--text-h)] text-sm flex items-center gap-2">
           <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
           {aiStatus}
@@ -292,6 +371,15 @@ export function Sessions({ user }: SessionsProps) {
                       </Button>
                     )}
                   </>
+                )}
+                {session.status === 'completed' && (
+                  <Button
+                    variant="accent"
+                    disabled={working || draftingId === session.id}
+                    onClick={() => importToDiary(session.id)}
+                  >
+                    {draftingId === session.id ? 'Tagebuch...' : 'Ins Tagebuch'}
+                  </Button>
                 )}
                 {session.status === 'completed' && (
                   <Button

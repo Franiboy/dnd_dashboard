@@ -8,6 +8,7 @@ import { isRecordingFeatureEnabled } from '../discord/config.js';
 import { isAiEnabled } from '../ai/config.js';
 import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
 import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
+import { generateSessionDiaryDraft } from '../ai/sessionToDiary.js';
 import { onSessionsUpdated, onStatusUpdated, onProgressUpdated, emitSessionsUpdated } from '../discord/recordingsEvents.js';
 import { getSessionById, listSessions, getFilesBySessionId, getRecordingConfig, setRecordingConfig, deleteSession, updateSession } from '../repositories/recordings.js';
 import { createLogger } from '../logger.js';
@@ -363,6 +364,46 @@ router.post('/:id/summary', requireAdmin, async (req: AuthRequest, res) => {
   } catch (err) {
     log.error(`Unexpected error during session summary of session ${id}:`, err);
     res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
+  } finally {
+    stopProgress();
+  }
+});
+
+router.post('/:id/diary-draft', async (req: AuthRequest, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+  if (session.status !== 'completed' || !session.transcript) {
+    res.status(400).json({ error: 'Kein Transkript vorhanden' });
+    return;
+  }
+  if (!isAiEnabled()) {
+    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
+    return;
+  }
+
+  const stopProgress = startProgressMessages('KI überführt Session ins Tagebuch...', [
+    'KI prüft Session und bestehende Tagebucheinträge...',
+    'KI schreibt den Tagebucheintrag...',
+    'KI arbeitet noch...',
+    'Fast fertig...',
+  ]);
+  try {
+    const entry = await generateSessionDiaryDraft(id, req.user!, undefined, notifyAiLog);
+    if (!entry) {
+      log.error(`generateSessionDiaryDraft returned null for session ${id}`);
+      res.status(500).json({ error: 'KI-Überführung ins Tagebuch ist fehlgeschlagen' });
+      return;
+    }
+
+    broadcastAiLog('Tagebucheintrag-Entwurf erstellt.');
+    res.json({ entry });
+  } catch (err) {
+    log.error(`Unexpected error during session-to-diary draft of session ${id}:`, err);
+    res.status(500).json({ error: 'KI-Überführung ins Tagebuch ist fehlgeschlagen' });
   } finally {
     stopProgress();
   }

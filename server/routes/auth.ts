@@ -32,6 +32,7 @@ import {
   recordFailedLogin,
   resetFailedLogins,
   setUserActivePerson,
+  setUserSessionDiarySettings,
   storeDiscordTokens,
   toSafeUser,
   updateDiscordProfile,
@@ -194,6 +195,19 @@ router.put('/me/active-person', authMiddleware, (req: AuthRequest, res) => {
   }
 
   const user = setUserActivePerson(req.user!.id, personName);
+  if (!user) {
+    res.status(500).json({ error: 'Speichern fehlgeschlagen' });
+    return;
+  }
+  res.json({ ok: true, user });
+});
+
+router.put('/me/session-diary-settings', authMiddleware, (req: AuthRequest, res) => {
+  const { autoSessionToDiary, autoAcceptSessionDiary } = req.body;
+  const autoTransfer = typeof autoSessionToDiary === 'boolean' ? autoSessionToDiary : false;
+  const autoAccept = typeof autoAcceptSessionDiary === 'boolean' ? autoAcceptSessionDiary : false;
+
+  const user = setUserSessionDiarySettings(req.user!.id, autoTransfer, autoAccept);
   if (!user) {
     res.status(500).json({ error: 'Speichern fehlgeschlagen' });
     return;

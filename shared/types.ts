@@ -52,6 +52,8 @@ export interface User {
   isApproved: boolean;
   disabledApps: string[];
   activePerson: string | null;
+  autoSessionToDiary: boolean;
+  autoAcceptSessionDiary: boolean;
   failedLoginAttempts: number;
   lockedUntil: string | null;
   createdAt: string;
@@ -66,6 +68,8 @@ export interface SafeUser {
   isApproved: boolean;
   disabledApps: string[];
   activePerson: string | null;
+  autoSessionToDiary: boolean;
+  autoAcceptSessionDiary: boolean;
   isInitialAdmin: boolean;
 }
 
@@ -164,6 +168,7 @@ export interface DiaryEntry {
   rewriteSessionId?: string | null;
   aiDirty?: boolean;
   aiProcessedAt?: string | null;
+  sessionDraftFor?: number | null;
   persons: string[];
   organizations: string[];
   locations: string[];
