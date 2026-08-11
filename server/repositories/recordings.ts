@@ -1,5 +1,5 @@
 import { db } from '../database.js';
-import type { RecordingFile, RecordingSession, RecordingStatus, SessionDiaryTransfer } from '../../shared/types.js';
+import type { RecordingFile, RecordingSession, RecordingStatus, SessionDiaryEntryLink, SessionDiaryTransfer } from '../../shared/types.js';
 
 interface CreateSessionInput {
   name: string;
@@ -370,6 +370,42 @@ export function listSessionToDiaryTransfers(userId: string): Record<number, Sess
       autoAccepted: !!row.autoAccepted,
       isOutdated: !!row.isOutdated,
     };
+  }
+  return result;
+}
+
+export function listAllSessionDiaryEntryLinks(
+  currentUserId: string,
+  isAdmin: boolean,
+): Record<number, SessionDiaryEntryLink[]> {
+  const sql = `
+    SELECT t.session_id AS sessionId, t.entry_id AS entryId, t.user_id AS userId,
+           u.display_name AS displayName, d.title, t.auto_accepted AS autoAccepted
+    FROM session_diary_transfers t
+    JOIN users u ON u.id = t.user_id
+    JOIN diary_entries d ON d.id = t.entry_id
+    ${isAdmin ? '' : 'WHERE t.user_id = ?'}
+    ORDER BY t.created_at DESC
+  `;
+  const params: (string)[] = isAdmin ? [] : [currentUserId];
+  const rows = db.prepare(sql).all(...params) as {
+    sessionId: number;
+    entryId: number;
+    userId: string;
+    displayName: string;
+    title: string;
+    autoAccepted: number;
+  }[];
+  const result: Record<number, SessionDiaryEntryLink[]> = {};
+  for (const row of rows) {
+    if (!result[row.sessionId]) result[row.sessionId] = [];
+    result[row.sessionId].push({
+      entryId: row.entryId,
+      userId: row.userId,
+      displayName: row.displayName,
+      title: row.title,
+      autoAccepted: !!row.autoAccepted,
+    });
   }
   return result;
 }

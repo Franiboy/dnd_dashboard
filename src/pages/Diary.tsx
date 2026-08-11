@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import { useEntityDialog } from '../hooks/useEntityDialog';
@@ -170,10 +171,12 @@ export function Diary() {
   const { user } = useAuth();
   const { mappings } = useEntityMappings();
   const { showSuccess, showError } = useError();
+  const [searchParams] = useSearchParams();
   const draftKeyPrefix = user?.id ? `${DRAFT_KEY_PREFIX}${user.id}-` : DRAFT_KEY_PREFIX;
   const getDraftKey = (entryId: number, kind: 'original' | 'rewritten') => `${draftKeyPrefix}${entryId}-${kind}`;
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
   const entriesRef = useRef(entries);
+  const entryRefs = useRef<Record<number, HTMLElement>>({});
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -269,6 +272,31 @@ export function Diary() {
     });
     loadEntries();
   }, [request, loadEntries]);
+
+  useEffect(() => {
+    const entryIdParam = searchParams.get('entry');
+    if (!entryIdParam || entries.length === 0) return;
+    const entryId = Number(entryIdParam);
+    if (!Number.isFinite(entryId)) return;
+
+    const entry = entries.find((e) => e.id === entryId);
+    if (!entry) return;
+
+    setExpandedIds((prev) => new Set(prev).add(entryId));
+    if (entry.rewrittenContent || entry.rewrittenFilePath) {
+      setViewingRewrittenIds((prev) => new Set(prev).add(entryId));
+    }
+
+    const timer = setTimeout(() => {
+      const element = entryRefs.current[entryId];
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        element.classList.add('ring-2', 'ring-[var(--accent)]');
+        setTimeout(() => element.classList.remove('ring-2', 'ring-[var(--accent)]'), 2000);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchParams, loading, entries]);
 
   useEffect(() => {
     let resolveReady: (() => void) | null = null;
@@ -858,7 +886,10 @@ export function Diary() {
               {entries.map((entry) => (
                 <article
                   key={entry.id}
-                  className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5"
+                  ref={(el) => {
+                    if (el) entryRefs.current[entry.id] = el;
+                  }}
+                  className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 transition"
                 >
                   <div className="flex items-start justify-between gap-4 mb-3">
                     {editingTitleId === entry.id ? (
@@ -878,12 +909,16 @@ export function Diary() {
                         </Button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 flex-1">
+                      <div className="flex items-center gap-2 flex-1 flex-wrap">
                         <h3 className="text-lg font-semibold text-[var(--text-h)]">{entry.title}</h3>
                         {entry.sessionDraftFor && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/30">
-                            Session-Vorschlag
-                          </span>
+                          <Link
+                            to={`/sessions?session=${entry.sessionDraftFor}`}
+                            className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/30 hover:bg-[var(--accent)]/30 transition"
+                            title={entry.sessionDraftForName ? `Springe zu Session „${entry.sessionDraftForName}“` : 'Springe zur Session'}
+                          >
+                            {entry.sessionDraftForName ? `Session: ${entry.sessionDraftForName}` : 'Session-Vorschlag'}
+                          </Link>
                         )}
                         <button
                           type="button"

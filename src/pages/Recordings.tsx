@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -13,7 +14,7 @@ import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { Toggle } from '../components/Toggle';
 import ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
-import type { DiaryEntry, EntityType, RecordingSession, SafeUser, SessionDiaryTransfer, VersionInfo } from '../../shared/types';
+import type { DiaryEntry, EntityType, RecordingSession, SafeUser, SessionDiaryEntryLink, SessionDiaryTransfer, VersionInfo } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 interface SessionsProps {
@@ -71,6 +72,7 @@ export function Sessions({ user }: SessionsProps) {
   const { mappings } = useEntityMappings();
   const { showSuccess, showError } = useError();
   const { openEntity } = useEntityDialog();
+  const [searchParams] = useSearchParams();
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -83,11 +85,13 @@ export function Sessions({ user }: SessionsProps) {
   const [summarizingId, setSummarizingId] = useState<number | null>(null);
   const [draftingId, setDraftingId] = useState<number | null>(null);
   const [diaryTransfers, setDiaryTransfers] = useState<Record<number, SessionDiaryTransfer>>({});
+  const [sessionDiaryEntries, setSessionDiaryEntries] = useState<Record<number, SessionDiaryEntryLink[]>>({});
   const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<
     Record<number, { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null>
   >({});
   const summaryQuillRefs = useRef<Record<number, ReactQuill>>({});
+  const sessionRefs = useRef<Record<number, HTMLElement>>({});
   const expandedSummaryHash = useMemo(
     () => sessions.filter((s) => expandedLongSummaries.has(s.id)).map((s) => s.longSummary ?? '').join('\u0000'),
     [sessions, expandedLongSummaries],
@@ -147,6 +151,37 @@ export function Sessions({ user }: SessionsProps) {
       clearInterval(interval);
     };
   }, [request]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const { data } = await request<{ entries: Record<number, SessionDiaryEntryLink[]> }>('/api/recordings/session-diary-entries');
+      if (!cancelled && data) setSessionDiaryEntries(data.entries);
+    }
+    load();
+    const interval = setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [request]);
+
+  useEffect(() => {
+    const sessionIdParam = searchParams.get('session');
+    if (!sessionIdParam || sessions.length === 0) return;
+    const sessionId = Number(sessionIdParam);
+    if (!Number.isFinite(sessionId)) return;
+
+    const timer = setTimeout(() => {
+      const element = sessionRefs.current[sessionId];
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        element.classList.add('ring-2', 'ring-[var(--accent)]');
+        setTimeout(() => element.classList.remove('ring-2', 'ring-[var(--accent)]'), 2000);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchParams, loading, sessions]);
 
   async function startTranscriptionNow(sessionId: number) {
     setWorking(true);
@@ -390,7 +425,10 @@ export function Sessions({ user }: SessionsProps) {
         {sessions.map((session) => (
           <div
             key={session.id}
-            className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6"
+            ref={(el) => {
+              if (el) sessionRefs.current[session.id] = el;
+            }}
+            className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 transition"
           >
             <div className="flex items-center justify-between mb-2">
               <div>
@@ -404,6 +442,22 @@ export function Sessions({ user }: SessionsProps) {
                 {diaryTransfers[session.id] && (
                   <div className="mt-1">
                     <SessionDiaryTransferBadge transfer={diaryTransfers[session.id]!} />
+                  </div>
+                )}
+                {sessionDiaryEntries[session.id] && sessionDiaryEntries[session.id].length > 0 && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-slate-400">Tagebuch:</span>
+                    {sessionDiaryEntries[session.id].map((entry) => (
+                      <Link
+                        key={entry.entryId}
+                        to={`/tagebuch?entry=${entry.entryId}`}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20 hover:bg-[var(--accent)]/20 transition text-xs"
+                        title={user.isAdmin ? `${entry.title} (${entry.displayName})` : entry.title}
+                      >
+                        {entry.title}
+                        {user.isAdmin && <span className="text-slate-500">· {entry.displayName}</span>}
+                      </Link>
+                    ))}
                   </div>
                 )}
                 {session.status === 'processing' && (
