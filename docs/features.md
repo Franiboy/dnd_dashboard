@@ -85,6 +85,8 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 | `entity:extract` | `link_diary_entity` |
 | `entity:summary` | `set_entity_summary` |
 | `knowledge:distribute` | `create_knowledge`, `delete_knowledge` |
+| `recording:read` | `get_session_summary`, `get_previous_session_summaries` |
+| `recording:summarize` | `set_session_summary`, `set_session_long_summary` |
 
 ## Recording Module
 
@@ -94,6 +96,7 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 - A scheduler (`server/discord/scheduler.ts`) transcribes finished recordings with OpenAI Whisper.
 - Before transcription, long silent sections are detected and removed with ffmpeg VAD so Whisper only processes actual speech, which reduces repeated hallucinations.
 - Transcripts can be trimmed and saved as text.
+- Admins can generate an AI summary of a completed transcript. The AI first creates a detailed HTML summary (`set_session_long_summary`), then derives a short bullet-point summary (`set_session_summary`) from it. It can read previous session summaries, diary entries of all players, entities and knowledge (`get_session_summary`, `get_previous_session_summaries`). After generation, affected entity summaries are marked dirty and knowledge is distributed.
 - Recordings are only visible to admins.
 - On startup, interrupted recordings and transcriptions are recovered and resumed automatically. Segment metadata is persisted alongside each PCM file so recovered WAVs keep their original timing/gaps.
 - On shutdown, active recordings are finalized and active transcription processes are stopped cleanly.

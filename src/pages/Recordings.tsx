@@ -4,6 +4,8 @@ import { Loading } from '../components/Loading';
 import { BackButton } from '../components/BackButton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useApi } from '../hooks/useApi';
+import { useEntityMappings } from '../hooks/useEntityMappings';
+import { EntityRichText } from '../components/EntityRichText';
 import type { RecordingSession, SafeUser, VersionInfo } from '../../shared/types';
 
 interface SessionsProps {
@@ -22,6 +24,7 @@ function parseTimestamp(ts: string): number | null {
 
 export function Sessions({ user }: SessionsProps) {
   const { request } = useApi();
+  const { mappings } = useEntityMappings();
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -30,6 +33,7 @@ export function Sessions({ user }: SessionsProps) {
   const [loadingTranscript, setLoadingTranscript] = useState<Set<number>>(new Set());
   const [sessionToDelete, setSessionToDelete] = useState<number | null>(null);
   const [improvingId, setImprovingId] = useState<number | null>(null);
+  const [summarizingId, setSummarizingId] = useState<number | null>(null);
   const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<
     Record<number, { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null>
@@ -165,6 +169,25 @@ export function Sessions({ user }: SessionsProps) {
     }
   }
 
+  async function generateSummary(sessionId: number) {
+    setWorking(true);
+    setSummarizingId(sessionId);
+    setAiStatus('KI erstellt die Zusammenfassung...');
+    const { data, error } = await request<{ session: RecordingSession }>(
+      `/api/recordings/${sessionId}/summary`,
+      { method: 'POST' },
+    );
+    setWorking(false);
+    setSummarizingId(null);
+    if (data) {
+      if (visibleTranscripts.has(sessionId)) {
+        setLoadedTranscripts((prev) => ({ ...prev, [sessionId]: data.session.transcript }));
+      }
+    } else if (error) {
+      setAiStatus(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-full flex items-center justify-center">
@@ -255,6 +278,19 @@ export function Sessions({ user }: SessionsProps) {
                             : 'Skript verbessern'}
                       </Button>
                     )}
+                    {session.status === 'completed' && (
+                      <Button
+                        variant="secondary"
+                        disabled={working || summarizingId === session.id}
+                        onClick={() => generateSummary(session.id)}
+                      >
+                        {summarizingId === session.id
+                          ? 'Zusammenfassung...'
+                          : session.longSummary
+                            ? 'Zusammenfassung erneuern'
+                            : 'Zusammenfassung erstellen'}
+                      </Button>
+                    )}
                   </>
                 )}
                 {session.status === 'completed' && (
@@ -295,6 +331,34 @@ export function Sessions({ user }: SessionsProps) {
               <div className="mt-4 p-3 rounded-lg bg-[var(--accent)]/20 text-[var(--text-h)] text-sm flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
                 Transkription läuft gerade...
+              </div>
+            )}
+
+            {session.longSummary && (
+              <div className="mt-4 p-3 rounded-lg bg-slate-800/50 border-l-4 border-[var(--accent)] text-slate-200 text-sm">
+                <h4 className="text-sm font-semibold text-slate-300 mb-2">Ausführliche Zusammenfassung</h4>
+                <div className="text-slate-200 text-sm space-y-2">
+                  <EntityRichText content={session.longSummary} mappings={mappings} isHtml />
+                </div>
+                {session.longSummaryGeneratedAt && (
+                  <p className="text-xs text-slate-500 mt-2">
+                    Erstellt am {new Date(session.longSummaryGeneratedAt).toLocaleString('de-DE')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {session.summary && (
+              <div className="mt-4 p-3 rounded-lg bg-slate-800/50 border-l-4 border-[var(--accent)] text-slate-200 text-sm">
+                <h4 className="text-sm font-semibold text-slate-300 mb-2">Kurze Zusammenfassung</h4>
+                <div className="text-slate-200 text-sm whitespace-pre-wrap">
+                  <EntityRichText content={session.summary} mappings={mappings} isHtml={false} />
+                </div>
+                {session.summaryGeneratedAt && (
+                  <p className="text-xs text-slate-500 mt-2">
+                    Erstellt am {new Date(session.summaryGeneratedAt).toLocaleString('de-DE')}
+                  </p>
+                )}
               </div>
             )}
 

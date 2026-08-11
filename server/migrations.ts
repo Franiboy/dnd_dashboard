@@ -459,6 +459,30 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: 'add_recording_session_summary',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'summary')) {
+        db.exec('ALTER TABLE recording_sessions ADD COLUMN summary TEXT');
+      }
+      if (!columns.some((c) => c.name === 'summary_generated_at')) {
+        db.exec('ALTER TABLE recording_sessions ADD COLUMN summary_generated_at TEXT');
+      }
+    },
+  },
+  {
+    name: 'add_recording_session_long_summary',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'long_summary')) {
+        db.exec('ALTER TABLE recording_sessions ADD COLUMN long_summary TEXT');
+      }
+      if (!columns.some((c) => c.name === 'long_summary_generated_at')) {
+        db.exec('ALTER TABLE recording_sessions ADD COLUMN long_summary_generated_at TEXT');
+      }
+    },
+  },
 ];
 
 export function runMigrations() {
