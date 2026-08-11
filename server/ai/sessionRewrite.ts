@@ -1,22 +1,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createLogger } from '../logger.js';
-import { getSessionById } from '../repositories/recordings.js';
+import { getSessionById, updateSession } from '../repositories/recordings.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
 import { getNormalModel } from './modelConfig.js';
 import { runOpenCode } from './opencode.js';
+import { getSessionWorkDir, getSessionWorkFile } from './sessionWorkdir.js';
 
 const log = createLogger('sessionRewrite');
-
-const BASE_DIR = join(process.cwd(), 'data', 'sessions');
-
-function getWorkDir(sessionId: number): string {
-  return join(BASE_DIR, String(sessionId));
-}
-
-function getWorkFile(sessionId: number): string {
-  return join(getWorkDir(sessionId), 'transcript.txt');
-}
 
 export interface SessionRewriteResult {
   transcript: string | null;
@@ -34,8 +26,8 @@ export async function improveSessionTranscriptWithAi(
     return { transcript: null };
   }
 
-  const workFile = getWorkFile(sessionId);
-  mkdirSync(getWorkDir(sessionId), { recursive: true });
+  const workFile = getSessionWorkFile(sessionId);
+  mkdirSync(getSessionWorkDir(sessionId), { recursive: true });
   writeFileSync(workFile, session.transcript, 'utf-8');
 
   log.info(`Starting transcript improvement for session ${sessionId} (${session.transcript.length} bytes)`);
@@ -79,6 +71,13 @@ export async function improveSessionTranscriptWithAi(
     return { transcript: null };
   }
 
-  log.info(`Improved transcript loaded for session ${sessionId}`);
+  const transcriptPath = join(session.directory, 'transcript.txt');
+  await writeFile(transcriptPath, improved);
+  updateSession(sessionId, {
+    transcript: improved,
+    transcriptImprovedAt: new Date().toISOString(),
+  });
+
+  log.info(`Improved transcript saved for session ${sessionId}`);
   return { transcript: improved };
 }

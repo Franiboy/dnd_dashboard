@@ -1,4 +1,5 @@
 import { createLogger } from '../logger.js';
+import { processPendingSessions } from './sessionAi.js';
 import { processDirtyDiaryEntries } from './diarySummaries.js';
 import { processDirtySummaries } from './entitySummaries.js';
 
@@ -15,6 +16,11 @@ function shouldRunNow(): boolean {
 }
 
 async function processNightlySummaries() {
+  try {
+    await processPendingSessions();
+  } catch (err) {
+    log.error(`Session AI processing failed: ${err}`);
+  }
   try {
     await processDirtyDiaryEntries();
   } catch (err) {

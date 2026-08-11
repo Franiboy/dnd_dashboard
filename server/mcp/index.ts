@@ -31,6 +31,12 @@ import { writeRewrittenFile } from '../diaryFiles.js';
 import { normalizeToHtml } from '../ai/rewrite.js';
 import { sanitizeHtml } from '../utils/sanitizeHtml.js';
 import { verifyMcpSessionToken, type McpScope } from './tokens.js';
+import {
+  getSessionById,
+  updateSession,
+  getSessionSummaryById,
+  listPreviousSessionSummaries,
+} from '../repositories/recordings.js';
 import type { DiaryEntry } from '../../shared/types.js';
 
 const log = createLogger('mcp-server');
@@ -372,6 +378,112 @@ if (requireScope('entity:read')) {
         return success(lines.join('\n'));
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Laden der Entität');
+      }
+    },
+  );
+}
+
+function formatSessionSummary(session: {
+  id: number;
+  name: string;
+  startedAt: string;
+  summary: string | null;
+  summaryGeneratedAt: string | null;
+  longSummary: string | null;
+  longSummaryGeneratedAt: string | null;
+}): string {
+  const lines = [
+    `Session ID: ${session.id}`,
+    `Name: ${session.name}`,
+    `Datum: ${session.startedAt}`,
+    '',
+    'Kurze Zusammenfassung:',
+    session.summary ?? '(noch nicht erstellt)',
+    '',
+    'Lange Zusammenfassung:',
+    session.longSummary ?? '(noch nicht erstellt)',
+  ];
+  return lines.join('\n');
+}
+
+if (requireScope('recording:read')) {
+  server.tool(
+    'get_session_summary',
+    'Liefert die kurze und lange Zusammenfassung einer bestimmten Aufnahme-Session.',
+    {
+      sessionId: z.number().int().positive(),
+    },
+    async ({ sessionId }) => {
+      try {
+        const session = getSessionSummaryById(sessionId);
+        if (!session) return error(`Session ${sessionId} nicht gefunden.`);
+        return success(formatSessionSummary(session));
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Laden der Session-Zusammenfassung');
+      }
+    },
+  );
+
+  server.tool(
+    'get_previous_session_summaries',
+    'Liefert die Zusammenfassungen der vorherigen Aufnahme-Sessions (absteigend nach Datum).',
+    {
+      sessionId: z.number().int().positive(),
+      limit: z.number().int().positive().max(10).optional(),
+    },
+    async ({ sessionId, limit }) => {
+      try {
+        const sessions = listPreviousSessionSummaries(sessionId, limit ?? 5);
+        if (sessions.length === 0) return success('Keine vorherigen Sessions gefunden.');
+        return success(sessions.map(formatSessionSummary).join('\n\n---\n\n'));
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Laden der vorherigen Sessions');
+      }
+    },
+  );
+}
+
+if (requireScope('recording:summarize')) {
+  server.tool(
+    'set_session_summary',
+    'Setzt die kurze Zusammenfassung (Stichpunkte, max. 500 Zeichen) einer Aufnahme-Session.',
+    {
+      sessionId: z.number().int().positive(),
+      summary: z.string().min(1).max(500),
+    },
+    async ({ sessionId, summary }) => {
+      try {
+        const session = getSessionById(sessionId);
+        if (!session) return error(`Session ${sessionId} nicht gefunden.`);
+        updateSession(sessionId, {
+          summary: summary.trim(),
+          summaryGeneratedAt: new Date().toISOString(),
+        });
+        return success(`Kurze Zusammenfassung für Session ${sessionId} gesetzt.`);
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Setzen der Zusammenfassung');
+      }
+    },
+  );
+
+  server.tool(
+    'set_session_long_summary',
+    'Setzt die ausführliche HTML-Zusammenfassung einer Aufnahme-Session.',
+    {
+      sessionId: z.number().int().positive(),
+      longSummary: z.string().min(1),
+    },
+    async ({ sessionId, longSummary }) => {
+      try {
+        const session = getSessionById(sessionId);
+        if (!session) return error(`Session ${sessionId} nicht gefunden.`);
+        updateSession(sessionId, {
+          longSummary: sanitizeHtml(longSummary).trim(),
+          longSummaryGeneratedAt: new Date().toISOString(),
+        });
+        return success(`Lange Zusammenfassung für Session ${sessionId} gesetzt.`);
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Setzen der langen Zusammenfassung');
       }
     },
   );

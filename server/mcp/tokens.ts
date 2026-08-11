@@ -10,7 +10,9 @@ export type McpScope =
   | 'entity:read'
   | 'entity:extract'
   | 'entity:summary'
-  | 'knowledge:distribute';
+  | 'knowledge:distribute'
+  | 'recording:read'
+  | 'recording:summarize';
 
 export interface McpSessionUser {
   id: string;
