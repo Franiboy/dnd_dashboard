@@ -10,11 +10,29 @@ import { useError } from '../hooks/useError';
 import { EntityRichText } from '../components/EntityRichText';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { Toggle } from '../components/Toggle';
+import ReactQuill from 'react-quill-new';
 import type { DiaryEntry, RecordingSession, SafeUser, VersionInfo } from '../../shared/types';
+import 'react-quill-new/dist/quill.snow.css';
 
 interface SessionsProps {
   user: SafeUser;
 }
+
+const summaryQuillModules = { toolbar: false };
+const summaryQuillFormats = [
+  'header',
+  'bold',
+  'italic',
+  'underline',
+  'strike',
+  'list',
+  'bullet',
+  'indent',
+  'link',
+  'blockquote',
+  'code-block',
+  'align',
+];
 
 function parseTimestamp(ts: string): number | null {
   const match = ts.match(/\[(\d{2}):(\d{2})(?::(\d{2}))?\]/);
@@ -37,6 +55,7 @@ export function Sessions({ user }: SessionsProps) {
   const [loadedTranscripts, setLoadedTranscripts] = useState<Record<number, string | null>>({});
   const [visibleTranscripts, setVisibleTranscripts] = useState<Set<number>>(new Set());
   const [loadingTranscript, setLoadingTranscript] = useState<Set<number>>(new Set());
+  const [expandedLongSummaries, setExpandedLongSummaries] = useState<Set<number>>(new Set());
   const [sessionToDelete, setSessionToDelete] = useState<number | null>(null);
   const [improvingId, setImprovingId] = useState<number | null>(null);
   const [summarizingId, setSummarizingId] = useState<number | null>(null);
@@ -155,6 +174,15 @@ export function Sessions({ user }: SessionsProps) {
     }
 
     setVisibleTranscripts((prev) => new Set(prev).add(sessionId));
+  }
+
+  function toggleLongSummary(sessionId: number) {
+    setExpandedLongSummaries((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
   }
 
   async function improveTranscript(sessionId: number) {
@@ -422,20 +450,6 @@ export function Sessions({ user }: SessionsProps) {
               </div>
             )}
 
-            {session.longSummary && (
-              <div className="mt-4 p-3 rounded-lg bg-slate-800/50 border-l-4 border-[var(--accent)] text-slate-200 text-sm">
-                <h4 className="text-sm font-semibold text-slate-300 mb-2">Ausführliche Zusammenfassung</h4>
-                <div className="text-slate-200 text-sm space-y-2">
-                  <EntityRichText content={session.longSummary} mappings={mappings} isHtml />
-                </div>
-                {session.longSummaryGeneratedAt && (
-                  <p className="text-xs text-slate-500 mt-2">
-                    Erstellt am {new Date(session.longSummaryGeneratedAt).toLocaleString('de-DE')}
-                  </p>
-                )}
-              </div>
-            )}
-
             {session.summary && (
               <div className="mt-4 p-3 rounded-lg bg-slate-800/50 border-l-4 border-[var(--accent)] text-slate-200 text-sm">
                 <h4 className="text-sm font-semibold text-slate-300 mb-2">Kurze Zusammenfassung</h4>
@@ -446,6 +460,36 @@ export function Sessions({ user }: SessionsProps) {
                   <p className="text-xs text-slate-500 mt-2">
                     Erstellt am {new Date(session.summaryGeneratedAt).toLocaleString('de-DE')}
                   </p>
+                )}
+              </div>
+            )}
+
+            {session.longSummary && (
+              <div className="mt-4">
+                {expandedLongSummaries.has(session.id) ? (
+                  <div className="p-3 rounded-lg bg-slate-800/50 border border-[var(--border)]">
+                    <h4 className="text-sm font-semibold text-slate-300 mb-2">Ausführliche Zusammenfassung</h4>
+                    <ReactQuill
+                      theme="snow"
+                      value={session.longSummary}
+                      readOnly
+                      modules={summaryQuillModules}
+                      formats={summaryQuillFormats}
+                      className="session-summary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)]"
+                    />
+                    {session.longSummaryGeneratedAt && (
+                      <p className="text-xs text-slate-500 mt-2">
+                        Erstellt am {new Date(session.longSummaryGeneratedAt).toLocaleString('de-DE')}
+                      </p>
+                    )}
+                    <Button variant="ghost" className="mt-2" onClick={() => toggleLongSummary(session.id)}>
+                      Weniger anzeigen
+                    </Button>
+                  </div>
+                ) : (
+                  <Button variant="secondary" onClick={() => toggleLongSummary(session.id)}>
+                    Ausführliche Zusammenfassung anzeigen
+                  </Button>
                 )}
               </div>
             )}
