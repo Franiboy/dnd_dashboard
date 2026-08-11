@@ -16,6 +16,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | `server/version.ts` | Returns active feature flags (`aiEnabled`, `recordingEnabled`) |
 | `server/socket.ts` | Socket.io event handlers for Bingo |
 | `server/diaryFiles.ts` | Stores AI rewrites as files under `rewritten/` |
+| `server/ai/sessionToDiary.ts` | AI prompt and orchestration for transferring a session into a diary draft |
 
 ### Routes (`server/routes/`)
 
@@ -27,7 +28,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | `bingo.ts` | AI bingo suggestions: list, accept, reject, refresh |
 | `diary.ts` | CRUD for diary entries, AI rewrite, summary, entities; SSE for AI status |
 | `entities.ts` | Entity list, details, aliases, blacklist, knowledge and summary CRUD |
-| `recordings.ts` | Discord recording sessions, transcripts, trimming |
+| `recordings.ts` | Discord recording sessions, transcripts, trimming and AI session-to-diary draft |
 
 ### Repositories (`server/repositories/`)
 
@@ -59,6 +60,7 @@ This document describes the high-level structure of the D&D Dashboard.
 |------|---------|
 | `scheduler/bingoSuggestions.ts` | Keeps the AI bingo suggestion pool filled in the background |
 | `scheduler/entitySummaries.ts` | Starts AI-generated entity summaries in the background |
+| `scheduler/sessionToDiary.ts` | Nightly auto-transfer of completed sessions to user diaries |
 | `discord/bot.ts` | Starts the Discord bot and joins voice channels for recordings |
 | `discord/recorder.ts` | Records Discord audio and stores PCM files |
 | `discord/transcriber.ts` | Runs Whisper transcription |

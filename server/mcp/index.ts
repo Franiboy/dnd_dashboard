@@ -7,12 +7,15 @@ import { runMigrations } from '../migrations.js';
 import '../database.js';
 import { stripHtml } from '../ai/rewrite.js';
 import {
+  applySessionDiaryDraftToEntry,
+  createSessionDiaryDraft,
   ensureEntityExists,
   findEntityCanonicalName,
   getDiaryEntryById,
   getEntryEntities,
   listAllEntityNames,
   listDiaryEntryContentsByEntity,
+  listDiaryEntryHeadlinesByUser,
   listPreviousDiaryEntriesByUser,
   searchDiaryEntries,
   setDiaryEntryLocations,
@@ -131,6 +134,37 @@ if (requireScope('diary:rewrite')) {
         return success(`Rewrite für Eintrag ${entryId} gespeichert.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Speichern des Rewrites');
+      }
+    },
+  );
+}
+
+if (requireScope('diary:draft')) {
+  server.tool(
+    'set_session_diary_draft',
+    'Erstellt oder aktualisiert einen KI-Tagebuch-Entwurf aus einer Session. Wenn targetEntryId angegeben ist, wird der Entwurf an einen bestehenden Eintrag angehängt (als KI-Version), sonst wird ein neuer Eintrag angelegt.',
+    {
+      sessionId: z.number().int().positive(),
+      title: z.string().min(1).max(200),
+      html: z.string().min(1),
+      targetEntryId: z.number().int().positive().optional(),
+    },
+    async ({ sessionId, title, html, targetEntryId }) => {
+      try {
+        if (!sessionUserId) return error('Kein Benutzerkontext vorhanden');
+        const session = getSessionById(sessionId);
+        if (!session) return error(`Session ${sessionId} nicht gefunden.`);
+        if (targetEntryId) {
+          const entry = getDiaryEntryById(targetEntryId);
+          if (!entry || entry.userId !== sessionUserId) return diaryAccessError();
+          const updated = applySessionDiaryDraftToEntry(targetEntryId, sessionId, html);
+          if (!updated) return error('Fehler beim Speichern des Entwurfs');
+          return success(`Entwurf für Eintrag ${updated.id} gespeichert.`);
+        }
+        const created = createSessionDiaryDraft(sessionUserId, title, sessionId, html);
+        return success(`Neuer Entwurf als Eintrag ${created.id} erstellt.`);
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Speichern des Tagebuch-Entwurfs');
       }
     },
   );
@@ -300,6 +334,28 @@ if (requireScope('diary:read')) {
         return success(lines.join('\n\n'));
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Laden der vorherigen Einträge');
+      }
+    },
+  );
+
+  server.tool(
+    'list_user_diary_entries',
+    'Listet die Tagebucheinträge des aktuellen Benutzers mit Titel, Datum und Inhaltsvorschau auf.',
+    {
+      limit: z.number().int().positive().max(50).optional(),
+    },
+    async ({ limit }) => {
+      try {
+        if (!sessionUserId) return error('Kein Benutzerkontext vorhanden');
+        const entries = listDiaryEntryHeadlinesByUser(sessionUserId, limit ?? 20);
+        if (entries.length === 0) return success('Keine Tagebucheinträge gefunden.');
+        const lines = entries.map((e) => {
+          const preview = e.content.length > 0 ? e.content : '(leerer Eintrag)';
+          return `ID ${e.id} | ${e.createdAt} | ${e.title}\n${preview}`;
+        });
+        return success(lines.join('\n\n'));
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Laden der Tagebucheinträge');
       }
     },
   );

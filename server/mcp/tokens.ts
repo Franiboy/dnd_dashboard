@@ -7,6 +7,7 @@ export type McpScope =
   | 'diary:read'
   | 'diary:summarize'
   | 'diary:rewrite'
+  | 'diary:draft'
   | 'entity:read'
   | 'entity:extract'
   | 'entity:summary'

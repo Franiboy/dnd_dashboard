@@ -2,7 +2,7 @@ import type { DiaryEntry } from '../../shared/types.js';
 import type { DiaryEntities } from '../ai/rewrite.js';
 import { stripHtml } from '../ai/rewrite.js';
 import { db } from '../database.js';
-import { readRewrittenFile } from '../diaryFiles.js';
+import { getRewrittenFilePath, readRewrittenFile, writeRewrittenFile } from '../diaryFiles.js';
 import { sanitizeHtml, sanitizePlainText } from '../utils/sanitizeHtml.js';
 import { mergeEntityKnowledge, renameEntityKnowledge } from './entityKnowledge.js';
 import { mergeEntitySummary } from './entitySummaries.js';
@@ -45,6 +45,7 @@ function rowToDiaryEntry(
     rewriteSessionId: (row.rewrite_session_id as string | null | undefined) ?? null,
     aiDirty: Boolean(row.ai_dirty),
     aiProcessedAt: (row.ai_processed_at as string | null | undefined) ?? null,
+    sessionDraftFor: (row.session_draft_for as number | null | undefined) ?? null,
     persons: entities.persons,
     organizations: entities.organizations,
     locations: entities.locations,
@@ -457,6 +458,25 @@ export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
   );
 }
 
+export function listDiaryEntryHeadlinesByUser(
+  userId: string,
+  limit = 20,
+): { id: number; title: string; content: string; createdAt: string }[] {
+  const rows = db
+    .prepare(
+      `SELECT id, title, content, created_at AS createdAt
+       FROM diary_entries
+       WHERE user_id = ?
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(userId, limit) as { id: number; title: string; content: string; createdAt: string }[];
+  return rows.map((row) => ({
+    ...row,
+    content: stripHtml(row.content).slice(0, 300),
+  }));
+}
+
 export function listPreviousDiaryEntriesByUser(
   userId: string,
   beforeCreatedAt: string,
@@ -524,7 +544,7 @@ export function listDiaryEntryContentsByEntity(
 export function updateDiaryEntry(
   id: number,
   updates: Partial<
-    Pick<DiaryEntry, 'title' | 'content' | 'summary' | 'rewrittenContent' | 'persons' | 'organizations' | 'locations' | 'aiDirty' | 'aiProcessedAt'> & {
+    Pick<DiaryEntry, 'title' | 'content' | 'summary' | 'rewrittenContent' | 'persons' | 'organizations' | 'locations' | 'aiDirty' | 'aiProcessedAt' | 'sessionDraftFor'> & {
       rewrittenFilePath?: string | null;
       rewriteSessionId?: string | null;
     }
@@ -560,10 +580,19 @@ export function updateDiaryEntry(
   if (updates.rewrittenFilePath !== undefined) {
     fields.push('rewritten_file_path = ?');
     values.push(updates.rewrittenFilePath ? updates.rewrittenFilePath.trim() : null);
+    if (!updates.rewrittenFilePath && updates.sessionDraftFor === undefined) {
+      // Clearing the AI draft also detaches the session source.
+      fields.push('session_draft_for = ?');
+      values.push(null);
+    }
   }
   if (updates.rewriteSessionId !== undefined) {
     fields.push('rewrite_session_id = ?');
     values.push(updates.rewriteSessionId ? updates.rewriteSessionId.trim() : null);
+  }
+  if (updates.sessionDraftFor !== undefined) {
+    fields.push('session_draft_for = ?');
+    values.push(updates.sessionDraftFor ?? null);
   }
   if (updates.aiDirty !== undefined) {
     fields.push('ai_dirty = ?');
@@ -604,6 +633,61 @@ export function updateDiaryEntry(
 
   db.prepare(`UPDATE diary_entries SET ${fields.join(', ')} WHERE id = ?`).run(...values);
   return getDiaryEntryById(id);
+}
+
+export function createSessionDiaryDraft(
+  userId: string,
+  title: string,
+  sessionId: number,
+  html: string,
+): DiaryEntry {
+  const now = new Date().toISOString();
+  const result = db
+    .prepare(
+      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+    .run(
+      userId,
+      sanitizePlainText(title),
+      sanitizeHtml('').trim(),
+      null,
+      0,
+      sessionId,
+      now,
+      now,
+    );
+  const entryId = Number(result.lastInsertRowid);
+  const filePath = getRewrittenFilePath(entryId);
+  writeRewrittenFile(entryId, sanitizeHtml(html).trim());
+  db.prepare('UPDATE diary_entries SET rewritten_file_path = ? WHERE id = ?').run(filePath, entryId);
+  return getDiaryEntryById(entryId)!;
+}
+
+export function applySessionDiaryDraftToEntry(
+  entryId: number,
+  sessionId: number,
+  html: string,
+): DiaryEntry | null {
+  const existing = getDiaryEntryById(entryId);
+  if (!existing) return null;
+  writeRewrittenFile(entryId, sanitizeHtml(html).trim());
+  return updateDiaryEntry(entryId, {
+    rewrittenFilePath: getRewrittenFilePath(entryId),
+    sessionDraftFor: sessionId,
+  });
+}
+
+export function getDiaryEntryBySessionDraftFor(
+  sessionId: number,
+  userId: string,
+): DiaryEntry | null {
+  const row = db
+    .prepare(
+      'SELECT * FROM diary_entries WHERE session_draft_for = ? AND user_id = ? ORDER BY updated_at DESC LIMIT 1',
+    )
+    .get(sessionId, userId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return rowToDiaryEntry(row, getEntryEntities(row.id as number));
 }
 
 export function finalizeEntities(entities: DiaryEntities): DiaryEntities {

@@ -639,6 +639,10 @@ export function Diary() {
   }
 
   async function handleDiscardRewritten(entry: DiaryEntry) {
+    if (entry.sessionDraftFor && isEmptyHtml(entry.content)) {
+      await handleDelete(entry.id);
+      return;
+    }
     setWorking(true);
     const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
       method: 'PUT',
@@ -669,6 +673,10 @@ export function Diary() {
         if (data) {
           setEntries((prev) => prev.map((e) => (e.id === id ? data.entry : e)));
         }
+      }
+      const currentEntry = entries.find((e) => e.id === id);
+      if (currentEntry?.sessionDraftFor) {
+        setViewRewritten(id, true);
       }
       setDraftOriginal((prev) => {
         if (prev[id]) return prev;
@@ -855,6 +863,11 @@ export function Diary() {
                     ) : (
                       <div className="flex items-center gap-2 flex-1">
                         <h3 className="text-lg font-semibold text-[var(--text-h)]">{entry.title}</h3>
+                        {entry.sessionDraftFor && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/30">
+                            Session-Vorschlag
+                          </span>
+                        )}
                         <button
                           type="button"
                           title="Titel bearbeiten"

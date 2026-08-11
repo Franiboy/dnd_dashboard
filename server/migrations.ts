@@ -483,6 +483,44 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    name: 'add_diary_entry_session_draft_for',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(diary_entries)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'session_draft_for')) {
+        db.exec('ALTER TABLE diary_entries ADD COLUMN session_draft_for INTEGER');
+      }
+      db.exec('CREATE INDEX IF NOT EXISTS idx_diary_entries_session_draft_for ON diary_entries(session_draft_for)');
+    },
+  },
+  {
+    name: 'add_user_session_diary_settings',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'auto_session_to_diary')) {
+        db.exec('ALTER TABLE users ADD COLUMN auto_session_to_diary INTEGER NOT NULL DEFAULT 0');
+      }
+      if (!columns.some((c) => c.name === 'auto_accept_session_diary')) {
+        db.exec('ALTER TABLE users ADD COLUMN auto_accept_session_diary INTEGER NOT NULL DEFAULT 0');
+      }
+    },
+  },
+  {
+    name: 'create_session_diary_transfers_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS session_diary_transfers (
+          session_id INTEGER NOT NULL,
+          user_id TEXT NOT NULL,
+          entry_id INTEGER,
+          auto_accepted INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (session_id, user_id)
+        );
+      `);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_session_diary_transfers_user ON session_diary_transfers(user_id)');
+    },
+  },
 ];
 
 export function runMigrations() {

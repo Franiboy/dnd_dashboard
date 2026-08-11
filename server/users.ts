@@ -11,7 +11,7 @@ export const INITIAL_ADMIN_USERNAME = 'admin';
 
 // Column list for user rows; avoid loading encrypted Discord token columns when they are not needed.
 const USER_COLUMNS =
-  'id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, disabled_apps, active_person, failed_login_attempts, locked_until, created_at';
+  'id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, disabled_apps, active_person, auto_session_to_diary, auto_accept_session_diary, failed_login_attempts, locked_until, created_at';
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 const MAX_FAILED_ATTEMPTS = 5;
@@ -39,6 +39,8 @@ function rowToUser(row: any): User {
     isApproved: !!row.is_approved,
     disabledApps: parseJsonArray(row.disabled_apps),
     activePerson: row.active_person || null,
+    autoSessionToDiary: !!row.auto_session_to_diary,
+    autoAcceptSessionDiary: !!row.auto_accept_session_diary,
     failedLoginAttempts: row.failed_login_attempts || 0,
     lockedUntil: row.locked_until || null,
     createdAt: row.created_at,
@@ -55,6 +57,8 @@ export function toSafeUser(user: User): SafeUser {
     isApproved: user.isApproved,
     disabledApps: user.disabledApps,
     activePerson: user.activePerson,
+    autoSessionToDiary: user.autoSessionToDiary,
+    autoAcceptSessionDiary: user.autoAcceptSessionDiary,
     isInitialAdmin: isInitialAdmin(user),
   };
 }
@@ -118,6 +122,13 @@ export function getAllUsers(): SafeUser[] {
   return rows.map((r) => toSafeUser(rowToUser(r)));
 }
 
+export function getUsersWithAutoSessionToDiary(): SafeUser[] {
+  const rows = db
+    .prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE auto_session_to_diary = 1 ORDER BY created_at DESC')
+    .all() as any[];
+  return rows.map((r) => toSafeUser(rowToUser(r)));
+}
+
 export function setUserApproved(id: string, approved: boolean): SafeUser | null {
   const user = findUserById(id);
   if (!user) return null;
@@ -145,6 +156,21 @@ export function setUserActivePerson(id: string, personName: string | null): Safe
   if (!user) return null;
   const normalized = personName && personName.trim() ? personName.trim() : null;
   db.prepare('UPDATE users SET active_person = ? WHERE id = ?').run(normalized, id);
+  return toSafeUser(rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!);
+}
+
+export function setUserSessionDiarySettings(
+  id: string,
+  autoSessionToDiary: boolean,
+  autoAcceptSessionDiary: boolean,
+): SafeUser | null {
+  const user = findUserById(id);
+  if (!user) return null;
+  db.prepare('UPDATE users SET auto_session_to_diary = ?, auto_accept_session_diary = ? WHERE id = ?').run(
+    autoSessionToDiary ? 1 : 0,
+    autoAcceptSessionDiary ? 1 : 0,
+    id,
+  );
   return toSafeUser(rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!);
 }
 
