@@ -9,6 +9,7 @@ import { applyEntityHighlights } from '../components/EntityQuillBlot';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
+import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
 import type { DiaryEntry, EntityType, VersionInfo } from '../../shared/types';
@@ -814,12 +815,28 @@ export function Diary() {
 
   return (
     <div className="h-full flex flex-col p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-3xl font-bold text-[var(--text-h)]">Tagebuch</h1>
-        <Button variant="accent" onClick={openCreate} className="text-xs px-2 py-1">
-          Neuer Eintrag
-        </Button>
-      </div>
+      <SideDrawer side="right">
+        <SideDrawerItem
+          id="create"
+          label="Neuer Eintrag"
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          }
+        >
+          <div className="p-2">
+            <button
+              type="button"
+              onClick={openCreate}
+              className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition"
+            >
+              Neuer Eintrag
+            </button>
+          </div>
+        </SideDrawerItem>
+      </SideDrawer>
 
       {aiStatus && (
         <div className="fixed bottom-4 right-4 bg-[var(--panel)] border border-[var(--border)] rounded-xl p-3 shadow-lg z-50 max-w-md">

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
-import { BackButton } from '../components/BackButton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
@@ -346,11 +345,6 @@ export function Sessions({ user }: SessionsProps) {
 
   return (
     <div className="min-h-full p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-[var(--text-h)]">Sessions</h1>
-        <BackButton />
-      </div>
-
       <SideDrawer side="right">
         <SideDrawerItem
           id="config"

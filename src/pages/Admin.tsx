@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import { useError } from '../hooks/useError';
-import { BackButton } from '../components/BackButton';
 import { Loading } from '../components/Loading';
 import { LogPanel } from '../components/LogPanel';
 import { Modal } from '../components/Modal';
@@ -309,11 +308,6 @@ export function Admin({ currentUser }: AdminProps) {
 
   return (
     <div className="min-h-full p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-[var(--text-h)]">Administration</h1>
-        <BackButton />
-      </div>
-
       <SideDrawer side="right">
         <SideDrawerItem
           id="jobs"

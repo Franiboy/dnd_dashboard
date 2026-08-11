@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BackButton } from '../components/BackButton';
 import { Loading } from '../components/Loading';
 import { PasswordInput } from '../components/PasswordInput';
 
@@ -56,7 +55,6 @@ export function AdminLogin({ onLogin, error }: AdminLoginProps) {
             'Einloggen'
           )}
         </button>
-        <BackButton className="w-full justify-center mt-3" />
       </form>
     </div>
   );
