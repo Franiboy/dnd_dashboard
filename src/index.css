@@ -292,3 +292,17 @@ button {
 .ql-entity.ql-entity-locations {
   color: #fbbf24;
 }
+
+.session-summary-editor .ql-toolbar {
+  display: none;
+}
+
+.session-summary-editor .ql-container {
+  border-radius: 0.5rem;
+}
+
+.session-summary-editor .ql-editor {
+  max-height: 60vh;
+  min-height: auto;
+  overflow-y: auto;
+}
