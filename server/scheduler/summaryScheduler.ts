@@ -10,6 +10,7 @@ const NIGHT_HOUR = 3;
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
 let interval: ReturnType<typeof setInterval> | null = null;
+let isRunning = false;
 
 function shouldRunNow(): boolean {
   const now = new Date();
@@ -39,17 +40,36 @@ async function processNightlySummaries() {
   }
 }
 
+export function isNightlyJobRunning(): boolean {
+  return isRunning;
+}
+
+export function runNightlyJobNow(): boolean {
+  if (isRunning) {
+    log.info('Nightly job already running; skipping manual/scheduled trigger');
+    return false;
+  }
+
+  isRunning = true;
+  processNightlySummaries()
+    .catch((err) => log.error(`Nightly job failed: ${err}`))
+    .finally(() => {
+      isRunning = false;
+    });
+  return true;
+}
+
 export function startSummaryScheduler(): void {
   if (interval) return;
 
   // Run once at startup in case the server starts around the target hour.
   if (shouldRunNow()) {
-    processNightlySummaries().catch((err) => log.error(`Scheduled run failed: ${err}`));
+    runNightlyJobNow();
   }
 
   interval = setInterval(() => {
     if (shouldRunNow()) {
-      processNightlySummaries().catch((err) => log.error(`Scheduled run failed: ${err}`));
+      runNightlyJobNow();
     }
   }, CHECK_INTERVAL_MS);
 }

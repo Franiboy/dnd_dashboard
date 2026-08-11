@@ -8,6 +8,7 @@ import { LogPanel } from '../components/LogPanel';
 import { Modal } from '../components/Modal';
 import { AppIcon } from '../components/AppIcon';
 import { APPS } from '../lib/apps';
+import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import type { RecordingChannel, SafeUser } from '../../shared/types';
 
 interface RecordingStatus {
@@ -44,6 +45,10 @@ export function Admin({ currentUser }: AdminProps) {
   const [selectedRecordingChannel, setSelectedRecordingChannel] = useState('');
   const [recordingLoading, setRecordingLoading] = useState(true);
   const [recordingSaving, setRecordingSaving] = useState(false);
+  const [nightlyJobLoading, setNightlyJobLoading] = useState(false);
+  const [nightlyJobMessage, setNightlyJobMessage] = useState<string | null>(null);
+  const [transcriptionJobLoading, setTranscriptionJobLoading] = useState(false);
+  const [transcriptionJobMessage, setTranscriptionJobMessage] = useState<string | null>(null);
 
   const isActionLoading = (id: string, endpoint: string) =>
     actionLoading?.id === id && actionLoading?.endpoint === endpoint;
@@ -138,6 +143,30 @@ export function Admin({ currentUser }: AdminProps) {
       if (statusData) setRecordingStatus(statusData);
     }
     setRecordingSaving(false);
+  };
+
+  const triggerNightlyJob = async () => {
+    setNightlyJobLoading(true);
+    setNightlyJobMessage(null);
+    const { data } = await request<{ started: boolean; message: string }>('/api/admin/nightly-job', {
+      method: 'POST',
+    });
+    setNightlyJobLoading(false);
+    if (data) {
+      setNightlyJobMessage(data.message);
+    }
+  };
+
+  const triggerTranscriptionJobs = async () => {
+    setTranscriptionJobLoading(true);
+    setTranscriptionJobMessage(null);
+    const { data } = await request<{ started: boolean; message: string }>('/api/admin/transcription-jobs', {
+      method: 'POST',
+    });
+    setTranscriptionJobLoading(false);
+    if (data) {
+      setTranscriptionJobMessage(data.message);
+    }
   };
 
   const action = async (id: string, endpoint: string, body?: object) => {
@@ -284,6 +313,59 @@ export function Admin({ currentUser }: AdminProps) {
         <h1 className="text-3xl font-bold text-[var(--text-h)]">Administration</h1>
         <BackButton />
       </div>
+
+      <SideDrawer side="right">
+        <SideDrawerItem
+          id="jobs"
+          label="Hintergrundjobs"
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          }
+        >
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold text-[var(--text-h)]">Nightly-Job</h2>
+              <p className="text-sm text-slate-400">
+                Startet alle Schritte des nächtlichen Hintergrundjobs manuell in dieser Reihenfolge:
+              </p>
+              <ol className="text-sm text-slate-300 list-decimal list-inside space-y-1">
+                <li>Sessions: Transkripte verbessern, Zusammenfassungen & Entitäten erzeugen</li>
+                <li>Sessions ins Tagebuch überführen</li>
+                <li>Tagebucheinträge zusammenfassen</li>
+                <li>Entitäts-Summaries aktualisieren</li>
+              </ol>
+              <button
+                type="button"
+                onClick={triggerNightlyJob}
+                disabled={nightlyJobLoading}
+                className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+              >
+                {nightlyJobLoading ? <Loading text="" size="sm" /> : 'Nightly-Job starten'}
+              </button>
+              {nightlyJobMessage && <p className="text-sm text-[var(--accent)]">{nightlyJobMessage}</p>}
+            </div>
+
+            <div className="border-t border-[var(--border)] pt-4 space-y-4">
+              <h2 className="text-lg font-semibold text-[var(--text-h)]">Transkription</h2>
+              <p className="text-sm text-slate-400">
+                Verarbeitet alle Sessions im Status „pending_transcription“ manuell. Dies läuft normalerweise separat und unabhängig vom Nightly-Job.
+              </p>
+              <button
+                type="button"
+                onClick={triggerTranscriptionJobs}
+                disabled={transcriptionJobLoading}
+                className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+              >
+                {transcriptionJobLoading ? <Loading text="" size="sm" /> : 'Transkription starten'}
+              </button>
+              {transcriptionJobMessage && <p className="text-sm text-[var(--accent)]">{transcriptionJobMessage}</p>}
+            </div>
+          </div>
+        </SideDrawerItem>
+      </SideDrawer>
 
       {currentUser.isAdmin && (
         <>
