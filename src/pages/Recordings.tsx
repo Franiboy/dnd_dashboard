@@ -14,7 +14,7 @@ import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { Toggle } from '../components/Toggle';
 import ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
-import type { DiaryEntry, EntityType, RecordingSession, SafeUser, VersionInfo } from '../../shared/types';
+import type { DiaryEntry, EntityType, RecordingSession, SafeUser, SessionDiaryTransfer, VersionInfo } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 interface SessionsProps {
@@ -48,6 +48,24 @@ function parseTimestamp(ts: string): number | null {
   return parseInt(a, 10) * 60 + parseInt(b, 10);
 }
 
+function SessionDiaryTransferBadge({ transfer }: { transfer: SessionDiaryTransfer }) {
+  const label = transfer.isOutdated
+    ? 'Tagebuch veraltet'
+    : transfer.autoAccepted
+      ? 'In Tagebuch übernommen'
+      : 'KI-Tagebuch-Entwurf';
+  const colorClasses = transfer.isOutdated
+    ? 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20'
+    : transfer.autoAccepted
+      ? 'bg-[var(--accent)]/10 text-[var(--accent)] border-[var(--accent)]/20'
+      : 'bg-slate-800 text-slate-300 border-slate-700';
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${colorClasses}`}>
+      {label}
+    </span>
+  );
+}
+
 export function Sessions({ user }: SessionsProps) {
   const { request } = useApi();
   const { updateUser } = useAuth();
@@ -65,6 +83,7 @@ export function Sessions({ user }: SessionsProps) {
   const [improvingId, setImprovingId] = useState<number | null>(null);
   const [summarizingId, setSummarizingId] = useState<number | null>(null);
   const [draftingId, setDraftingId] = useState<number | null>(null);
+  const [diaryTransfers, setDiaryTransfers] = useState<Record<number, SessionDiaryTransfer>>({});
   const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<
     Record<number, { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null>
@@ -113,6 +132,20 @@ export function Sessions({ user }: SessionsProps) {
 
     return () => {
       eventSource?.close();
+    };
+  }, [request]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const { data } = await request<{ transfers: Record<number, SessionDiaryTransfer> }>('/api/recordings/diary-transfers');
+      if (!cancelled && data) setDiaryTransfers(data.transfers);
+    }
+    load();
+    const interval = setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
     };
   }, [request]);
 
@@ -267,13 +300,14 @@ export function Sessions({ user }: SessionsProps) {
     setWorking(true);
     setDraftingId(sessionId);
     setAiStatus('KI überführt Session ins Tagebuch...');
-    const { data, error } = await request<{ entry: DiaryEntry }>(
+    const { data, error } = await request<{ entry: DiaryEntry; transfer: SessionDiaryTransfer }>(
       `/api/recordings/${sessionId}/diary-draft`,
       { method: 'POST' },
     );
     setWorking(false);
     setDraftingId(null);
     if (data) {
+      setDiaryTransfers((prev) => ({ ...prev, [sessionId]: data.transfer }));
       showSuccess('KI-Vorschlag wurde im Tagebuch erstellt. Bitte im Tagebuch prüfen und bestätigen.');
       setAiStatus(null);
     } else if (error) {
@@ -373,6 +407,11 @@ export function Sessions({ user }: SessionsProps) {
                     <span className="ml-2 text-xs font-medium text-[var(--accent)]">✓ KI-optimiert</span>
                   )}
                 </p>
+                {diaryTransfers[session.id] && (
+                  <div className="mt-1">
+                    <SessionDiaryTransferBadge transfer={diaryTransfers[session.id]!} />
+                  </div>
+                )}
                 {session.status === 'processing' && (
                   <div className="mt-1">
                     {transcriptionProgress[session.id] ? (

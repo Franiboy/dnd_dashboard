@@ -10,7 +10,18 @@ import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
 import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
 import { generateSessionDiaryDraft } from '../ai/sessionToDiary.js';
 import { onSessionsUpdated, onStatusUpdated, onProgressUpdated, emitSessionsUpdated } from '../discord/recordingsEvents.js';
-import { getSessionById, listSessions, getFilesBySessionId, getRecordingConfig, setRecordingConfig, deleteSession, updateSession } from '../repositories/recordings.js';
+import {
+  getSessionById,
+  listSessions,
+  getFilesBySessionId,
+  getRecordingConfig,
+  setRecordingConfig,
+  deleteSession,
+  updateSession,
+  getSessionToDiaryTransfer,
+  listSessionToDiaryTransfers,
+  recordSessionToDiaryTransfer,
+} from '../repositories/recordings.js';
 import { createLogger } from '../logger.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 
@@ -143,6 +154,17 @@ router.get('/channels', requireAdmin, async (_req, res) => {
 router.get('/', (_req, res) => {
   const sessions = listSessions();
   res.json({ sessions });
+});
+
+router.get('/diary-transfers', (req: AuthRequest, res) => {
+  const transfers = listSessionToDiaryTransfers(req.user!.id);
+  res.json({ transfers });
+});
+
+router.get('/:id/diary-transfer', (req: AuthRequest, res) => {
+  const id = Number(req.params.id);
+  const transfer = getSessionToDiaryTransfer(id, req.user!.id);
+  res.json({ transfer });
 });
 
 router.get('/config', requireAdmin, (_req, res) => {
@@ -400,7 +422,9 @@ router.post('/:id/diary-draft', async (req: AuthRequest, res) => {
     }
 
     broadcastAiLog('Tagebucheintrag-Entwurf erstellt.');
-    res.json({ entry });
+    recordSessionToDiaryTransfer(id, req.user!.id, entry.id, false);
+    const transfer = getSessionToDiaryTransfer(id, req.user!.id);
+    res.json({ entry, transfer });
   } catch (err) {
     log.error(`Unexpected error during session-to-diary draft of session ${id}:`, err);
     res.status(500).json({ error: 'KI-Überführung ins Tagebuch ist fehlgeschlagen' });

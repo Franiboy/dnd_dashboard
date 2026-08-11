@@ -521,6 +521,23 @@ const migrations: Migration[] = [
       db.exec('CREATE INDEX IF NOT EXISTS idx_session_diary_transfers_user ON session_diary_transfers(user_id)');
     },
   },
+  {
+    name: 'add_recording_session_updated_at',
+    run: () => {
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'updated_at')) {
+        db.exec('ALTER TABLE recording_sessions ADD COLUMN updated_at TEXT');
+      }
+      db.exec(`
+        UPDATE recording_sessions
+        SET updated_at = COALESCE(
+          max(started_at, stopped_at, transcript_improved_at, summary_generated_at, long_summary_generated_at),
+          started_at
+        )
+        WHERE updated_at IS NULL
+      `);
+    },
+  },
 ];
 
 export function runMigrations() {

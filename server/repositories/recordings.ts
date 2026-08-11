@@ -1,5 +1,5 @@
 import { db } from '../database.js';
-import type { RecordingFile, RecordingSession, RecordingStatus } from '../../shared/types.js';
+import type { RecordingFile, RecordingSession, RecordingStatus, SessionDiaryTransfer } from '../../shared/types.js';
 
 interface CreateSessionInput {
   name: string;
@@ -20,9 +20,9 @@ export function createSession(input: CreateSessionInput): RecordingSession {
   const startedAt = new Date().toISOString();
   const result = db
     .prepare(
-      'INSERT INTO recording_sessions (name, status, guild_id, channel_id, created_by, started_at, directory) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO recording_sessions (name, status, guild_id, channel_id, created_by, started_at, directory, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     )
-    .run(input.name, 'recording', input.guildId, input.channelId, input.createdBy, startedAt, input.directory);
+    .run(input.name, 'recording', input.guildId, input.channelId, input.createdBy, startedAt, input.directory, startedAt);
 
   const id = Number(result.lastInsertRowid);
   return {
@@ -203,6 +203,9 @@ export function updateSession(
 
   if (fields.length === 0) return;
 
+  fields.push('updated_at = ?');
+  values.push(new Date().toISOString());
+
   values.push(id);
   db.prepare(`UPDATE recording_sessions SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 }
@@ -326,4 +329,47 @@ export function recordSessionToDiaryTransfer(
   db.prepare(
     'INSERT OR REPLACE INTO session_diary_transfers (session_id, user_id, entry_id, auto_accepted, created_at) VALUES (?, ?, ?, ?, ?)',
   ).run(sessionId, userId, entryId, autoAccepted ? 1 : 0, new Date().toISOString());
+}
+
+export function getSessionToDiaryTransfer(sessionId: number, userId: string): SessionDiaryTransfer | null {
+  const row = db
+    .prepare(
+      `SELECT t.entry_id as entryId, t.created_at as transferredAt, t.auto_accepted as autoAccepted,
+        CASE WHEN s.updated_at IS NOT NULL AND t.created_at < s.updated_at THEN 1 ELSE 0 END as isOutdated
+       FROM session_diary_transfers t
+       JOIN recording_sessions s ON s.id = t.session_id
+       WHERE t.session_id = ? AND t.user_id = ?`,
+    )
+    .get(sessionId, userId) as
+    | { entryId: number; transferredAt: string; autoAccepted: number; isOutdated: number }
+    | undefined;
+  if (!row) return null;
+  return {
+    entryId: row.entryId,
+    transferredAt: row.transferredAt,
+    autoAccepted: !!row.autoAccepted,
+    isOutdated: !!row.isOutdated,
+  };
+}
+
+export function listSessionToDiaryTransfers(userId: string): Record<number, SessionDiaryTransfer> {
+  const rows = db
+    .prepare(
+      `SELECT t.session_id as sessionId, t.entry_id as entryId, t.created_at as transferredAt, t.auto_accepted as autoAccepted,
+        CASE WHEN s.updated_at IS NOT NULL AND t.created_at < s.updated_at THEN 1 ELSE 0 END as isOutdated
+       FROM session_diary_transfers t
+       JOIN recording_sessions s ON s.id = t.session_id
+       WHERE t.user_id = ?`,
+    )
+    .all(userId) as { sessionId: number; entryId: number; transferredAt: string; autoAccepted: number; isOutdated: number }[];
+  const result: Record<number, SessionDiaryTransfer> = {};
+  for (const row of rows) {
+    result[row.sessionId] = {
+      entryId: row.entryId,
+      transferredAt: row.transferredAt,
+      autoAccepted: !!row.autoAccepted,
+      isOutdated: !!row.isOutdated,
+    };
+  }
+  return result;
 }
