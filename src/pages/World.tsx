@@ -562,7 +562,7 @@ export function World() {
 
   return (
     <div className="h-full flex flex-col p-6">
-      <DashboardHeader title="Welt">
+      <DashboardHeader>
         <button
           type="button"
           onClick={() => setDistributeOpen(true)}
