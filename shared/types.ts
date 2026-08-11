@@ -125,6 +125,14 @@ export interface SessionDiaryTransfer {
   isOutdated: boolean;
 }
 
+export interface SessionDiaryEntryLink {
+  entryId: number;
+  userId: string;
+  displayName: string;
+  title: string;
+  autoAccepted: boolean;
+}
+
 export interface RecordingSession {
   id: number;
   name: string;
@@ -176,6 +184,7 @@ export interface DiaryEntry {
   aiDirty?: boolean;
   aiProcessedAt?: string | null;
   sessionDraftFor?: number | null;
+  sessionDraftForName?: string | null;
   persons: string[];
   organizations: string[];
   locations: string[];

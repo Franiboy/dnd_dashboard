@@ -21,6 +21,7 @@ import {
   getSessionToDiaryTransfer,
   listSessionToDiaryTransfers,
   recordSessionToDiaryTransfer,
+  listAllSessionDiaryEntryLinks,
 } from '../repositories/recordings.js';
 import { createLogger } from '../logger.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
@@ -159,6 +160,11 @@ router.get('/', (_req, res) => {
 router.get('/diary-transfers', (req: AuthRequest, res) => {
   const transfers = listSessionToDiaryTransfers(req.user!.id);
   res.json({ transfers });
+});
+
+router.get('/session-diary-entries', (req: AuthRequest, res) => {
+  const entries = listAllSessionDiaryEntryLinks(req.user!.id, req.user!.isAdmin);
+  res.json({ entries });
 });
 
 router.get('/:id/diary-transfer', (req: AuthRequest, res) => {
