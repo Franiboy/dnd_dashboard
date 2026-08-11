@@ -91,8 +91,9 @@ export function Layout({ user, realUser, version, onLogout, onUserChange, childr
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <header ref={headerRef} className="relative z-10 flex items-center gap-2 px-3 sm:px-6 py-2 border-b border-[var(--border)] bg-[var(--panel)]">
-        {/* Left: user + active character */}
+      <header ref={headerRef} className="relative z-10 flex flex-col border-b border-[var(--border)] bg-[var(--panel)]">
+        <div className="flex items-center gap-2 px-3 sm:px-6 py-2">
+          {/* Left: user + active character */}
         <div className="flex min-w-0 items-center gap-2 font-semibold text-[var(--text-h)]">
           {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-6 h-6 rounded-full shrink-0" />}
           <div className="flex min-w-0 items-center gap-2">
@@ -117,9 +118,9 @@ export function Layout({ user, realUser, version, onLogout, onUserChange, childr
             Logout
           </HeaderAction>
         </div>
-      </header>
+      </div>
       {isSimulating && (
-        <div className="bg-[var(--warning)]/20 border-b border-[var(--warning)]/40 px-6 py-2 flex items-center justify-between">
+        <div className="bg-[var(--warning)]/20 border-t border-[var(--warning)]/40 px-6 py-2 flex items-center justify-between">
           <span className="text-sm text-[var(--text-h)]">
             Du simulierst die Ansicht von <strong>{user.displayName}</strong>.
           </span>
@@ -132,6 +133,7 @@ export function Layout({ user, realUser, version, onLogout, onUserChange, childr
           </button>
         </div>
       )}
+      </header>
       <main className="flex-1 min-h-0 overflow-auto">{children}</main>
 
       {forced && (
