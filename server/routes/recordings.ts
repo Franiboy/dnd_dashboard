@@ -7,6 +7,7 @@ import { runTranscription, getTranscriptionProgress } from '../discord/transcrib
 import { isRecordingFeatureEnabled } from '../discord/config.js';
 import { isAiEnabled } from '../ai/config.js';
 import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
+import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
 import { onSessionsUpdated, onStatusUpdated, onProgressUpdated, emitSessionsUpdated } from '../discord/recordingsEvents.js';
 import { getSessionById, listSessions, getFilesBySessionId, getRecordingConfig, setRecordingConfig, deleteSession, updateSession } from '../repositories/recordings.js';
 import { createLogger } from '../logger.js';
@@ -75,17 +76,18 @@ function notifyAiLog(raw: string): void {
   }
 }
 
-function startProgressMessages(initialMessage: string): () => void {
-  const messages = [
+function startProgressMessages(initialMessage: string, messages?: string[]): () => void {
+  const defaultMessages = [
     'KI prüft Entitäten und Tagebücher...',
     'KI verbessert das Transkript...',
     'KI arbeitet noch...',
     'Fast fertig...',
   ];
+  const cycle = messages ?? defaultMessages;
   let index = 0;
   broadcastAiLog(initialMessage);
   const interval = setInterval(() => {
-    broadcastAiLog(messages[index % messages.length]);
+    broadcastAiLog(cycle[index % cycle.length]);
     index++;
   }, 3000);
   return () => clearInterval(interval);
@@ -314,18 +316,53 @@ router.post('/:id/improve-transcript', requireAdmin, async (req: AuthRequest, re
       res.status(500).json({ error: 'KI-Verbesserung ist fehlgeschlagen' });
       return;
     }
-    const transcriptPath = join(session.directory, 'transcript.txt');
-    await writeFile(transcriptPath, result.transcript);
-    updateSession(id, {
-      transcript: result.transcript,
-      transcriptImprovedAt: new Date().toISOString(),
-    });
     broadcastAiLog('Transkript verbessert.');
     emitSessionsUpdated();
     res.json({ session: getSessionById(id) });
   } catch (err) {
     log.error(`Unexpected error during transcript improvement of session ${id}:`, err);
     res.status(500).json({ error: 'KI-Verbesserung ist fehlgeschlagen' });
+  } finally {
+    stopProgress();
+  }
+});
+
+router.post('/:id/summary', requireAdmin, async (req: AuthRequest, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+  if (session.status !== 'completed' || !session.transcript) {
+    res.status(400).json({ error: 'Kein Transkript vorhanden' });
+    return;
+  }
+  if (!isAiEnabled()) {
+    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
+    return;
+  }
+
+  const stopProgress = startProgressMessages('KI erstellt die Zusammenfassung...', [
+    'KI prüft vorherige Sessions, Entitäten und Tagebücher...',
+    'KI erstellt die ausführliche Zusammenfassung...',
+    'KI erstellt die Kurz-Zusammenfassung...',
+    'Fast fertig...',
+  ]);
+  try {
+    const result = await processSessionSummaryEntities(id, req.user!, undefined, notifyAiLog);
+    if (!result.longSummary || !result.summary) {
+      log.error(`processSessionSummaryEntities returned incomplete result for session ${id}`);
+      res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
+      return;
+    }
+
+    broadcastAiLog('Zusammenfassung erstellt.');
+    emitSessionsUpdated();
+    res.json({ session: getSessionById(id) });
+  } catch (err) {
+    log.error(`Unexpected error during session summary of session ${id}:`, err);
+    res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
   } finally {
     stopProgress();
   }

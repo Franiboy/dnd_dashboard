@@ -42,16 +42,65 @@ export function createSession(input: CreateSessionInput): RecordingSession {
     transcribedTrimStartSeconds: null,
     transcribedTrimEndSeconds: null,
     transcriptImprovedAt: null,
+    summary: null,
+    summaryGeneratedAt: null,
+    longSummary: null,
+    longSummaryGeneratedAt: null,
   };
 }
 
 export function getSessionById(id: number): RecordingSession | null {
   const row = db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt FROM recording_sessions WHERE id = ?',
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE id = ?',
     )
     .get(id) as RecordingSession | undefined;
   return row ?? null;
+}
+
+export interface SessionSummary {
+  id: number;
+  name: string;
+  startedAt: string;
+  summary: string | null;
+  summaryGeneratedAt: string | null;
+  longSummary: string | null;
+  longSummaryGeneratedAt: string | null;
+}
+
+export interface PendingAiSession {
+  id: number;
+  transcriptImprovedAt: string | null;
+  longSummary: string | null;
+  longSummaryGeneratedAt: string | null;
+}
+
+export function listSessionsPendingAi(): PendingAiSession[] {
+  return db
+    .prepare(
+      "SELECT id, transcript_improved_at as transcriptImprovedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = 'completed' AND transcript IS NOT NULL",
+    )
+    .all() as PendingAiSession[];
+}
+
+export function getSessionSummaryById(id: number): SessionSummary | null {
+  const row = db
+    .prepare(
+      'SELECT id, name, started_at as startedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE id = ?',
+    )
+    .get(id) as SessionSummary | undefined;
+  return row ?? null;
+}
+
+export function listPreviousSessionSummaries(id: number, limit = 5): SessionSummary[] {
+  const session = getSessionSummaryById(id);
+  const startedAt = session?.startedAt;
+  if (!startedAt) return [];
+  return db
+    .prepare(
+      'SELECT id, name, started_at as startedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE started_at < ? ORDER BY started_at DESC LIMIT ?',
+    )
+    .all(startedAt, limit) as SessionSummary[];
 }
 
 export function listSessions(): RecordingSession[] {
@@ -62,7 +111,8 @@ export function listSessions(): RecordingSession[] {
         s.created_by as createdBy, s.started_at as startedAt, s.stopped_at as stoppedAt, 
         s.directory, NULL as transcript, s.error, s.trim_start_seconds as trimStartSeconds, s.trim_end_seconds as trimEndSeconds,
         s.transcribed_trim_start_seconds as transcribedTrimStartSeconds, s.transcribed_trim_end_seconds as transcribedTrimEndSeconds,
-        s.transcript_improved_at as transcriptImprovedAt,
+        s.transcript_improved_at as transcriptImprovedAt, s.summary, s.summary_generated_at as summaryGeneratedAt,
+        s.long_summary as longSummary, s.long_summary_generated_at as longSummaryGeneratedAt,
         COALESCE((SELECT COUNT(*) FROM recording_files f WHERE f.session_id = s.id AND f.wav_path IS NOT NULL), 0) as hasWavFiles
       FROM recording_sessions s
       ORDER BY started_at DESC`,
@@ -74,7 +124,7 @@ export function listSessions(): RecordingSession[] {
 export function listPendingTranscriptionSessions(): RecordingSession[] {
   return db
     .prepare(
-      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC",
+      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC",
     )
     .all() as RecordingSession[];
 }
@@ -82,14 +132,14 @@ export function listPendingTranscriptionSessions(): RecordingSession[] {
 export function listSessionsByStatus(status: RecordingStatus): RecordingSession[] {
   return db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt FROM recording_sessions WHERE status = ? ORDER BY started_at ASC',
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = ? ORDER BY started_at ASC',
     )
     .all(status) as RecordingSession[];
 }
 
 export function updateSession(
   id: number,
-  updates: Partial<Pick<RecordingSession, 'status' | 'stoppedAt' | 'transcript' | 'error' | 'directory' | 'trimStartSeconds' | 'trimEndSeconds' | 'transcribedTrimStartSeconds' | 'transcribedTrimEndSeconds' | 'transcriptImprovedAt'>>,
+  updates: Partial<Pick<RecordingSession, 'status' | 'stoppedAt' | 'transcript' | 'error' | 'directory' | 'trimStartSeconds' | 'trimEndSeconds' | 'transcribedTrimStartSeconds' | 'transcribedTrimEndSeconds' | 'transcriptImprovedAt' | 'summary' | 'summaryGeneratedAt' | 'longSummary' | 'longSummaryGeneratedAt'>>,
 ): void {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -133,6 +183,22 @@ export function updateSession(
   if (updates.transcriptImprovedAt !== undefined) {
     fields.push('transcript_improved_at = ?');
     values.push(updates.transcriptImprovedAt);
+  }
+  if (updates.summary !== undefined) {
+    fields.push('summary = ?');
+    values.push(updates.summary);
+  }
+  if (updates.summaryGeneratedAt !== undefined) {
+    fields.push('summary_generated_at = ?');
+    values.push(updates.summaryGeneratedAt);
+  }
+  if (updates.longSummary !== undefined) {
+    fields.push('long_summary = ?');
+    values.push(updates.longSummary);
+  }
+  if (updates.longSummaryGeneratedAt !== undefined) {
+    fields.push('long_summary_generated_at = ?');
+    values.push(updates.longSummaryGeneratedAt);
   }
 
   if (fields.length === 0) return;
