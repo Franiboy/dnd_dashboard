@@ -46,6 +46,7 @@ function rowToDiaryEntry(
     aiDirty: Boolean(row.ai_dirty),
     aiProcessedAt: (row.ai_processed_at as string | null | undefined) ?? null,
     sessionDraftFor: (row.session_draft_for as number | null | undefined) ?? null,
+    sessionDraftForName: (row.session_name as string | null | undefined) ?? null,
     persons: entities.persons,
     organizations: entities.organizations,
     locations: entities.locations,
@@ -436,16 +437,27 @@ export function createDiaryEntry(
 }
 
 export function getDiaryEntryById(id: number): DiaryEntry | null {
-  const row = db.prepare('SELECT * FROM diary_entries WHERE id = ?').get(id) as
-    | Record<string, unknown>
-    | undefined;
+  const row = db
+    .prepare(
+      `SELECT d.*, s.name AS session_name
+       FROM diary_entries d
+       LEFT JOIN recording_sessions s ON s.id = d.session_draft_for
+       WHERE d.id = ?`,
+    )
+    .get(id) as Record<string, unknown> | undefined;
   if (!row) return null;
   return rowToDiaryEntry(row, getEntryEntities(id));
 }
 
 export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
   const rows = db
-    .prepare('SELECT * FROM diary_entries WHERE user_id = ? ORDER BY created_at DESC')
+    .prepare(
+      `SELECT d.*, s.name AS session_name
+       FROM diary_entries d
+       LEFT JOIN recording_sessions s ON s.id = d.session_draft_for
+       WHERE d.user_id = ?
+       ORDER BY d.created_at DESC`,
+    )
     .all(userId) as Record<string, unknown>[];
   const entryIds = rows.map((row) => row.id as number);
   const entitiesMap = buildEntryEntitiesMap(entryIds);
