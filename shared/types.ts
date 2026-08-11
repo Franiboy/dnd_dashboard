@@ -118,6 +118,13 @@ export interface RecordingFile {
   transcriptPath: string | null;
 }
 
+export interface SessionDiaryTransfer {
+  entryId: number;
+  transferredAt: string;
+  autoAccepted: boolean;
+  isOutdated: boolean;
+}
+
 export interface RecordingSession {
   id: number;
   name: string;
