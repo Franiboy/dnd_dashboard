@@ -2,10 +2,12 @@ import Quill from 'quill';
 import Inline from 'quill/blots/inline';
 import type { EntityMapping, EntityType } from '../../shared/types';
 import { buildTriggers, findMatches } from '../lib/entityMatching';
+import { typeLabels } from '../lib/entityLabels';
 
 interface EntityValue {
   type: EntityType;
   canonical: string;
+  miniSummary?: string | null;
 }
 
 class EntityBlot extends Inline {
@@ -17,9 +19,14 @@ class EntityBlot extends Inline {
     const node = super.create(value) as HTMLElement;
     node.setAttribute('data-type', value.type);
     node.setAttribute('data-canonical', value.canonical);
+    if (value.miniSummary) {
+      node.setAttribute('data-mini-summary', value.miniSummary);
+    }
     node.classList.add('ql-entity', `ql-entity-${value.type}`);
     node.setAttribute('contenteditable', 'false');
     node.style.cursor = 'pointer';
+    const label = `${typeLabels[value.type]}: ${value.canonical}`;
+    node.setAttribute('title', value.miniSummary ? `${label} — ${value.miniSummary}` : label);
     return node;
   }
 
@@ -27,8 +34,9 @@ class EntityBlot extends Inline {
     if (!domNode.classList.contains('ql-entity')) return undefined;
     const type = domNode.getAttribute('data-type') as EntityType | null;
     const canonical = domNode.getAttribute('data-canonical');
+    const miniSummary = domNode.getAttribute('data-mini-summary');
     if (!type || !canonical) return undefined;
-    return { type, canonical };
+    return { type, canonical, miniSummary };
   }
 
   static value(domNode: HTMLElement): EntityValue | undefined {
@@ -60,7 +68,7 @@ export function applyEntityHighlights(quill: Quill, mappings: EntityMapping[]) {
   for (const match of matches) {
     const length = match.end - match.start;
     if (length <= 0) continue;
-    quill.formatText(match.start, length, 'entity', { type: match.type, canonical: match.canonical }, 'silent');
+    quill.formatText(match.start, length, 'entity', { type: match.type, canonical: match.canonical, miniSummary: match.miniSummary }, 'silent');
   }
 }
 
