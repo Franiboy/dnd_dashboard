@@ -13,6 +13,7 @@ import {
   updateDiaryEntry,
   deleteDiaryEntry,
 } from '../repositories/diary.js';
+import { recordSessionToDiaryTransfer } from '../repositories/recordings.js';
 
 const log = createLogger('diaryRoutes');
 
@@ -250,6 +251,9 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
     log.error(`Failed to update entry ${id}`);
     res.status(500).json({ error: 'Aktualisieren fehlgeschlagen' });
     return;
+  }
+  if (existing.sessionDraftFor && updates.content) {
+    recordSessionToDiaryTransfer(existing.sessionDraftFor, req.user.id, entry.id, true);
   }
   log.info(`Entry ${id} updated`);
   res.json({ entry });
