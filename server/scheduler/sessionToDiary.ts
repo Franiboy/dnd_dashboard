@@ -14,6 +14,7 @@ const log = createLogger('session-to-diary-scheduler');
 function toMcpUser(user: SafeUser): McpSessionUser {
   return {
     id: user.id,
+    displayName: user.displayName,
     isAdmin: user.isAdmin,
     activePerson: user.activePerson,
   };
