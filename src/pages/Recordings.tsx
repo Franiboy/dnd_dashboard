@@ -1,17 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { BackButton } from '../components/BackButton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
+import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
 import { EntityRichText } from '../components/EntityRichText';
+import { applyEntityHighlights } from '../components/EntityQuillBlot';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { Toggle } from '../components/Toggle';
 import ReactQuill from 'react-quill-new';
-import type { DiaryEntry, RecordingSession, SafeUser, VersionInfo } from '../../shared/types';
+import type Quill from 'quill';
+import type { DiaryEntry, EntityType, RecordingSession, SafeUser, VersionInfo } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 interface SessionsProps {
@@ -32,6 +35,7 @@ const summaryQuillFormats = [
   'blockquote',
   'code-block',
   'align',
+  'entity',
 ];
 
 function parseTimestamp(ts: string): number | null {
@@ -49,6 +53,7 @@ export function Sessions({ user }: SessionsProps) {
   const { updateUser } = useAuth();
   const { mappings } = useEntityMappings();
   const { showSuccess, showError } = useError();
+  const { openEntity } = useEntityDialog();
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -64,6 +69,11 @@ export function Sessions({ user }: SessionsProps) {
   const [transcriptionProgress, setTranscriptionProgress] = useState<
     Record<number, { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null>
   >({});
+  const summaryQuillRefs = useRef<Record<number, ReactQuill>>({});
+  const expandedSummaryHash = useMemo(
+    () => sessions.filter((s) => expandedLongSummaries.has(s.id)).map((s) => s.longSummary ?? '').join('\u0000'),
+    [sessions, expandedLongSummaries],
+  );
 
   useEffect(() => {
     let eventSource: EventSource | null = null;
@@ -184,6 +194,36 @@ export function Sessions({ user }: SessionsProps) {
       return next;
     });
   }
+
+  useEffect(() => {
+    const attached: { quill: Quill; handler: (event: MouseEvent) => void }[] = [];
+    const timer = setTimeout(() => {
+      for (const sessionId of expandedLongSummaries) {
+        const reactQuill = summaryQuillRefs.current[sessionId];
+        if (!reactQuill) continue;
+        const quill = reactQuill.getEditor();
+        if (!quill) continue;
+        applyEntityHighlights(quill, mappings);
+
+        const handleClick = (event: MouseEvent) => {
+          const target = (event.target as HTMLElement | null)?.closest('.ql-entity') as HTMLElement | null;
+          if (!target) return;
+          const type = target.getAttribute('data-type') as EntityType | null;
+          const canonical = target.getAttribute('data-canonical');
+          if (type && canonical) openEntity(canonical, type);
+        };
+        quill.root.addEventListener('click', handleClick);
+        attached.push({ quill, handler: handleClick });
+      }
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      for (const { quill, handler } of attached) {
+        quill.root.removeEventListener('click', handler);
+      }
+    };
+  }, [expandedLongSummaries, mappings, openEntity, expandedSummaryHash]);
 
   async function improveTranscript(sessionId: number) {
     setWorking(true);
@@ -470,6 +510,9 @@ export function Sessions({ user }: SessionsProps) {
                   <div className="p-3 rounded-lg bg-slate-800/50 border border-[var(--border)]">
                     <h4 className="text-sm font-semibold text-slate-300 mb-2">Ausführliche Zusammenfassung</h4>
                     <ReactQuill
+                      ref={(el) => {
+                        if (el) summaryQuillRefs.current[session.id] = el;
+                      }}
                       theme="snow"
                       value={session.longSummary}
                       readOnly
