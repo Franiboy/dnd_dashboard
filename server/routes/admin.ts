@@ -14,6 +14,8 @@ import {
   setUserDisabledApps,
 } from '../users.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
+import { runNightlyJobNow } from '../scheduler/summaryScheduler.js';
+import { runTranscriptionJobsNow } from '../discord/scheduler.js';
 
 const userEvents = new SseBroadcaster();
 const logEvents = new SseBroadcaster();
@@ -189,6 +191,24 @@ router.post('/ai/models/refresh', authMiddleware, requireAdmin, async (req: Auth
     res.json({ models });
   } catch {
     res.status(500).json({ error: 'Modelle konnten nicht aktualisiert werden' });
+  }
+});
+
+router.post('/nightly-job', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const started = runNightlyJobNow();
+  if (started) {
+    res.json({ started: true, message: 'Nightly-Job wurde gestartet.' });
+  } else {
+    res.status(409).json({ started: false, message: 'Nightly-Job läuft bereits.' });
+  }
+});
+
+router.post('/transcription-jobs', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const started = runTranscriptionJobsNow();
+  if (started) {
+    res.json({ started: true, message: 'Transkription-Jobs wurden gestartet.' });
+  } else {
+    res.status(409).json({ started: false, message: 'Transkription-Jobs laufen bereits oder sind deaktiviert.' });
   }
 });
 
