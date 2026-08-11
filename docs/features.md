@@ -78,9 +78,10 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 
 | Scope | Allowed tools |
 |-------|---------------|
-| `diary:read` | `get_diary_entry`, `search_diary_entries`, `get_previous_diary_entries` |
+| `diary:read` | `get_diary_entry`, `search_diary_entries`, `get_previous_diary_entries`, `list_user_diary_entries` |
 | `diary:summarize` | `set_diary_summary` |
 | `diary:rewrite` | `set_diary_rewrite` |
+| `diary:draft` | `set_session_diary_draft` |
 | `entity:read` | `list_entities`, `get_entity` |
 | `entity:extract` | `link_diary_entity` |
 | `entity:summary` | `set_entity_summary` |
@@ -97,6 +98,9 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 - Before transcription, long silent sections are detected and removed with ffmpeg VAD so Whisper only processes actual speech, which reduces repeated hallucinations.
 - Transcripts can be trimmed and saved as text.
 - Admins can generate an AI summary of a completed transcript. The AI first creates a detailed HTML summary (`set_session_long_summary`), then derives a short bullet-point summary (`set_session_summary`) from it. It can read previous session summaries, diary entries of all players, entities and knowledge (`get_session_summary`, `get_previous_session_summaries`). After generation, affected entity summaries are marked dirty and knowledge is distributed.
+- Approved users can let the AI transfer a completed session into their personal diary (`POST /api/recordings/:id/diary-draft`). The AI decides whether to append the session to an existing diary entry (similar title/content/day) or create a new one. By default the generated text is stored as an AI version (KI-Version) so the user can review, edit and accept it before it becomes the actual entry content.
+- On the Sessions page, users can open a settings drawer to enable automatic session-to-diary transfer per user. A second toggle lets the AI directly accept the generated draft (skip the KI-Version review) so the text becomes a real diary entry immediately.
+- The Nightly scheduler runs `processSessionToDiary` between session summary generation and diary summary/entity processing. For each user with auto-transfer enabled it generates one draft per completed, not-yet-transferred session. If direct accept is enabled, the generated content is written to the entry body and marked dirty so the diary summary/entity job can process it next.
 - Recordings are only visible to admins.
 - On startup, interrupted recordings and transcriptions are recovered and resumed automatically. Segment metadata is persisted alongside each PCM file so recovered WAVs keep their original timing/gaps.
 - On shutdown, active recordings are finalized and active transcription processes are stopped cleanly.

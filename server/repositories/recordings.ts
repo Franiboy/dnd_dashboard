@@ -289,3 +289,41 @@ export function updateFile(
 export function clearFileTranscriptPathsBySession(sessionId: number): void {
   db.prepare('UPDATE recording_files SET transcript_path = NULL WHERE session_id = ?').run(sessionId);
 }
+
+export interface PendingDiaryTransferSession {
+  id: number;
+  name: string;
+  startedAt: string;
+}
+
+export function listPendingSessionToDiaryTransfers(
+  userId: string,
+  limit?: number,
+): PendingDiaryTransferSession[] {
+  let sql = `SELECT s.id, s.name, s.started_at AS startedAt
+       FROM recording_sessions s
+       WHERE s.status = 'completed' AND s.transcript IS NOT NULL AND s.transcript <> ''
+         AND NOT EXISTS (
+           SELECT 1 FROM session_diary_transfers t
+           WHERE t.session_id = s.id AND t.user_id = ?
+         )
+       ORDER BY s.started_at ASC`;
+  const params: (string | number)[] = [userId];
+  if (limit && Number.isFinite(limit) && limit > 0) {
+    sql += ' LIMIT ?';
+    params.push(limit);
+  }
+  const rows = db.prepare(sql).all(...params) as PendingDiaryTransferSession[];
+  return rows;
+}
+
+export function recordSessionToDiaryTransfer(
+  sessionId: number,
+  userId: string,
+  entryId: number,
+  autoAccepted: boolean,
+): void {
+  db.prepare(
+    'INSERT OR REPLACE INTO session_diary_transfers (session_id, user_id, entry_id, auto_accepted, created_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(sessionId, userId, entryId, autoAccepted ? 1 : 0, new Date().toISOString());
+}

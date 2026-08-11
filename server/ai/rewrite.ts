@@ -35,7 +35,7 @@ export interface RewriteResult {
   sessionId: string | null;
 }
 
-function personaLines(activePerson: string | null | undefined): string[] {
+export function personaLines(activePerson: string | null | undefined): string[] {
   if (!activePerson) return [];
   return [
     'Perspektive:',
