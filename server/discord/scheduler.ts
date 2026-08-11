@@ -7,6 +7,7 @@ const log = createLogger('transcription-scheduler');
 
 let timeout: NodeJS.Timeout | null = null;
 let interval: NodeJS.Timeout | null = null;
+let isRunning = false;
 
 function getDelayUntilNext2AM(): number {
   const now = new Date();
@@ -49,6 +50,29 @@ async function processPendingTranscriptions(): Promise<void> {
   }
 }
 
+export function isTranscriptionJobRunning(): boolean {
+  return isRunning;
+}
+
+export function runTranscriptionJobsNow(): boolean {
+  if (isRunning) {
+    log.info('[transcription scheduler] Already running; skipping manual/scheduled trigger');
+    return false;
+  }
+  if (!isRecordingFeatureEnabled()) {
+    log.info('[transcription scheduler] Recording feature disabled; skipping');
+    return false;
+  }
+
+  isRunning = true;
+  processPendingTranscriptions()
+    .catch((err) => log.error('[transcription scheduler] Manual/scheduled run failed:', err))
+    .finally(() => {
+      isRunning = false;
+    });
+  return true;
+}
+
 export function startTranscriptionScheduler(): void {
   if (!isRecordingFeatureEnabled()) {
     return;
@@ -59,13 +83,9 @@ export function startTranscriptionScheduler(): void {
   log.info(`[transcription scheduler] Next run at ${nextRun}`);
 
   timeout = setTimeout(() => {
-    processPendingTranscriptions().catch((err) => {
-      log.error('[transcription scheduler] Scheduled run failed:', err);
-    });
+    runTranscriptionJobsNow();
     interval = setInterval(() => {
-      processPendingTranscriptions().catch((err) => {
-        log.error('[transcription scheduler] Scheduled run failed:', err);
-      });
+      runTranscriptionJobsNow();
     }, 24 * 60 * 60 * 1000);
   }, delay);
 }
