@@ -17,6 +17,7 @@ export type McpScope =
 
 export interface McpSessionUser {
   id: string;
+  displayName?: string;
   isAdmin?: boolean;
   activePerson?: string | null;
 }
