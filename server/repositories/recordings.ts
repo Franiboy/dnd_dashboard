@@ -103,6 +103,27 @@ export function listPreviousSessionSummaries(id: number, limit = 5): SessionSumm
     .all(startedAt, limit) as SessionSummary[];
 }
 
+export interface RecentCompletedSession {
+  id: number;
+  name: string;
+  startedAt: string;
+  transcript: string | null;
+  summary: string | null;
+  longSummary: string | null;
+}
+
+export function listRecentCompletedSessions(limit = 5): RecentCompletedSession[] {
+  return db
+    .prepare(
+      `SELECT id, name, started_at as startedAt, transcript, summary, long_summary as longSummary
+       FROM recording_sessions
+       WHERE status = 'completed' AND transcript IS NOT NULL AND transcript <> ''
+       ORDER BY started_at DESC
+       LIMIT ?`,
+    )
+    .all(limit) as RecentCompletedSession[];
+}
+
 export function listSessions(): RecordingSession[] {
   const rows = db
     .prepare(

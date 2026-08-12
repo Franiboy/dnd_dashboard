@@ -17,6 +17,7 @@ dist-ssr
 recordings
 data/diary
 data/sessions
+data/bingo
 .venv
 *.db-*
 opencode.json
