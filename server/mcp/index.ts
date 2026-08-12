@@ -43,6 +43,8 @@ import {
 import {
   getAllPendingSuggestionTexts,
   getRejectedSuggestionTexts,
+  getBingoSuggestionBatch,
+  submitBingoSuggestionBatch,
 } from '../repositories/bingoSuggestions.js';
 import { getGame } from '../game.js';
 import type { DiaryEntry } from '../../shared/types.js';
@@ -617,6 +619,36 @@ if (requireScope('bingo:read')) {
         return success(lines.join('\n'));
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Laden des Bingo-Zustands');
+      }
+    },
+  );
+}
+
+if (requireScope('bingo:write')) {
+  loggedTool(
+    'submit_bingo_suggestions',
+    'Übergibt generierte Bingo-Vorschläge für einen Batch. Akzeptiert eine batchId und ein Array aus Aufgabentexten.',
+    {
+      batchId: z.string().describe('Die Batch-ID, die im Prompt übergeben wurde.'),
+      suggestions: z.array(z.string()).describe('Array mit Bingo-Aufgabentexten.'),
+    },
+    async ({ batchId, suggestions }: { batchId: string; suggestions: string[] }) => {
+      try {
+        const batch = getBingoSuggestionBatch(batchId);
+        if (!batch) {
+          return error(`Batch ${batchId} nicht gefunden.`);
+        }
+        if (batch.status !== 'pending') {
+          return error(`Batch ${batchId} ist bereits ${batch.status}.`);
+        }
+        const normalized = suggestions
+          .map((text) => text.trim())
+          .filter((text) => text.length > 0)
+          .map((text) => ({ text, source: 'ai' }));
+        submitBingoSuggestionBatch(batchId, normalized);
+        return success(`${normalized.length} Bingo-Vorschläge für Batch ${batchId} übergeben.`);
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Übergeben der Bingo-Vorschläge');
       }
     },
   );

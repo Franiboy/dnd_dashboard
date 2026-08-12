@@ -107,3 +107,57 @@ export function rejectAllPendingSuggestions(): void {
      WHERE accepted_at IS NULL AND rejected_at IS NULL`,
   ).run(new Date().toISOString());
 }
+
+export interface BingoSuggestionBatch {
+  id: string;
+  status: 'pending' | 'completed' | 'failed';
+  createdAt: string;
+}
+
+export function createBingoSuggestionBatch(batchId: string): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO bingo_suggestion_batches (id, status, created_at) VALUES (?, ?, ?)`,
+  ).run(batchId, 'pending', new Date().toISOString());
+}
+
+export function getBingoSuggestionBatch(batchId: string): BingoSuggestionBatch | null {
+  const row = db
+    .prepare(
+      `SELECT id, status, created_at AS createdAt FROM bingo_suggestion_batches WHERE id = ?`,
+    )
+    .get(batchId) as BingoSuggestionBatch | undefined;
+  return row ?? null;
+}
+
+export function submitBingoSuggestionBatch(
+  batchId: string,
+  suggestions: CreateBingoSuggestionInput[],
+): void {
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE bingo_suggestion_batches SET status = 'completed' WHERE id = ?`,
+    ).run(batchId);
+    const insert = db.prepare(
+      `INSERT INTO bingo_suggestion_batch_results (batch_id, text, source, created_at) VALUES (?, ?, ?, ?)`,
+    );
+    for (const suggestion of suggestions) {
+      insert.run(batchId, suggestion.text.trim(), suggestion.source, now);
+    }
+  })();
+}
+
+export function failBingoSuggestionBatch(batchId: string): void {
+  db.prepare(
+    `UPDATE bingo_suggestion_batches SET status = 'failed' WHERE id = ?`,
+  ).run(batchId);
+}
+
+export function getBingoSuggestionBatchResults(batchId: string): CreateBingoSuggestionInput[] {
+  const rows = db
+    .prepare(
+      `SELECT text, source FROM bingo_suggestion_batch_results WHERE batch_id = ? ORDER BY id ASC`,
+    )
+    .all(batchId) as { text: string; source: string }[];
+  return rows;
+}
