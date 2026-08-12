@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { createLogger } from '../logger.js';
+import { createLogger, MAX_OBJECT_ARG_LENGTH } from '../logger.js';
 import { createMcpSessionToken, type McpScope, type McpSessionUser } from '../mcp/tokens.js';
 
 const log = createLogger('opencode');
@@ -76,7 +76,16 @@ export function runOpenCode({
     args.push('--dir', worktreePath);
   }
 
-  log.info(`Spawning opencode: ${bin} ${args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`);
+  const displayArgs = args.map((a) => (a === prompt ? `<prompt:${a.length} chars>` : a.includes(' ') ? `"${a}"` : a));
+  log.info('Spawning opencode', {
+    bin,
+    args: displayArgs,
+    title: title ?? null,
+    model,
+    worktreePath,
+    promptLength: prompt.length,
+    prompt: prompt.length > MAX_OBJECT_ARG_LENGTH ? `${prompt.slice(0, MAX_OBJECT_ARG_LENGTH)}...` : prompt,
+  });
 
   return new Promise((resolve) => {
     const child = spawn(bin, args, {
