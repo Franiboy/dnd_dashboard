@@ -13,7 +13,6 @@ export function BingoAiSuggestions({ isSetup }: BingoAiSuggestionsProps) {
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState<number | null>(null);
 
   const fetchVersion = useCallback(async () => {
@@ -73,19 +72,6 @@ export function BingoAiSuggestions({ isSetup }: BingoAiSuggestionsProps) {
     }
   };
 
-  const refresh = async () => {
-    if (refreshing || processingId !== null) return;
-    setRefreshing(true);
-    try {
-      const { error } = await request('/api/bingo/suggestions/refresh', { method: 'POST' });
-      if (!error) {
-        await fetchSuggestions();
-      }
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
   if (!isSetup) return null;
 
   if (aiEnabled === null) {
@@ -108,17 +94,10 @@ export function BingoAiSuggestions({ isSetup }: BingoAiSuggestionsProps) {
 
   return (
     <div className="flex flex-col h-full gap-3 min-h-0">
-      <div className="flex items-center justify-between gap-2 shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
         <span className="text-slate-400 text-sm">
           Vorgenerierte Vorschläge basierend auf Entitäten und aktuellen Aufgaben.
         </span>
-        <button
-          onClick={refresh}
-          disabled={refreshing || isBusy}
-          className="px-3 py-1.5 rounded bg-slate-800 text-[var(--text-h)] text-sm font-medium hover:bg-slate-700 transition disabled:opacity-50 shrink-0"
-        >
-          {refreshing ? '...' : 'Neu'}
-        </button>
       </div>
 
       {loading && suggestions.length === 0 ? (
