@@ -33,7 +33,7 @@ export function SideDrawer({ side = 'right', width = '18rem', maxWidth = 'calc(1
 
   const rail = (
     <div
-      className={`flex flex-col items-start self-start ${
+      className={`pointer-events-auto flex flex-col items-start self-start ${
         isRight ? 'rounded-bl-lg border-l' : 'rounded-br-lg border-r'
       } border-[var(--border)] bg-[var(--panel)]`}
     >
@@ -76,7 +76,7 @@ export function SideDrawer({ side = 'right', width = '18rem', maxWidth = 'calc(1
 
   const content = (
     <div
-      className={`overflow-hidden transition-[width,min-width,max-width] duration-300 ${
+      className={`pointer-events-auto overflow-hidden transition-[width,min-width,max-width] duration-300 ${
         isRight ? 'border-l' : 'border-r'
       } border-[var(--border)]`}
       style={contentStyle}
@@ -105,7 +105,7 @@ export function SideDrawer({ side = 'right', width = '18rem', maxWidth = 'calc(1
   return (
     <>
       {backdrop}
-      <div className="fixed z-40 flex" style={{ top: 'calc(var(--header-height) - 1px)', bottom: 0, [side]: 0 }}>
+      <div className="pointer-events-none fixed z-40 flex" style={{ top: 'calc(var(--header-height) - 1px)', bottom: 0, [side]: 0 }}>
         {contentAfterButtons ? (
           <>
             {rail}
