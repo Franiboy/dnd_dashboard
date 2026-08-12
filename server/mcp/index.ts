@@ -102,8 +102,49 @@ function diaryAccessError(): ReturnType<typeof error> {
   return error('Zugriff auf den Tagebucheintrag verweigert');
 }
 
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
+}
+
+function formatToolArgs(args: Record<string, unknown>): string {
+  const entries = Object.entries(args)
+    .map(([key, value]) => {
+      const text = typeof value === 'string' ? value : JSON.stringify(value);
+      return `${key}=${truncateText(text, 100)}`;
+    })
+    .join(', ');
+  return entries || 'no args';
+}
+
+function loggedTool<T extends z.ZodRawShape>(
+  name: string,
+  description: string,
+  argsSchema: T,
+  handler: (args: z.infer<z.ZodObject<T>>) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>,
+): void {
+  (server.tool as unknown as (...args: unknown[]) => void)(name, description, argsSchema, async (args: unknown) => {
+    const summary = formatToolArgs(args as Record<string, unknown>);
+    log.info(`MCP tool called: ${name}(${summary})`);
+    const start = Date.now();
+    try {
+      const result = await handler(args as z.infer<z.ZodObject<T>>);
+      const outputText = result.content.map((c) => c.text).join('');
+      const isError = result.isError ?? false;
+      log.info(
+        `MCP tool finished: ${name} (duration=${Date.now() - start}ms, isError=${isError}, outputChars=${outputText.length})`,
+      );
+      return result;
+    } catch (err) {
+      const duration = Date.now() - start;
+      log.error(`MCP tool failed: ${name} (duration=${duration}ms): ${err instanceof Error ? err.message : String(err)}`);
+      throw err;
+    }
+  });
+}
+
 if (requireScope('diary:summarize')) {
-  server.tool(
+  loggedTool(
     'set_diary_summary',
     'Setzt die Zusammenfassung eines Tagebucheintrags.',
     {
@@ -124,7 +165,7 @@ if (requireScope('diary:summarize')) {
 }
 
 if (requireScope('diary:rewrite')) {
-  server.tool(
+  loggedTool(
     'set_diary_rewrite',
     'Speichert den umgeschriebenen HTML-Inhalt eines Tagebucheintrags.',
     {
@@ -145,7 +186,7 @@ if (requireScope('diary:rewrite')) {
 }
 
 if (requireScope('diary:draft')) {
-  server.tool(
+  loggedTool(
     'set_session_diary_draft',
     'Erstellt oder aktualisiert einen KI-Tagebuch-Entwurf aus einer Session. Wenn targetEntryId angegeben ist, wird der Entwurf an einen bestehenden Eintrag angehängt (als KI-Version), sonst wird ein neuer Eintrag angelegt.',
     {
@@ -176,7 +217,7 @@ if (requireScope('diary:draft')) {
 }
 
 if (requireScope('entity:extract')) {
-  server.tool(
+  loggedTool(
     'link_diary_entity',
     'Verknüpft eine Entität mit einem Tagebucheintrag.',
     {
@@ -204,7 +245,7 @@ if (requireScope('entity:extract')) {
 }
 
 if (requireScope('entity:summary')) {
-  server.tool(
+  loggedTool(
     'set_entity_summary',
     'Setzt die Zusammenfassung und optionale Mini-Zusammenfassung einer Entität.',
     {
@@ -226,7 +267,7 @@ if (requireScope('entity:summary')) {
 }
 
 if (requireScope('knowledge:distribute')) {
-  server.tool(
+  loggedTool(
     'create_knowledge',
     'Erstellt einen Wissenseintrag für eine Entität.',
     {
@@ -246,7 +287,7 @@ if (requireScope('knowledge:distribute')) {
     },
   );
 
-  server.tool(
+  loggedTool(
     'delete_knowledge',
     'Markiert einen Wissenseintrag als gelöscht.',
     {
@@ -267,7 +308,7 @@ if (requireScope('knowledge:distribute')) {
 }
 
 if (requireScope('diary:read')) {
-  server.tool(
+  loggedTool(
     'get_diary_entry',
     'Liefert einen bestimmten Tagebucheintrag inklusive Titel, Inhalt, Zusammenfassung und verknüpfter Entitäten.',
     {
@@ -296,7 +337,7 @@ if (requireScope('diary:read')) {
     },
   );
 
-  server.tool(
+  loggedTool(
     'search_diary_entries',
     'Sucht nach Tagebucheinträgen, die einen Suchbegriff im Titel oder Inhalt enthalten.',
     {
@@ -319,7 +360,7 @@ if (requireScope('diary:read')) {
     },
   );
 
-  server.tool(
+  loggedTool(
     'get_previous_diary_entries',
     'Liefert die vorherigen Tagebucheinträge desselben Autors vor einem bestimmten Eintrag.',
     {
@@ -343,7 +384,7 @@ if (requireScope('diary:read')) {
     },
   );
 
-  server.tool(
+  loggedTool(
     'list_user_diary_entries',
     'Listet die Tagebucheinträge des aktuellen Benutzers mit Titel, Datum und Inhaltsvorschau auf.',
     {
@@ -367,7 +408,7 @@ if (requireScope('diary:read')) {
 }
 
 if (requireScope('entity:read')) {
-  server.tool(
+  loggedTool(
     'list_entities',
     'Listet alle bekannten Entitäten (Personen, Organisationen, Orte) auf. Optional gefiltert nach Typ.',
     {
@@ -392,7 +433,7 @@ if (requireScope('entity:read')) {
     },
   );
 
-  server.tool(
+  loggedTool(
     'get_entity',
     'Liefert Zusammenfassung, aktives Wissen und verknüpfte Tagebucheinträge zu einer bestimmten Entität.',
     {
@@ -468,7 +509,7 @@ function formatSessionSummary(session: {
 }
 
 if (requireScope('recording:read')) {
-  server.tool(
+  loggedTool(
     'get_session_summary',
     'Liefert die kurze und lange Zusammenfassung einer bestimmten Aufnahme-Session.',
     {
@@ -485,7 +526,7 @@ if (requireScope('recording:read')) {
     },
   );
 
-  server.tool(
+  loggedTool(
     'get_previous_session_summaries',
     'Liefert die Zusammenfassungen der vorherigen Aufnahme-Sessions (absteigend nach Datum).',
     {
@@ -505,7 +546,7 @@ if (requireScope('recording:read')) {
 }
 
 if (requireScope('recording:summarize')) {
-  server.tool(
+  loggedTool(
     'set_session_summary',
     'Setzt die kurze Zusammenfassung (Stichpunkte, max. 500 Zeichen) einer Aufnahme-Session.',
     {
@@ -527,7 +568,7 @@ if (requireScope('recording:summarize')) {
     },
   );
 
-  server.tool(
+  loggedTool(
     'set_session_long_summary',
     'Setzt die ausführliche HTML-Zusammenfassung einer Aufnahme-Session.',
     {
@@ -551,7 +592,7 @@ if (requireScope('recording:summarize')) {
 }
 
 if (requireScope('bingo:read')) {
-  server.tool(
+  loggedTool(
     'get_bingo_state',
     'Liefert den aktuellen Bingo-Zustand: Spielfeldgröße, Status, öffentliche Aufgaben, ausstehende Vorschläge und kürzlich abgelehnte Vorschläge.',
     {},
