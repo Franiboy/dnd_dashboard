@@ -48,6 +48,8 @@ export function Admin({ currentUser }: AdminProps) {
   const [nightlyJobMessage, setNightlyJobMessage] = useState<string | null>(null);
   const [transcriptionJobLoading, setTranscriptionJobLoading] = useState(false);
   const [transcriptionJobMessage, setTranscriptionJobMessage] = useState<string | null>(null);
+  const [bingoSuggestionLoading, setBingoSuggestionLoading] = useState(false);
+  const [bingoSuggestionMessage, setBingoSuggestionMessage] = useState<string | null>(null);
 
   const isActionLoading = (id: string, endpoint: string) =>
     actionLoading?.id === id && actionLoading?.endpoint === endpoint;
@@ -165,6 +167,18 @@ export function Admin({ currentUser }: AdminProps) {
     setTranscriptionJobLoading(false);
     if (data) {
       setTranscriptionJobMessage(data.message);
+    }
+  };
+
+  const triggerBingoSuggestionRefill = async () => {
+    setBingoSuggestionLoading(true);
+    setBingoSuggestionMessage(null);
+    const { data } = await request<{ started: boolean; message: string }>('/api/admin/bingo-suggestion-refill', {
+      method: 'POST',
+    });
+    setBingoSuggestionLoading(false);
+    if (data) {
+      setBingoSuggestionMessage(data.message);
     }
   };
 
@@ -356,6 +370,22 @@ export function Admin({ currentUser }: AdminProps) {
                 {transcriptionJobLoading ? <Loading text="" size="sm" /> : 'Transkription starten'}
               </button>
               {transcriptionJobMessage && <p className="text-sm text-[var(--accent)]">{transcriptionJobMessage}</p>}
+            </div>
+
+            <div className="border-t border-[var(--border)] pt-4 space-y-4">
+              <h2 className="text-lg font-semibold text-[var(--text-h)]">Bingo-Vorschläge</h2>
+              <p className="text-sm text-slate-400">
+                Füllt den Pool der ausstehenden Bingo-Vorschläge manuell auf. Normalerweise läuft dies automatisch jede Minute, wenn weniger als der konfigurierte Threshold vorhanden ist.
+              </p>
+              <button
+                type="button"
+                onClick={triggerBingoSuggestionRefill}
+                disabled={bingoSuggestionLoading}
+                className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+              >
+                {bingoSuggestionLoading ? <Loading text="" size="sm" /> : 'Bingo-Vorschläge generieren'}
+              </button>
+              {bingoSuggestionMessage && <p className="text-sm text-[var(--accent)]">{bingoSuggestionMessage}</p>}
             </div>
           </div>
         </SideDrawerItem>

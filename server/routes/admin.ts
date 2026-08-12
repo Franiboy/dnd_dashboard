@@ -16,6 +16,7 @@ import {
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 import { runNightlyJobNow } from '../scheduler/summaryScheduler.js';
 import { runTranscriptionJobsNow } from '../discord/scheduler.js';
+import { runBingoSuggestionRefillNow } from '../ai/bingoSuggestions.js';
 
 const userEvents = new SseBroadcaster();
 const logEvents = new SseBroadcaster();
@@ -209,6 +210,15 @@ router.post('/transcription-jobs', authMiddleware, requireAdmin, (req: AuthReque
     res.json({ started: true, message: 'Transkription-Jobs wurden gestartet.' });
   } else {
     res.status(409).json({ started: false, message: 'Transkription-Jobs laufen bereits oder sind deaktiviert.' });
+  }
+});
+
+router.post('/bingo-suggestion-refill', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const started = runBingoSuggestionRefillNow();
+  if (started) {
+    res.json({ started: true, message: 'Bingo-Vorschlags-Nachfüllung wurde gestartet.' });
+  } else {
+    res.status(409).json({ started: false, message: 'Bingo-Vorschlags-Nachfüllung läuft bereits oder KI ist deaktiviert.' });
   }
 });
 
