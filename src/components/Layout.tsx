@@ -94,14 +94,40 @@ export function Layout({ user, realUser, version, onLogout, onUserChange, childr
       <header ref={headerRef} className="relative z-10 flex flex-col border-b border-[var(--border)] bg-[var(--panel)]">
         <div className="flex items-center gap-2 px-3 sm:px-6 py-2">
           {/* Left: user + active character */}
-        <div className="flex min-w-0 items-center gap-2 font-semibold text-[var(--text-h)]">
+        <div className="flex min-w-0 items-center gap-2 bg-slate-800/60 border border-[var(--border)] rounded-full pl-2 pr-1 py-1">
           {user.avatarUrl && <img src={user.avatarUrl} alt="" className="w-6 h-6 rounded-full shrink-0" />}
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="hidden md:inline truncate text-sm">{user.displayName}</span>
-            {selectElement(
-              false,
-              'max-w-[9rem] min-w-0 bg-slate-800 border border-[var(--border)] rounded-lg px-2 py-0.5 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50',
-            )}
+          <span className="hidden md:inline truncate text-sm font-medium text-[var(--text-h)]">
+            {user.displayName}
+          </span>
+          <div className="relative flex items-center">
+            <select
+              value={user.activePerson ?? ''}
+              onChange={(e) => handleSelectPerson(e.target.value)}
+              disabled={saving || isSimulating}
+              title={isSimulating ? 'Personenauswahl ist im Simulationsmodus deaktiviert' : 'Aktive Person / Charakter wählen'}
+              className="appearance-none bg-slate-900/60 border border-[var(--border)] hover:border-slate-600 rounded-lg pl-2 pr-6 py-1 text-xs font-medium text-slate-300 focus:outline-none focus:border-[var(--accent)] disabled:opacity-50 max-w-[10rem] min-w-0 cursor-pointer transition-colors"
+            >
+              <option value="">Person wählen</option>
+              {persons.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
           </div>
         </div>
 
