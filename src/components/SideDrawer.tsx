@@ -91,18 +91,16 @@ export function SideDrawer({ side = 'right', width = '18rem', maxWidth = 'calc(1
   );
 
   // Modal-like backdrop: dims everything below the header and closes the drawer on click.
-  const backdrop = (
+  const backdrop = open ? (
     <div
       className="fixed left-0 right-0 z-30 bg-black/50 transition-opacity duration-300"
       style={{
         top: 'var(--header-height)',
         bottom: 0,
-        opacity: open ? 1 : 0,
-        pointerEvents: open ? 'auto' : 'none',
       }}
       onClick={() => setActiveId(null)}
     />
-  );
+  ) : null;
 
   return (
     <>
