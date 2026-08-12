@@ -40,6 +40,11 @@ import {
   getSessionSummaryById,
   listPreviousSessionSummaries,
 } from '../repositories/recordings.js';
+import {
+  getAllPendingSuggestionTexts,
+  getRejectedSuggestionTexts,
+} from '../repositories/bingoSuggestions.js';
+import { getGame } from '../game.js';
 import type { DiaryEntry } from '../../shared/types.js';
 
 const log = createLogger('mcp-server');
@@ -540,6 +545,41 @@ if (requireScope('recording:summarize')) {
         return success(`Lange Zusammenfassung für Session ${sessionId} gesetzt.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Setzen der langen Zusammenfassung');
+      }
+    },
+  );
+}
+
+if (requireScope('bingo:read')) {
+  server.tool(
+    'get_bingo_state',
+    'Liefert den aktuellen Bingo-Zustand: Spielfeldgröße, Status, öffentliche Aufgaben, ausstehende Vorschläge und kürzlich abgelehnte Vorschläge.',
+    {},
+    async () => {
+      try {
+        const game = getGame();
+        const pendingSuggestions = getAllPendingSuggestionTexts();
+        const rejectedSuggestions = getRejectedSuggestionTexts().slice(-50);
+
+        const lines = [
+          `Spielfeldgröße: ${game.gridSize}x${game.gridSize}`,
+          `Status: ${game.status}`,
+          '',
+          'Bereits vorhandene öffentliche Bingo-Aufgaben:',
+          ...(game.tasks.some((t) => !t.isPrivate)
+            ? game.tasks.filter((t) => !t.isPrivate).map((t) => `- ${t.text}`)
+            : ['Keine']),
+          '',
+          'Ausstehende Vorschläge im Pool (nicht erneut vorschlagen):',
+          ...(pendingSuggestions.length > 0 ? pendingSuggestions.map((t) => `- ${t}`) : ['Keine']),
+          '',
+          'Zuletzt abgelehnte Vorschläge (nicht erneut vorschlagen):',
+          ...(rejectedSuggestions.length > 0 ? rejectedSuggestions.map((t) => `- ${t}`) : ['Keine']),
+        ];
+
+        return success(lines.join('\n'));
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Laden des Bingo-Zustands');
       }
     },
   );
