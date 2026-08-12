@@ -68,11 +68,7 @@ const server = new McpServer({
 });
 
 function requireScope(scope: McpScope): boolean {
-  if (!allowedScopes.has(scope)) {
-    log.warn(`Scope ${scope} not allowed for this MCP session`);
-    return false;
-  }
-  return true;
+  return allowedScopes.has(scope);
 }
 
 function success(message: string): { content: Array<{ type: 'text'; text: string }> } {
