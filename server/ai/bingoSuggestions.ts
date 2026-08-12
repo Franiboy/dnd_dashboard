@@ -226,6 +226,19 @@ export async function generateBingoSuggestionBatch(count: number): Promise<strin
 
 let refillPromise: Promise<void> | null = null;
 
+export function isBingoSuggestionRefillRunning(): boolean {
+  return refillPromise !== null;
+}
+
+export function runBingoSuggestionRefillNow(): boolean {
+  if (!isAiEnabled()) return false;
+  if (refillPromise) return false;
+  ensureSuggestionPool({ force: true }).catch((err) => {
+    log.error('Manual bingo suggestion refill failed:', err);
+  });
+  return true;
+}
+
 interface EnsureSuggestionPoolOptions {
   force?: boolean;
   clear?: boolean;
