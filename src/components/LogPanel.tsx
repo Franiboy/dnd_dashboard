@@ -27,6 +27,16 @@ interface ExpandableLogContentProps {
   label?: string;
 }
 
+function formatJsonPreview(value: unknown, maxChars = 80): string {
+  try {
+    const compact = JSON.stringify(value, null, 0);
+    if (compact.length <= maxChars) return compact;
+    return `${compact.slice(0, maxChars)}...`;
+  } catch {
+    return String(value).slice(0, maxChars);
+  }
+}
+
 function ExpandableLogContent({ value, label = 'details' }: ExpandableLogContentProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -42,8 +52,8 @@ function ExpandableLogContent({ value, label = 'details' }: ExpandableLogContent
           const formatted = JSON.stringify(parsed, null, 2);
           return {
             isJson: true,
-            isExpandable: true,
-            preview: '{ ... }',
+            isExpandable: formatted.length > COLLAPSE_THRESHOLD_CHARS,
+            preview: formatJsonPreview(parsed),
             fullContent: formatted,
           };
         } catch {
@@ -63,8 +73,8 @@ function ExpandableLogContent({ value, label = 'details' }: ExpandableLogContent
         const formatted = JSON.stringify(value, null, 2);
         return {
           isJson: true,
-          isExpandable: true,
-          preview: Array.isArray(value) ? '[ ... ]' : '{ ... }',
+          isExpandable: formatted.length > COLLAPSE_THRESHOLD_CHARS,
+          preview: formatJsonPreview(value),
           fullContent: formatted,
         };
       } catch {
@@ -87,18 +97,18 @@ function ExpandableLogContent({ value, label = 'details' }: ExpandableLogContent
   }, [value]);
 
   if (!isExpandable) {
-    return <span className="text-slate-300">{fullContent}</span>;
+    return <span className="text-slate-300">{isJson ? preview : fullContent}</span>;
   }
 
   return (
-    <span className="inline-flex flex-col align-top">
+    <span className="inline align-middle">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="text-left text-slate-400 hover:text-slate-200 underline decoration-dotted underline-offset-2"
+        className="inline text-left text-slate-400 hover:text-slate-200 underline decoration-dotted underline-offset-2 align-middle"
       >
-        {expanded ? '▼' : '▶'} {isJson ? 'JSON' : label}
-        {!expanded && <span className="text-slate-500 ml-2">{preview}</span>}
+        {expanded ? '▼' : '▶'}{" "}
+        <span className="text-slate-300 font-mono">{isJson ? preview : label}</span>
       </button>
       {expanded && (
         <pre className="mt-1 p-2 rounded bg-slate-900 border border-slate-700 text-slate-200 whitespace-pre-wrap font-mono text-xs">
