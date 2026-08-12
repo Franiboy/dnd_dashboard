@@ -347,7 +347,7 @@ export function LogPanel() {
           <select
             value={level}
             onChange={(e) => setLevel(e.target.value as LogLevel | 'all')}
-            className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-[var(--text-h)]"
+            className="relative z-10 pointer-events-auto bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-[var(--text-h)]"
           >
             {(Object.keys(LEVEL_LABELS) as (LogLevel | 'all')[]).map((l) => (
               <option key={l} value={l}>
