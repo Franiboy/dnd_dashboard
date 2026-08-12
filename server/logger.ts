@@ -10,6 +10,8 @@ const MAX_LOGS =
 const MAX_MESSAGE_LENGTH = 5000;
 const MAX_EXTRA_ARGS = 5;
 const MAX_ARG_LENGTH = 500;
+export const MAX_OBJECT_ARG_LENGTH = 50_000;
+const MAX_OBJECT_ARG_DEPTH = 3;
 const PRUNE_INTERVAL = 100;
 
 interface DbLogRow {
@@ -105,7 +107,30 @@ function serializeFirstArg(arg: unknown): { message: string } {
   return { message: inspectValue(arg, MAX_MESSAGE_LENGTH, 3) };
 }
 
+function isPlainObject(arg: unknown): arg is Record<string, unknown> {
+  return typeof arg === 'object' && arg !== null && !Array.isArray(arg) && Object.getPrototypeOf(arg) === Object.prototype;
+}
+
+function safeJsonStringify(arg: unknown, maxLength: number): string {
+  try {
+    const seen = new Set<unknown>();
+    const json = JSON.stringify(arg, (_key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) return '[Circular]';
+        seen.add(value);
+      }
+      return value;
+    });
+    return truncate(json, maxLength);
+  } catch {
+    return inspectValue(arg, maxLength, MAX_OBJECT_ARG_DEPTH);
+  }
+}
+
 function serializeExtraArg(arg: unknown): string {
+  if (isPlainObject(arg)) {
+    return safeJsonStringify(arg, MAX_OBJECT_ARG_LENGTH);
+  }
   return inspectValue(arg, MAX_ARG_LENGTH, 1);
 }
 
