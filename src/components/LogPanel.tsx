@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import type { LogEntry, LogLevel } from '../../shared/types';
 
@@ -20,6 +20,94 @@ const LEVEL_LABELS: Record<LogLevel | 'all', string> = {
 const PAGE_SIZE = 100;
 const NEAR_BOTTOM_THRESHOLD = 50;
 const TOP_OBSERVER_MARGIN = '100px';
+const COLLAPSE_THRESHOLD_CHARS = 120;
+
+interface ExpandableLogContentProps {
+  value: unknown;
+  label?: string;
+}
+
+function ExpandableLogContent({ value, label = 'details' }: ExpandableLogContentProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  const { isJson, preview, fullContent, isExpandable } = useMemo(() => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      ) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          const formatted = JSON.stringify(parsed, null, 2);
+          return {
+            isJson: true,
+            isExpandable: true,
+            preview: '{ ... }',
+            fullContent: formatted,
+          };
+        } catch {
+          // not valid JSON, fall through to plain text
+        }
+      }
+      return {
+        isJson: false,
+        isExpandable: trimmed.length > COLLAPSE_THRESHOLD_CHARS,
+        preview: trimmed.slice(0, 80),
+        fullContent: trimmed,
+      };
+    }
+
+    if (typeof value === 'object' && value !== null) {
+      try {
+        const formatted = JSON.stringify(value, null, 2);
+        return {
+          isJson: true,
+          isExpandable: true,
+          preview: Array.isArray(value) ? '[ ... ]' : '{ ... }',
+          fullContent: formatted,
+        };
+      } catch {
+        return {
+          isJson: false,
+          isExpandable: String(value).length > COLLAPSE_THRESHOLD_CHARS,
+          preview: String(value).slice(0, 80),
+          fullContent: String(value),
+        };
+      }
+    }
+
+    const text = String(value);
+    return {
+      isJson: false,
+      isExpandable: text.length > COLLAPSE_THRESHOLD_CHARS,
+      preview: text.slice(0, 80),
+      fullContent: text,
+    };
+  }, [value]);
+
+  if (!isExpandable) {
+    return <span className="text-slate-300">{fullContent}</span>;
+  }
+
+  return (
+    <span className="inline-flex flex-col align-top">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="text-left text-slate-400 hover:text-slate-200 underline decoration-dotted underline-offset-2"
+      >
+        {expanded ? '▼' : '▶'} {isJson ? 'JSON' : label}
+        {!expanded && <span className="text-slate-500 ml-2">{preview}</span>}
+      </button>
+      {expanded && (
+        <pre className="mt-1 p-2 rounded bg-slate-900 border border-slate-700 text-slate-200 whitespace-pre-wrap font-mono text-xs">
+          {fullContent}
+        </pre>
+      )}
+    </span>
+  );
+}
 
 export function LogPanel() {
   const { request } = useApi();
@@ -262,7 +350,16 @@ export function LogPanel() {
               [{log.level.toUpperCase()}]
             </span>{' '}
             <span className="text-slate-500">[{log.category}]</span>{' '}
-            <span className="text-slate-300">{log.message}</span>
+            <ExpandableLogContent value={log.message} />
+            {log.args.length > 0 && (
+              <span className="block ml-4">
+                {log.args.map((arg, idx) => (
+                  <span key={idx} className="block">
+                    <ExpandableLogContent value={arg} label="arg" />
+                  </span>
+                ))}
+              </span>
+            )}
           </div>
         ))}
         {isInitialLoading && (
