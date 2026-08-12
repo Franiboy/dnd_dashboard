@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { getGame } from '../game.js';
 import { createLogger } from '../logger.js';
@@ -10,19 +11,26 @@ import {
   countPendingSuggestions,
   createBingoSuggestions,
   getAllPendingSuggestionTexts,
+  getBingoSuggestionBatch,
+  getBingoSuggestionBatchResults,
   getRejectedSuggestionTexts,
   rejectAllPendingSuggestions,
+  createBingoSuggestionBatch,
+  failBingoSuggestionBatch,
 } from '../repositories/bingoSuggestions.js';
 
 const log = createLogger('bingo-suggestions');
 
 const BINGO_CONTEXT_DIR = join(process.cwd(), 'data', 'bingo');
 const TRANSCRIPTS_FILE = join(BINGO_CONTEXT_DIR, 'transcripts.txt');
+const LAST_OUTPUT_FILE = join(BINGO_CONTEXT_DIR, 'last-output.txt');
 
 const MAX_SESSIONS = 5;
 const MAX_SUMMARY_PER_SESSION = 3_000;
 const MAX_TRANSCRIPT_PER_SESSION = 17_000;
 const MAX_TOTAL_CONTEXT_LENGTH = 120_000;
+const BATCH_POLL_INTERVAL_MS = 500;
+const BATCH_TIMEOUT_MS = 10 * 60 * 1000;
 
 function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
@@ -79,11 +87,13 @@ function prepareBingoContextFiles(): { transcriptsFile: string; sessionsIncluded
   return { transcriptsFile: TRANSCRIPTS_FILE, sessionsIncluded };
 }
 
-function buildPrompt(count: number, transcriptsFile: string): string {
+function buildPrompt(count: number, transcriptsFile: string, batchId: string): string {
   return [
     'Du bist ein Assistent für ein D&D-Bingo-Spiel. Du arbeitest mit Tools und antwortest prägnant auf Deutsch.',
     '',
     `Aufgabe: Erstelle genau ${count} neue Bingo-Aufgaben für die bevorstehende Sitzung.`,
+    '',
+    `Deine Batch-ID ist "${batchId}". Rufe am Ende unbedingt submit_bingo_suggestions({ batchId: "${batchId}", suggestions: ["...", "..."] }) auf, um die Aufgaben an den Server zu übergeben.`,
     '',
     'Vorgehen:',
     '1. Rufe get_bingo_state() auf. Es liefert den aktuellen Bingo-Zustand: Spielfeldgröße, bereits vorhandene öffentliche Aufgaben, ausstehende Vorschläge und kürzlich abgelehnte Vorschläge (vermeide alle davon).',
@@ -105,89 +115,42 @@ function buildPrompt(count: number, transcriptsFile: string): string {
     'Regeln für die Aufgaben:',
     '- Kurze, prägnante deutsche Sätze, die in eine Bingo-Zelle passen.',
     '- Konkret und auf die bekannte Spielwelt bezogen, falls Daten vorhanden sind.',
-    '- Keine Wiederholungen bereits vorhandener Aufgaben, ausstehender Vorschläge oder kürzlich abgelehnter Vorschläge.',
+    '- Keine Wiederholungen bereits vorhandener Aufgaben, ausstehender Vorschläge oder kürzlich abgelehnte Vorschläge.',
     '- Keine zwei neuen Vorschläge dürfen sich zu sehr ähneln.',
     '- Mischung aus Schwierigkeiten und Arten: Rollenspiel, Kampf, Erkundung, Soziales, Umgebung, Würfelglück.',
     '- Jede Aufgabe muss in einer Sitzung realistisch erfüllbar sein.',
     '- Verwende keine Markdown-Formatierung innerhalb der Aufgabentexte.',
     '- Bevorzuge Aufgaben, die auf tatsächlich wiederkehrenden Momenten aus den Transkripten basieren (z. B. "Nils sagt: ...", "Jemand wirft einen natürlichen 1", "Ein Spieler zitiert einen NPC").',
-    '- Antworte AUSSCHLIESSLICH mit einem validen JSON-Array aus Strings, ohne Erklärungen, ohne Code-Blöcke.',
     '',
-    `Gib nun genau ${count} neue Bingo-Aufgaben als JSON-Array aus:`,
+    `Rufe jetzt submit_bingo_suggestions mit der batchId "${batchId}" auf und übergibe genau ${count} Aufgaben als String-Array.`,
   ].join('\n');
-}
-
-function stripCodeFences(output: string): string {
-  const match = output.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  return match ? match[1].trim() : output.trim();
-}
-
-function extractFirstTopLevelArray(text: string): string | null {
-  let start = -1;
-  let depth = 0;
-  let inString = false;
-  let escapeNext = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-
-    if (inString) {
-      if (escapeNext) {
-        escapeNext = false;
-      } else if (ch === '\\') {
-        escapeNext = true;
-      } else if (ch === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (ch === '"') {
-      inString = true;
-      continue;
-    }
-
-    if (ch === '[') {
-      if (depth === 0) start = i;
-      depth += 1;
-    } else if (ch === ']') {
-      depth -= 1;
-      if (depth === 0 && start !== -1) {
-        return text.slice(start, i + 1);
-      }
-    }
-  }
-
-  return null;
-}
-
-function parseStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === 'string')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-}
-
-function parseSuggestions(output: string): string[] {
-  const cleaned = stripCodeFences(output);
-
-  try {
-    return parseStringArray(JSON.parse(cleaned));
-  } catch {
-    const array = extractFirstTopLevelArray(cleaned);
-    if (!array) return [];
-    try {
-      return parseStringArray(JSON.parse(array));
-    } catch {
-      return [];
-    }
-  }
 }
 
 async function cleanupSession(sessionId: string | null | undefined): Promise<void> {
   if (!sessionId) return;
   await deleteOpenCodeSession(sessionId);
+}
+
+function waitForBatch(batchId: string, timeoutMs: number): Promise<{ status: string; results?: { text: string; source: string }[] }> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const poll = () => {
+      const batch = getBingoSuggestionBatch(batchId);
+      if (batch?.status === 'completed') {
+        resolve({ status: 'completed', results: getBingoSuggestionBatchResults(batchId) });
+        return;
+      }
+      if (batch?.status === 'failed' || Date.now() - start > timeoutMs) {
+        if (batch?.status !== 'failed') {
+          failBingoSuggestionBatch(batchId);
+        }
+        resolve({ status: batch?.status ?? 'timeout' });
+        return;
+      }
+      setTimeout(poll, BATCH_POLL_INTERVAL_MS);
+    };
+    poll();
+  });
 }
 
 export async function generateBingoSuggestionBatch(count: number): Promise<string[]> {
@@ -198,29 +161,41 @@ export async function generateBingoSuggestionBatch(count: number): Promise<strin
 
   if (count <= 0) return [];
 
+  const batchId = randomUUID();
+  createBingoSuggestionBatch(batchId);
+
   const { transcriptsFile, sessionsIncluded } = prepareBingoContextFiles();
-  const prompt = buildPrompt(count, transcriptsFile);
-  log.info(`Generating ${count} bingo suggestions (sessions in context: ${sessionsIncluded})`);
+  const prompt = buildPrompt(count, transcriptsFile, batchId);
+  log.info(`Generating ${count} bingo suggestions (batchId=${batchId}, sessions in context: ${sessionsIncluded})`);
 
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
     model: getBingoModel(),
     title: `dnd-bingo-suggestions-${Date.now()}`,
-    scopes: ['entity:read', 'recording:read', 'diary:read', 'bingo:read'],
+    scopes: ['entity:read', 'recording:read', 'diary:read', 'bingo:read', 'bingo:write'],
   });
 
   if (!result.success) {
     log.warn(`Bingo suggestion generation failed: exitCode=${result.exitCode}`);
     await cleanupSession(result.sessionId);
+    failBingoSuggestionBatch(batchId);
     return [];
   }
 
-  const suggestions = parseSuggestions(result.output);
-  log.info(`Generated ${suggestions.length} bingo suggestions`);
+  writeFileSync(LAST_OUTPUT_FILE, result.output, 'utf-8');
+  log.info(`OpenCode raw output saved to ${LAST_OUTPUT_FILE} (${result.output.length} chars)`);
 
+  const { status, results } = await waitForBatch(batchId, BATCH_TIMEOUT_MS);
   await cleanupSession(result.sessionId);
 
+  if (status !== 'completed' || !results) {
+    log.warn(`Bingo suggestion batch ${batchId} did not complete in time: ${status}`);
+    return [];
+  }
+
+  const suggestions = results.map((r) => r.text);
+  log.info(`Generated ${suggestions.length} bingo suggestions via batch ${batchId}`);
   return suggestions;
 }
 

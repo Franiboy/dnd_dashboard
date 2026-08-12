@@ -14,7 +14,8 @@ export type McpScope =
   | 'knowledge:distribute'
   | 'recording:read'
   | 'recording:summarize'
-  | 'bingo:read';
+  | 'bingo:read'
+  | 'bingo:write';
 
 export interface McpSessionUser {
   id: string;

@@ -538,6 +538,29 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    name: 'create_bingo_suggestion_batches_table',
+    run: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS bingo_suggestion_batches (
+          id TEXT PRIMARY KEY,
+          status TEXT NOT NULL DEFAULT 'pending',
+          created_at TEXT NOT NULL
+        );
+      `);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS bingo_suggestion_batch_results (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          batch_id TEXT NOT NULL,
+          text TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'ai',
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (batch_id) REFERENCES bingo_suggestion_batches(id) ON DELETE CASCADE
+        );
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_bingo_suggestion_batch_results_batch_id ON bingo_suggestion_batch_results(batch_id);`);
+    },
+  },
 ];
 
 export function runMigrations() {
