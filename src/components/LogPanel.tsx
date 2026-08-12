@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import type { LogEntry, LogLevel } from '../../shared/types';
 
@@ -37,64 +37,72 @@ function formatJsonPreview(value: unknown, maxChars = 80): string {
   }
 }
 
-function ExpandableLogContent({ value, label = 'details' }: ExpandableLogContentProps) {
-  const [expanded, setExpanded] = useState(false);
+interface ExpandableLogContentState {
+  isJson: boolean;
+  isExpandable: boolean;
+  preview: string;
+  fullContent: string;
+}
 
-  const { isJson, preview, fullContent, isExpandable } = useMemo(() => {
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (
-        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-        (trimmed.startsWith('[') && trimmed.endsWith(']'))
-      ) {
-        try {
-          const parsed = JSON.parse(trimmed);
-          const formatted = JSON.stringify(parsed, null, 2);
-          return {
-            isJson: true,
-            isExpandable: formatted.length > COLLAPSE_THRESHOLD_CHARS,
-            preview: formatJsonPreview(parsed),
-            fullContent: formatted,
-          };
-        } catch {
-          // not valid JSON, fall through to plain text
-        }
-      }
-      return {
-        isJson: false,
-        isExpandable: trimmed.length > COLLAPSE_THRESHOLD_CHARS,
-        preview: trimmed.slice(0, 80),
-        fullContent: trimmed,
-      };
-    }
-
-    if (typeof value === 'object' && value !== null) {
+function computeExpandableState(value: unknown): ExpandableLogContentState {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
       try {
-        const formatted = JSON.stringify(value, null, 2);
+        const parsed = JSON.parse(trimmed);
+        const formatted = JSON.stringify(parsed, null, 2);
         return {
           isJson: true,
           isExpandable: formatted.length > COLLAPSE_THRESHOLD_CHARS,
-          preview: formatJsonPreview(value),
+          preview: formatJsonPreview(parsed),
           fullContent: formatted,
         };
       } catch {
-        return {
-          isJson: false,
-          isExpandable: String(value).length > COLLAPSE_THRESHOLD_CHARS,
-          preview: String(value).slice(0, 80),
-          fullContent: String(value),
-        };
+        // not valid JSON, fall through to plain text
       }
     }
-
-    const text = String(value);
     return {
       isJson: false,
-      isExpandable: text.length > COLLAPSE_THRESHOLD_CHARS,
-      preview: text.slice(0, 80),
-      fullContent: text,
+      isExpandable: trimmed.length > COLLAPSE_THRESHOLD_CHARS,
+      preview: trimmed.slice(0, 80),
+      fullContent: trimmed,
     };
-  }, [value]);
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    try {
+      const formatted = JSON.stringify(value, null, 2);
+      return {
+        isJson: true,
+        isExpandable: formatted.length > COLLAPSE_THRESHOLD_CHARS,
+        preview: formatJsonPreview(value),
+        fullContent: formatted,
+      };
+    } catch {
+      return {
+        isJson: false,
+        isExpandable: String(value).length > COLLAPSE_THRESHOLD_CHARS,
+        preview: String(value).slice(0, 80),
+        fullContent: String(value),
+      };
+    }
+  }
+
+  const text = String(value);
+  return {
+    isJson: false,
+    isExpandable: text.length > COLLAPSE_THRESHOLD_CHARS,
+    preview: text.slice(0, 80),
+    fullContent: text,
+  };
+}
+
+function ExpandableLogContent({ value, label = 'details' }: ExpandableLogContentProps) {
+  const [expanded, setExpanded] = useState(false);
+  const { isJson, isExpandable, preview, fullContent } = computeExpandableState(value);
 
   if (!isExpandable) {
     return <span className="text-slate-300">{isJson ? preview : fullContent}</span>;
@@ -111,7 +119,7 @@ function ExpandableLogContent({ value, label = 'details' }: ExpandableLogContent
         <span className="text-slate-300 font-mono">{isJson ? preview : label}</span>
       </button>
       {expanded && (
-        <pre className="mt-1 p-2 rounded bg-slate-900 border border-slate-700 text-slate-200 whitespace-pre-wrap font-mono text-xs">
+        <pre className="mt-1 p-2 rounded bg-slate-900 border border-slate-700 text-slate-200 break-all whitespace-pre-wrap font-mono text-xs">
           {fullContent}
         </pre>
       )}
@@ -133,6 +141,7 @@ export function LogPanel() {
   const scrollAdjustRef = useRef<{ oldHeight: number; oldScrollTop: number } | null>(null);
   const levelRef = useRef(level);
   const logsRef = useRef<LogEntry[]>(logs);
+  const logsLengthRef = useRef(logs.length);
 
   useEffect(() => {
     levelRef.current = level;
@@ -290,10 +299,17 @@ export function LogPanel() {
   }, [logs]);
 
   useEffect(() => {
-    if (autoScroll && containerRef.current) {
+    if (autoScroll && containerRef.current && logs.length > logsLengthRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
+    logsLengthRef.current = logs.length;
   }, [logs, autoScroll]);
+
+  useEffect(() => {
+    if (autoScroll && containerRef.current && logs.length > 0) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [autoScroll, logs.length]);
 
   const handleScroll = () => {
     const el = containerRef.current;
