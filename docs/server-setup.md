@@ -55,6 +55,7 @@ runner` → copy token → re-run `RUNNER_TOKEN=<token> scripts/dnd-server-setup
 ## Verification after migration
 
 - `curl -i http://127.0.0.1:3001/health` → `200 {"status":"ok",...}`
+- `curl -i http://127.0.0.1:3001/ready` → `200 {"status":"ready","db":"ok",...}` (verifies the database is reachable; `503` when not ready)
 - `curl -I https://einsnicergameserver.de` → `200` over TLS
 - `systemctl list-timers dnd-backup dnd-healthcheck` → both scheduled
 - Push a commit to `main` → CI/CD runs on the new runner and deploys itself
