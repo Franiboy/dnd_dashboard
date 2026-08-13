@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          clean: false
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -21,7 +23,18 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          # Self-hosted runner: keep node_modules across runs (checkout clean:false).
+          # npm ci always reinstalls from scratch, so skip it when the lockfile +
+          # Node version are unchanged. Marker lives in _temp (outside checkout).
+          hash="$(sha256sum package-lock.json | cut -d' ' -f1)-$(node -v)"
+          marker="$RUNNER_TEMP/dnd-npm-$hash"
+          if [ -f "$marker" ] && [ -d node_modules ]; then
+            echo "node_modules unchanged, skipping npm ci"
+          else
+            npm ci
+            : > "$marker"
+          fi
 
       - name: Lint
         run: npm run lint
