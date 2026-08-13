@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { logger } from './logger.js';
+import { validateEnv } from './env.js';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -37,6 +38,8 @@ import {
 } from './scheduler/discordTokenRefresh.js';
 import { isDiscordOAuthConfigured } from './discord/oauth.js';
 import { isEncryptionConfigured } from './encryption.js';
+import { errorHandler, notFoundHandler } from './errors.js';
+import { db } from './database.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,6 +91,14 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Validate environment configuration before anything else at runtime.
+try {
+  validateEnv();
+} catch (err) {
+  logger.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+
 // Run schema migrations and ensure admin user exists at startup
 runMigrations();
 
@@ -130,6 +141,18 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
+// Readiness check: verifies the database is reachable before reporting ready.
+app.get('/ready', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    db.prepare('SELECT 1').get();
+    res.json({ status: 'ready', db: 'ok', time: new Date().toISOString() });
+  } catch (err) {
+    logger.error('Readiness check failed (database unreachable):', err);
+    res.status(503).json({ status: 'not_ready', db: 'error', time: new Date().toISOString() });
+  }
+});
+
 app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/ai', aiRouter);
@@ -149,6 +172,10 @@ if (process.env.NODE_ENV === 'production') {
     res.sendFile(path.join(distDir, 'index.html'));
   });
 }
+
+// Centralized 404 + error handling for unhandled requests and thrown errors.
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 setupSocket(io);
 
