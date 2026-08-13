@@ -17,6 +17,8 @@
     "start": "node dist-server/server/index.js",
     "preview": "vite preview",
     "test:server": "DB_PATH=dnd_test.db npm run server",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "oxlint"
   },
   "dependencies": {
@@ -49,6 +51,8 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.2",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
     "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cookie-parser": "^1.4.10",
@@ -60,11 +64,13 @@
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^10.0.3",
+    "jsdom": "^30.0.1",
     "oxlint": "^1.71.0",
     "tailwindcss": "^4.3.2",
     "tsx": "^4.23.1",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "quill": "2.0.2"
