@@ -1,6 +1,6 @@
 # AGENTS.md – D&D Dashboard
 
-This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-08-02.
+This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-08-13.
 
 ## Critical Working Rules for Assistants
 
@@ -50,7 +50,12 @@ npm run build:server     # Build server only
 npm run build:version    # Writes dist-server/version.json from Git commit count
 npm run start            # Production server (requires prior build)
 npm run preview          # Vite production preview
+npm run test             # Run all Vitest tests
+npm run test:watch       # Run Vitest in watch mode
 npm run test:server      # Start server with separate test DB
+npm run format           # Format all files with Prettier
+npm run format:check     # Check Prettier formatting
+npm run check            # Guardrail: auto-format, auto-fix lint, run tests
 npx oxlint               # Optional: run Oxlint manually
 ```
 
@@ -59,6 +64,28 @@ npx oxlint               # Optional: run Oxlint manually
 - Client: `http://localhost:5173`
 - Server: `http://localhost:3001`
 - Vite proxies `/api` and `/socket.io` to the server.
+
+## Guardrails for AI Assistants
+
+Before committing any code change, run the guardrail command:
+
+```bash
+npm run check
+```
+
+This executes in sequence and modifies files in place:
+
+1. `prettier --write .` – format all supported files
+2. `oxlint --fix` – auto-fix lint issues
+3. `vitest run` – unit and integration tests
+
+After running `npm run check`, re-stage any changed files. The pre-commit hook also runs `lint-staged` (Prettier + `oxlint --fix`) on every commit.
+
+For larger refactorings or before releases, also run:
+
+```bash
+npm run build
+```
 
 ## Documentation
 
