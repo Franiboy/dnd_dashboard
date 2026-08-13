@@ -85,6 +85,13 @@ export function runOpenCode({
   if (!v2 && !sessionId) {
     args.push('--dir', worktreePath);
   }
+  if (v2) {
+    // V2 talks to the persistent background service, which would spawn the
+    // MCP server without the per-run MCP_SESSION_TOKEN (and without user
+    // context). A private per-run server (--standalone) inherits the env, so
+    // scoped MCP access keeps working exactly like V1.
+    args.push('--standalone');
+  }
 
   const displayArgs = args.map((a) =>
     a === prompt ? `<prompt:${a.length} chars>` : a.includes(' ') ? `"${a}"` : a
