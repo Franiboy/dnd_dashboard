@@ -44,6 +44,9 @@ AI_CHEAP_MODEL=opencode/deepseek-v4-flash-free
 # Set to `opencode2` to use the V2 CLI. In V2 mode the CLI talks to a running
 # `opencode2` background service (started via `opencode2 service start` or
 # `opencode2 serve --service`), enabling reusable and deletable sessions.
+# AI runs themselves use `--standalone` (private per-run server) so the
+# per-run MCP token and user context keep working; the background service
+# serves session listing and cleanup.
 # AI_OPENCODE_BIN=opencode
 
 # Bingo AI suggestions (optional)

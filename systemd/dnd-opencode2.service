@@ -9,6 +9,7 @@ User=franiboy
 WorkingDirectory=/dnd_dashboard
 Environment=PATH=/home/franiboy/.opencode/bin:/home/franiboy/.nvm/current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin
 ExecStart=/home/franiboy/.opencode/bin/opencode2 serve --service
+ExecStop=/home/franiboy/.opencode/bin/opencode2 service stop
 Restart=on-failure
 RestartSec=3
 StartLimitIntervalSec=60
