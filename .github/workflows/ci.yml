@@ -1,9 +1,13 @@
-name: CI
+name: CI/CD
 
 on:
   push:
     branches: [main]
   pull_request:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci:
@@ -26,3 +30,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  deploy:
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    steps:
+      - name: Run deploy script
+        run: /home/franiboy/bin/dnd-deploy.sh
+        shell: bash
