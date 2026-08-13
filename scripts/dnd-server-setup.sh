@@ -71,7 +71,7 @@ else
 fi
 
 # --- 3. systemd units (dashboardservice, socket, timers) ----------------------
-SERVICES=(dnd-dashboard.service dnd-dashboard.socket dnd-backup.service dnd-backup.timer dnd-healthcheck.service dnd-healthcheck.timer)
+SERVICES=(dnd-dashboard.service dnd-dashboard.socket dnd-backup.service dnd-backup.timer dnd-healthcheck.service dnd-healthcheck.timer dnd-opencode2.service)
 for unit in "${SERVICES[@]}"; do
   if [ -f "$REPO_DIR/systemd/$unit" ]; then
     sudo cp "$REPO_DIR/systemd/$unit" "/etc/systemd/system/$unit"
@@ -79,11 +79,12 @@ for unit in "${SERVICES[@]}"; do
   fi
 done
 sudo systemctl daemon-reload
+sudo systemctl enable --now dnd-opencode2.service
 sudo systemctl enable --now dnd-dashboard.socket
 sudo systemctl enable --now dnd-dashboard.service
 sudo systemctl enable --now dnd-backup.timer
 sudo systemctl enable --now dnd-healthcheck.timer
-log "systemd units enabled (dashboard + socket + timers)"
+log "systemd units enabled (dashboard + socket + timers + opencode2)"
 
 # --- 4. nginx reverse proxy ---------------------------------------------------
 if [ -f "$REPO_DIR/deploy/nginx-dnd-dashboard.conf" ]; then

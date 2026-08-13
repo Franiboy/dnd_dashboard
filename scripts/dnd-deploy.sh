@@ -87,6 +87,16 @@ if ! npm run build >>"$LOG" 2>&1; then
   exit 1
 fi
 
+# Install/refresh systemd units (new or changed units land here on deploy).
+if command -v systemctl >/dev/null 2>&1; then
+  for unit in systemd/*.service systemd/*.socket systemd/*.timer; do
+    [ -f "$unit" ] || continue
+    sudo cp "$unit" "/etc/systemd/system/$(basename "$unit")"
+  done
+  sudo systemctl daemon-reload
+  sudo systemctl enable dnd-opencode2.service >>"$LOG" 2>&1 || true
+fi
+
 log "Restarting service..."
 sudo systemctl restart dnd-dashboard >>"$LOG" 2>&1
 
