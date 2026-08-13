@@ -26,9 +26,11 @@ jobs:
         run: |
           # Self-hosted runner: keep node_modules across runs (checkout clean:false).
           # npm ci always reinstalls from scratch, so skip it when the lockfile +
-          # Node version are unchanged. Marker lives in _temp (outside checkout).
+          # Node version are unchanged. Marker lives in the persistent home dir
+          # (runner _temp is cleared after every job).
           hash="$(sha256sum package-lock.json | cut -d' ' -f1)-$(node -v)"
-          marker="$RUNNER_TEMP/dnd-npm-$hash"
+          marker="$HOME/.cache/dnd-ci/npm-$hash"
+          mkdir -p "$HOME/.cache/dnd-ci"
           if [ -f "$marker" ] && [ -d node_modules ]; then
             echo "node_modules unchanged, skipping npm ci"
           else
