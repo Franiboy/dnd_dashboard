@@ -20,8 +20,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "check": "npm run format && npm run lint:fix && npm test",
     "prepare": "husky"
   },
   "dependencies": {
