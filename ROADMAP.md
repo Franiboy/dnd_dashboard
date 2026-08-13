@@ -45,16 +45,16 @@ Fokus: Technische Schulden reduzieren, Vertrauen in Änderungen schaffen.
 | --- | -------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
 | 1.1 | **Test-Infrastruktur**                 | Verlässliche Rückmeldung bei Refactorings         | Vitest für Server eingerichtet; Unit-Tests für `repositories/`, `auth.ts`, `ai/actions.ts`; Integrationstests mit `dnd_test.db`; `npm test` lauffähig | ✅ erledigt |
 | 1.2 | **CI/CD Pipeline**                     | Keine Regressionen mehr unbemerkt                 | GitHub Actions Workflow für `lint`, `build`, `test` bei push/PR + Deploy bei `main` (`.github/workflows/ci-cd.yml`, Self-Hosted-Runner)               | ✅ erledigt |
-| 1.3 | **Zentrale Konfigurationsvalidierung** | `.env`-Fehler früh erkennen                       | `zod`-Schema für alle env-vars; klare Fehlermeldung beim Server-Start                                                                                 | ⏳ offen    |
-| 1.4 | **Zentrale Express-Fehlerbehandlung**  | Weniger duplizierter Code, bessere HTTP-Responses | `errorHandler`-Middleware; eigene `AppError`-Klasse; 404/500-Responses zentralisiert                                                                  | ⏳ offen    |
+| 1.3 | **Zentrale Konfigurationsvalidierung** | `.env`-Fehler früh erkennen                       | `zod`-Schema für alle env-vars; klare Fehlermeldung beim Server-Start (`server/env.ts` + `validateEnv`)                                               | ✅ erledigt |
+| 1.4 | **Zentrale Express-Fehlerbehandlung**  | Weniger duplizierter Code, bessere HTTP-Responses | `errorHandler`-Middleware; eigene `AppError`-Klasse; 404/500-Responses zentralisiert (`server/errors.ts`)                                             | ✅ erledigt |
 | 1.5 | **TypeScript härten**                  | Typ-Sicherheit erhöhen                            | Kein `any` in `auth.ts`/Routes; `cookie-parser`-Typen korrekt integriert                                                                              | ✅ erledigt |
-| 1.6 | **Health & Readiness Endpoints**       | Betrieb leichter überwachen                       | `/health`, `/ready`; DB-Check; optional Memory/Version (aktuell nur `/health`, ohne DB-Check/`/ready`)                                                | 🟡 teilw.   |
+| 1.6 | **Health & Readiness Endpoints**       | Betrieb leichter überwachen                       | `/health`, `/ready` mit DB-Check; Cache-Control deaktiviert (`index.ts`)                                                                              | ✅ erledigt |
 
 **Quick Wins in Phase 1:**
 
 - ✅ `npm run test` als Alias für Vitest ist eingerichtet (statt nur `test:server`).
-- `.env.example` um fehlende Variablen ergänzen und gegen `zod`-Schema prüfen (Epic 1.3).
-- `migrations.ts` aufsplitten in datierte Dateien (z. B. `migrations/001_create_users.ts`) – die Datei ist inzwischen rund 600 Zeilen lang.
+- ✅ `.env`-Validierung über `zod`-Schema in `server/env.ts` (Epic 1.3) umgesetzt.
+- ✅ `migrations.ts` (vorher ~600 Zeilen) durch ein **deklaratives Schema-Diff** (`server/schema.ts` + Diff-Engine in `server/migrations.ts`) ersetzt: Ziel-Schema, fehlende Tabellen/Spalten/Indizes werden automatisch angelegt; nicht-generierbare Daten-Migrationen laufen als Code-Hooks.
 
 ---
 
@@ -149,10 +149,12 @@ Fokus: Produktion, Multi-User-Betrieb, erweiterte Features.
 ## 7. Nächste konkrete Schritte (Was als erstes angehen)
 
 1. `ROADMAP.md` mit dem Team abstimmen und priorisieren.
-2. ~~Epic 1.1 (Vitest + erste Tests) und 1.2 (GitHub Actions) in einem kleinen Spike umsetzen~~ – beides ist erledigt.
-3. `migrations.ts` refactoren, um zukünftige Schema-Änderungen übersichtlicher zu machen.
-4. `.env`-Validierung mit `zod` implementieren (Epic 1.3).
-5. Health-Checks vervollständigen, damit ein zukünftiges Deployment überwacht werden kann (Epic 1.6: `/ready` + DB-Check ergänzen).
+2. ~~Epic 1.1 (Vitest + erste Tests) und 1.2 (GitHub Actions)~~ – erledigt.
+3. ~~`migrations.ts` refactoren~~ – erledigt: deklaratives Schema-Diff (`server/schema.ts` + `server/migrations.ts`).
+4. ~~`.env`-Validierung mit `zod`~~ – erledigt (`server/env.ts`).
+5. ~~Health-Checks vervollständigen~~ – erledigt (`/health`, `/ready` mit DB-Check).
+
+**Phase 1 ist damit vollständig umgesetzt. Als Nächstes (Phase 2):** Epic 2.1 (persistente KI-Job-Queue) und 2.2 (KI-Provider-Abstraktion) sind die größten Hebel.
 
 ---
 
