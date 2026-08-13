@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Auto-deploy: fast-forward pulls the repo, rebuilds D&D Dashboard,
+# verifies health afterwards and rolls back on failure.
+set -euo pipefail
+
+# Use nvm-managed Node (systemd does not load nvm)
+export NVM_DIR="/home/franiboy/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+export PATH="/home/franiboy/.nvm/versions/node/v24.15.0/bin:$PATH"
+
+REPO="/dnd_dashboard"
+BRANCH="main"
+LOG="/home/franiboy/logs/dnd-deploy.log"
+LOCK="/tmp/dnd-deploy.lock"
+HEALTH_URL="http://localhost:3001/health"
+HEALTH_RETRIES=12
+HEALTH_SLEEP=5
+
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
+}
+
+# Prevent overlapping runs
+exec 9>"$LOCK"
+if ! flock -n 9; then
+  log "Another run is in progress, skipping"
+  exit 0
+fi
+
+cd "$REPO"
+
+git fetch --quiet origin "$BRANCH" 2>>"$LOG"
+
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse "origin/$BRANCH")
+
+if [ "$LOCAL" = "$REMOTE" ]; then
+  exit 0
+fi
+
+log "Change detected: $LOCAL -> $REMOTE"
+
+# Never discard local work: refuse to deploy on a dirty tracked working tree.
+if ! git diff --quiet; then
+  log "ABORTED: working tree has uncommitted changes; refusing to deploy"
+  exit 1
+fi
+
+log "Pull changes (fast-forward only)..."
+if ! git merge --ff-only "origin/$BRANCH" >>"$LOG" 2>&1; then
+  log "ABORTED: fast-forward merge failed (local commits ahead?); refusing to deploy"
+  exit 1
+fi
+
+# Only reinstall if package-lock/package.json changed between OLD and NEW
+if ! git diff --quiet "$LOCAL" "$REMOTE" -- package-lock.json package.json 2>/dev/null; then
+  log "package-lock/package.json changed, running npm ci..."
+  if ! npm ci >>"$LOG" 2>&1; then
+    log "npm ci failed; restoring $LOCAL"
+    git checkout -f "$LOCAL" >>"$LOG" 2>&1
+    exit 1
+  fi
+fi
+
+log "Building..."
+if ! npm run build >>"$LOG" 2>&1; then
+  log "Build failed; restoring $LOCAL"
+  git checkout -f "$LOCAL" >>"$LOG" 2>&1
+  exit 1
+fi
+
+log "Restarting service..."
+sudo systemctl restart dnd-dashboard >>"$LOG" 2>&1
+
+# Verify the new build is actually healthy before accepting the deployment.
+for i in $(seq 1 "$HEALTH_RETRIES"); do
+  if curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
+    log "Health check OK"
+    log "Deploy complete. New HEAD: $(git rev-parse HEAD)"
+    exit 0
+  fi
+  sleep "$HEALTH_SLEEP"
+done
+
+log "HEALTH CHECK FAILED for $REMOTE; rolling back to $LOCAL"
+git checkout -f "$LOCAL" >>"$LOG" 2>&1
+npm ci >>"$LOG" 2>&1
+npm run build >>"$LOG" 2>&1
+sudo systemctl restart dnd-dashboard >>"$LOG" 2>&1
+
+for i in $(seq 1 "$HEALTH_RETRIES"); do
+  if curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
+    log "Rollback to $LOCAL health check OK"
+    exit 1
+  fi
+  sleep "$HEALTH_SLEEP"
+done
+
+log "CRITICAL: rollback also failed health check"
+exit 1
