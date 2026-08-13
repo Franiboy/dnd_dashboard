@@ -1,14 +1,15 @@
 [Unit]
 Description=D&D Dashboard (Node.js production)
-After=network.target
+After=network.target dnd-dashboard.socket
+Requires=dnd-dashboard.socket
 
 [Service]
 Type=simple
 User=franiboy
 WorkingDirectory=/dnd_dashboard
 Environment=NODE_ENV=production
-Environment=PATH=/home/franiboy/.nvm/versions/node/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin
-ExecStart=/home/franiboy/.nvm/versions/node/v24.15.0/bin/node /dnd_dashboard/dist-server/server/index.js
+Environment=PATH=/home/franiboy/.nvm/current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin
+ExecStart=/home/franiboy/.nvm/current/bin/node /dnd_dashboard/dist-server/server/index.js
 Restart=on-failure
 RestartSec=3
 StartLimitIntervalSec=60

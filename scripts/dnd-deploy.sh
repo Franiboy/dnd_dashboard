@@ -6,10 +6,9 @@
 # with DND_DEPLOY_REPO when invoking from a different checkout (CI).
 set -euo pipefail
 
-# Use nvm-managed Node (systemd does not load nvm)
+# Use the default nvm-managed Node (never hardcode a version; .nvmrc rules).
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-export PATH="${NVM_DIR}/versions/node/v24.15.0/bin:$PATH"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use --silent default
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${DND_DEPLOY_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"

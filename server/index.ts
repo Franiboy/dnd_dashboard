@@ -153,9 +153,17 @@ if (process.env.NODE_ENV === 'production') {
 
 setupSocket(io);
 
-http.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+// Under systemd socket activation the listening socket is passed as fd 3
+// (LISTEN_FDS=1); fall back to binding PORT directly in dev/tests.
+if (Number(process.env.LISTEN_FDS || 0) > 0) {
+  http.listen({ fd: 3 }, () => {
+    console.log(`Server running on http://localhost:${PORT} (systemd socket activation)`);
+  });
+} else {
+  http.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
 
 let isShuttingDown = false;
 
