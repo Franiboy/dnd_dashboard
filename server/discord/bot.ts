@@ -32,7 +32,11 @@ import { createLogger } from '../logger.js';
 const log = createLogger('discord-bot');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMembers],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMembers,
+  ],
 });
 
 let botReady = false;
@@ -91,7 +95,10 @@ async function loginWithRetry(): Promise<void> {
       return;
     } catch (err) {
       if (botLoginStopped) return;
-      log.error(`Discord bot login failed (attempt ${attempt}), retrying in ${Math.round(delayMs / 1000)}s:`, err);
+      log.error(
+        `Discord bot login failed (attempt ${attempt}), retrying in ${Math.round(delayMs / 1000)}s:`,
+        err
+      );
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       delayMs = Math.min(delayMs * 2, LOGIN_RETRY_MAX_DELAY_MS);
       attempt += 1;
@@ -164,7 +171,11 @@ export async function getVoiceChannels(): Promise<RecordingChannel[]> {
           // member not fetchable, fallback below
         }
       }
-      const displayName = member?.displayName ?? member?.user.username ?? client.users.cache.get(state.id)?.username ?? state.id;
+      const displayName =
+        member?.displayName ??
+        member?.user.username ??
+        client.users.cache.get(state.id)?.username ??
+        state.id;
       participants.push(displayName);
     }
 
@@ -197,7 +208,11 @@ export async function getAllVoiceChannels(): Promise<RecordingChannel[]> {
     const participants: string[] = [];
     for (const state of voiceStates.values()) {
       const member = state.member;
-      const displayName = member?.displayName ?? member?.user.username ?? client.users.cache.get(state.id)?.username ?? state.id;
+      const displayName =
+        member?.displayName ??
+        member?.user.username ??
+        client.users.cache.get(state.id)?.username ??
+        state.id;
       participants.push(displayName);
     }
     participants.sort((a, b) => a.localeCompare(b));
@@ -265,8 +280,10 @@ async function handleVoiceStateUpdate(oldState: VoiceState, newState: VoiceState
   const guild = getGuild();
   if (!guild) return;
 
-  const joinedMonitored = newState.channelId === monitoredChannelId && oldState.channelId !== monitoredChannelId;
-  const leftMonitored = oldState.channelId === monitoredChannelId && newState.channelId !== monitoredChannelId;
+  const joinedMonitored =
+    newState.channelId === monitoredChannelId && oldState.channelId !== monitoredChannelId;
+  const leftMonitored =
+    oldState.channelId === monitoredChannelId && newState.channelId !== monitoredChannelId;
 
   if (!joinedMonitored && !leftMonitored) return;
 
@@ -285,7 +302,7 @@ async function handleVoiceStateUpdate(oldState: VoiceState, newState: VoiceState
 export async function beginRecording(
   channelId: string,
   sessionName: string,
-  createdBy: string,
+  createdBy: string
 ): Promise<RecordingSession> {
   if (isRecording()) {
     throw new Error('Es läuft bereits eine Aufnahme');
@@ -329,7 +346,10 @@ export async function beginRecording(
     try {
       await finishRecording(disconnectedSessionId);
     } catch (err) {
-      log.error(`Failed to finish recording after disconnect for session ${disconnectedSessionId}:`, err);
+      log.error(
+        `Failed to finish recording after disconnect for session ${disconnectedSessionId}:`,
+        err
+      );
     }
   });
 
@@ -344,7 +364,7 @@ function reconstructSegments(
   pcmSize: number,
   sampleRate: number,
   channels: number,
-  bitDepth: number,
+  bitDepth: number
 ): PcmSegment[] | undefined {
   const state = readSegmentState(pcmPath);
   if (!state || state.version !== 1 || !Array.isArray(state.segments)) {
@@ -440,7 +460,13 @@ async function recoverRecording(sessionId: number): Promise<RecordingSession> {
       }
 
       if (pcmStat) {
-        const segments = reconstructSegments(file.pcmPath, pcmStat.size, SAMPLE_RATE, CHANNELS, BIT_DEPTH);
+        const segments = reconstructSegments(
+          file.pcmPath,
+          pcmStat.size,
+          SAMPLE_RATE,
+          CHANNELS,
+          BIT_DEPTH
+        );
         await writeWavFromPcm(file.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH, segments);
         await removePcmFile(file.pcmPath);
         removeSegmentFile(file.pcmPath);
@@ -507,7 +533,11 @@ async function recoverRecording(sessionId: number): Promise<RecordingSession> {
 
   const stoppedAt = new Date().toISOString();
   if (recovered.length === 0) {
-    updateSession(sessionId, { status: 'error', stoppedAt, error: 'Aufnahme wurde unterbrochen; keine Audio-Daten gefunden.' });
+    updateSession(sessionId, {
+      status: 'error',
+      stoppedAt,
+      error: 'Aufnahme wurde unterbrochen; keine Audio-Daten gefunden.',
+    });
     emitSessionsUpdated();
     throw new Error('Aufnahme wurde unterbrochen; keine Audio-Daten gefunden');
   }
@@ -549,7 +579,11 @@ export async function recoverAllRecordings(): Promise<void> {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error(`Failed to recover recording session ${session.id}:`, err);
-      updateSession(session.id, { status: 'error', stoppedAt: new Date().toISOString(), error: message });
+      updateSession(session.id, {
+        status: 'error',
+        stoppedAt: new Date().toISOString(),
+        error: message,
+      });
       emitSessionsUpdated();
     }
   }
@@ -576,7 +610,11 @@ export async function finishRecording(sessionId: number): Promise<RecordingSessi
 
   const stoppedAt = new Date().toISOString();
   if (files.length === 0) {
-    updateSession(sessionId, { status: 'error', stoppedAt, error: 'Keine Audio-Daten aufgezeichnet.' });
+    updateSession(sessionId, {
+      status: 'error',
+      stoppedAt,
+      error: 'Keine Audio-Daten aufgezeichnet.',
+    });
     emitSessionsUpdated();
     throw new Error('Keine Audio-Daten aufgezeichnet');
   }

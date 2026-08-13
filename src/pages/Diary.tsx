@@ -96,7 +96,12 @@ const quillModules = {
       ['clean'],
     ],
     handlers: {
-      table: function (this: { quill: { getSelection: () => { index: number } | null; clipboard: { dangerouslyPasteHTML: (index: number, html: string) => void } } }) {
+      table: function (this: {
+        quill: {
+          getSelection: () => { index: number } | null;
+          clipboard: { dangerouslyPasteHTML: (index: number, html: string) => void };
+        };
+      }) {
         const rowsInput = prompt('Anzahl Zeilen:', '2');
         const colsInput = prompt('Anzahl Spalten:', '2');
         const rows = parseInt(rowsInput || '0', 10);
@@ -173,7 +178,8 @@ export function Diary() {
   const { showSuccess, showError } = useError();
   const [searchParams] = useSearchParams();
   const draftKeyPrefix = user?.id ? `${DRAFT_KEY_PREFIX}${user.id}-` : DRAFT_KEY_PREFIX;
-  const getDraftKey = (entryId: number, kind: 'original' | 'rewritten') => `${draftKeyPrefix}${entryId}-${kind}`;
+  const getDraftKey = (entryId: number, kind: 'original' | 'rewritten') =>
+    `${draftKeyPrefix}${entryId}-${kind}`;
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
   const entriesRef = useRef(entries);
   const entryRefs = useRef<Record<number, HTMLElement>>({});
@@ -185,13 +191,20 @@ export function Diary() {
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
-  const [draftOriginal, setDraftOriginal] = useState<Record<number, { raw: string; normalized: string }>>({});
-  const [draftRewritten, setDraftRewritten] = useState<Record<number, { raw: string; normalized: string }>>({});
+  const [draftOriginal, setDraftOriginal] = useState<
+    Record<number, { raw: string; normalized: string }>
+  >({});
+  const [draftRewritten, setDraftRewritten] = useState<
+    Record<number, { raw: string; normalized: string }>
+  >({});
   const quillRefs = useRef<Record<number, ReactQuill>>({});
   const highlightTimeouts = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const autoSaveTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const serverSaveTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const draftRawRefs = useRef<{ original: Record<number, string>; rewritten: Record<number, string> }>({
+  const draftRawRefs = useRef<{
+    original: Record<number, string>;
+    rewritten: Record<number, string>;
+  }>({
     original: {},
     rewritten: {},
   });
@@ -216,7 +229,8 @@ export function Diary() {
       for (const [id, raw] of Object.entries(draftRawRefs.current.original)) {
         const content = normalizeDraftHtml(raw);
         const current = entriesRef.current.find((e) => e.id === Number(id));
-        if (!current || content === normalizeDraftHtml(current.content) || isEmptyHtml(content)) continue;
+        if (!current || content === normalizeDraftHtml(current.content) || isEmptyHtml(content))
+          continue;
         try {
           fetch(`/api/diary/entries/${id}`, {
             method: 'PUT',
@@ -338,7 +352,6 @@ export function Diary() {
     return () => clearTimeout(timer);
   }, [mappings, expandedIds]);
 
-
   function resetForm() {
     setForm({ title: '', content: '' });
     setFormError(null);
@@ -372,7 +385,10 @@ export function Diary() {
 
     setAiOperation(true);
     setAiStatus('Eintrag wird erstellt und analysiert...');
-    await Promise.race([sseReadyRef.current, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
+    await Promise.race([
+      sseReadyRef.current,
+      new Promise<void>((resolve) => setTimeout(resolve, 500)),
+    ]);
     setWorking(true);
 
     let res;
@@ -420,11 +436,17 @@ export function Diary() {
     setProcessingRewriteId(entry.id);
     setAiOperation(true);
     setAiStatus('Text wird von KI umgeschrieben...');
-    await Promise.race([sseReadyRef.current, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
+    await Promise.race([
+      sseReadyRef.current,
+      new Promise<void>((resolve) => setTimeout(resolve, 500)),
+    ]);
     setWorking(true);
-    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}/rewrite`, {
-      method: 'POST',
-    });
+    const { data, error } = await request<{ entry: DiaryEntry }>(
+      `/api/diary/entries/${entry.id}/rewrite`,
+      {
+        method: 'POST',
+      }
+    );
     setWorking(false);
     setAiOperation(false);
     setProcessingRewriteId(null);
@@ -445,13 +467,19 @@ export function Diary() {
     setProcessingCommandId(entry.id);
     setAiOperation(true);
     setAiStatus('KI führt Befehl aus...');
-    await Promise.race([sseReadyRef.current, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
+    await Promise.race([
+      sseReadyRef.current,
+      new Promise<void>((resolve) => setTimeout(resolve, 500)),
+    ]);
     setWorking(true);
-    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}/rewrite-command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: command.trim() }),
-    });
+    const { data, error } = await request<{ entry: DiaryEntry }>(
+      `/api/diary/entries/${entry.id}/rewrite-command`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: command.trim() }),
+      }
+    );
     setWorking(false);
     setAiOperation(false);
     setProcessingCommandId(null);
@@ -472,11 +500,17 @@ export function Diary() {
     setProcessingSummaryId(entry.id);
     setAiOperation(true);
     setAiStatus('Zusammenfassung und Personen werden neu generiert...');
-    await Promise.race([sseReadyRef.current, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
+    await Promise.race([
+      sseReadyRef.current,
+      new Promise<void>((resolve) => setTimeout(resolve, 500)),
+    ]);
     setWorking(true);
-    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}/summarize`, {
-      method: 'POST',
-    });
+    const { data, error } = await request<{ entry: DiaryEntry }>(
+      `/api/diary/entries/${entry.id}/summarize`,
+      {
+        method: 'POST',
+      }
+    );
     setWorking(false);
     setAiOperation(false);
     setProcessingSummaryId(null);
@@ -491,10 +525,12 @@ export function Diary() {
 
   function getEditingContent(entry: DiaryEntry): string {
     if (viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath) {
-      const raw = draftRewritten[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'rewritten'));
+      const raw =
+        draftRewritten[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'rewritten'));
       return raw ?? entry.rewrittenContent ?? '';
     }
-    const raw = draftOriginal[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'original'));
+    const raw =
+      draftOriginal[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'original'));
     return raw ?? entry.content;
   }
 
@@ -530,11 +566,18 @@ export function Diary() {
     }
   }
 
-  function scheduleDraftSave(entry: DiaryEntry, kind: 'original' | 'rewritten', raw: string, normalized: string) {
+  function scheduleDraftSave(
+    entry: DiaryEntry,
+    kind: 'original' | 'rewritten',
+    raw: string,
+    normalized: string
+  ) {
     const key = getDraftKey(entry.id, kind);
     const timeoutKey = `${entry.id}-${kind}`;
     clearTimeout(autoSaveTimeouts.current[timeoutKey]);
-    const canonical = normalizeDraftHtml(kind === 'original' ? entry.content : (entry.rewrittenContent ?? ''));
+    const canonical = normalizeDraftHtml(
+      kind === 'original' ? entry.content : (entry.rewrittenContent ?? '')
+    );
     if (normalized === canonical || isEmptyHtml(normalized)) {
       localStorage.removeItem(key);
       delete autoSaveTimeouts.current[timeoutKey];
@@ -551,7 +594,12 @@ export function Diary() {
     }, 500);
   }
 
-  function handleQuillChange(entry: DiaryEntry, value: string, source: string, kind: 'original' | 'rewritten') {
+  function handleQuillChange(
+    entry: DiaryEntry,
+    value: string,
+    source: string,
+    kind: 'original' | 'rewritten'
+  ) {
     const setDraft = kind === 'original' ? setDraftOriginal : setDraftRewritten;
     const normalized = normalizeDraftHtml(value);
     setDraft((prev) => {
@@ -594,7 +642,11 @@ export function Diary() {
     }, SERVER_SAVE_DELAY_MS);
   }
 
-  async function saveOriginalToServer(entry: DiaryEntry, rawDraft: string, notifyError = true): Promise<boolean> {
+  async function saveOriginalToServer(
+    entry: DiaryEntry,
+    rawDraft: string,
+    notifyError = true
+  ): Promise<boolean> {
     const content = normalizeDraftHtml(rawDraft);
     const currentEntry = entriesRef.current.find((e) => e.id === entry.id) ?? entry;
     const canonical = normalizeDraftHtml(currentEntry.content);
@@ -617,7 +669,7 @@ export function Diary() {
           if (e.id !== entry.id) return e;
           if (e.updatedAt && data.entry.updatedAt < e.updatedAt) return e;
           return data.entry;
-        }),
+        })
       );
       const rawAtSend = draftRawRefs.current.original[entry.id] ?? rawDraft;
       const noNewerChanges = draftRawRefs.current.original[entry.id] === rawAtSend;
@@ -642,8 +694,11 @@ export function Diary() {
   }
 
   async function handleAcceptRewritten(entry: DiaryEntry) {
-    const rawDraft = draftRewritten[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'rewritten'));
-    const content = rawDraft ? normalizeDraftHtml(rawDraft) : normalizeDraftHtml(entry.rewrittenContent ?? '');
+    const rawDraft =
+      draftRewritten[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'rewritten'));
+    const content = rawDraft
+      ? normalizeDraftHtml(rawDraft)
+      : normalizeDraftHtml(entry.rewrittenContent ?? '');
     if (!entry.rewrittenFilePath || isEmptyHtml(content)) return;
     setWorking(true);
     const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
@@ -722,7 +777,9 @@ export function Diary() {
     } else {
       const entry = entries.find((e) => e.id === id);
       const rawDraft =
-        draftRawRefs.current.original[id] ?? draftOriginal[id]?.raw ?? localStorage.getItem(getDraftKey(id, 'original'));
+        draftRawRefs.current.original[id] ??
+        draftOriginal[id]?.raw ??
+        localStorage.getItem(getDraftKey(id, 'original'));
       if (entry && rawDraft) {
         clearServerSaveTimeout(id);
         await saveOriginalToServer(entry, rawDraft, false);
@@ -848,7 +905,17 @@ export function Diary() {
           id="create"
           label="Neuer Eintrag"
           icon={
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
@@ -878,316 +945,420 @@ export function Diary() {
 
       <div className="flex-1 min-h-0 overflow-auto -mx-6 px-6">
         {entries.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  <p className="text-slate-400">Noch keine Tagebucheinträge vorhanden.</p>
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <p className="text-slate-400">Noch keine Tagebucheinträge vorhanden.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {entries.map((entry) => (
+              <article
+                key={entry.id}
+                ref={(el) => {
+                  if (el) entryRefs.current[entry.id] = el;
+                }}
+                className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 transition"
+              >
+                <div className="flex items-start justify-between gap-4 mb-3">
+                  {editingTitleId === entry.id ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="text"
+                        value={editingTitleText}
+                        onChange={(e) => setEditingTitleText(e.target.value)}
+                        disabled={working}
+                        className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-lg font-semibold"
+                      />
+                      <Button
+                        variant="accent"
+                        onClick={() => saveTitleEdit(entry)}
+                        disabled={working || !editingTitleText.trim()}
+                      >
+                        Speichern
+                      </Button>
+                      <Button variant="ghost" onClick={cancelTitleEdit} disabled={working}>
+                        Abbrechen
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-1 flex-wrap">
+                      <h3 className="text-lg font-semibold text-[var(--text-h)]">{entry.title}</h3>
+                      {entry.sessionDraftFor && (
+                        <Link
+                          to={`/sessions?session=${entry.sessionDraftFor}`}
+                          className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/30 hover:bg-[var(--accent)]/30 transition"
+                          title={
+                            entry.sessionDraftForName
+                              ? `Springe zu Session „${entry.sessionDraftForName}“`
+                              : 'Springe zur Session'
+                          }
+                        >
+                          {entry.sessionDraftForName
+                            ? `Session: ${entry.sessionDraftForName}`
+                            : 'Session-Vorschlag'}
+                        </Link>
+                      )}
+                      <button
+                        type="button"
+                        title="Titel bearbeiten"
+                        onClick={() => startTitleEdit(entry)}
+                        disabled={working}
+                        className="text-slate-400 hover:text-[var(--accent)] transition disabled:opacity-50"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2 justify-end">
+                    <Button
+                      variant="danger"
+                      onClick={() => handleDelete(entry.id)}
+                      disabled={working}
+                    >
+                      Löschen
+                    </Button>
+                  </div>
                 </div>
-              ) : (
-              <div className="space-y-4">
-              {entries.map((entry) => (
-                <article
-                  key={entry.id}
-                  ref={(el) => {
-                    if (el) entryRefs.current[entry.id] = el;
-                  }}
-                  className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 transition"
+
+                <div
+                  className={`mb-3 p-3 rounded-lg border ${entry.aiDirty ? 'bg-amber-900/20 border-amber-500/30' : 'bg-[var(--accent)]/10 border-[var(--accent)]/20'}`}
                 >
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    {editingTitleId === entry.id ? (
-                      <div className="flex items-center gap-2 flex-1">
-                        <input
-                          type="text"
-                          value={editingTitleText}
-                          onChange={(e) => setEditingTitleText(e.target.value)}
-                          disabled={working}
-                          className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-lg font-semibold"
-                        />
-                        <Button variant="accent" onClick={() => saveTitleEdit(entry)} disabled={working || !editingTitleText.trim()}>
-                          Speichern
-                        </Button>
-                        <Button variant="ghost" onClick={cancelTitleEdit} disabled={working}>
-                          Abbrechen
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 flex-1 flex-wrap">
-                        <h3 className="text-lg font-semibold text-[var(--text-h)]">{entry.title}</h3>
-                        {entry.sessionDraftFor && (
-                          <Link
-                            to={`/sessions?session=${entry.sessionDraftFor}`}
-                            className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/30 hover:bg-[var(--accent)]/30 transition"
-                            title={entry.sessionDraftForName ? `Springe zu Session „${entry.sessionDraftForName}“` : 'Springe zur Session'}
+                  <div className="flex items-center justify-between mb-1">
+                    <p
+                      className={`text-sm font-semibold ${entry.aiDirty ? 'text-amber-500' : 'text-[var(--accent)]'}`}
+                    >
+                      Zusammenfassung
+                    </p>
+                    {editingSummaryId !== entry.id && (
+                      <div className="flex items-center gap-2">
+                        {entry.aiDirty || !entry.summary ? (
+                          <button
+                            type="button"
+                            title="Zusammenfassung aktualisieren"
+                            onClick={() => handleGenerateSummary(entry)}
+                            disabled={working || processingSummaryId === entry.id}
+                            className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
                           >
-                            {entry.sessionDraftForName ? `Session: ${entry.sessionDraftForName}` : 'Session-Vorschlag'}
-                          </Link>
+                            {processingSummaryId === entry.id
+                              ? 'Wird generiert...'
+                              : entry.summary
+                                ? 'Aktualisieren'
+                                : 'Generieren'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            title="Zusammenfassung neu generieren"
+                            onClick={() => handleGenerateSummary(entry)}
+                            disabled={working}
+                            className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
+                          >
+                            {processingSummaryId === entry.id ? (
+                              <svg
+                                className="animate-spin"
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                              </svg>
+                            ) : (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                <path d="M21 4v6h-6" />
+                              </svg>
+                            )}
+                          </button>
                         )}
                         <button
                           type="button"
-                          title="Titel bearbeiten"
-                          onClick={() => startTitleEdit(entry)}
+                          title="Zusammenfassung bearbeiten"
+                          onClick={() => startSummaryEdit(entry)}
                           disabled={working}
-                          className="text-slate-400 hover:text-[var(--accent)] transition disabled:opacity-50"
+                          className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                           </svg>
                         </button>
                       </div>
                     )}
-                    <div className="flex flex-wrap gap-2 justify-end">
-                      <Button variant="danger" onClick={() => handleDelete(entry.id)} disabled={working}>
-                        Löschen
-                      </Button>
-                    </div>
                   </div>
 
-                  <div className={`mb-3 p-3 rounded-lg border ${entry.aiDirty ? 'bg-amber-900/20 border-amber-500/30' : 'bg-[var(--accent)]/10 border-[var(--accent)]/20'}`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className={`text-sm font-semibold ${entry.aiDirty ? 'text-amber-500' : 'text-[var(--accent)]'}`}>Zusammenfassung</p>
-                      {editingSummaryId !== entry.id && (
-                        <div className="flex items-center gap-2">
-                          {entry.aiDirty || !entry.summary ? (
-                            <button
-                              type="button"
-                              title="Zusammenfassung aktualisieren"
-                              onClick={() => handleGenerateSummary(entry)}
-                              disabled={working || processingSummaryId === entry.id}
-                              className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
-                            >
-                              {processingSummaryId === entry.id ? 'Wird generiert...' : entry.summary ? 'Aktualisieren' : 'Generieren'}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              title="Zusammenfassung neu generieren"
-                              onClick={() => handleGenerateSummary(entry)}
-                              disabled={working}
-                              className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
-                            >
-                              {processingSummaryId === entry.id ? (
-                                <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {editingSummaryId === entry.id ? (
+                    <div className="space-y-2">
+                      <textarea
+                        value={editingSummaryText}
+                        onChange={(e) => setEditingSummaryText(e.target.value)}
+                        rows={3}
+                        maxLength={SUMMARY_MAX_LENGTH}
+                        disabled={working}
+                        className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-y"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          variant="accent"
+                          onClick={() => saveSummaryEdit(entry)}
+                          disabled={working}
+                        >
+                          Speichern
+                        </Button>
+                        <Button variant="ghost" onClick={cancelSummaryEdit} disabled={working}>
+                          Abbrechen
+                        </Button>
+                      </div>
+                    </div>
+                  ) : entry.summary ? (
+                    <div className="space-y-1">
+                      <p className="text-slate-300 text-sm whitespace-pre-wrap">
+                        <EntityRichText
+                          content={entry.summary}
+                          mappings={mappings}
+                          isHtml={false}
+                        />
+                      </p>
+                      {entry.aiDirty && (
+                        <p className="text-xs text-amber-500 italic">
+                          Zusammenfassung ist veraltet und sollte aktualisiert werden.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-slate-500 text-sm italic">
+                      Noch keine Zusammenfassung vorhanden.
+                    </p>
+                  )}
+                </div>
+
+                <BadgeList items={entry.persons} variant="person" />
+                <BadgeList items={entry.organizations} variant="organization" />
+                <BadgeList items={entry.locations} variant="location" />
+
+                {expandedIds.has(entry.id) ? (
+                  <>
+                    <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                      {entry.rewrittenFilePath ? (
+                        <div className="inline-flex rounded-lg bg-slate-800 p-1 border border-[var(--border)]">
+                          <button
+                            type="button"
+                            onClick={() => setViewRewritten(entry.id, false)}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition ${
+                              !viewingRewrittenIds.has(entry.id)
+                                ? 'bg-[var(--accent)] text-slate-900'
+                                : 'text-slate-300 hover:text-[var(--text-h)]'
+                            }`}
+                          >
+                            Original
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setViewRewritten(entry.id, true)}
+                            disabled={working}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                              viewingRewrittenIds.has(entry.id)
+                                ? 'bg-[var(--accent)] text-slate-900'
+                                : 'text-slate-300 hover:text-[var(--text-h)]'
+                            }`}
+                          >
+                            KI-Version
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-slate-400">Original</span>
+                      )}
+                      <div className="flex items-center gap-2">
+                        {aiEnabled && (
+                          <Button
+                            variant="secondary"
+                            onClick={() => handleRewrite(entry)}
+                            disabled={working || processingRewriteId === entry.id}
+                            title={
+                              entry.rewrittenFilePath
+                                ? 'Weitere Verbesserung der KI-Version anfordern'
+                                : undefined
+                            }
+                            icon={
+                              processingRewriteId === entry.id ? (
+                                <svg
+                                  className="animate-spin"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
                                   <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                                 </svg>
                               ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
                                   <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                                   <path d="M21 4v6h-6" />
                                 </svg>
-                              )}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            title="Zusammenfassung bearbeiten"
-                            onClick={() => startSummaryEdit(entry)}
-                            disabled={working}
-                            className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
+                              )
+                            }
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                          </button>
-                        </div>
-                      )}
+                            {processingRewriteId === entry.id
+                              ? 'Wird verarbeitet...'
+                              : entry.rewrittenFilePath
+                                ? 'KI verbessern'
+                                : 'KI umschreiben'}
+                          </Button>
+                        )}
+                      </div>
                     </div>
 
-                    {editingSummaryId === entry.id ? (
-                      <div className="space-y-2">
-                        <textarea
-                          value={editingSummaryText}
-                          onChange={(e) => setEditingSummaryText(e.target.value)}
-                          rows={3}
-                          maxLength={SUMMARY_MAX_LENGTH}
-                          disabled={working}
-                          className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-y"
-                        />
-                        <div className="flex gap-2">
-                          <Button variant="accent" onClick={() => saveSummaryEdit(entry)} disabled={working}>
-                            Speichern
+                    {viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath ? (
+                      <div className="rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 p-4 mb-4">
+                        <form
+                          className="flex items-center gap-2 mb-3"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const text = rewriteCommands[entry.id] || '';
+                            if (text.trim()) handleRewriteCommand(entry, text);
+                          }}
+                        >
+                          <input
+                            type="text"
+                            value={rewriteCommands[entry.id] || ''}
+                            onChange={(e) =>
+                              setRewriteCommands((prev) => ({
+                                ...prev,
+                                [entry.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="Befehl für KI (z. B. formeller)"
+                            className="px-2 py-1 rounded-md text-sm bg-slate-900 border border-[var(--border)] text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[var(--accent)] w-full max-w-md"
+                            disabled={working || processingCommandId === entry.id}
+                          />
+                          <Button
+                            type="submit"
+                            variant="secondary"
+                            disabled={
+                              working ||
+                              processingCommandId === entry.id ||
+                              !(rewriteCommands[entry.id] || '').trim()
+                            }
+                          >
+                            {processingCommandId === entry.id ? 'Wird verarbeitet...' : 'Ausführen'}
                           </Button>
-                          <Button variant="ghost" onClick={cancelSummaryEdit} disabled={working}>
-                            Abbrechen
+                        </form>
+                        <ReactQuill
+                          ref={(el) => {
+                            if (el) quillRefs.current[entry.id] = el;
+                          }}
+                          theme="snow"
+                          value={getEditingContent(entry)}
+                          onChange={(value, _delta, source) =>
+                            handleQuillChange(entry, value, source, 'rewritten')
+                          }
+                          modules={quillModules}
+                          formats={quillFormats}
+                          readOnly={working}
+                          className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--accent)]/30 mb-4"
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="accent"
+                            onClick={() => handleAcceptRewritten(entry)}
+                            disabled={working || !stripHtml(getEditingContent(entry)).trim()}
+                          >
+                            Übernehmen
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={() => handleDiscardRewritten(entry)}
+                            disabled={working}
+                          >
+                            Verwerfen
                           </Button>
                         </div>
-                      </div>
-                    ) : entry.summary ? (
-                      <div className="space-y-1">
-                        <p className="text-slate-300 text-sm whitespace-pre-wrap">
-                          <EntityRichText content={entry.summary} mappings={mappings} isHtml={false} />
-                        </p>
-                        {entry.aiDirty && (
-                          <p className="text-xs text-amber-500 italic">
-                            Zusammenfassung ist veraltet und sollte aktualisiert werden.
-                          </p>
-                        )}
                       </div>
                     ) : (
-                      <p className="text-slate-500 text-sm italic">Noch keine Zusammenfassung vorhanden.</p>
-                    )}
-                  </div>
-
-                  <BadgeList items={entry.persons} variant="person" />
-                  <BadgeList items={entry.organizations} variant="organization" />
-                  <BadgeList items={entry.locations} variant="location" />
-
-                  {expandedIds.has(entry.id) ? (
-                    <>
-                      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                        {entry.rewrittenFilePath ? (
-                          <div className="inline-flex rounded-lg bg-slate-800 p-1 border border-[var(--border)]">
-                            <button
-                              type="button"
-                              onClick={() => setViewRewritten(entry.id, false)}
-                              className={`px-3 py-1 rounded-md text-sm font-medium transition ${
-                                !viewingRewrittenIds.has(entry.id)
-                                  ? 'bg-[var(--accent)] text-slate-900'
-                                  : 'text-slate-300 hover:text-[var(--text-h)]'
-                              }`}
-                            >
-                              Original
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setViewRewritten(entry.id, true)}
-                              disabled={working}
-                              className={`px-3 py-1 rounded-md text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                                viewingRewrittenIds.has(entry.id)
-                                  ? 'bg-[var(--accent)] text-slate-900'
-                                  : 'text-slate-300 hover:text-[var(--text-h)]'
-                              }`}
-                            >
-                              KI-Version
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-slate-400">Original</span>
-                        )}
-                        <div className="flex items-center gap-2">
-                          {aiEnabled && (
-                            <Button
-                              variant="secondary"
-                              onClick={() => handleRewrite(entry)}
-                              disabled={working || processingRewriteId === entry.id}
-                              title={entry.rewrittenFilePath ? 'Weitere Verbesserung der KI-Version anfordern' : undefined}
-                              icon={
-                                processingRewriteId === entry.id ? (
-                                  <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                                  </svg>
-                                ) : (
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                                    <path d="M21 4v6h-6" />
-                                  </svg>
-                                )
-                              }
-                            >
-                              {processingRewriteId === entry.id
-                                ? 'Wird verarbeitet...'
-                                : entry.rewrittenFilePath
-                                  ? 'KI verbessern'
-                                  : 'KI umschreiben'}
-                            </Button>
-                          )}
-                        </div>
+                      <div className="mb-4">
+                        <ReactQuill
+                          ref={(el) => {
+                            if (el) quillRefs.current[entry.id] = el;
+                          }}
+                          theme="snow"
+                          value={getEditingContent(entry)}
+                          onChange={(value, _delta, source) =>
+                            handleQuillChange(entry, value, source, 'original')
+                          }
+                          modules={quillModules}
+                          formats={quillFormats}
+                          readOnly={working}
+                          className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)] mb-2"
+                        />
                       </div>
+                    )}
 
-                      {viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath ? (
-                        <div className="rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 p-4 mb-4">
-                          <form
-                            className="flex items-center gap-2 mb-3"
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              const text = rewriteCommands[entry.id] || '';
-                              if (text.trim()) handleRewriteCommand(entry, text);
-                            }}
-                          >
-                            <input
-                              type="text"
-                              value={rewriteCommands[entry.id] || ''}
-                              onChange={(e) =>
-                                setRewriteCommands((prev) => ({
-                                  ...prev,
-                                  [entry.id]: e.target.value,
-                                }))
-                              }
-                              placeholder="Befehl für KI (z. B. formeller)"
-                              className="px-2 py-1 rounded-md text-sm bg-slate-900 border border-[var(--border)] text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[var(--accent)] w-full max-w-md"
-                              disabled={working || processingCommandId === entry.id}
-                            />
-                            <Button
-                              type="submit"
-                              variant="secondary"
-                              disabled={
-                                working ||
-                                processingCommandId === entry.id ||
-                                !(rewriteCommands[entry.id] || '').trim()
-                              }
-                            >
-                              {processingCommandId === entry.id ? 'Wird verarbeitet...' : 'Ausführen'}
-                            </Button>
-                          </form>
-                          <ReactQuill
-                            ref={(el) => {
-                              if (el) quillRefs.current[entry.id] = el;
-                            }}
-                            theme="snow"
-                            value={getEditingContent(entry)}
-                            onChange={(value, _delta, source) => handleQuillChange(entry, value, source, 'rewritten')}
-                            modules={quillModules}
-                            formats={quillFormats}
-                            readOnly={working}
-                            className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--accent)]/30 mb-4"
-                          />
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="accent"
-                              onClick={() => handleAcceptRewritten(entry)}
-                              disabled={working || !stripHtml(getEditingContent(entry)).trim()}
-                            >
-                              Übernehmen
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              onClick={() => handleDiscardRewritten(entry)}
-                              disabled={working}
-                            >
-                              Verwerfen
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mb-4">
-                          <ReactQuill
-                            ref={(el) => {
-                              if (el) quillRefs.current[entry.id] = el;
-                            }}
-                            theme="snow"
-                            value={getEditingContent(entry)}
-                            onChange={(value, _delta, source) => handleQuillChange(entry, value, source, 'original')}
-                            modules={quillModules}
-                            formats={quillFormats}
-                            readOnly={working}
-                            className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)] mb-2"
-                          />
-                        </div>
-                      )}
-
-                      <Button variant="ghost" onClick={() => toggleExpanded(entry.id)}>
-                        Weniger anzeigen
-                      </Button>
-                    </>
-                  ) : (
-                    <Button variant="secondary" onClick={() => toggleExpanded(entry.id)}>
-                      Mehr anzeigen
+                    <Button variant="ghost" onClick={() => toggleExpanded(entry.id)}>
+                      Weniger anzeigen
                     </Button>
-                  )}
-                </article>
-              ))}
-              </div>
-              )}
-            </div>
+                  </>
+                ) : (
+                  <Button variant="secondary" onClick={() => toggleExpanded(entry.id)}>
+                    Mehr anzeigen
+                  </Button>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
 
       <Modal
         isOpen={isModalOpen}
@@ -1202,7 +1373,11 @@ export function Diary() {
             {formError}
           </div>
         )}
-        <form id="diary-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col space-y-4 px-1">
+        <form
+          id="diary-form"
+          onSubmit={handleSubmit}
+          className="flex-1 min-h-0 flex flex-col space-y-4 px-1"
+        >
           <div>
             <label className="block text-sm text-slate-400 mb-1">Titel</label>
             <input

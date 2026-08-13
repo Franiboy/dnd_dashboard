@@ -5,9 +5,5 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ children }: DashboardHeaderProps) {
-  return (
-    <div className="flex items-center justify-end mb-4">
-      {children}
-    </div>
-  );
+  return <div className="flex items-center justify-end mb-4">{children}</div>;
 }

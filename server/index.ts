@@ -22,10 +22,7 @@ import { runMigrations } from './migrations.js';
 import { startBot, recoverAllRecordings, stopBot } from './discord/bot.js';
 import { startTranscriptionScheduler, stopTranscriptionScheduler } from './discord/scheduler.js';
 import { resetInterruptedTranscriptions, stopAllTranscriptions } from './discord/transcriber.js';
-import {
-  startSummaryScheduler,
-  stopSummaryScheduler,
-} from './scheduler/summaryScheduler.js';
+import { startSummaryScheduler, stopSummaryScheduler } from './scheduler/summaryScheduler.js';
 import {
   startSessionCleanupScheduler,
   stopSessionCleanupScheduler,
@@ -46,7 +43,9 @@ const __dirname = path.dirname(__filename);
 
 function getCorsOrigin(): string[] | boolean {
   if (process.env.CORS_ORIGIN) {
-    return process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
+    return process.env.CORS_ORIGIN.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
   if (process.env.NODE_ENV === 'production') {
     return false;
@@ -95,7 +94,7 @@ runMigrations();
 if (isDiscordOAuthConfigured() && !isEncryptionConfigured()) {
   logger.error(
     'Discord OAuth is configured but TOKEN_ENCRYPTION_KEY is missing or invalid. ' +
-      'Set TOKEN_ENCRYPTION_KEY in .env to a base64-encoded 32-byte key (e.g. openssl rand -base64 32).',
+      'Set TOKEN_ENCRYPTION_KEY in .env to a base64-encoded 32-byte key (e.g. openssl rand -base64 32).'
   );
   process.exit(1);
 }

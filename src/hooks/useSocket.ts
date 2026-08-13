@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useError } from './useError';
-import type { BingoGame, ClientToServerEvents, ServerToClientEvents, SafeUser } from '../../shared/types';
+import type {
+  BingoGame,
+  ClientToServerEvents,
+  ServerToClientEvents,
+  SafeUser,
+} from '../../shared/types';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || '';
 

@@ -3,10 +3,7 @@ import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { db } from '../database.js';
 import type { DiaryEntities } from '../ai/rewrite.js';
 import { isAiEnabled } from '../ai/config.js';
-import {
-  distributeKnowledgeFromText,
-  generateEntitySummary,
-} from '../ai/knowledge.js';
+import { distributeKnowledgeFromText, generateEntitySummary } from '../ai/knowledge.js';
 import {
   addEntityAlias,
   blacklistEntity,
@@ -43,9 +40,9 @@ router.get('/mappings', (_req: AuthRequest, res) => {
 
 router.get('/', (_req: AuthRequest, res) => {
   const fetchNames = (table: string): string[] => {
-    const rows = db
-      .prepare(`SELECT name FROM ${table} ORDER BY name COLLATE NOCASE`)
-      .all() as { name: string }[];
+    const rows = db.prepare(`SELECT name FROM ${table} ORDER BY name COLLATE NOCASE`).all() as {
+      name: string;
+    }[];
     return rows.map((row) => row.name);
   };
 
@@ -125,7 +122,14 @@ router.post('/reclassify', (req: AuthRequest, res) => {
 
 router.post('/alias', (req: AuthRequest, res) => {
   const { type, alias, canonical } = req.body;
-  if (!alias || typeof alias !== 'string' || !alias.trim() || !canonical || typeof canonical !== 'string' || !canonical.trim()) {
+  if (
+    !alias ||
+    typeof alias !== 'string' ||
+    !alias.trim() ||
+    !canonical ||
+    typeof canonical !== 'string' ||
+    !canonical.trim()
+  ) {
     res.status(400).json({ error: 'Alias und Zielname sind erforderlich' });
     return;
   }
@@ -144,7 +148,14 @@ router.post('/alias', (req: AuthRequest, res) => {
 
 router.get('/detail', (req: AuthRequest, res) => {
   const { type, name } = req.query;
-  if (!type || typeof type !== 'string' || !ENTITY_TYPES.includes(type as keyof DiaryEntities) || !name || typeof name !== 'string' || !name.trim()) {
+  if (
+    !type ||
+    typeof type !== 'string' ||
+    !ENTITY_TYPES.includes(type as keyof DiaryEntities) ||
+    !name ||
+    typeof name !== 'string' ||
+    !name.trim()
+  ) {
     res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
     return;
   }
@@ -183,17 +194,26 @@ router.put('/detail', (req: AuthRequest, res) => {
       type,
       oldName.trim(),
       newName.trim(),
-      aliases.map((a: unknown) => String(a).trim()).filter(Boolean),
+      aliases.map((a: unknown) => String(a).trim()).filter(Boolean)
     );
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Speichern fehlgeschlagen' });
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : 'Speichern fehlgeschlagen' });
   }
 });
 
 router.get('/knowledge', (req: AuthRequest, res) => {
   const { type, name } = req.query;
-  if (!type || typeof type !== 'string' || !ENTITY_TYPES.includes(type as keyof DiaryEntities) || !name || typeof name !== 'string' || !name.trim()) {
+  if (
+    !type ||
+    typeof type !== 'string' ||
+    !ENTITY_TYPES.includes(type as keyof DiaryEntities) ||
+    !name ||
+    typeof name !== 'string' ||
+    !name.trim()
+  ) {
     res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
     return;
   }
@@ -223,7 +243,7 @@ router.post('/knowledge', (req: AuthRequest, res) => {
       name.trim(),
       title && typeof title === 'string' ? title.trim() : null,
       content.trim(),
-      'manual',
+      'manual'
     );
     res.status(201).json({ entry });
   } catch {
@@ -276,7 +296,8 @@ router.delete('/knowledge/:id', (req: AuthRequest, res) => {
   }
 
   const { reason } = req.body;
-  const deleteReason = typeof reason === 'string' && reason.trim() ? reason.trim() : 'Manuell als gelöscht markiert';
+  const deleteReason =
+    typeof reason === 'string' && reason.trim() ? reason.trim() : 'Manuell als gelöscht markiert';
 
   try {
     const existing = getEntityKnowledgeEntry(id);
@@ -313,7 +334,13 @@ router.post('/knowledge/distribute', async (req: AuthRequest, res) => {
 
 router.get('/summary', (req: AuthRequest, res) => {
   const { type, name } = req.query;
-  if (!type || !ENTITY_TYPES.includes(type as keyof DiaryEntities) || !name || typeof name !== 'string' || !name.trim()) {
+  if (
+    !type ||
+    !ENTITY_TYPES.includes(type as keyof DiaryEntities) ||
+    !name ||
+    typeof name !== 'string' ||
+    !name.trim()
+  ) {
     res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
     return;
   }
@@ -328,7 +355,7 @@ router.get('/summary', (req: AuthRequest, res) => {
         miniSummary: null,
         isDirty: true,
         updatedAt: null,
-      },
+      }
     );
   } catch {
     res.status(500).json({ error: 'Zusammenfassung konnte nicht geladen werden' });

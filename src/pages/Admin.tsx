@@ -149,9 +149,12 @@ export function Admin({ currentUser }: AdminProps) {
   const triggerNightlyJob = async () => {
     setNightlyJobLoading(true);
     setNightlyJobMessage(null);
-    const { data } = await request<{ started: boolean; message: string }>('/api/admin/nightly-job', {
-      method: 'POST',
-    });
+    const { data } = await request<{ started: boolean; message: string }>(
+      '/api/admin/nightly-job',
+      {
+        method: 'POST',
+      }
+    );
     setNightlyJobLoading(false);
     if (data) {
       setNightlyJobMessage(data.message);
@@ -161,9 +164,12 @@ export function Admin({ currentUser }: AdminProps) {
   const triggerTranscriptionJobs = async () => {
     setTranscriptionJobLoading(true);
     setTranscriptionJobMessage(null);
-    const { data } = await request<{ started: boolean; message: string }>('/api/admin/transcription-jobs', {
-      method: 'POST',
-    });
+    const { data } = await request<{ started: boolean; message: string }>(
+      '/api/admin/transcription-jobs',
+      {
+        method: 'POST',
+      }
+    );
     setTranscriptionJobLoading(false);
     if (data) {
       setTranscriptionJobMessage(data.message);
@@ -173,9 +179,12 @@ export function Admin({ currentUser }: AdminProps) {
   const triggerBingoSuggestionRefill = async () => {
     setBingoSuggestionLoading(true);
     setBingoSuggestionMessage(null);
-    const { data } = await request<{ started: boolean; message: string }>('/api/admin/bingo-suggestion-refill', {
-      method: 'POST',
-    });
+    const { data } = await request<{ started: boolean; message: string }>(
+      '/api/admin/bingo-suggestion-refill',
+      {
+        method: 'POST',
+      }
+    );
     setBingoSuggestionLoading(false);
     if (data) {
       setBingoSuggestionMessage(data.message);
@@ -208,7 +217,9 @@ export function Admin({ currentUser }: AdminProps) {
   const isOwn = (u: SafeUser) => u.id === currentUser.id;
 
   function AppAccessModal({ user, onClose }: { user: SafeUser; onClose: () => void }) {
-    const disableableApps = APPS.filter((app) => app.disableable && (!app.adminOnly || user.isAdmin));
+    const disableableApps = APPS.filter(
+      (app) => app.disableable && (!app.adminOnly || user.isAdmin)
+    );
     const [disabled, setDisabled] = useState<string[]>(user.disabledApps);
     const toggle = (id: string) =>
       setDisabled((prev) => (prev.includes(id) ? prev.filter((app) => app !== id) : [...prev, id]));
@@ -327,7 +338,17 @@ export function Admin({ currentUser }: AdminProps) {
           id="jobs"
           label="Hintergrundjobs"
           icon={
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
@@ -353,13 +374,16 @@ export function Admin({ currentUser }: AdminProps) {
               >
                 {nightlyJobLoading ? <Loading text="" size="sm" /> : 'Nightly-Job starten'}
               </button>
-              {nightlyJobMessage && <p className="text-sm text-[var(--accent)]">{nightlyJobMessage}</p>}
+              {nightlyJobMessage && (
+                <p className="text-sm text-[var(--accent)]">{nightlyJobMessage}</p>
+              )}
             </div>
 
             <div className="border-t border-[var(--border)] pt-4 space-y-4">
               <h2 className="text-lg font-semibold text-[var(--text-h)]">Transkription</h2>
               <p className="text-sm text-slate-400">
-                Verarbeitet alle Sessions im Status „pending_transcription“ manuell. Dies läuft normalerweise separat und unabhängig vom Nightly-Job.
+                Verarbeitet alle Sessions im Status „pending_transcription“ manuell. Dies läuft
+                normalerweise separat und unabhängig vom Nightly-Job.
               </p>
               <button
                 type="button"
@@ -369,13 +393,17 @@ export function Admin({ currentUser }: AdminProps) {
               >
                 {transcriptionJobLoading ? <Loading text="" size="sm" /> : 'Transkription starten'}
               </button>
-              {transcriptionJobMessage && <p className="text-sm text-[var(--accent)]">{transcriptionJobMessage}</p>}
+              {transcriptionJobMessage && (
+                <p className="text-sm text-[var(--accent)]">{transcriptionJobMessage}</p>
+              )}
             </div>
 
             <div className="border-t border-[var(--border)] pt-4 space-y-4">
               <h2 className="text-lg font-semibold text-[var(--text-h)]">Bingo-Vorschläge</h2>
               <p className="text-sm text-slate-400">
-                Füllt den Pool der ausstehenden Bingo-Vorschläge manuell auf. Normalerweise läuft dies automatisch jede Minute, wenn weniger als der konfigurierte Threshold vorhanden ist.
+                Füllt den Pool der ausstehenden Bingo-Vorschläge manuell auf. Normalerweise läuft
+                dies automatisch jede Minute, wenn weniger als der konfigurierte Threshold vorhanden
+                ist.
               </p>
               <button
                 type="button"
@@ -383,9 +411,15 @@ export function Admin({ currentUser }: AdminProps) {
                 disabled={bingoSuggestionLoading}
                 className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
               >
-                {bingoSuggestionLoading ? <Loading text="" size="sm" /> : 'Bingo-Vorschläge generieren'}
+                {bingoSuggestionLoading ? (
+                  <Loading text="" size="sm" />
+                ) : (
+                  'Bingo-Vorschläge generieren'
+                )}
               </button>
-              {bingoSuggestionMessage && <p className="text-sm text-[var(--accent)]">{bingoSuggestionMessage}</p>}
+              {bingoSuggestionMessage && (
+                <p className="text-sm text-[var(--accent)]">{bingoSuggestionMessage}</p>
+              )}
             </div>
           </div>
         </SideDrawerItem>
@@ -413,9 +447,18 @@ export function Admin({ currentUser }: AdminProps) {
                     <tr key={u.id} className="border-b border-[var(--border)] last:border-0">
                       <td className="p-3 text-[var(--text-h)]">
                         <div className="flex items-center gap-2">
-                          {u.avatarUrl && <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full" />}
-                          <span>{u.displayName} {u.isInitialAdmin && <span className="text-xs text-slate-500">(Ursprungsadmin)</span>}
-                          {isOwn(u) && !u.isInitialAdmin && <span className="text-xs text-slate-500"> (Du)</span>}</span>
+                          {u.avatarUrl && (
+                            <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full" />
+                          )}
+                          <span>
+                            {u.displayName}{' '}
+                            {u.isInitialAdmin && (
+                              <span className="text-xs text-slate-500">(Ursprungsadmin)</span>
+                            )}
+                            {isOwn(u) && !u.isInitialAdmin && (
+                              <span className="text-xs text-slate-500"> (Du)</span>
+                            )}
+                          </span>
                         </div>
                       </td>
                       <td className="p-3">
@@ -470,8 +513,10 @@ export function Admin({ currentUser }: AdminProps) {
                             >
                               {isActionLoading(u.id, '/admin') ? (
                                 <Loading text="" size="sm" />
+                              ) : u.isAdmin ? (
+                                'Admin entfernen'
                               ) : (
-                                u.isAdmin ? 'Admin entfernen' : 'Zum Admin'
+                                'Zum Admin'
                               )}
                             </button>
                             <button
@@ -527,7 +572,8 @@ export function Admin({ currentUser }: AdminProps) {
               <div className="space-y-4">
                 {aiModels.models.length === 0 && (
                   <p className="text-sm text-slate-500">
-                    Keine Modelle verfügbar. Prüfe, dass opencode installiert ist und erreichbar ist.
+                    Keine Modelle verfügbar. Prüfe, dass opencode installiert ist und erreichbar
+                    ist.
                   </p>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -535,7 +581,11 @@ export function Admin({ currentUser }: AdminProps) {
                     <label className="block text-sm text-slate-400 mb-1">Normales Modell</label>
                     <select
                       value={aiModels.normalModel}
-                      onChange={(e) => setAiModels((prev) => (prev ? { ...prev, normalModel: e.target.value } : prev))}
+                      onChange={(e) =>
+                        setAiModels((prev) =>
+                          prev ? { ...prev, normalModel: e.target.value } : prev
+                        )
+                      }
                       className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
                     >
                       {aiModels.models.map((m) => (
@@ -545,14 +595,20 @@ export function Admin({ currentUser }: AdminProps) {
                       ))}
                     </select>
                     {aiModels.normalModelOverridden && (
-                      <p className="text-xs text-[var(--accent)] mt-1">Überschreibt die .env-Konfiguration</p>
+                      <p className="text-xs text-[var(--accent)] mt-1">
+                        Überschreibt die .env-Konfiguration
+                      </p>
                     )}
                   </div>
                   <div>
                     <label className="block text-sm text-slate-400 mb-1">Cheap-Modell</label>
                     <select
                       value={aiModels.cheapModel}
-                      onChange={(e) => setAiModels((prev) => (prev ? { ...prev, cheapModel: e.target.value } : prev))}
+                      onChange={(e) =>
+                        setAiModels((prev) =>
+                          prev ? { ...prev, cheapModel: e.target.value } : prev
+                        )
+                      }
                       className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
                     >
                       {aiModels.models.map((m) => (
@@ -562,7 +618,9 @@ export function Admin({ currentUser }: AdminProps) {
                       ))}
                     </select>
                     {aiModels.cheapModelOverridden && (
-                      <p className="text-xs text-[var(--accent)] mt-1">Überschreibt die .env-Konfiguration</p>
+                      <p className="text-xs text-[var(--accent)] mt-1">
+                        Überschreibt die .env-Konfiguration
+                      </p>
                     )}
                   </div>
                 </div>
@@ -589,7 +647,8 @@ export function Admin({ currentUser }: AdminProps) {
               <div className="space-y-4">
                 {!recordingStatus?.bot.enabled && (
                   <p className="text-sm text-slate-500">
-                    Discord-Bot ist nicht konfiguriert. Trage DISCORD_BOT_TOKEN und DISCORD_GUILD_ID in die .env ein.
+                    Discord-Bot ist nicht konfiguriert. Trage DISCORD_BOT_TOKEN und DISCORD_GUILD_ID
+                    in die .env ein.
                   </p>
                 )}
 
@@ -600,7 +659,9 @@ export function Admin({ currentUser }: AdminProps) {
                 {recordingStatus?.bot.enabled && recordingStatus.bot.ready && (
                   <div className="flex flex-col sm:flex-row gap-4 items-end">
                     <div className="flex-1 w-full">
-                      <label className="block text-sm text-slate-400 mb-1">Überwachter Voice-Channel</label>
+                      <label className="block text-sm text-slate-400 mb-1">
+                        Überwachter Voice-Channel
+                      </label>
                       <select
                         value={selectedRecordingChannel}
                         onChange={(e) => setSelectedRecordingChannel(e.target.value)}
@@ -608,7 +669,9 @@ export function Admin({ currentUser }: AdminProps) {
                         className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
                       >
                         <option value="">
-                          {recordingChannels.length === 0 ? 'Keine Voice-Channels verfügbar' : 'Bitte wählen'}
+                          {recordingChannels.length === 0
+                            ? 'Keine Voice-Channels verfügbar'
+                            : 'Bitte wählen'}
                         </option>
                         {recordingChannels.map((c) => (
                           <option key={c.id} value={c.id}>
@@ -647,7 +710,9 @@ export function Admin({ currentUser }: AdminProps) {
         </>
       )}
 
-      {managingAppsFor && <AppAccessModal user={managingAppsFor} onClose={() => setManagingAppsFor(null)} />}
+      {managingAppsFor && (
+        <AppAccessModal user={managingAppsFor} onClose={() => setManagingAppsFor(null)} />
+      )}
     </div>
   );
 }

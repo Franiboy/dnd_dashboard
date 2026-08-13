@@ -3,7 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loading } from '../components/Loading';
 
 interface AuthCallbackProps {
-  onCallback: (code: string, state: string) => Promise<{ ok: boolean; pending?: boolean; message?: string }>;
+  onCallback: (
+    code: string,
+    state: string
+  ) => Promise<{ ok: boolean; pending?: boolean; message?: string }>;
   onCheckApproved?: () => Promise<boolean>;
 }
 
@@ -66,7 +69,8 @@ export function AuthCallback({ onCallback, onCheckApproved }: AuthCallbackProps)
             <h2 className="text-xl font-semibold text-[var(--text-h)] mb-2">Warte auf Freigabe</h2>
             <p className="text-slate-400 mb-4">{status}</p>
             <p className="text-sm text-slate-500">
-              Diese Seite prüft automatisch alle 5 Sekunden, ob ein Admin dich freigegeben hat. Du musst nichts weiter tun.
+              Diese Seite prüft automatisch alle 5 Sekunden, ob ein Admin dich freigegeben hat. Du
+              musst nichts weiter tun.
             </p>
           </>
         ) : (

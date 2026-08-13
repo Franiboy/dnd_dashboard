@@ -3,7 +3,13 @@ import { existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { updateFile, updateSession, getSessionById, listSessionsByStatus, clearFileTranscriptPathsBySession } from '../repositories/recordings.js';
+import {
+  updateFile,
+  updateSession,
+  getSessionById,
+  listSessionsByStatus,
+  clearFileTranscriptPathsBySession,
+} from '../repositories/recordings.js';
 import { emitSessionsUpdated, emitProgressUpdated } from './recordingsEvents.js';
 import { createLogger } from '../logger.js';
 import type { RecordingFile, RecordingSession, TranscriptionProgress } from '../../shared/types.js';
@@ -37,7 +43,9 @@ function appendStderr(buffer: string, chunk: string, maxLength: number): string 
 }
 
 function findPythonCommand(): string {
-  const candidates = [process.env.PYTHON_COMMAND, 'python3', 'python'].filter((cmd): cmd is string => Boolean(cmd));
+  const candidates = [process.env.PYTHON_COMMAND, 'python3', 'python'].filter(
+    (cmd): cmd is string => Boolean(cmd)
+  );
   for (const cmd of candidates) {
     const result = spawnSync(cmd, ['--version'], { stdio: 'ignore' });
     if (result.status === 0 && !result.error) {
@@ -188,7 +196,7 @@ function trimValuesChanged(session: RecordingSession, trimStart: number, trimEnd
 }
 
 async function buildResumePlan(
-  files: RecordingFile[],
+  files: RecordingFile[]
 ): Promise<{ completedFiles: RecordingFile[]; pendingFiles: RecordingFile[] }> {
   const completedFiles: RecordingFile[] = [];
   const pendingFiles: RecordingFile[] = [];
@@ -212,7 +220,13 @@ type ScriptEvent =
   | { type: 'progress'; current: number; total: number }
   | { type: 'file_complete'; index: number; id: number; userId: string; transcriptPath: string }
   | { type: 'file_error'; index: number; error: string }
-  | { type: 'complete'; transcript: string; transcriptPath: string; files: { id: number; userId: string; transcriptPath: string }[]; errors: string[] }
+  | {
+      type: 'complete';
+      transcript: string;
+      transcriptPath: string;
+      files: { id: number; userId: string; transcriptPath: string }[];
+      errors: string[];
+    }
   | { type: 'error'; error: string };
 
 function parseEvent(line: string): ScriptEvent | null {
@@ -231,18 +245,29 @@ function runTranscriptionScript(
   files: RecordingFile[],
   trimStart: number,
   trimEnd: number,
-  completedFiles: RecordingFile[],
-): Promise<{ transcript: string | null; transcriptPath: string | null; files: { id: number; userId: string; transcriptPath: string }[]; errors: string[] }> {
+  completedFiles: RecordingFile[]
+): Promise<{
+  transcript: string | null;
+  transcriptPath: string | null;
+  files: { id: number; userId: string; transcriptPath: string }[];
+  errors: string[];
+}> {
   const filesArg = JSON.stringify(
     files
       .filter((f) => f.wavPath)
-      .map((f) => ({ id: f.id, userId: f.userId, wavPath: f.wavPath, displayName: f.displayName })),
+      .map((f) => ({ id: f.id, userId: f.userId, wavPath: f.wavPath, displayName: f.displayName }))
   );
 
   const completedFilesArg = JSON.stringify(
     completedFiles
       .filter((f) => f.wavPath && f.transcriptPath)
-      .map((f) => ({ id: f.id, userId: f.userId, wavPath: f.wavPath, displayName: f.displayName, transcriptPath: f.transcriptPath })),
+      .map((f) => ({
+        id: f.id,
+        userId: f.userId,
+        wavPath: f.wavPath,
+        displayName: f.displayName,
+        transcriptPath: f.transcriptPath,
+      }))
   );
 
   const args = [
@@ -287,7 +312,12 @@ function runTranscriptionScript(
     let currentFileName = '';
     let currentFileIndex = 0;
     let totalFiles = 0;
-    let finalResult: { transcript: string | null; transcriptPath: string | null; files: { id: number; userId: string; transcriptPath: string }[]; errors: string[] } | null = null;
+    let finalResult: {
+      transcript: string | null;
+      transcriptPath: string | null;
+      files: { id: number; userId: string; transcriptPath: string }[];
+      errors: string[];
+    } | null = null;
 
     const child = spawn(PYTHON_COMMAND, args, { stdio: 'pipe' });
     activeChildren.add(child);
@@ -317,7 +347,9 @@ function runTranscriptionScript(
       } else if (event.type === 'file_complete') {
         updateFile(event.id, { transcriptPath: event.transcriptPath });
       } else if (event.type === 'file_error') {
-        log.error(`Transcription error for file ${currentFileIndex} (${currentFileName}): ${event.error}`);
+        log.error(
+          `Transcription error for file ${currentFileIndex} (${currentFileName}): ${event.error}`
+        );
       } else if (event.type === 'complete') {
         finalResult = {
           transcript: event.transcript,
@@ -385,7 +417,7 @@ function runTranscriptionScript(
 export async function runTranscription(
   sessionId: number,
   files: RecordingFile[],
-  options?: { force?: boolean },
+  options?: { force?: boolean }
 ): Promise<void> {
   const session = getSessionById(sessionId);
   if (!session) return;
@@ -433,9 +465,18 @@ export async function runTranscription(
       return;
     }
 
-    log.info(`Transcription session ${sessionId}: ${completedFiles.length} completed, ${pendingFiles.length} pending`);
+    log.info(
+      `Transcription session ${sessionId}: ${completedFiles.length} completed, ${pendingFiles.length} pending`
+    );
 
-    const result = await runTranscriptionScript(sessionId, session.directory, files, trimStart, trimEnd, completedFiles);
+    const result = await runTranscriptionScript(
+      sessionId,
+      session.directory,
+      files,
+      trimStart,
+      trimEnd,
+      completedFiles
+    );
 
     for (const file of result.files) {
       updateFile(file.id, { transcriptPath: file.transcriptPath });
@@ -443,7 +484,9 @@ export async function runTranscription(
 
     if (result.transcript !== null) {
       if (result.errors.length > 0) {
-        log.warn(`Transcription session ${sessionId} completed with errors: ${result.errors.join('; ')}`);
+        log.warn(
+          `Transcription session ${sessionId} completed with errors: ${result.errors.join('; ')}`
+        );
       }
       updateSession(sessionId, {
         status: 'completed',
@@ -464,7 +507,10 @@ export async function runTranscription(
       updateSession(sessionId, { status: resetStatus, error: originalError });
     } else {
       const message = err instanceof Error ? err.message : String(err);
-      updateSession(sessionId, { status: 'error', error: `Transkription fehlgeschlagen: ${message}` });
+      updateSession(sessionId, {
+        status: 'error',
+        error: `Transkription fehlgeschlagen: ${message}`,
+      });
     }
     emitSessionsUpdated();
   } finally {

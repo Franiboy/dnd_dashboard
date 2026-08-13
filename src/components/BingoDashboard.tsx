@@ -23,16 +23,11 @@ interface BingoDashboardProps {
 type MobileTab = 'field' | 'tasks';
 
 function getAvailableTaskCount(game: BingoGame, userId?: string): number {
-  return game.tasks.filter((t) => !t.isPrivate || (userId && t.assignedTo?.includes(userId))).length;
+  return game.tasks.filter((t) => !t.isPrivate || (userId && t.assignedTo?.includes(userId)))
+    .length;
 }
 
-function SetupControls({
-  game,
-  socket,
-}: {
-  game: BingoGame;
-  socket: Socket | null;
-}) {
+function SetupControls({ game, socket }: { game: BingoGame; socket: Socket | null }) {
   const needed = game.gridSize * game.gridSize;
   const onlinePlayers = game.players.filter((p) => p.online);
   const playerAvailableCounts = onlinePlayers.map((p) => ({
@@ -42,7 +37,8 @@ function SetupControls({
   const sortedByCount = [...playerAvailableCounts].sort((a, b) => a.count - b.count);
   const bottleneck = sortedByCount[0];
   const totalEnough = game.tasks.length >= needed;
-  const everyoneEnough = playerAvailableCounts.length > 0 && playerAvailableCounts.every((p) => p.count >= needed);
+  const everyoneEnough =
+    playerAvailableCounts.length > 0 && playerAvailableCounts.every((p) => p.count >= needed);
   const canStartByTasks = totalEnough && everyoneEnough;
 
   return (
@@ -64,10 +60,10 @@ function SetupControls({
           !totalEnough
             ? `${game.tasks.length} Aufgaben, mindestens ${needed} nötig`
             : playerAvailableCounts.length === 0
-            ? `Mindestens ${needed} pro Spieler nötig`
-            : bottleneck && bottleneck.count < needed
-            ? `${bottleneck.name} hat nur ${bottleneck.count} von ${needed} Aufgaben`
-            : 'Spiel starten'
+              ? `Mindestens ${needed} pro Spieler nötig`
+              : bottleneck && bottleneck.count < needed
+                ? `${bottleneck.name} hat nur ${bottleneck.count} von ${needed} Aufgaben`
+                : 'Spiel starten'
         }
         className="px-3 py-1.5 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50 text-xs"
       >
@@ -173,13 +169,16 @@ export function BingoDashboard({
 }: BingoDashboardProps) {
   const [activeTab, setActiveTab] = useState<MobileTab>('field');
 
-  const fieldPanelActions = isAdmin && isSetup ? <SetupControls game={game} socket={socket} /> : undefined;
+  const fieldPanelActions =
+    isAdmin && isSetup ? <SetupControls game={game} socket={socket} /> : undefined;
 
   // Tasks the current user may place on their board: all tasks for admins, otherwise
   // public tasks plus private tasks assigned to the user.
   const availableTasks = isAdmin
     ? game.tasks
-    : game.tasks.filter((task) => !task.isPrivate || (user.id && task.assignedTo?.includes(user.id)));
+    : game.tasks.filter(
+        (task) => !task.isPrivate || (user.id && task.assignedTo?.includes(user.id))
+      );
 
   const boardControls = (
     <BoardControls
@@ -204,25 +203,26 @@ export function BingoDashboard({
     </Panel>
   );
 
-  const taskPanel = isSetup || isPlaying ? (
-    <Panel title="Aufgaben" className="flex-1 min-h-0">
-      {isSetup ? (
-        <TaskPool
-          game={game}
-          socket={socket}
-          isSetup={isSetup}
-          currentUser={user}
-          playerId={playerId}
-          className="h-full flex flex-col"
-          listClassName="flex-1 min-h-0 overflow-auto"
-        />
-      ) : isPlaying && isAdmin ? (
-        <TaskStatus game={game} socket={socket} />
-      ) : (
-        <p className="text-slate-400">Warte auf Spielstart...</p>
-      )}
-    </Panel>
-  ) : null;
+  const taskPanel =
+    isSetup || isPlaying ? (
+      <Panel title="Aufgaben" className="flex-1 min-h-0">
+        {isSetup ? (
+          <TaskPool
+            game={game}
+            socket={socket}
+            isSetup={isSetup}
+            currentUser={user}
+            playerId={playerId}
+            className="h-full flex flex-col"
+            listClassName="flex-1 min-h-0 overflow-auto"
+          />
+        ) : isPlaying && isAdmin ? (
+          <TaskStatus game={game} socket={socket} />
+        ) : (
+          <p className="text-slate-400">Warte auf Spielstart...</p>
+        )}
+      </Panel>
+    ) : null;
 
   const tabs: { id: MobileTab; label: string }[] = [
     { id: 'field', label: 'Feld' },
@@ -267,7 +267,11 @@ export function BingoDashboard({
           <>
             <div className="flex items-center gap-2 shrink-0">
               {tabs.map((tab) => (
-                <TabButton key={tab.id} active={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
+                <TabButton
+                  key={tab.id}
+                  active={activeTab === tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                >
                   {tab.label}
                 </TabButton>
               ))}
@@ -275,11 +279,12 @@ export function BingoDashboard({
 
             {activeTab === 'field' && <div className="flex-1 min-h-0">{fieldPanel}</div>}
 
-            {activeTab === 'tasks' && (taskPanel ?? (
-              <Panel title="Aufgaben" className="flex-1 min-h-0">
-                <p className="text-slate-400">Warte auf Spielstart...</p>
-              </Panel>
-            ))}
+            {activeTab === 'tasks' &&
+              (taskPanel ?? (
+                <Panel title="Aufgaben" className="flex-1 min-h-0">
+                  <p className="text-slate-400">Warte auf Spielstart...</p>
+                </Panel>
+              ))}
           </>
         )}
       </div>

@@ -22,17 +22,27 @@ function getSessionDiaryTranscriptFile(sessionId: number): string {
 function playerPerspectiveLines(user: McpSessionUser): string[] {
   const lines: string[] = ['Persönliche Perspektive:'];
   if (user.activePerson) {
-    lines.push(`- Schreibe den Tagebucheintrag aus der Ich-Perspektive des Charakters "${user.activePerson}".`);
+    lines.push(
+      `- Schreibe den Tagebucheintrag aus der Ich-Perspektive des Charakters "${user.activePerson}".`
+    );
     lines.push(`- Nutze Ton, Wortwahl und Wissen, die zu "${user.activePerson}" passen.`);
   } else {
     lines.push('- Schreibe den Tagebucheintrag aus der Ich-Perspektive des Spielers.');
   }
   if (user.displayName) {
-    lines.push(`- Der Spieler ist im Transkript an seinem Discord-Namen "${user.displayName}" erkennbar.`);
-    lines.push('- Leite aus dem Transkript heraus, was der Charakter aktiv mitbekommen hat: welche Dialoge er führt, welche Aktionen er selbst ausführt und was er direkt hört oder sieht.');
+    lines.push(
+      `- Der Spieler ist im Transkript an seinem Discord-Namen "${user.displayName}" erkennbar.`
+    );
+    lines.push(
+      '- Leite aus dem Transkript heraus, was der Charakter aktiv mitbekommen hat: welche Dialoge er führt, welche Aktionen er selbst ausführt und was er direkt hört oder sieht.'
+    );
   }
-  lines.push('- Beschränke den Inhalt auf das, was der Charakter selbst erlebt. Vermeide Meta-Wissen oder Szenen, an denen der Charakter nicht beteiligt war.');
-  lines.push('- Wenn der Charakter etwas nur aus Erzählungen oder Berichten anderer erfährt, kennzeichne das als Hör-Sage (z. B. "Ich erfuhr, dass...", "Man erzählte mir...").');
+  lines.push(
+    '- Beschränke den Inhalt auf das, was der Charakter selbst erlebt. Vermeide Meta-Wissen oder Szenen, an denen der Charakter nicht beteiligt war.'
+  );
+  lines.push(
+    '- Wenn der Charakter etwas nur aus Erzählungen oder Berichten anderer erfährt, kennzeichne das als Hör-Sage (z. B. "Ich erfuhr, dass...", "Man erzählte mir...").'
+  );
   return lines;
 }
 
@@ -40,7 +50,7 @@ export async function generateSessionDiaryDraft(
   sessionId: number,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<DiaryEntry | null> {
   const session = getSessionById(sessionId);
   if (!session || !session.transcript || !session.transcript.trim()) {
@@ -48,9 +58,8 @@ export async function generateSessionDiaryDraft(
     return null;
   }
 
-  const source = session.longSummary && session.longSummary.trim()
-    ? session.longSummary
-    : session.transcript;
+  const source =
+    session.longSummary && session.longSummary.trim() ? session.longSummary : session.transcript;
   if (!source.trim()) {
     log.warn(`No source text available for session ${sessionId}`);
     return null;

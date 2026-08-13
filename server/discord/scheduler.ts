@@ -1,4 +1,8 @@
-import { listPendingTranscriptionSessions, getFilesBySessionId, updateSession } from '../repositories/recordings.js';
+import {
+  listPendingTranscriptionSessions,
+  getFilesBySessionId,
+  updateSession,
+} from '../repositories/recordings.js';
 import { runTranscription, isShuttingDown } from './transcriber.js';
 import { isRecordingFeatureEnabled } from './config.js';
 import { createLogger } from '../logger.js';
@@ -84,9 +88,12 @@ export function startTranscriptionScheduler(): void {
 
   timeout = setTimeout(() => {
     runTranscriptionJobsNow();
-    interval = setInterval(() => {
-      runTranscriptionJobsNow();
-    }, 24 * 60 * 60 * 1000);
+    interval = setInterval(
+      () => {
+        runTranscriptionJobsNow();
+      },
+      24 * 60 * 60 * 1000
+    );
   }, delay);
 }
 

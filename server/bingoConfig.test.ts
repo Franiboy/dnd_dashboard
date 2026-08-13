@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  getGenerationBatchSize,
-  getRefillThreshold,
-  getTargetPoolSize,
-} from './bingoConfig.js';
+import { getGenerationBatchSize, getRefillThreshold, getTargetPoolSize } from './bingoConfig.js';
 
 describe('bingoConfig', () => {
   it('returns defaults when env variables are not set', () => {

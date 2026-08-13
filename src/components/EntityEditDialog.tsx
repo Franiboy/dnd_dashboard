@@ -6,7 +6,12 @@ import { EntityRichText } from './EntityRichText';
 import { Loading } from './Loading';
 import { Modal } from './Modal';
 import { typeLabels } from '../lib/entityLabels';
-import type { EntityDetail, EntityType, EntityUpdatePayload, EntityKnowledgeEntry } from '../../shared/types';
+import type {
+  EntityDetail,
+  EntityType,
+  EntityUpdatePayload,
+  EntityKnowledgeEntry,
+} from '../../shared/types';
 
 interface EntityEditDialogProps {
   type: EntityType;
@@ -62,7 +67,7 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
     let cancelled = false;
     async function load() {
       const { data: detailData } = await request<EntityDetail>(
-        `/api/entities/detail?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`,
+        `/api/entities/detail?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`
       );
       if (cancelled) return;
       if (!detailData) {
@@ -73,10 +78,10 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       const canonicalName = detailData.canonical;
       const [{ data: knowledgeData }, { data: summaryData }] = await Promise.all([
         request<{ entries: EntityKnowledgeEntry[] }>(
-          `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`,
+          `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`
         ),
         request<{ summary: string | null; miniSummary: string | null; isDirty: boolean }>(
-          `/api/entities/summary?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`,
+          `/api/entities/summary?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`
         ),
       ]);
       if (cancelled) return;
@@ -140,14 +145,17 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       showError('Inhalt ist erforderlich');
       return;
     }
-    const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(`/api/entities/knowledge/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: editingKnowledgeTitle.trim() || null,
-        content: editingKnowledgeContent.trim(),
-      }),
-    });
+    const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(
+      `/api/entities/knowledge/${id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editingKnowledgeTitle.trim() || null,
+          content: editingKnowledgeContent.trim(),
+        }),
+      }
+    );
     if (staleRef.current) return;
     if (!error && data) {
       setKnowledge((prev) => prev.map((k) => (k.id === id ? data.entry : k)));
@@ -158,7 +166,10 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
   }
 
   async function handleDeleteKnowledge(id: number) {
-    const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(`/api/entities/knowledge/${id}`, { method: 'DELETE' });
+    const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(
+      `/api/entities/knowledge/${id}`,
+      { method: 'DELETE' }
+    );
     if (staleRef.current) return;
     if (!error && data) {
       setKnowledge((prev) => prev.map((k) => (k.id === id ? data.entry : k)));
@@ -172,16 +183,19 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       showError('Inhalt ist erforderlich');
       return;
     }
-    const { data, error } = await request<{ entry: EntityKnowledgeEntry }>('/api/entities/knowledge', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type,
-        name: detail?.canonical ?? name,
-        title: newKnowledgeTitle.trim() || null,
-        content: newKnowledgeContent.trim(),
-      }),
-    });
+    const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(
+      '/api/entities/knowledge',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          name: detail?.canonical ?? name,
+          title: newKnowledgeTitle.trim() || null,
+          content: newKnowledgeContent.trim(),
+        }),
+      }
+    );
     if (staleRef.current) return;
     if (!error && data) {
       setKnowledge((prev) => [data.entry, ...prev]);
@@ -194,11 +208,14 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
 
   async function handleGenerateSummary() {
     setGeneratingSummary(true);
-    const { data, error } = await request<{ summary: string; miniSummary: string | null }>('/api/entities/summary/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, name: detail?.canonical ?? name }),
-    });
+    const { data, error } = await request<{ summary: string; miniSummary: string | null }>(
+      '/api/entities/summary/generate',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, name: detail?.canonical ?? name }),
+      }
+    );
     if (staleRef.current) return;
     setGeneratingSummary(false);
     if (!error && data) {
@@ -225,11 +242,14 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       showError('Mini-Zusammenfassung darf maximal 200 Zeichen haben');
       return;
     }
-    const { data, error } = await request<{ miniSummary: string | null }>('/api/entities/mini-summary', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, name: detail?.canonical ?? name, miniSummary: text || null }),
-    });
+    const { data, error } = await request<{ miniSummary: string | null }>(
+      '/api/entities/mini-summary',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, name: detail?.canonical ?? name, miniSummary: text || null }),
+      }
+    );
     if (staleRef.current) return;
     if (!error && data) {
       setMiniSummary(data.miniSummary);
@@ -249,7 +269,7 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       ...new Set(
         aliases
           .map((a) => a.trim())
-          .filter((a) => a.length > 0 && a.toLowerCase() !== normalizedCanonical.toLowerCase()),
+          .filter((a) => a.length > 0 && a.toLowerCase() !== normalizedCanonical.toLowerCase())
       ),
     ];
 
@@ -315,9 +335,7 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       ) : (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
-              Hauptname
-            </label>
+            <label className="block text-sm font-medium text-[var(--text-h)] mb-1">Hauptname</label>
             <input
               type="text"
               value={canonical}
@@ -378,12 +396,18 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
                     disabled={generatingSummary}
                     className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
                   >
-                    {generatingSummary ? 'Wird generiert...' : summary ? 'Aktualisieren' : 'Generieren'}
+                    {generatingSummary
+                      ? 'Wird generiert...'
+                      : summary
+                        ? 'Aktualisieren'
+                        : 'Generieren'}
                   </button>
                 )}
               </div>
               {summary ? (
-                <div className={`text-sm text-[var(--text-h)] p-2 rounded border border-[var(--border)] ${summaryDirty ? 'bg-amber-900/20' : 'bg-slate-900/50'}`}>
+                <div
+                  className={`text-sm text-[var(--text-h)] p-2 rounded border border-[var(--border)] ${summaryDirty ? 'bg-amber-900/20' : 'bg-slate-900/50'}`}
+                >
                   <p className="whitespace-pre-wrap">
                     <EntityRichText content={summary} mappings={mappings} isHtml={false} />
                   </p>
@@ -443,7 +467,9 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
                 ) : miniSummary ? (
                   <p className="text-sm text-slate-300 whitespace-pre-wrap">{miniSummary}</p>
                 ) : (
-                  <p className="text-sm text-slate-500 italic">Noch keine Mini-Zusammenfassung vorhanden.</p>
+                  <p className="text-sm text-slate-500 italic">
+                    Noch keine Mini-Zusammenfassung vorhanden.
+                  </p>
                 )}
               </div>
             </div>
@@ -518,7 +544,9 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
             <div>
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {knowledge.length === 0 ? (
-                  <p className="text-slate-500 text-sm italic">Noch keine Wissenseinträge vorhanden.</p>
+                  <p className="text-slate-500 text-sm italic">
+                    Noch keine Wissenseinträge vorhanden.
+                  </p>
                 ) : (
                   knowledge.map((entry) => {
                     const isDeleted = entry.status === 'deleted';
@@ -565,7 +593,9 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
                           <>
                             <div className="flex items-center gap-2">
                               {entry.title && (
-                                <p className={`text-xs font-semibold ${isDeleted ? 'text-slate-500 line-through' : 'text-[var(--accent)]'}`}>
+                                <p
+                                  className={`text-xs font-semibold ${isDeleted ? 'text-slate-500 line-through' : 'text-[var(--accent)]'}`}
+                                >
                                   {entry.title}
                                 </p>
                               )}
@@ -575,11 +605,19 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
                                 </span>
                               )}
                             </div>
-                            <p className={`text-sm whitespace-pre-wrap ${isDeleted ? 'text-slate-500 line-through' : 'text-[var(--text-h)]'}`}>
-                              <EntityRichText content={entry.content} mappings={mappings} isHtml={false} />
+                            <p
+                              className={`text-sm whitespace-pre-wrap ${isDeleted ? 'text-slate-500 line-through' : 'text-[var(--text-h)]'}`}
+                            >
+                              <EntityRichText
+                                content={entry.content}
+                                mappings={mappings}
+                                isHtml={false}
+                              />
                             </p>
                             {isDeleted && entry.statusReason && (
-                              <p className="text-xs text-slate-500 italic">Grund: {entry.statusReason}</p>
+                              <p className="text-xs text-slate-500 italic">
+                                Grund: {entry.statusReason}
+                              </p>
                             )}
                             {!isDeleted && (
                               <div className="flex gap-2 justify-end">

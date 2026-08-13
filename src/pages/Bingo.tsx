@@ -52,9 +52,10 @@ export function Bingo({ user }: BingoProps) {
   // until the admin ends it (resetGame).
   const bingoPlayers = game.players.filter((p) => p.status === 'bingo');
   const hasBingo = bingoPlayers.length > 0;
-  const bingoLabel = bingoPlayers.length === 1
-    ? `${bingoPlayers[0].name} hat BINGO!`
-    : `${bingoPlayers.map((p) => p.name).join(' & ')} haben BINGO!`;
+  const bingoLabel =
+    bingoPlayers.length === 1
+      ? `${bingoPlayers[0].name} hat BINGO!`
+      : `${bingoPlayers.map((p) => p.name).join(' & ')} haben BINGO!`;
 
   return (
     <div className="h-full flex flex-col p-4 sm:p-6">

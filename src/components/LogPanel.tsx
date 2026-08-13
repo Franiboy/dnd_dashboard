@@ -115,7 +115,7 @@ function ExpandableLogContent({ value, label = 'details' }: ExpandableLogContent
         onClick={() => setExpanded((e) => !e)}
         className="inline text-left text-slate-400 hover:text-slate-200 underline decoration-dotted underline-offset-2 align-middle"
       >
-        {expanded ? '▼' : '▶'}{" "}
+        {expanded ? '▼' : '▶'}{' '}
         <span className="text-slate-300 font-mono">{isJson ? preview : label}</span>
       </button>
       {expanded && (
@@ -162,7 +162,7 @@ export function LogPanel() {
       else setIsLoadingOlder(true);
 
       const { data, error } = await request<{ logs: LogEntry[]; hasMore: boolean }>(
-        `/api/admin/logs?${query.toString()}`,
+        `/api/admin/logs?${query.toString()}`
       );
 
       // Ignore responses that arrive after the user has switched the level filter.
@@ -200,7 +200,7 @@ export function LogPanel() {
       setOldestId(older[0]?.id);
       setHasMore(data.hasMore);
     },
-    [level, request],
+    [level, request]
   );
 
   useEffect(() => {
@@ -227,7 +227,7 @@ export function LogPanel() {
           loadOlder();
         }
       },
-      { root: container, rootMargin: `${TOP_OBSERVER_MARGIN} 0px 0px 0px`, threshold: 0 },
+      { root: container, rootMargin: `${TOP_OBSERVER_MARGIN} 0px 0px 0px`, threshold: 0 }
     );
 
     observer.observe(sentinel);
@@ -251,7 +251,9 @@ export function LogPanel() {
         for (const log of filtered) {
           if (log.id !== undefined) byId.set(log.id, log);
         }
-        const merged = Array.from(byId.values()).sort((a, b) => (a.id as number) - (b.id as number));
+        const merged = Array.from(byId.values()).sort(
+          (a, b) => (a.id as number) - (b.id as number)
+        );
         const currentOldestId = logsRef.current[0]?.id;
         const mergedOldestId = merged[0]?.id;
         if (

@@ -16,15 +16,14 @@ function ensureMigrationsTable() {
 
 function wasApplied(name: string): boolean {
   const row = db.prepare('SELECT 1 FROM migrations WHERE name = ?').get(name) as
-    | { '1': number }
-    | undefined;
+    { '1': number } | undefined;
   return !!row;
 }
 
 function markApplied(name: string) {
   db.prepare('INSERT INTO migrations (name, appliedAt) VALUES (?, ?)').run(
     name,
-    new Date().toISOString(),
+    new Date().toISOString()
   );
 }
 
@@ -279,9 +278,13 @@ const migrations: Migration[] = [
   {
     name: 'add_entity_knowledge_status',
     run: () => {
-      const columns = db.prepare('PRAGMA table_info(entity_knowledge_entries)').all() as { name: string }[];
+      const columns = db.prepare('PRAGMA table_info(entity_knowledge_entries)').all() as {
+        name: string;
+      }[];
       if (!columns.some((c) => c.name === 'status')) {
-        db.exec("ALTER TABLE entity_knowledge_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'deleted'))");
+        db.exec(
+          "ALTER TABLE entity_knowledge_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'deleted'))"
+        );
       }
       if (!columns.some((c) => c.name === 'status_reason')) {
         db.exec('ALTER TABLE entity_knowledge_entries ADD COLUMN status_reason TEXT');
@@ -327,7 +330,9 @@ const migrations: Migration[] = [
   {
     name: 'add_recording_session_trim',
     run: () => {
-      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as {
+        name: string;
+      }[];
       if (!columns.some((c) => c.name === 'trim_start_seconds')) {
         db.exec('ALTER TABLE recording_sessions ADD COLUMN trim_start_seconds REAL DEFAULT 0');
       }
@@ -385,20 +390,26 @@ const migrations: Migration[] = [
           created_at TEXT NOT NULL
         );
       `);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_bingo_suggestions_created_at ON bingo_suggestions (created_at);`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bingo_suggestions_created_at ON bingo_suggestions (created_at);`
+      );
     },
   },
   {
     name: 'add_bingo_suggestion_status_columns',
     run: () => {
-      const columns = db.prepare('PRAGMA table_info(bingo_suggestions)').all() as { name: string }[];
+      const columns = db.prepare('PRAGMA table_info(bingo_suggestions)').all() as {
+        name: string;
+      }[];
       if (!columns.some((c) => c.name === 'accepted_at')) {
         db.exec('ALTER TABLE bingo_suggestions ADD COLUMN accepted_at TEXT');
       }
       if (!columns.some((c) => c.name === 'rejected_at')) {
         db.exec('ALTER TABLE bingo_suggestions ADD COLUMN rejected_at TEXT');
       }
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_bingo_suggestions_status ON bingo_suggestions (accepted_at, rejected_at, created_at);`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bingo_suggestions_status ON bingo_suggestions (accepted_at, rejected_at, created_at);`
+      );
     },
   },
   {
@@ -441,7 +452,9 @@ const migrations: Migration[] = [
   {
     name: 'add_recording_session_transcribed_trim',
     run: () => {
-      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as {
+        name: string;
+      }[];
       if (!columns.some((c) => c.name === 'transcribed_trim_start_seconds')) {
         db.exec('ALTER TABLE recording_sessions ADD COLUMN transcribed_trim_start_seconds REAL');
       }
@@ -453,7 +466,9 @@ const migrations: Migration[] = [
   {
     name: 'add_recording_session_ai_improved',
     run: () => {
-      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as {
+        name: string;
+      }[];
       if (!columns.some((c) => c.name === 'transcript_improved_at')) {
         db.exec('ALTER TABLE recording_sessions ADD COLUMN transcript_improved_at TEXT');
       }
@@ -462,7 +477,9 @@ const migrations: Migration[] = [
   {
     name: 'add_recording_session_summary',
     run: () => {
-      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as {
+        name: string;
+      }[];
       if (!columns.some((c) => c.name === 'summary')) {
         db.exec('ALTER TABLE recording_sessions ADD COLUMN summary TEXT');
       }
@@ -474,7 +491,9 @@ const migrations: Migration[] = [
   {
     name: 'add_recording_session_long_summary',
     run: () => {
-      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as {
+        name: string;
+      }[];
       if (!columns.some((c) => c.name === 'long_summary')) {
         db.exec('ALTER TABLE recording_sessions ADD COLUMN long_summary TEXT');
       }
@@ -490,7 +509,9 @@ const migrations: Migration[] = [
       if (!columns.some((c) => c.name === 'session_draft_for')) {
         db.exec('ALTER TABLE diary_entries ADD COLUMN session_draft_for INTEGER');
       }
-      db.exec('CREATE INDEX IF NOT EXISTS idx_diary_entries_session_draft_for ON diary_entries(session_draft_for)');
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_diary_entries_session_draft_for ON diary_entries(session_draft_for)'
+      );
     },
   },
   {
@@ -501,7 +522,9 @@ const migrations: Migration[] = [
         db.exec('ALTER TABLE users ADD COLUMN auto_session_to_diary INTEGER NOT NULL DEFAULT 0');
       }
       if (!columns.some((c) => c.name === 'auto_accept_session_diary')) {
-        db.exec('ALTER TABLE users ADD COLUMN auto_accept_session_diary INTEGER NOT NULL DEFAULT 0');
+        db.exec(
+          'ALTER TABLE users ADD COLUMN auto_accept_session_diary INTEGER NOT NULL DEFAULT 0'
+        );
       }
     },
   },
@@ -518,13 +541,17 @@ const migrations: Migration[] = [
           PRIMARY KEY (session_id, user_id)
         );
       `);
-      db.exec('CREATE INDEX IF NOT EXISTS idx_session_diary_transfers_user ON session_diary_transfers(user_id)');
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_session_diary_transfers_user ON session_diary_transfers(user_id)'
+      );
     },
   },
   {
     name: 'add_recording_session_updated_at',
     run: () => {
-      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as { name: string }[];
+      const columns = db.prepare('PRAGMA table_info(recording_sessions)').all() as {
+        name: string;
+      }[];
       if (!columns.some((c) => c.name === 'updated_at')) {
         db.exec('ALTER TABLE recording_sessions ADD COLUMN updated_at TEXT');
       }
@@ -558,7 +585,9 @@ const migrations: Migration[] = [
           FOREIGN KEY (batch_id) REFERENCES bingo_suggestion_batches(id) ON DELETE CASCADE
         );
       `);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_bingo_suggestion_batch_results_batch_id ON bingo_suggestion_batch_results(batch_id);`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_bingo_suggestion_batch_results_batch_id ON bingo_suggestion_batch_results(batch_id);`
+      );
     },
   },
 ];

@@ -7,9 +7,12 @@ type ButtonBaseProps = {
   children?: ReactNode;
 };
 
-type AsButton = ButtonBaseProps & { as?: 'button'; } & ButtonHTMLAttributes<HTMLButtonElement>;
-type AsLink = ButtonBaseProps & { as: 'a'; } & Omit<LinkProps, 'to'> & { href?: string; to?: LinkProps['to'] };
-type AsAnchor = ButtonBaseProps & { as: 'anchor'; } & AnchorHTMLAttributes<HTMLAnchorElement>;
+type AsButton = ButtonBaseProps & { as?: 'button' } & ButtonHTMLAttributes<HTMLButtonElement>;
+type AsLink = ButtonBaseProps & { as: 'a' } & Omit<LinkProps, 'to'> & {
+    href?: string;
+    to?: LinkProps['to'];
+  };
+type AsAnchor = ButtonBaseProps & { as: 'anchor' } & AnchorHTMLAttributes<HTMLAnchorElement>;
 
 type ButtonProps = AsButton | AsLink | AsAnchor;
 
@@ -21,8 +24,16 @@ const variantClasses: Record<NonNullable<ButtonProps['variant']>, string> = {
   warning: 'bg-[var(--warning)] text-slate-900 hover:brightness-110',
 };
 
-export function Button({ variant = 'ghost', icon, children, as = 'button', className = '', ...props }: ButtonProps) {
-  const baseClasses = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+export function Button({
+  variant = 'ghost',
+  icon,
+  children,
+  as = 'button',
+  className = '',
+  ...props
+}: ButtonProps) {
+  const baseClasses =
+    'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
   const styleClasses = variantClasses[variant];
 
   const content = (
@@ -36,18 +47,42 @@ export function Button({ variant = 'ghost', icon, children, as = 'button', class
 
   if (as === 'a') {
     const { to, href, ...rest } = props as AsLink;
-    if (to) return <Link to={to} className={classNames} {...rest}>{content}</Link>;
-    if (href) return <a href={href} className={classNames} {...rest as AnchorHTMLAttributes<HTMLAnchorElement>}>{content}</a>;
+    if (to)
+      return (
+        <Link to={to} className={classNames} {...rest}>
+          {content}
+        </Link>
+      );
+    if (href)
+      return (
+        <a
+          href={href}
+          className={classNames}
+          {...(rest as AnchorHTMLAttributes<HTMLAnchorElement>)}
+        >
+          {content}
+        </a>
+      );
   }
 
   if (as === 'anchor') {
     const { href, ...rest } = props as AsAnchor;
-    return <a href={href} className={classNames} {...rest}>{content}</a>;
+    return (
+      <a href={href} className={classNames} {...rest}>
+        {content}
+      </a>
+    );
   }
 
   const { type, disabled, onClick, ...buttonProps } = props as AsButton;
   return (
-    <button type={type || 'button'} disabled={disabled} onClick={onClick} className={classNames} {...buttonProps}>
+    <button
+      type={type || 'button'}
+      disabled={disabled}
+      onClick={onClick}
+      className={classNames}
+      {...buttonProps}
+    >
       {content}
     </button>
   );

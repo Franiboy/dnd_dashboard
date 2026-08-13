@@ -47,14 +47,18 @@ export function runOpenCode({
   onLog,
 }: OpenCodeOptions): Promise<OpenCodeResult> {
   if (prompt.length > 50_000) {
-    log.warn(`Prompt is very long (${prompt.length} chars) and is passed as a CLI argument; read large content via MCP tools instead`);
+    log.warn(
+      `Prompt is very long (${prompt.length} chars) and is passed as a CLI argument; read large content via MCP tools instead`
+    );
   }
   const bin = getOpenCodeBin();
   const args = ['run'];
 
   const mcpToken = scopes && scopes.length > 0 ? createMcpSessionToken(scopes, user) : undefined;
   if (mcpToken) {
-    log.info(`Created MCP session token with scopes: ${scopes?.join(', ')}${user ? `, user: ${user.id}` : ''}`);
+    log.info(
+      `Created MCP session token with scopes: ${scopes?.join(', ')}${user ? `, user: ${user.id}` : ''}`
+    );
   }
 
   if (sessionId) {
@@ -63,20 +67,15 @@ export function runOpenCode({
     args.push('--title', title);
   }
 
-  args.push(
-    prompt,
-    '--model',
-    model,
-    '--auto',
-    '--format',
-    'default',
-  );
+  args.push(prompt, '--model', model, '--auto', '--format', 'default');
 
   if (!sessionId) {
     args.push('--dir', worktreePath);
   }
 
-  const displayArgs = args.map((a) => (a === prompt ? `<prompt:${a.length} chars>` : a.includes(' ') ? `"${a}"` : a));
+  const displayArgs = args.map((a) =>
+    a === prompt ? `<prompt:${a.length} chars>` : a.includes(' ') ? `"${a}"` : a
+  );
   log.info('Spawning opencode', {
     bin,
     args: displayArgs,
@@ -84,7 +83,10 @@ export function runOpenCode({
     model,
     worktreePath,
     promptLength: prompt.length,
-    prompt: prompt.length > MAX_OBJECT_ARG_LENGTH ? `${prompt.slice(0, MAX_OBJECT_ARG_LENGTH)}...` : prompt,
+    prompt:
+      prompt.length > MAX_OBJECT_ARG_LENGTH
+        ? `${prompt.slice(0, MAX_OBJECT_ARG_LENGTH)}...`
+        : prompt,
   });
 
   return new Promise((resolve) => {
@@ -147,7 +149,7 @@ export function runOpenCode({
 
 export async function findOpenCodeSessionId(
   worktreePath: string,
-  title: string,
+  title: string
 ): Promise<string | null> {
   log.info(`Looking up opencode session: title=${title}, worktreePath=${worktreePath}`);
   try {
@@ -205,7 +207,7 @@ export async function cleanupOpenCodeSessions(
     keepSessionIds?: Set<string>;
     maxAgeMs?: number;
     prefix?: string;
-  } = {},
+  } = {}
 ): Promise<number> {
   const { keepSessionIds = new Set(), maxAgeMs = 24 * 60 * 60 * 1000, prefix = 'dnd-' } = options;
   const now = Date.now();
@@ -221,6 +223,8 @@ export async function cleanupOpenCodeSessions(
     deleted++;
   }
 
-  log.info(`Cleaned up ${deleted} old opencode sessions (prefix="${prefix}", maxAgeMs=${maxAgeMs})`);
+  log.info(
+    `Cleaned up ${deleted} old opencode sessions (prefix="${prefix}", maxAgeMs=${maxAgeMs})`
+  );
   return deleted;
 }

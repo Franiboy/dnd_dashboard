@@ -4,14 +4,14 @@ Visible apps are maintained centrally in `src/lib/apps.ts`. The initial admin (`
 
 The `label` values in the table below are taken directly from `src/lib/apps.ts` and are currently German because the application UI is in German.
 
-| ID | Label | Route | Admin only | Disableable | Hide for initial admin | Requires feature | Icon ID |
-|----|-------|-------|------------|-------------|------------------------|------------------|---------|
-| `dashboard` | Dashboard | `/` | no | no | yes | - | - |
-| `notes` | Tagebuch | `/tagebuch` | no | yes | yes | - | - |
-| `bingo` | Bingo | `/bingo` | no | yes | yes | - | - |
-| `world` | Welt | `/welt` | no | yes | yes | - | - |
-| `recordings` | Aufnahmen | `/recordings` | yes | yes | no | `recordingEnabled` | `recordings` |
-| `admin` | Admin | `/admin` | yes | no | no | - | `admin` |
+| ID           | Label     | Route         | Admin only | Disableable | Hide for initial admin | Requires feature   | Icon ID      |
+| ------------ | --------- | ------------- | ---------- | ----------- | ---------------------- | ------------------ | ------------ |
+| `dashboard`  | Dashboard | `/`           | no         | no          | yes                    | -                  | -            |
+| `notes`      | Tagebuch  | `/tagebuch`   | no         | yes         | yes                    | -                  | -            |
+| `bingo`      | Bingo     | `/bingo`      | no         | yes         | yes                    | -                  | -            |
+| `world`      | Welt      | `/welt`       | no         | yes         | yes                    | -                  | -            |
+| `recordings` | Aufnahmen | `/recordings` | yes        | yes         | no                     | `recordingEnabled` | `recordings` |
+| `admin`      | Admin     | `/admin`      | yes        | no          | no                     | -                  | `admin`      |
 
 ## Admin & User Rules
 

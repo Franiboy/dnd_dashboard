@@ -24,14 +24,19 @@ function takeKnowledgeSnapshot(): Map<number, KnowledgeSnapshot> {
   const rows = listAllKnowledge();
   const map = new Map<number, KnowledgeSnapshot>();
   for (const row of rows) {
-    map.set(row.id, { id: row.id, entityType: row.entityType, entityName: row.entityName, status: row.status });
+    map.set(row.id, {
+      id: row.id,
+      entityType: row.entityType,
+      entityName: row.entityName,
+      status: row.status,
+    });
   }
   return map;
 }
 
 function computeDistributionDiff(
   before: Map<number, KnowledgeSnapshot>,
-  after: EntityKnowledgeEntry[],
+  after: EntityKnowledgeEntry[]
 ): DistributeResult {
   const afterById = new Map<number, EntityKnowledgeEntry>();
   for (const entry of after) afterById.set(entry.id, entry);
@@ -58,7 +63,7 @@ function computeDistributionDiff(
 export async function distributeKnowledgeFromText(
   text: string,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<DistributeResult> {
   const plainText = stripHtml(text).trim();
   if (!plainText) return { created: [], deleted: [] };
@@ -119,7 +124,9 @@ export async function distributeKnowledgeFromText(
     return { created: [], deleted: [] };
   }
 
-  log.info(`Distributed ${diff.created.length} new entries and marked ${diff.deleted.length} entries as deleted`);
+  log.info(
+    `Distributed ${diff.created.length} new entries and marked ${diff.deleted.length} entries as deleted`
+  );
   return diff;
 }
 
@@ -132,9 +139,10 @@ export async function generateEntitySummary(
   entityType: EntityType,
   entityName: string,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<GeneratedEntitySummary | null> {
-  const typeLabel = entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
+  const typeLabel =
+    entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
 
   const summaryRow = getEntitySummary(entityType, entityName);
   const previousSummary = summaryRow?.summary
@@ -160,7 +168,7 @@ export async function generateEntitySummary(
     '- Speichere beides zusammen mit set_entity_summary, nachdem du get_entity aufgerufen hast.',
     '',
     previousSummary,
-    `Zusammenfassung für ${entityName}:`
+    `Zusammenfassung für ${entityName}:`,
   ].join('\n');
 
   log.info(`Generating summary for ${entityType}/${entityName}`);
@@ -179,7 +187,9 @@ export async function generateEntitySummary(
   }
 
   if (!result.success) {
-    log.warn(`Summary generation failed for ${entityType}/${entityName}: exitCode=${result.exitCode}`);
+    log.warn(
+      `Summary generation failed for ${entityType}/${entityName}: exitCode=${result.exitCode}`
+    );
     return null;
   }
 

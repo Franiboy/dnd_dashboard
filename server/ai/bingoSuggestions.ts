@@ -5,7 +5,12 @@ import { getGame } from '../game.js';
 import { createLogger } from '../logger.js';
 import { isAiEnabled } from './config.js';
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
-import { getBingoModel, getGenerationBatchSize, getRefillThreshold, getTargetPoolSize } from '../bingoConfig.js';
+import {
+  getBingoModel,
+  getGenerationBatchSize,
+  getRefillThreshold,
+  getTargetPoolSize,
+} from '../bingoConfig.js';
 import { listRecentCompletedSessions } from '../repositories/recordings.js';
 import {
   countPendingSuggestions,
@@ -134,7 +139,10 @@ async function cleanupSession(sessionId: string | null | undefined): Promise<voi
   await deleteOpenCodeSession(sessionId);
 }
 
-function waitForBatch(batchId: string, timeoutMs: number): Promise<{ status: string; results?: { text: string; source: string }[] }> {
+function waitForBatch(
+  batchId: string,
+  timeoutMs: number
+): Promise<{ status: string; results?: { text: string; source: string }[] }> {
   return new Promise((resolve) => {
     const start = Date.now();
     const poll = () => {
@@ -169,7 +177,9 @@ export async function generateBingoSuggestionBatch(count: number): Promise<strin
 
   const { transcriptsFile, sessionsIncluded } = prepareBingoContextFiles();
   const prompt = buildPrompt(count, transcriptsFile, batchId);
-  log.info(`Generating ${count} bingo suggestions (batchId=${batchId}, sessions in context: ${sessionsIncluded})`);
+  log.info(
+    `Generating ${count} bingo suggestions (batchId=${batchId}, sessions in context: ${sessionsIncluded})`
+  );
 
   const result = await runOpenCode({
     prompt,
@@ -222,7 +232,9 @@ interface EnsureSuggestionPoolOptions {
   clear?: boolean;
 }
 
-export async function ensureSuggestionPool(options: EnsureSuggestionPoolOptions = {}): Promise<void> {
+export async function ensureSuggestionPool(
+  options: EnsureSuggestionPoolOptions = {}
+): Promise<void> {
   if (!isAiEnabled()) return;
 
   if (refillPromise) return refillPromise;
@@ -280,7 +292,9 @@ export async function ensureSuggestionPool(options: EnsureSuggestionPoolOptions 
       }
 
       if (currentPending < target) {
-        log.warn(`Bingo suggestion pool refill stopped at ${currentPending}/${target} after ${iterations} iteration(s)`);
+        log.warn(
+          `Bingo suggestion pool refill stopped at ${currentPending}/${target} after ${iterations} iteration(s)`
+        );
       }
     } catch (err) {
       log.error('Failed to refill bingo suggestion pool:', err);

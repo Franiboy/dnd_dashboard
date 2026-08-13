@@ -14,14 +14,14 @@ export function listAllKnowledge(): EntityKnowledgeEntry[] {
 
 export function listEntityKnowledge(
   entityType: EntityType,
-  entityName: string,
+  entityName: string
 ): EntityKnowledgeEntry[] {
   const rows = db
     .prepare(
       `SELECT ${selectColumns}
        FROM entity_knowledge_entries
        WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE
-       ORDER BY created_at DESC`,
+       ORDER BY created_at DESC`
     )
     .all(entityType, entityName) as EntityKnowledgeEntry[];
   return rows;
@@ -29,14 +29,14 @@ export function listEntityKnowledge(
 
 export function listActiveEntityKnowledge(
   entityType: EntityType,
-  entityName: string,
+  entityName: string
 ): EntityKnowledgeEntry[] {
   const rows = db
     .prepare(
       `SELECT ${selectColumns}
        FROM entity_knowledge_entries
        WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE AND status = 'active'
-       ORDER BY created_at DESC`,
+       ORDER BY created_at DESC`
     )
     .all(entityType, entityName) as EntityKnowledgeEntry[];
   return rows;
@@ -47,7 +47,7 @@ export function getEntityKnowledgeEntry(id: number): EntityKnowledgeEntry | null
     .prepare(
       `SELECT ${selectColumns}
        FROM entity_knowledge_entries
-       WHERE id = ?`,
+       WHERE id = ?`
     )
     .get(id) as EntityKnowledgeEntry | undefined;
   return row ?? null;
@@ -58,12 +58,12 @@ export function createEntityKnowledge(
   entityName: string,
   title: string | null,
   content: string,
-  source = 'manual',
+  source = 'manual'
 ): EntityKnowledgeEntry {
   const now = new Date().toISOString();
   const result = db
     .prepare(
-      'INSERT INTO entity_knowledge_entries (entity_type, entity_name, title, content, source, status, status_reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO entity_knowledge_entries (entity_type, entity_name, title, content, source, status, status_reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
     .run(
       entityType,
@@ -74,7 +74,7 @@ export function createEntityKnowledge(
       'active',
       null,
       now,
-      now,
+      now
     );
   const entry = getEntityKnowledgeEntry(Number(result.lastInsertRowid))!;
   markEntitySummaryDirty(entityType, entityName);
@@ -83,7 +83,7 @@ export function createEntityKnowledge(
 
 export function updateEntityKnowledge(
   id: number,
-  updates: { title?: string | null; content?: string },
+  updates: { title?: string | null; content?: string }
 ): EntityKnowledgeEntry | null {
   const existing = getEntityKnowledgeEntry(id);
   if (!existing) return null;
@@ -106,7 +106,9 @@ export function updateEntityKnowledge(
   values.push(now);
   values.push(id);
 
-  db.prepare(`UPDATE entity_knowledge_entries SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE entity_knowledge_entries SET ${fields.join(', ')} WHERE id = ?`).run(
+    ...values
+  );
   const entry = getEntityKnowledgeEntry(id);
   if (entry) markEntitySummaryDirty(entry.entityType, entry.entityName);
   return entry;
@@ -114,14 +116,14 @@ export function updateEntityKnowledge(
 
 export function markEntityKnowledgeDeleted(
   id: number,
-  reason: string | null = null,
+  reason: string | null = null
 ): EntityKnowledgeEntry | null {
   const existing = getEntityKnowledgeEntry(id);
   if (!existing) return null;
 
   const now = new Date().toISOString();
   db.prepare(
-    'UPDATE entity_knowledge_entries SET status = ?, status_reason = ?, updated_at = ? WHERE id = ?',
+    'UPDATE entity_knowledge_entries SET status = ?, status_reason = ?, updated_at = ? WHERE id = ?'
   ).run('deleted', reason ? reason.trim() : null, now, id);
   const entry = getEntityKnowledgeEntry(id);
   if (entry) markEntitySummaryDirty(entry.entityType, entry.entityName);
@@ -131,10 +133,10 @@ export function markEntityKnowledgeDeleted(
 export function renameEntityKnowledge(
   entityType: EntityType,
   oldName: string,
-  newName: string,
+  newName: string
 ): void {
   db.prepare(
-    'UPDATE entity_knowledge_entries SET entity_name = ? WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE',
+    'UPDATE entity_knowledge_entries SET entity_name = ? WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE'
   ).run(newName, entityType, oldName);
   renameEntitySummary(entityType, oldName, newName);
 }
@@ -143,9 +145,9 @@ export function mergeEntityKnowledge(
   sourceType: EntityType,
   sourceName: string,
   targetType: EntityType,
-  targetName: string,
+  targetName: string
 ): void {
   db.prepare(
-    'UPDATE entity_knowledge_entries SET entity_type = ?, entity_name = ? WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE',
+    'UPDATE entity_knowledge_entries SET entity_type = ?, entity_name = ? WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE'
   ).run(targetType, targetName, sourceType, sourceName);
 }

@@ -14,9 +14,10 @@ export function onStatusUpdated(callback: () => void): () => void {
 }
 
 export function onProgressUpdated(
-  callback: (sessionId: number, progress: TranscriptionProgress | null) => void,
+  callback: (sessionId: number, progress: TranscriptionProgress | null) => void
 ): () => void {
-  const handler = (_sessionId: number, _progress: TranscriptionProgress | null) => callback(_sessionId, _progress);
+  const handler = (_sessionId: number, _progress: TranscriptionProgress | null) =>
+    callback(_sessionId, _progress);
   emitter.on('progress', handler);
   return () => emitter.off('progress', handler);
 }
@@ -29,6 +30,9 @@ export function emitStatusUpdated(): void {
   emitter.emit('status');
 }
 
-export function emitProgressUpdated(sessionId: number, progress: TranscriptionProgress | null): void {
+export function emitProgressUpdated(
+  sessionId: number,
+  progress: TranscriptionProgress | null
+): void {
   emitter.emit('progress', sessionId, progress);
 }

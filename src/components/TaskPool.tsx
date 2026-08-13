@@ -20,7 +20,15 @@ interface TaskPoolProps {
   playerId?: string | null;
 }
 
-export function TaskPool({ game, socket, isSetup, className, listClassName, currentUser, playerId }: TaskPoolProps) {
+export function TaskPool({
+  game,
+  socket,
+  isSetup,
+  className,
+  listClassName,
+  currentUser,
+  playerId,
+}: TaskPoolProps) {
   const { request } = useApi();
   const [text, setText] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
@@ -38,11 +46,14 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
 
   const player = game.players.find((p) => p.id === playerId);
   const placedTaskIds = new Set<string>(
-    player?.board?.flat().filter((cell) => cell.taskId).map((cell) => cell.taskId!) ?? [],
+    player?.board
+      ?.flat()
+      .filter((cell) => cell.taskId)
+      .map((cell) => cell.taskId!) ?? []
   );
 
   const visibleTasks = game.tasks.filter(
-    (task) => !task.isPrivate || (ownerId && task.assignedTo?.includes(ownerId)) || showHidden,
+    (task) => !task.isPrivate || (ownerId && task.assignedTo?.includes(ownerId)) || showHidden
   );
 
   useEffect(() => {
@@ -154,8 +165,9 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
               }}
               label="Private Aufgabe"
             />
-            {isPrivate && ownerId && (
-              usersLoading ? (
+            {isPrivate &&
+              ownerId &&
+              (usersLoading ? (
                 <Loading text="Benutzer laden..." size="sm" />
               ) : (
                 <UserCheckboxList
@@ -166,8 +178,7 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
                   title="Zugewiesen an (mehrere möglich):"
                   emptyMessage="Keine Benutzer verfügbar."
                 />
-              )
-            )}
+              ))}
           </div>
         </div>
       )}
@@ -227,7 +238,9 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
               </button>
               <button
                 onClick={saveEdit}
-                disabled={!editingText.trim() || (editingIsPrivate && editingAssignedTo.length === 0)}
+                disabled={
+                  !editingText.trim() || (editingIsPrivate && editingAssignedTo.length === 0)
+                }
                 className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
               >
                 Speichern
@@ -250,8 +263,8 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
               }}
               label="Private Aufgabe"
             />
-            {editingIsPrivate && (
-              usersLoading ? (
+            {editingIsPrivate &&
+              (usersLoading ? (
                 <Loading text="Benutzer laden..." size="sm" />
               ) : (
                 <UserCheckboxList
@@ -262,8 +275,7 @@ export function TaskPool({ game, socket, isSetup, className, listClassName, curr
                   title="Zugewiesen an (mehrere möglich):"
                   emptyMessage="Keine Benutzer verfügbar."
                 />
-              )
-            )}
+              ))}
           </div>
         </Modal>
       )}
@@ -333,10 +345,16 @@ function TaskListItem({
           <span className="text-slate-400">🔒</span>
         </Tooltip>
       )}
-      <button onClick={() => onEdit(task)} className="text-slate-400 hover:text-[var(--text-h)] text-sm">
+      <button
+        onClick={() => onEdit(task)}
+        className="text-slate-400 hover:text-[var(--text-h)] text-sm"
+      >
         Bearbeiten
       </button>
-      <button onClick={() => onRemove(task.id)} className="text-[var(--danger)] hover:text-red-300 text-sm">
+      <button
+        onClick={() => onRemove(task.id)}
+        className="text-[var(--danger)] hover:text-red-300 text-sm"
+      >
         Entfernen
       </button>
     </div>
@@ -351,7 +369,9 @@ function TaskListItem({
         e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'task', taskId: task.id }));
       }}
       className={`${twoLine ? 'flex flex-col' : 'flex items-center'} px-3 py-2 rounded border transition ${
-        placed ? 'bg-[var(--accent-dim)] border-[var(--accent)]' : 'bg-slate-900/50 border-[var(--border)]'
+        placed
+          ? 'bg-[var(--accent-dim)] border-[var(--accent)]'
+          : 'bg-slate-900/50 border-[var(--border)]'
       } ${isSetup ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
       <span ref={textRef} className="min-w-0 flex-1 break-words text-[var(--text-h)]">
