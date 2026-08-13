@@ -35,6 +35,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: self-hosted
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Run deploy script
-        run: /home/franiboy/bin/dnd-deploy.sh
+        run: bash scripts/dnd-deploy.sh
         shell: bash
