@@ -19,3 +19,4 @@
 - Tests are written with Vitest and live next to the code they test (`*.test.ts` / `*.test.tsx`).
 - Server tests use an in-memory SQLite database configured in `vitest.config.ts`; `server/vitest.setup.ts` runs migrations before each test file.
 - Client tests run in `jsdom` with `@testing-library/react`; `src/vitest.setup.ts` cleans up the DOM after each test.
+- The pre-commit hook runs `lint-staged`: it formats staged files with Prettier and auto-fixes TypeScript/JavaScript with `oxlint --fix`.
