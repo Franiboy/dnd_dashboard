@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
 # Auto-deploy: fast-forward pulls the repo, rebuilds D&D Dashboard,
 # verifies health afterwards and rolls back on failure.
+#
+# Paths are resolved relative to this script; override the deploy target
+# with DND_DEPLOY_REPO when invoking from a different checkout (CI).
 set -euo pipefail
 
 # Use nvm-managed Node (systemd does not load nvm)
-export NVM_DIR="/home/franiboy/.nvm"
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-export PATH="/home/franiboy/.nvm/versions/node/v24.15.0/bin:$PATH"
+export PATH="${NVM_DIR}/versions/node/v24.15.0/bin:$PATH"
 
-REPO="/dnd_dashboard"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="${DND_DEPLOY_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 BRANCH="main"
-LOG="/home/franiboy/logs/dnd-deploy.log"
+LOG_DIR="${DND_LOG_DIR:-$HOME/logs}"
+LOG="$LOG_DIR/dnd-deploy.log"
 LOCK="/tmp/dnd-deploy.lock"
 ROLLBACK_DIR="/tmp/dnd-deploy-rollback"
-HEALTH_URL="http://localhost:3001/health"
+HEALTH_URL="${DND_HEALTH_URL:-http://localhost:3001/health}"
 HEALTH_RETRIES=12
 HEALTH_SLEEP=5
+
+mkdir -p "$LOG_DIR"
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
