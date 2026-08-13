@@ -1,0 +1,8 @@
+[Unit]
+Description=D&D Dashboard backup (SQLite + data)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=franiboy
+ExecStart=/dnd_dashboard/scripts/dnd-backup.sh
