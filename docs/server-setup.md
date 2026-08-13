@@ -27,6 +27,12 @@ listed at the end.
    socket + timers, nginx site, `~/logs` + `~/backups/dnd`, and passwordless
    `sudo systemctl restart dnd-dashboard`.
 
+   The `dnd-opencode2.service` unit runs the opencode2 background server
+   (`opencode2 serve --service`). It is only needed when using the V2 CLI
+   (`AI_OPENCODE_BIN=opencode2`); `dnd-dashboard.service` pulls it in via
+   `Wants=` so it is started automatically but does not hard-block the dashboard
+   if it fails.
+
 ## Manual (cannot be fully automated)
 
 1. **Runner token**: GitHub UI `Settings > Actions > Runners > New self-hosted
