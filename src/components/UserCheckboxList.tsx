@@ -42,7 +42,9 @@ export function UserCheckboxList({
   };
 
   return (
-    <div className={`bg-slate-900/30 border border-[var(--border)] rounded-lg p-3 ${className || ''}`}>
+    <div
+      className={`bg-slate-900/30 border border-[var(--border)] rounded-lg p-3 ${className || ''}`}
+    >
       {title && <p className="text-xs text-slate-400 mb-2">{title}</p>}
       <input
         value={query}
@@ -67,13 +69,15 @@ export function UserCheckboxList({
                   isDisabled
                     ? 'bg-slate-800/50 cursor-default opacity-70'
                     : isSelected
-                    ? 'bg-slate-800 hover:bg-slate-700 cursor-pointer'
-                    : 'hover:bg-slate-800/50 cursor-pointer'
+                      ? 'bg-slate-800 hover:bg-slate-700 cursor-pointer'
+                      : 'hover:bg-slate-800/50 cursor-pointer'
                 }`}
               >
                 <span
                   className={`flex h-4 w-4 items-center justify-center rounded border ${
-                    isSelected ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--border)] bg-slate-900'
+                    isSelected
+                      ? 'bg-[var(--accent)] border-[var(--accent)]'
+                      : 'border-[var(--border)] bg-slate-900'
                   }`}
                 >
                   {isSelected && <span className="text-slate-900 text-xs font-bold">✓</span>}

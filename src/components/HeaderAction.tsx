@@ -16,7 +16,14 @@ const variants = {
   default: 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-[var(--text-h)]',
 };
 
-export function HeaderAction({ to, onClick, icon, children, variant = 'default', title }: HeaderActionProps) {
+export function HeaderAction({
+  to,
+  onClick,
+  icon,
+  children,
+  variant = 'default',
+  title,
+}: HeaderActionProps) {
   const className = `inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${variants[variant]}`;
 
   if (to) {

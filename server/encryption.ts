@@ -19,7 +19,7 @@ function decodeKey(raw: string): Buffer {
   if (key.toString('base64') !== trimmed || key.length !== KEY_LENGTH) {
     throw new Error(
       `TOKEN_ENCRYPTION_KEY must be a valid base64-encoded ${KEY_LENGTH}-byte key. ` +
-        'Generate it with: openssl rand -base64 32',
+        'Generate it with: openssl rand -base64 32'
     );
   }
   return key;

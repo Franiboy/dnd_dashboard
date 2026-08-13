@@ -8,7 +8,13 @@ import { buildTriggers, findMatches, type Match, type Trigger } from '../lib/ent
 
 type Segment =
   | { kind: 'text'; text: string }
-  | { kind: 'entity'; text: string; type: EntityType; canonical: string; miniSummary: string | null };
+  | {
+      kind: 'entity';
+      text: string;
+      type: EntityType;
+      canonical: string;
+      miniSummary: string | null;
+    };
 
 const entityTextStyles: Record<EntityType, string> = {
   persons: 'text-[var(--accent)]',
@@ -23,7 +29,13 @@ function segmentText(input: string, matches: Match[]): Segment[] {
     if (m.start > pos) {
       segments.push({ kind: 'text', text: input.slice(pos, m.start) });
     }
-    segments.push({ kind: 'entity', text: input.slice(m.start, m.end), type: m.type, canonical: m.canonical, miniSummary: m.miniSummary });
+    segments.push({
+      kind: 'entity',
+      text: input.slice(m.start, m.end),
+      type: m.type,
+      canonical: m.canonical,
+      miniSummary: m.miniSummary,
+    });
     pos = m.end;
   }
   if (pos < input.length) {
@@ -65,7 +77,15 @@ function renderSegments(segments: Segment[], baseKey: string): React.ReactNode[]
   return segments.map((seg, i) => {
     const key = `${baseKey}-${i}`;
     if (seg.kind === 'text') return <React.Fragment key={key}>{seg.text}</React.Fragment>;
-    return <EntityBadge key={key} text={seg.text} type={seg.type} canonical={seg.canonical} miniSummary={seg.miniSummary} />;
+    return (
+      <EntityBadge
+        key={key}
+        text={seg.text}
+        type={seg.type}
+        canonical={seg.canonical}
+        miniSummary={seg.miniSummary}
+      />
+    );
   });
 }
 
@@ -95,9 +115,20 @@ function attributesToProps(el: HTMLElement, key: string): Record<string, unknown
     } else if (name.startsWith('data-') || name.startsWith('aria-')) {
       props[name] = value;
     } else if (
-      ['href', 'target', 'rel', 'src', 'alt', 'title', 'width', 'height', 'colspan', 'rowspan', 'align', 'valign'].includes(
-        name,
-      )
+      [
+        'href',
+        'target',
+        'rel',
+        'src',
+        'alt',
+        'title',
+        'width',
+        'height',
+        'colspan',
+        'rowspan',
+        'align',
+        'valign',
+      ].includes(name)
     ) {
       props[name] = value;
     }
@@ -172,7 +203,12 @@ interface EntityRichTextProps {
   className?: string;
 }
 
-export function EntityRichText({ content, mappings, isHtml = true, className }: EntityRichTextProps) {
+export function EntityRichText({
+  content,
+  mappings,
+  isHtml = true,
+  className,
+}: EntityRichTextProps) {
   const triggers = useMemo(() => buildTriggers(mappings), [mappings]);
 
   const nodes = useMemo(() => {

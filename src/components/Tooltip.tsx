@@ -9,10 +9,7 @@ interface TooltipProps {
 
 const gap = 8;
 
-function mergeHandler<E extends React.SyntheticEvent>(
-  own: (e: E) => void,
-  child?: (e: E) => void,
-) {
+function mergeHandler<E extends React.SyntheticEvent>(own: (e: E) => void, child?: (e: E) => void) {
   return (e: E) => {
     child?.(e);
     own(e);

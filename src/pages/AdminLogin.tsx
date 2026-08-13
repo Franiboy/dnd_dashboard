@@ -49,11 +49,7 @@ export function AdminLogin({ onLogin, error }: AdminLoginProps) {
           disabled={loading}
           className="w-full py-3 rounded-lg bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
         >
-          {loading ? (
-            <Loading text="" size="sm" className="justify-center" />
-          ) : (
-            'Einloggen'
-          )}
+          {loading ? <Loading text="" size="sm" className="justify-center" /> : 'Einloggen'}
         </button>
       </form>
     </div>

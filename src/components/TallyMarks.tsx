@@ -8,7 +8,15 @@ interface TallyMarksProps {
 function Stroke() {
   return (
     <svg width="3" height="18" viewBox="0 0 3 18" className="shrink-0" aria-hidden="true">
-      <line x1="1.5" y1="1" x2="1.5" y2="17" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+      <line
+        x1="1.5"
+        y1="1"
+        x2="1.5"
+        y2="17"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -16,11 +24,51 @@ function Stroke() {
 function FiveGroup() {
   return (
     <svg width="15" height="18" viewBox="0 0 15 18" className="shrink-0" aria-hidden="true">
-      <line x1="1.5" y1="1" x2="1.5" y2="17" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-      <line x1="5" y1="1" x2="5" y2="17" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-      <line x1="8.5" y1="1" x2="8.5" y2="17" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-      <line x1="12" y1="1" x2="12" y2="17" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-      <line x1="1" y1="16" x2="14" y2="2" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+      <line
+        x1="1.5"
+        y1="1"
+        x2="1.5"
+        y2="17"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+      <line
+        x1="5"
+        y1="1"
+        x2="5"
+        y2="17"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+      <line
+        x1="8.5"
+        y1="1"
+        x2="8.5"
+        y2="17"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+      <line
+        x1="12"
+        y1="1"
+        x2="12"
+        y2="17"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+      <line
+        x1="1"
+        y1="16"
+        x2="14"
+        y2="2"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

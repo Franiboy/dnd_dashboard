@@ -13,12 +13,17 @@ const OAUTH_STATE_MAX_AGE_MS = 5 * 60 * 1000;
 
 // Session lifetime is configurable in days; defaults to 7 days.
 const parsedJwtExpiresInDays = Number(process.env.JWT_EXPIRES_IN_DAYS || 7);
-const JWT_EXPIRES_IN_DAYS = Number.isFinite(parsedJwtExpiresInDays) && parsedJwtExpiresInDays > 0 ? parsedJwtExpiresInDays : 7;
+const JWT_EXPIRES_IN_DAYS =
+  Number.isFinite(parsedJwtExpiresInDays) && parsedJwtExpiresInDays > 0
+    ? parsedJwtExpiresInDays
+    : 7;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 const TOKEN_MAX_AGE_MS = JWT_EXPIRES_IN_DAYS * MS_PER_DAY;
 
 if (!JWT_SECRET) {
-  log.error('Fehler: JWT_SECRET ist nicht gesetzt. Bitte .env.example nach .env kopieren und anpassen.');
+  log.error(
+    'Fehler: JWT_SECRET ist nicht gesetzt. Bitte .env.example nach .env kopieren und anpassen.'
+  );
   process.exit(1);
 }
 
@@ -171,7 +176,11 @@ export function getAuthenticatedUser(req: Request, extraTokens: string[] = []): 
   return null;
 }
 
-export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+export async function authMiddleware(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
   const user = getAuthenticatedUser(req);
   if (!user) {
     res.status(401).json({ error: 'Unauthorized' });
@@ -196,4 +205,3 @@ export function requireApproved(req: AuthRequest, res: Response, next: NextFunct
   }
   next();
 }
-

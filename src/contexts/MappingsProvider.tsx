@@ -28,9 +28,5 @@ export function MappingsProvider({ children }: MappingsProviderProps) {
 
   const value = useMemo(() => ({ mappings, refresh }), [mappings, refresh]);
 
-  return (
-    <MappingsContext.Provider value={value}>
-      {children}
-    </MappingsContext.Provider>
-  );
+  return <MappingsContext.Provider value={value}>{children}</MappingsContext.Provider>;
 }

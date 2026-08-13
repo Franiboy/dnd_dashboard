@@ -43,14 +43,14 @@ Das Dashboard ist eine interne Web-App für eine D&D-Gruppe: Discord-Login, Bing
 
 Fokus: Technische Schulden reduzieren, Vertrauen in Änderungen schaffen.
 
-| # | Epic | Ziel | Akzeptanzkriterien |
-|---|------|------|--------------------|
-| 1.1 | **Test-Infrastruktur** | Verlässliche Rückmeldung bei Refactorings | Vitest für Server eingerichtet; Unit-Tests für `repositories/`, `auth.ts`, `ai/actions.ts`; Integrationstests mit `dnd_test.db`; `npm test` lauffähig |
-| 1.2 | **CI/CD Pipeline** | Keine Regressionen mehr unbemerkt | GitHub Actions Workflow für `lint`, `typecheck`, `build`, `test` bei PRs; mind. ein Blocking-Check |
-| 1.3 | **Zentrale Konfigurationsvalidierung** | `.env`-Fehler früh erkennen | `zod`-Schema für alle env-vars; klare Fehlermeldung beim Server-Start |
-| 1.4 | **Zentrale Express-Fehlerbehandlung** | Weniger duplizierter Code, bessere HTTP-Responses | `errorHandler`-Middleware; eigene `AppError`-Klasse; 404/500-Responses zentralisiert |
-| 1.5 | **TypeScript härten** | Typ-Sicherheit erhöhen | Kein `any` in `auth.ts`/Routes; `cookie-parser`-Typen korrekt integriert |
-| 1.6 | **Health & Readiness Endpoints** | Betrieb leichter überwachen | `/health`, `/ready`; DB-Check; optional Memory/Version |
+| #   | Epic                                   | Ziel                                              | Akzeptanzkriterien                                                                                                                                    |
+| --- | -------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.1 | **Test-Infrastruktur**                 | Verlässliche Rückmeldung bei Refactorings         | Vitest für Server eingerichtet; Unit-Tests für `repositories/`, `auth.ts`, `ai/actions.ts`; Integrationstests mit `dnd_test.db`; `npm test` lauffähig |
+| 1.2 | **CI/CD Pipeline**                     | Keine Regressionen mehr unbemerkt                 | GitHub Actions Workflow für `lint`, `typecheck`, `build`, `test` bei PRs; mind. ein Blocking-Check                                                    |
+| 1.3 | **Zentrale Konfigurationsvalidierung** | `.env`-Fehler früh erkennen                       | `zod`-Schema für alle env-vars; klare Fehlermeldung beim Server-Start                                                                                 |
+| 1.4 | **Zentrale Express-Fehlerbehandlung**  | Weniger duplizierter Code, bessere HTTP-Responses | `errorHandler`-Middleware; eigene `AppError`-Klasse; 404/500-Responses zentralisiert                                                                  |
+| 1.5 | **TypeScript härten**                  | Typ-Sicherheit erhöhen                            | Kein `any` in `auth.ts`/Routes; `cookie-parser`-Typen korrekt integriert                                                                              |
+| 1.6 | **Health & Readiness Endpoints**       | Betrieb leichter überwachen                       | `/health`, `/ready`; DB-Check; optional Memory/Version                                                                                                |
 
 **Quick Wins in Phase 1:**
 
@@ -64,15 +64,15 @@ Fokus: Technische Schulden reduzieren, Vertrauen in Änderungen schaffen.
 
 Fokus: Die KI-Verarbeitung robuster machen und das Wissen besser nutzbar machen.
 
-| # | Epic | Ziel | Akzeptanzkriterien |
-|---|------|------|--------------------|
-| 2.1 | **Persistente KI-Job-Queue** | Lange KI-Jobs überleben Server-Neustarts | SQLite- oder Redis-basierte Queue; Jobs für Diary-Rewrite, Summary, Session-Transkript, Bingo-Vorschläge; Fortschritt und Retry-Logik im Admin-Panel sichtbar |
-| 2.2 | **KI-Provider-Abstraktion** | Nicht mehr ausschließlich von `opencode` abhängig | `AiProvider`-Interface; Implementierungen für `opencode` und mindestens eine direkte API (z. B. OpenAI/Anthropic); `AI_PROVIDER` unterstützt mehrere Werte |
-| 2.3 | **Volltextsuche** | Tagebuch und Welt schnell durchsuchbar | SQLite `FTS5` für Titel/Inhalt/Wissen; API-Endpunkte `GET /api/diary/search`, `GET /api/entities/search`; Frontend-Suchfeld |
-| 2.4 | **Entity-Beziehungen & Knowledge-Graph** | Welt wird vernetzt statt nur listenartig | Beziehungen zwischen Personen/Organisationen/Orten modellieren; einfache Graph-Visualisierung in `/welt` |
-| 2.5 | **Tagebuch-Versionierung** | KI-Rewrites und manuelle Änderungen nachvollziehbar | Pro Eintrag Historie der letzten N Versionen; Diff-View; Restore |
-| 2.6 | **Frontend-State verbessern** | Weniger manuelles Fetching, bessere UX | `useApi` durch SWR/React Query ersetzen oder ein React-Query-ähnliches Caching einführen; optimistische Updates |
-| 2.7 | **PWA-Grundlagen** | Mobile Nutzung ermöglichen | Service-Worker via Vite PWA; App-Manifest; Offline-Startseite; Cache-Strategie für statische Assets |
+| #   | Epic                                     | Ziel                                                | Akzeptanzkriterien                                                                                                                                            |
+| --- | ---------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.1 | **Persistente KI-Job-Queue**             | Lange KI-Jobs überleben Server-Neustarts            | SQLite- oder Redis-basierte Queue; Jobs für Diary-Rewrite, Summary, Session-Transkript, Bingo-Vorschläge; Fortschritt und Retry-Logik im Admin-Panel sichtbar |
+| 2.2 | **KI-Provider-Abstraktion**              | Nicht mehr ausschließlich von `opencode` abhängig   | `AiProvider`-Interface; Implementierungen für `opencode` und mindestens eine direkte API (z. B. OpenAI/Anthropic); `AI_PROVIDER` unterstützt mehrere Werte    |
+| 2.3 | **Volltextsuche**                        | Tagebuch und Welt schnell durchsuchbar              | SQLite `FTS5` für Titel/Inhalt/Wissen; API-Endpunkte `GET /api/diary/search`, `GET /api/entities/search`; Frontend-Suchfeld                                   |
+| 2.4 | **Entity-Beziehungen & Knowledge-Graph** | Welt wird vernetzt statt nur listenartig            | Beziehungen zwischen Personen/Organisationen/Orten modellieren; einfache Graph-Visualisierung in `/welt`                                                      |
+| 2.5 | **Tagebuch-Versionierung**               | KI-Rewrites und manuelle Änderungen nachvollziehbar | Pro Eintrag Historie der letzten N Versionen; Diff-View; Restore                                                                                              |
+| 2.6 | **Frontend-State verbessern**            | Weniger manuelles Fetching, bessere UX              | `useApi` durch SWR/React Query ersetzen oder ein React-Query-ähnliches Caching einführen; optimistische Updates                                               |
+| 2.7 | **PWA-Grundlagen**                       | Mobile Nutzung ermöglichen                          | Service-Worker via Vite PWA; App-Manifest; Offline-Startseite; Cache-Strategie für statische Assets                                                           |
 
 ---
 
@@ -80,15 +80,15 @@ Fokus: Die KI-Verarbeitung robuster machen und das Wissen besser nutzbar machen.
 
 Fokus: Produktion, Multi-User-Betrieb, erweiterte Features.
 
-| # | Epic | Ziel | Akzeptanzkriterien |
-|---|------|------|--------------------|
-| 3.1 | **Multi-Instance-fähigkeit** | Mehrere Server-Prozesse/Container parallel betreiben | Socket.io Redis-Adapter; Session/JWT weiterhin stateless; optional Postgres-Adapter für SQLite |
-| 3.2 | **Audio-Pipeline 2.0** | Aufnahmen professioneller nutzbar | Live-Transkription (optional); Speaker-Diarization; Kapitelmarken aus Pausen/Topics; integrierter Audio-Player mit Sprung zu Transkript-Zeitstempel |
-| 3.3 | **KI-Verbesserung & Feedback** | Ausgaben werden mit der Zeit besser | Prompt-Versionierung; Thumbs-Up/Down pro KI-Ausgabe; Kosten/Nutzungs-Tracking; regelmäßiges Fine-Tuning-Dataset exportieren |
-| 3.4 | **Sicherheits-Härtung** | Produktionsbetrieb absichern | `helmet`-ähnliche Header (CSP, HSTS, X-Frame-Options); CORS-Origin-Validierung verschärfen; Audit-Log für Admin-Aktionen; Secrets-Rotation dokumentieren |
-| 3.5 | **Backup & Wartung** | Datenverlust ausschließen | Nightly SQLite-Backup; `VACUUM`/WAL-Checkpoint-Job; Restore-Dokumentation |
-| 3.6 | **API-Dokumentation** | Externe Integrationen ermöglichen | OpenAPI/Swagger aus Routes generieren; Endpoints dokumentiert |
-| 3.7 | **i18n & Accessibility** | Nicht-deutschsprachige Nutzer und Screenreader | i18n-Framework; de/en als Start; Keyboard-Navigation; ARIA-Labels |
+| #   | Epic                           | Ziel                                                 | Akzeptanzkriterien                                                                                                                                       |
+| --- | ------------------------------ | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3.1 | **Multi-Instance-fähigkeit**   | Mehrere Server-Prozesse/Container parallel betreiben | Socket.io Redis-Adapter; Session/JWT weiterhin stateless; optional Postgres-Adapter für SQLite                                                           |
+| 3.2 | **Audio-Pipeline 2.0**         | Aufnahmen professioneller nutzbar                    | Live-Transkription (optional); Speaker-Diarization; Kapitelmarken aus Pausen/Topics; integrierter Audio-Player mit Sprung zu Transkript-Zeitstempel      |
+| 3.3 | **KI-Verbesserung & Feedback** | Ausgaben werden mit der Zeit besser                  | Prompt-Versionierung; Thumbs-Up/Down pro KI-Ausgabe; Kosten/Nutzungs-Tracking; regelmäßiges Fine-Tuning-Dataset exportieren                              |
+| 3.4 | **Sicherheits-Härtung**        | Produktionsbetrieb absichern                         | `helmet`-ähnliche Header (CSP, HSTS, X-Frame-Options); CORS-Origin-Validierung verschärfen; Audit-Log für Admin-Aktionen; Secrets-Rotation dokumentieren |
+| 3.5 | **Backup & Wartung**           | Datenverlust ausschließen                            | Nightly SQLite-Backup; `VACUUM`/WAL-Checkpoint-Job; Restore-Dokumentation                                                                                |
+| 3.6 | **API-Dokumentation**          | Externe Integrationen ermöglichen                    | OpenAPI/Swagger aus Routes generieren; Endpoints dokumentiert                                                                                            |
+| 3.7 | **i18n & Accessibility**       | Nicht-deutschsprachige Nutzer und Screenreader       | i18n-Framework; de/en als Start; Keyboard-Navigation; ARIA-Labels                                                                                        |
 
 ---
 
@@ -138,13 +138,13 @@ Fokus: Produktion, Multi-User-Betrieb, erweiterte Features.
 
 ## 6. Risiken & Gegenmaßnahmen
 
-| Risiko | Auswirkung | Gegenmaßnahme |
-|--------|------------|---------------|
-| `opencode` CLI ändert sich | KI-Features brechen | Provider-Abstraktion bauen (Phase 2.2) |
-| SQLite wird zu groß/langsam | Performance-Probleme | FTS5, VACUUM, langfristig Postgres-Migration planen |
-| Discord-Bot/API-Änderungen | Aufnahmen funktionieren nicht | Audio-Modul hinter Interface abstrahieren; Tests mit Mocks |
-| Lange KI-Jobs blockieren Server | Timeouts, verlorene Jobs | Job-Queue mit Retry und Persistenz (Phase 2.1) |
-| Fehlende Tests bremsen Refactoring aus | Technische Schulden wachsen | Phase 1 komplett abschließen, bevor große Refactorings starten |
+| Risiko                                 | Auswirkung                    | Gegenmaßnahme                                                  |
+| -------------------------------------- | ----------------------------- | -------------------------------------------------------------- |
+| `opencode` CLI ändert sich             | KI-Features brechen           | Provider-Abstraktion bauen (Phase 2.2)                         |
+| SQLite wird zu groß/langsam            | Performance-Probleme          | FTS5, VACUUM, langfristig Postgres-Migration planen            |
+| Discord-Bot/API-Änderungen             | Aufnahmen funktionieren nicht | Audio-Modul hinter Interface abstrahieren; Tests mit Mocks     |
+| Lange KI-Jobs blockieren Server        | Timeouts, verlorene Jobs      | Job-Queue mit Retry und Persistenz (Phase 2.1)                 |
+| Fehlende Tests bremsen Refactoring aus | Technische Schulden wachsen   | Phase 1 komplett abschließen, bevor große Refactorings starten |
 
 ---
 

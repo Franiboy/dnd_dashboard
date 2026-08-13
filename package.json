@@ -19,7 +19,10 @@
     "test:server": "DB_PATH=dnd_test.db npm run server",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
   },
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",
@@ -64,13 +67,19 @@
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^10.0.3",
+    "husky": "^9.1.7",
     "jsdom": "^30.0.1",
+    "lint-staged": "^17.3.0",
     "oxlint": "^1.71.0",
+    "prettier": "^3.9.6",
     "tailwindcss": "^4.3.2",
     "tsx": "^4.23.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vitest": "^4.1.10"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,md,yml,yaml,css,html}": "prettier --write"
   },
   "overrides": {
     "quill": "2.0.2"

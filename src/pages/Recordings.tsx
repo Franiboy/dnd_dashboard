@@ -14,7 +14,15 @@ import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { Toggle } from '../components/Toggle';
 import ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
-import type { DiaryEntry, EntityType, RecordingSession, SafeUser, SessionDiaryEntryLink, SessionDiaryTransfer, VersionInfo } from '../../shared/types';
+import type {
+  DiaryEntry,
+  EntityType,
+  RecordingSession,
+  SafeUser,
+  SessionDiaryEntryLink,
+  SessionDiaryTransfer,
+  VersionInfo,
+} from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 interface SessionsProps {
@@ -60,7 +68,9 @@ function SessionDiaryTransferBadge({ transfer }: { transfer: SessionDiaryTransfe
       ? 'bg-[var(--accent)]/10 text-[var(--accent)] border-[var(--accent)]/20'
       : 'bg-slate-800 text-slate-300 border-slate-700';
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${colorClasses}`}>
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${colorClasses}`}
+    >
       {label}
     </span>
   );
@@ -85,16 +95,31 @@ export function Sessions({ user }: SessionsProps) {
   const [summarizingId, setSummarizingId] = useState<number | null>(null);
   const [draftingId, setDraftingId] = useState<number | null>(null);
   const [diaryTransfers, setDiaryTransfers] = useState<Record<number, SessionDiaryTransfer>>({});
-  const [sessionDiaryEntries, setSessionDiaryEntries] = useState<Record<number, SessionDiaryEntryLink[]>>({});
+  const [sessionDiaryEntries, setSessionDiaryEntries] = useState<
+    Record<number, SessionDiaryEntryLink[]>
+  >({});
   const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<
-    Record<number, { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null>
+    Record<
+      number,
+      {
+        currentFile: number;
+        totalFiles: number;
+        fileName: string;
+        framesCurrent: number;
+        framesTotal: number;
+      } | null
+    >
   >({});
   const summaryQuillRefs = useRef<Record<number, ReactQuill>>({});
   const sessionRefs = useRef<Record<number, HTMLElement>>({});
   const expandedSummaryHash = useMemo(
-    () => sessions.filter((s) => expandedLongSummaries.has(s.id)).map((s) => s.longSummary ?? '').join('\u0000'),
-    [sessions, expandedLongSummaries],
+    () =>
+      sessions
+        .filter((s) => expandedLongSummaries.has(s.id))
+        .map((s) => s.longSummary ?? '')
+        .join('\u0000'),
+    [sessions, expandedLongSummaries]
   );
 
   useEffect(() => {
@@ -117,7 +142,13 @@ export function Sessions({ user }: SessionsProps) {
       eventSource.addEventListener('progress', (event) => {
         const data = JSON.parse((event as MessageEvent).data) as {
           sessionId: number;
-          progress: { currentFile: number; totalFiles: number; fileName: string; framesCurrent: number; framesTotal: number } | null;
+          progress: {
+            currentFile: number;
+            totalFiles: number;
+            fileName: string;
+            framesCurrent: number;
+            framesTotal: number;
+          } | null;
         };
         setTranscriptionProgress((prev) => ({ ...prev, [data.sessionId]: data.progress }));
       });
@@ -141,7 +172,9 @@ export function Sessions({ user }: SessionsProps) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const { data } = await request<{ transfers: Record<number, SessionDiaryTransfer> }>('/api/recordings/diary-transfers');
+      const { data } = await request<{ transfers: Record<number, SessionDiaryTransfer> }>(
+        '/api/recordings/diary-transfers'
+      );
       if (!cancelled && data) setDiaryTransfers(data.transfers);
     }
     load();
@@ -155,7 +188,9 @@ export function Sessions({ user }: SessionsProps) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const { data } = await request<{ entries: Record<number, SessionDiaryEntryLink[]> }>('/api/recordings/session-diary-entries');
+      const { data } = await request<{ entries: Record<number, SessionDiaryEntryLink[]> }>(
+        '/api/recordings/session-diary-entries'
+      );
       if (!cancelled && data) setSessionDiaryEntries(data.entries);
     }
     load();
@@ -185,7 +220,9 @@ export function Sessions({ user }: SessionsProps) {
 
   async function startTranscriptionNow(sessionId: number) {
     setWorking(true);
-    await request<{ message: string }>(`/api/recordings/${sessionId}/transcribe`, { method: 'POST' });
+    await request<{ message: string }>(`/api/recordings/${sessionId}/transcribe`, {
+      method: 'POST',
+    });
     setWorking(false);
   }
 
@@ -203,11 +240,14 @@ export function Sessions({ user }: SessionsProps) {
 
   async function trimTranscriptFromStart(sessionId: number, seconds: number) {
     setWorking(true);
-    const { data } = await request<{ session: RecordingSession }>(`/api/recordings/${sessionId}/trim-transcript`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ startSeconds: seconds }),
-    });
+    const { data } = await request<{ session: RecordingSession }>(
+      `/api/recordings/${sessionId}/trim-transcript`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startSeconds: seconds }),
+      }
+    );
     if (data) {
       setLoadedTranscripts((prev) => ({ ...prev, [sessionId]: data.session.transcript }));
     }
@@ -216,11 +256,14 @@ export function Sessions({ user }: SessionsProps) {
 
   async function trimTranscriptToEnd(sessionId: number, seconds: number) {
     setWorking(true);
-    const { data } = await request<{ session: RecordingSession }>(`/api/recordings/${sessionId}/trim-transcript`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ endSeconds: seconds }),
-    });
+    const { data } = await request<{ session: RecordingSession }>(
+      `/api/recordings/${sessionId}/trim-transcript`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endSeconds: seconds }),
+      }
+    );
     if (data) {
       setLoadedTranscripts((prev) => ({ ...prev, [sessionId]: data.session.transcript }));
     }
@@ -273,7 +316,9 @@ export function Sessions({ user }: SessionsProps) {
         applyEntityHighlights(quill, mappings);
 
         const handleClick = (event: MouseEvent) => {
-          const target = (event.target as HTMLElement | null)?.closest('.ql-entity') as HTMLElement | null;
+          const target = (event.target as HTMLElement | null)?.closest(
+            '.ql-entity'
+          ) as HTMLElement | null;
           if (!target) return;
           const type = target.getAttribute('data-type') as EntityType | null;
           const canonical = target.getAttribute('data-canonical');
@@ -298,7 +343,7 @@ export function Sessions({ user }: SessionsProps) {
     setAiStatus('KI verbessert das Transkript...');
     const { data, error } = await request<{ session: RecordingSession }>(
       `/api/recordings/${sessionId}/improve-transcript`,
-      { method: 'POST' },
+      { method: 'POST' }
     );
     setWorking(false);
     setImprovingId(null);
@@ -317,7 +362,7 @@ export function Sessions({ user }: SessionsProps) {
     setAiStatus('KI erstellt die Zusammenfassung...');
     const { data, error } = await request<{ session: RecordingSession }>(
       `/api/recordings/${sessionId}/summary`,
-      { method: 'POST' },
+      { method: 'POST' }
     );
     setWorking(false);
     setSummarizingId(null);
@@ -336,13 +381,15 @@ export function Sessions({ user }: SessionsProps) {
     setAiStatus('KI überführt Session ins Tagebuch...');
     const { data, error } = await request<{ entry: DiaryEntry; transfer: SessionDiaryTransfer }>(
       `/api/recordings/${sessionId}/diary-draft`,
-      { method: 'POST' },
+      { method: 'POST' }
     );
     setWorking(false);
     setDraftingId(null);
     if (data) {
       setDiaryTransfers((prev) => ({ ...prev, [sessionId]: data.transfer }));
-      showSuccess('KI-Vorschlag wurde im Tagebuch erstellt. Bitte im Tagebuch prüfen und bestätigen.');
+      showSuccess(
+        'KI-Vorschlag wurde im Tagebuch erstellt. Bitte im Tagebuch prüfen und bestätigen.'
+      );
       setAiStatus(null);
     } else if (error) {
       showError(error);
@@ -350,19 +397,18 @@ export function Sessions({ user }: SessionsProps) {
     }
   }
 
-  async function updateSessionDiarySettings(updates: Partial<Pick<SafeUser, 'autoSessionToDiary' | 'autoAcceptSessionDiary'>>) {
+  async function updateSessionDiarySettings(
+    updates: Partial<Pick<SafeUser, 'autoSessionToDiary' | 'autoAcceptSessionDiary'>>
+  ) {
     const next = {
       autoSessionToDiary: updates.autoSessionToDiary ?? user.autoSessionToDiary,
       autoAcceptSessionDiary: updates.autoAcceptSessionDiary ?? user.autoAcceptSessionDiary,
     };
-    const { data, error } = await request<{ user: SafeUser }>(
-      '/api/me/session-diary-settings',
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(next),
-      },
-    );
+    const { data, error } = await request<{ user: SafeUser }>('/api/me/session-diary-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(next),
+    });
     if (data) {
       updateUser(data.user);
     } else if (error) {
@@ -385,7 +431,17 @@ export function Sessions({ user }: SessionsProps) {
           id="config"
           label="Einstellungen"
           icon={
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
@@ -402,12 +458,17 @@ export function Sessions({ user }: SessionsProps) {
               <Toggle
                 checked={user.autoAcceptSessionDiary}
                 disabled={!user.autoSessionToDiary}
-                onChange={(checked) => updateSessionDiarySettings({ autoAcceptSessionDiary: checked })}
+                onChange={(checked) =>
+                  updateSessionDiarySettings({ autoAcceptSessionDiary: checked })
+                }
                 label="KI-Entwurf ohne Prüfung direkt als Tagebuchnotiz übernehmen"
               />
             </div>
             <p className="text-xs text-slate-400">
-              Wenn die automatische Übertragung aktiv ist, legt der Nightly-Job aus jeder fertigen Session einen Tagebucheintrag an. Ist zusätzlich „direkt übernehmen“ aktiv, wird der KI-Text sofort als endgültiger Inhalt gespeichert und der Tagebuch-Zusammenfassungs-Job kann ihn direkt verarbeiten.
+              Wenn die automatische Übertragung aktiv ist, legt der Nightly-Job aus jeder fertigen
+              Session einen Tagebucheintrag an. Ist zusätzlich „direkt übernehmen“ aktiv, wird der
+              KI-Text sofort als endgültiger Inhalt gespeichert und der
+              Tagebuch-Zusammenfassungs-Job kann ihn direkt verarbeiten.
             </p>
           </div>
         </SideDrawerItem>
@@ -436,7 +497,9 @@ export function Sessions({ user }: SessionsProps) {
                 <p className="text-sm text-slate-400">
                   {new Date(session.startedAt).toLocaleString('de-DE')} · Status: {session.status}
                   {session.transcriptImprovedAt && (
-                    <span className="ml-2 text-xs font-medium text-[var(--accent)]">✓ KI-optimiert</span>
+                    <span className="ml-2 text-xs font-medium text-[var(--accent)]">
+                      ✓ KI-optimiert
+                    </span>
                   )}
                 </p>
                 {diaryTransfers[session.id] && (
@@ -455,7 +518,9 @@ export function Sessions({ user }: SessionsProps) {
                         title={user.isAdmin ? `${entry.title} (${entry.displayName})` : entry.title}
                       >
                         {entry.title}
-                        {user.isAdmin && <span className="text-slate-500">· {entry.displayName}</span>}
+                        {user.isAdmin && (
+                          <span className="text-slate-500">· {entry.displayName}</span>
+                        )}
                       </Link>
                     ))}
                   </div>
@@ -466,11 +531,14 @@ export function Sessions({ user }: SessionsProps) {
                       (() => {
                         const progress = transcriptionProgress[session.id]!;
                         const filePercent =
-                          progress.framesTotal > 0 ? (progress.framesCurrent / progress.framesTotal) * 100 : 0;
+                          progress.framesTotal > 0
+                            ? (progress.framesCurrent / progress.framesTotal) * 100
+                            : 0;
                         return (
                           <>
                             <p className="text-xs text-[var(--accent)] mb-1">
-                              Datei {progress.currentFile} von {progress.totalFiles}: {progress.fileName} ({filePercent.toFixed(0)}%)
+                              Datei {progress.currentFile} von {progress.totalFiles}:{' '}
+                              {progress.fileName} ({filePercent.toFixed(0)}%)
                             </p>
                             <div className="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                               <div
@@ -490,13 +558,17 @@ export function Sessions({ user }: SessionsProps) {
               <div className="flex items-center gap-2">
                 {user.isAdmin && (
                   <>
-                    {(session.status === 'pending_transcription' || session.status === 'error' || session.status === 'completed') && (
+                    {(session.status === 'pending_transcription' ||
+                      session.status === 'error' ||
+                      session.status === 'completed') && (
                       <Button
                         variant="secondary"
                         disabled={working}
                         onClick={() => startTranscriptionNow(session.id)}
                       >
-                        {session.status === 'error' ? 'Transkription wiederholen' : 'Jetzt transkribieren'}
+                        {session.status === 'error'
+                          ? 'Transkription wiederholen'
+                          : 'Jetzt transkribieren'}
                       </Button>
                     )}
                     {session.status === 'completed' && (
@@ -542,7 +614,9 @@ export function Sessions({ user }: SessionsProps) {
                     disabled={loadingTranscript.has(session.id)}
                     onClick={() => toggleTranscript(session.id)}
                   >
-                    {visibleTranscripts.has(session.id) ? 'Transkript ausblenden' : 'Transkript anzeigen'}
+                    {visibleTranscripts.has(session.id)
+                      ? 'Transkript ausblenden'
+                      : 'Transkript anzeigen'}
                   </Button>
                 )}
                 {user.isAdmin && (
@@ -595,7 +669,9 @@ export function Sessions({ user }: SessionsProps) {
               <div className="mt-4">
                 {expandedLongSummaries.has(session.id) ? (
                   <div className="p-3 rounded-lg bg-slate-800/50 border border-[var(--border)]">
-                    <h4 className="text-sm font-semibold text-slate-300 mb-2">Ausführliche Zusammenfassung</h4>
+                    <h4 className="text-sm font-semibold text-slate-300 mb-2">
+                      Ausführliche Zusammenfassung
+                    </h4>
                     <ReactQuill
                       ref={(el) => {
                         if (el) summaryQuillRefs.current[session.id] = el;
@@ -609,10 +685,15 @@ export function Sessions({ user }: SessionsProps) {
                     />
                     {session.longSummaryGeneratedAt && (
                       <p className="text-xs text-slate-500 mt-2">
-                        Erstellt am {new Date(session.longSummaryGeneratedAt).toLocaleString('de-DE')}
+                        Erstellt am{' '}
+                        {new Date(session.longSummaryGeneratedAt).toLocaleString('de-DE')}
                       </p>
                     )}
-                    <Button variant="ghost" className="mt-2" onClick={() => toggleLongSummary(session.id)}>
+                    <Button
+                      variant="ghost"
+                      className="mt-2"
+                      onClick={() => toggleLongSummary(session.id)}
+                    >
                       Weniger anzeigen
                     </Button>
                   </div>
@@ -636,10 +717,15 @@ export function Sessions({ user }: SessionsProps) {
                       const seconds = timestamp ? parseTimestamp(timestamp) : null;
                       const hasTimestamp = !!timestamp && seconds !== null;
                       return (
-                        <div key={`${session.id}-${index}`} className="flex items-start gap-2 px-2 py-1 rounded hover:bg-slate-800/50 group">
+                        <div
+                          key={`${session.id}-${index}`}
+                          className="flex items-start gap-2 px-2 py-1 rounded hover:bg-slate-800/50 group"
+                        >
                           {hasTimestamp && (
                             <div className="flex items-center gap-1 shrink-0 pt-0.5">
-                              <span className="text-[var(--accent)] font-mono text-xs select-none">{timestamp}</span>
+                              <span className="text-[var(--accent)] font-mono text-xs select-none">
+                                {timestamp}
+                              </span>
                               {user.isAdmin && (
                                 <>
                                   <button

@@ -20,12 +20,24 @@ const log = createLogger('ai-actions');
 
 export type AiAction =
   | { action: 'createEntity'; type: EntityType; name: string; aliases?: string[] }
-  | { action: 'renameEntity'; type: EntityType; oldName: string; newName: string; aliases?: string[] }
+  | {
+      action: 'renameEntity';
+      type: EntityType;
+      oldName: string;
+      newName: string;
+      aliases?: string[];
+    }
   | { action: 'addAlias'; type: EntityType; alias: string; canonical: string }
   | { action: 'reclassifyEntity'; name: string; fromType: EntityType; toType: EntityType }
   | { action: 'blacklistEntity'; type: EntityType; name: string }
   | { action: 'unblacklistEntity'; type: EntityType; name: string }
-  | { action: 'createKnowledge'; type: EntityType; name: string; title?: string | null; content: string }
+  | {
+      action: 'createKnowledge';
+      type: EntityType;
+      name: string;
+      title?: string | null;
+      content: string;
+    }
   | { action: 'updateKnowledge'; id: number; title?: string | null; content?: string }
   | { action: 'deleteKnowledge'; id: number; reason?: string | null }
   | { action: 'setSummary'; type: EntityType; name: string; summary: string | null };
@@ -78,7 +90,12 @@ function validateAction(raw: unknown): AiAction | null {
       if (!isValidEntityType(type)) return null;
       const normalizedName = normalizeName(name);
       if (!normalizedName) return null;
-      return { action: 'createEntity', type, name: normalizedName, aliases: normalizeStringArray(aliases) };
+      return {
+        action: 'createEntity',
+        type,
+        name: normalizedName,
+        aliases: normalizeStringArray(aliases),
+      };
     }
     case 'renameEntity': {
       const { type, oldName, newName, aliases } = raw as Record<string, unknown>;
@@ -155,7 +172,11 @@ function validateAction(raw: unknown): AiAction | null {
       const { id, reason } = raw as Record<string, unknown>;
       const normalizedId = typeof id === 'number' ? id : Number(String(id));
       if (!Number.isInteger(normalizedId) || normalizedId <= 0) return null;
-      return { action: 'deleteKnowledge', id: normalizedId, reason: normalizeOptionalString(reason) };
+      return {
+        action: 'deleteKnowledge',
+        id: normalizedId,
+        reason: normalizeOptionalString(reason),
+      };
     }
     case 'setSummary': {
       const { type, name, summary } = raw as Record<string, unknown>;
@@ -222,7 +243,13 @@ export function executeAction(action: AiAction): AiActionResult {
       }
       case 'createKnowledge': {
         const canonical = ensureEntityExists(action.type, action.name);
-        const entry = createEntityKnowledge(action.type, canonical, action.title ?? null, action.content, 'ai_extracted');
+        const entry = createEntityKnowledge(
+          action.type,
+          canonical,
+          action.title ?? null,
+          action.content,
+          'ai_extracted'
+        );
         return { action, success: true, data: entry };
       }
       case 'updateKnowledge': {

@@ -1,11 +1,18 @@
 import { createLogger } from '../logger.js';
-import { clearDiscordTokens, findUserByDiscordId, getDiscordTokens, storeDiscordTokens, updateDiscordProfile } from '../users.js';
+import {
+  clearDiscordTokens,
+  findUserByDiscordId,
+  getDiscordTokens,
+  storeDiscordTokens,
+  updateDiscordProfile,
+} from '../users.js';
 
 const log = createLogger('discord-oauth');
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
-export const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'http://localhost:5173/auth/discord';
+export const DISCORD_REDIRECT_URI =
+  process.env.DISCORD_REDIRECT_URI || 'http://localhost:5173/auth/discord';
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -40,7 +47,7 @@ export class DiscordOAuthError extends Error {
     message: string,
     public status: number,
     public discordError?: string,
-    public discordErrorDescription?: string,
+    public discordErrorDescription?: string
   ) {
     super(message);
     this.name = 'DiscordOAuthError';
@@ -60,7 +67,7 @@ function timeoutSignal(ms: number): { signal: AbortSignal; clear: () => void } {
 export function getDiscordAvatarUrl(
   discordId: string,
   avatar: string | null,
-  discriminator: string | null = null,
+  discriminator: string | null = null
 ): string {
   if (avatar) {
     return `https://cdn.discordapp.com/avatars/${discordId}/${avatar}.png`;
@@ -111,7 +118,9 @@ function assertTokenResponse(data: unknown): DiscordTokenResponse {
     !Number.isFinite(d.expires_in) ||
     d.expires_in <= 0
   ) {
-    throw new Error('Invalid Discord token response: missing access_token, refresh_token, or valid expires_in');
+    throw new Error(
+      'Invalid Discord token response: missing access_token, refresh_token, or valid expires_in'
+    );
   }
   return {
     access_token: d.access_token,
@@ -147,7 +156,7 @@ async function fetchDiscordToken(body: URLSearchParams): Promise<DiscordTokenRes
         `Discord token request failed: ${res.status}`,
         res.status,
         error,
-        error_description,
+        error_description
       );
     }
 
@@ -198,13 +207,17 @@ async function fetchDiscordAuthResult(tokenData: DiscordTokenResponse): Promise<
         `Discord user request failed: ${res.status}`,
         res.status,
         error,
-        error_description,
+        error_description
       );
     }
 
     const discordUser = assertDiscordUser(await res.json());
     const displayName = discordUser.global_name || discordUser.username;
-    const avatarUrl = getDiscordAvatarUrl(discordUser.id, discordUser.avatar, discordUser.discriminator);
+    const avatarUrl = getDiscordAvatarUrl(
+      discordUser.id,
+      discordUser.avatar,
+      discordUser.discriminator
+    );
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
 
     return {

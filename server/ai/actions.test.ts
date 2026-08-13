@@ -13,7 +13,13 @@ describe('parseAiActions', () => {
     const raw = [
       { action: 'createEntity', type: 'persons', name: 'Gandalf', aliases: ['Mithrandir'] },
       { action: 'unknownAction', type: 'persons', name: 'Sauron' },
-      { action: 'createKnowledge', type: 'persons', name: 'Gandalf', title: 'About', content: 'A wizard' },
+      {
+        action: 'createKnowledge',
+        type: 'persons',
+        name: 'Gandalf',
+        title: 'About',
+        content: 'A wizard',
+      },
     ];
 
     const actions = parseAiActions(raw);

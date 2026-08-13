@@ -5,7 +5,7 @@ import { Modal } from '../components/Modal';
 import type { EntityType } from '../../shared/types';
 
 const EntityEditDialog = lazy(() =>
-  import('../components/EntityEditDialog').then((m) => ({ default: m.EntityEditDialog })),
+  import('../components/EntityEditDialog').then((m) => ({ default: m.EntityEditDialog }))
 );
 
 interface EntityDialogProviderProps {

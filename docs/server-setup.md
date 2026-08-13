@@ -6,15 +6,15 @@ listed at the end.
 
 ## Repo layout for the server role
 
-| Path | Purpose |
-| --- | --- |
-| `scripts/dnd-server-setup.sh` | One-shot bootstrap (runner, Node, units, nginx, sudoers) |
-| `scripts/dnd-deploy.sh` | CI/CD deploy (ff-only pull, build, health check, rollback) |
-| `scripts/dnd-backup.sh` | Daily backup (WAL-safe SQLite + zstd recordings, dedup) |
-| `scripts/dnd-healthcheck.sh` | Minutely liveness check + service restart |
-| `systemd/` | systemd unit/timer templates (service, socket, timers) |
-| `deploy/nginx-dnd-dashboard.conf` | Reverse proxy config (reference copy) |
-| `.nvmrc` | Single source of truth for the Node version |
+| Path                              | Purpose                                                    |
+| --------------------------------- | ---------------------------------------------------------- |
+| `scripts/dnd-server-setup.sh`     | One-shot bootstrap (runner, Node, units, nginx, sudoers)   |
+| `scripts/dnd-deploy.sh`           | CI/CD deploy (ff-only pull, build, health check, rollback) |
+| `scripts/dnd-backup.sh`           | Daily backup (WAL-safe SQLite + zstd recordings, dedup)    |
+| `scripts/dnd-healthcheck.sh`      | Minutely liveness check + service restart                  |
+| `systemd/`                        | systemd unit/timer templates (service, socket, timers)     |
+| `deploy/nginx-dnd-dashboard.conf` | Reverse proxy config (reference copy)                      |
+| `.nvmrc`                          | Single source of truth for the Node version                |
 
 ## Scripted (run `scripts/dnd-server-setup.sh` on the new host)
 
@@ -30,7 +30,7 @@ listed at the end.
 ## Manual (cannot be fully automated)
 
 1. **Runner token**: GitHub UI `Settings > Actions > Runners > New self-hosted
-   runner` → copy token → re-run `RUNNER_TOKEN=<token> scripts/dnd-server-setup.sh`.
+runner` → copy token → re-run `RUNNER_TOKEN=<token> scripts/dnd-server-setup.sh`.
    Runner name/labels are `DND_RUNNER_NAME` / `DND_RUNNER_LABELS` (defaults:
    `HomeServer`, `self-hosted,Linux,X64,HomeServer`).
 2. **TLS certificate**: `sudo certbot --nginx -d einsnicergameserver.de`

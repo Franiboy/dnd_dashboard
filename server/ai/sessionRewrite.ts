@@ -18,7 +18,7 @@ export async function improveSessionTranscriptWithAi(
   sessionId: number,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<SessionRewriteResult> {
   const session = getSessionById(sessionId);
   if (!session || !session.transcript || !session.transcript.trim()) {
@@ -30,7 +30,9 @@ export async function improveSessionTranscriptWithAi(
   mkdirSync(getSessionWorkDir(sessionId), { recursive: true });
   writeFileSync(workFile, session.transcript, 'utf-8');
 
-  log.info(`Starting transcript improvement for session ${sessionId} (${session.transcript.length} bytes)`);
+  log.info(
+    `Starting transcript improvement for session ${sessionId} (${session.transcript.length} bytes)`
+  );
 
   const prompt = [
     'Du bist ein Assistent für ein D&D-Sessions-System. Du arbeitest mit Dateien und antwortest prägnant auf Deutsch.',

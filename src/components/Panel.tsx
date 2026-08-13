@@ -13,7 +13,7 @@ export function Panel({ title, children, className, actions }: PanelProps) {
     <div
       className={cn(
         'bg-[var(--panel)] border border-[var(--border)] rounded-2xl flex flex-col h-full min-h-0 overflow-hidden',
-        className,
+        className
       )}
     >
       <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-slate-900/30 select-none">

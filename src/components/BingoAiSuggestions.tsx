@@ -25,7 +25,7 @@ export function BingoAiSuggestions({ isSetup }: BingoAiSuggestionsProps) {
     const { data, error: reqError } = await request<{ suggestions: BingoSuggestion[] }>(
       '/api/bingo/suggestions',
       undefined,
-      false,
+      false
     );
     setSuggestions(data?.suggestions ?? []);
     setError(reqError);
@@ -122,7 +122,9 @@ export function BingoAiSuggestions({ isSetup }: BingoAiSuggestionsProps) {
                 key={suggestion.id}
                 className="flex items-start justify-between gap-2 p-2 rounded bg-slate-900/50 border border-[var(--border)] group"
               >
-                <span className="text-[var(--text-h)] text-sm leading-tight">{suggestion.text}</span>
+                <span className="text-[var(--text-h)] text-sm leading-tight">
+                  {suggestion.text}
+                </span>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => accept(suggestion.id)}

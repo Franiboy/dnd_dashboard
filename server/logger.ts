@@ -108,7 +108,12 @@ function serializeFirstArg(arg: unknown): { message: string } {
 }
 
 function isPlainObject(arg: unknown): arg is Record<string, unknown> {
-  return typeof arg === 'object' && arg !== null && !Array.isArray(arg) && Object.getPrototypeOf(arg) === Object.prototype;
+  return (
+    typeof arg === 'object' &&
+    arg !== null &&
+    !Array.isArray(arg) &&
+    Object.getPrototypeOf(arg) === Object.prototype
+  );
 }
 
 function safeJsonStringify(arg: unknown, maxLength: number): string {
@@ -167,7 +172,7 @@ export function getRecentLogs(count = 250): LogEntry[] {
   try {
     const rows = db
       .prepare(
-        'SELECT id, timestamp, level, category, message, args FROM logs ORDER BY id DESC LIMIT ?',
+        'SELECT id, timestamp, level, category, message, args FROM logs ORDER BY id DESC LIMIT ?'
       )
       .all(count) as DbLogRow[];
     return rows.reverse().map(rowToLogEntry);
@@ -188,7 +193,7 @@ export function getLogsPaginated({
 }): { logs: LogEntry[]; hasMore: boolean } {
   const pageSize = Math.min(
     Math.max(Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 50, 1),
-    500,
+    500
   );
   let sql = 'SELECT id, timestamp, level, category, message, args FROM logs WHERE id < ?';
   const params: (string | number)[] = [before ?? Number.MAX_SAFE_INTEGER];
@@ -235,7 +240,7 @@ function pushLog(level: LogLevel, category: string, args: unknown[]): LogEntry {
   try {
     const result = db
       .prepare(
-        'INSERT INTO logs (timestamp, level, category, message, args) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO logs (timestamp, level, category, message, args) VALUES (?, ?, ?, ?, ?)'
       )
       .run(timestamp, level, category, message, JSON.stringify(extraArgs));
     entry = { ...entry, id: result.lastInsertRowid as number };

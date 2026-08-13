@@ -10,11 +10,7 @@ export function useApi() {
   const { showError } = useError();
 
   const request = useCallback(
-    async <T,>(
-      path: string,
-      options?: RequestInit,
-      notify = true,
-    ): Promise<ApiResponse<T>> => {
+    async <T>(path: string, options?: RequestInit, notify = true): Promise<ApiResponse<T>> => {
       try {
         const res = await fetch(path, {
           ...options,
@@ -36,7 +32,7 @@ export function useApi() {
         return { data: null, error };
       }
     },
-    [showError],
+    [showError]
   );
 
   return { request };

@@ -16,7 +16,11 @@ export interface AppMeta {
   iconId?: string;
 }
 
-export function isAppVisible(app: AppMeta, user: SafeUser, version: VersionInfo | null | undefined): boolean {
+export function isAppVisible(
+  app: AppMeta,
+  user: SafeUser,
+  version: VersionInfo | null | undefined
+): boolean {
   if (user.disabledApps.includes(app.id)) return false;
   if (app.adminOnly && !user.isAdmin) return false;
   if (app.hideForInitialAdmin && user.isInitialAdmin) return false;
@@ -30,7 +34,8 @@ export const APPS: AppMeta[] = [
     id: 'notes',
     label: 'Tagebuch',
     path: '/tagebuch',
-    description: 'Persönliche Tagebucheinträge pro Spieler hinterlegen und mit der KI überarbeiten lassen.',
+    description:
+      'Persönliche Tagebucheinträge pro Spieler hinterlegen und mit der KI überarbeiten lassen.',
     disableable: true,
     hideForInitialAdmin: true,
   },

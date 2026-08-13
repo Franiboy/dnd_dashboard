@@ -23,7 +23,7 @@ function toMcpUser(user: SafeUser): McpSessionUser {
 async function processUserSession(
   user: SafeUser,
   sessionId: number,
-  sessionName: string,
+  sessionName: string
 ): Promise<void> {
   const sessionUser = toMcpUser(user);
   log.info(`Transferring session ${sessionId} (${sessionName}) to diary for user ${user.id}`);

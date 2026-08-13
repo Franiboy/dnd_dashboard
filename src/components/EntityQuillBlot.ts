@@ -68,7 +68,13 @@ export function applyEntityHighlights(quill: Quill, mappings: EntityMapping[]) {
   for (const match of matches) {
     const length = match.end - match.start;
     if (length <= 0) continue;
-    quill.formatText(match.start, length, 'entity', { type: match.type, canonical: match.canonical, miniSummary: match.miniSummary }, 'silent');
+    quill.formatText(
+      match.start,
+      length,
+      'entity',
+      { type: match.type, canonical: match.canonical, miniSummary: match.miniSummary },
+      'silent'
+    );
   }
 }
 

@@ -76,7 +76,12 @@ function EntityList({
     const payload = parseDragPayload(e) ?? dragPayload;
     if (!payload) return;
     if (payload.type === type) return;
-    onRequestAction({ kind: 'reclassify', name: payload.name, fromType: payload.type, toType: type });
+    onRequestAction({
+      kind: 'reclassify',
+      name: payload.name,
+      fromType: payload.type,
+      toType: type,
+    });
   }
 
   function handleBlacklistDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -158,7 +163,9 @@ function EntityList({
           }
         `}
       >
-        {isOwnDrag ? `Hier fallen lassen, um als ${typeAccusative[type]} zu blacklisten` : 'Zum Blacklisten hierher ziehen'}
+        {isOwnDrag
+          ? `Hier fallen lassen, um als ${typeAccusative[type]} zu blacklisten`
+          : 'Zum Blacklisten hierher ziehen'}
       </div>
     </>
   );
@@ -271,20 +278,22 @@ function DistributeKnowledgeDialog({ onClose, onDistributed }: DistributeKnowled
   async function handleDistribute() {
     if (!text.trim()) return;
     setWorking(true);
-    const { data, error } = await request<{ created: EntityKnowledgeEntry[]; deleted: { id: number; reason: string; entry: EntityKnowledgeEntry }[] }>(
-      '/api/entities/knowledge/distribute',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text.trim() }),
-      },
-    );
+    const { data, error } = await request<{
+      created: EntityKnowledgeEntry[];
+      deleted: { id: number; reason: string; entry: EntityKnowledgeEntry }[];
+    }>('/api/entities/knowledge/distribute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text.trim() }),
+    });
     setWorking(false);
     if (!error && data) {
       const parts: string[] = [];
       if (data.created.length) parts.push(`${data.created.length} neu`);
       if (data.deleted.length) parts.push(`${data.deleted.length} als gelöscht markiert`);
-      showSuccess(parts.length ? `Wissen eingeordnet: ${parts.join(', ')}.` : 'Keine Änderungen erkannt.');
+      showSuccess(
+        parts.length ? `Wissen eingeordnet: ${parts.join(', ')}.` : 'Keine Änderungen erkannt.'
+      );
       onDistributed();
       onClose();
     } else if (error) {
@@ -471,26 +480,24 @@ export function World() {
       case 'blacklist':
         return (
           <>
-            Soll <strong>{action.name}</strong> als{' '}
-            {typeLabels[action.type]} in die Blacklist aufgenommen werden? Der Name wird
-            aus der {typeAccusative[action.type]}-Liste entfernt und zukünftig nicht mehr
-            als {typeLabels[action.type]} erkannt.
+            Soll <strong>{action.name}</strong> als {typeLabels[action.type]} in die Blacklist
+            aufgenommen werden? Der Name wird aus der {typeAccusative[action.type]}-Liste entfernt
+            und zukünftig nicht mehr als {typeLabels[action.type]} erkannt.
           </>
         );
       case 'unblacklist':
         return (
           <>
-            Soll <strong>{action.name}</strong> aus der Blacklist für{' '}
-            {typeAccusative[action.type]} entfernt werden? Der Name kann danach wieder als{' '}
-            {typeLabels[action.type]} erkannt werden.
+            Soll <strong>{action.name}</strong> aus der Blacklist für {typeAccusative[action.type]}{' '}
+            entfernt werden? Der Name kann danach wieder als {typeLabels[action.type]} erkannt
+            werden.
           </>
         );
       case 'reclassify':
         return (
           <>
-            Soll <strong>{action.name}</strong> von{' '}
-            {typeAccusative[action.fromType]} zu {typeAccusative[action.toType]} umgewandelt
-            werden?
+            Soll <strong>{action.name}</strong> von {typeAccusative[action.fromType]} zu{' '}
+            {typeAccusative[action.toType]} umgewandelt werden?
           </>
         );
       case 'synonym':
@@ -498,8 +505,8 @@ export function World() {
           <>
             Soll <strong>{action.name}</strong> als Synonym (Alias) für{' '}
             <strong>{action.targetName}</strong> gespeichert werden? Beide Namen werden
-            zusammengeführt; zukünftige Erwähnungen von {action.name} werden als{' '}
-            {action.targetName} erkannt.
+            zusammengeführt; zukünftige Erwähnungen von {action.name} werden als {action.targetName}{' '}
+            erkannt.
           </>
         );
     }

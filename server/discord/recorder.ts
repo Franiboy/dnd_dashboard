@@ -1,4 +1,9 @@
-import { joinVoiceChannel, EndBehaviorType, VoiceConnectionStatus, entersState } from '@discordjs/voice';
+import {
+  joinVoiceChannel,
+  EndBehaviorType,
+  VoiceConnectionStatus,
+  entersState,
+} from '@discordjs/voice';
 import type { AudioReceiveStream, VoiceConnection } from '@discordjs/voice';
 import type { Guild, VoiceBasedChannel } from 'discord.js';
 import { openSync, closeSync, writeSync } from 'node:fs';
@@ -61,7 +66,9 @@ export function isRecording(): boolean {
 }
 
 export function getActiveRecording(): { sessionId: number; channelId: string } | null {
-  return activeRecording ? { sessionId: activeRecording.sessionId, channelId: activeRecording.channelId } : null;
+  return activeRecording
+    ? { sessionId: activeRecording.sessionId, channelId: activeRecording.channelId }
+    : null;
 }
 
 function getDisplayName(guild: Guild, userId: string): string {
@@ -87,7 +94,7 @@ export async function startRecording(
   channel: VoiceBasedChannel,
   sessionId: number,
   directory: string,
-  onDisconnect?: (sessionId: number) => void,
+  onDisconnect?: (sessionId: number) => void
 ): Promise<void> {
   if (activeRecording) {
     throw new Error('Es läuft bereits eine Aufnahme');
@@ -105,7 +112,9 @@ export async function startRecording(
     await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
   } catch (err) {
     connection.destroy();
-    throw new Error('Voice-Channel-Beitritt fehlgeschlagen: ' + (err instanceof Error ? err.message : String(err)));
+    throw new Error(
+      'Voice-Channel-Beitritt fehlgeschlagen: ' + (err instanceof Error ? err.message : String(err))
+    );
   }
 
   activeRecording = {
@@ -123,7 +132,7 @@ export async function startRecording(
   connection.on('stateChange', (oldState, newState) => {
     log.info(
       `Voice connection state changed from ${oldState.status} to ${newState.status}` +
-        ('reason' in newState && newState.reason ? ` (reason: ${newState.reason})` : ''),
+        ('reason' in newState && newState.reason ? ` (reason: ${newState.reason})` : '')
     );
     if (!activeRecording || activeRecording.stopping) return;
     if (
@@ -202,7 +211,10 @@ function handleSpeakingStart(guild: Guild, userId: string): void {
       } else {
         const expectedSample = user.currentSegmentStart + user.currentSegmentLength;
         if (currentSample > expectedSample + JITTER_SAMPLES) {
-          user.segments.push({ startSample: user.currentSegmentStart, length: user.currentSegmentLength });
+          user.segments.push({
+            startSample: user.currentSegmentStart,
+            length: user.currentSegmentLength,
+          });
           user.currentSegmentStart = currentSample;
           user.currentSegmentLength = 0;
           persistSegments(user);
@@ -269,7 +281,10 @@ export async function stopRecording(): Promise<RecordingFile[]> {
           }
 
           if (user.currentSegmentStart !== null && user.currentSegmentLength > 0) {
-            user.segments.push({ startSample: user.currentSegmentStart, length: user.currentSegmentLength });
+            user.segments.push({
+              startSample: user.currentSegmentStart,
+              length: user.currentSegmentLength,
+            });
           }
 
           closeSync(user.fd);
@@ -277,7 +292,14 @@ export async function stopRecording(): Promise<RecordingFile[]> {
           destroyOpusDecoder(user.decoder);
 
           const wavPath = user.pcmPath.replace(/\.pcm$/, '.wav');
-          await writeWavFromPcm(user.pcmPath, wavPath, SAMPLE_RATE, CHANNELS, BIT_DEPTH, user.segments);
+          await writeWavFromPcm(
+            user.pcmPath,
+            wavPath,
+            SAMPLE_RATE,
+            CHANNELS,
+            BIT_DEPTH,
+            user.segments
+          );
           await removePcmFile(user.pcmPath);
           removeSegmentFile(user.pcmPath);
 

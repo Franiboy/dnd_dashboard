@@ -6,7 +6,9 @@ export function ErrorProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
 
   const show = useCallback((message: string, type: ToastType) => {
-    setToast((prev) => (prev?.message === message && prev?.type === type ? prev : { message, type }));
+    setToast((prev) =>
+      prev?.message === message && prev?.type === type ? prev : { message, type }
+    );
   }, []);
 
   const showError = useCallback((message: string) => show(message, 'error'), [show]);
@@ -19,7 +21,7 @@ export function ErrorProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({ toast, showError, showInfo, showSuccess, clearError }),
-    [toast, showError, showInfo, showSuccess, clearError],
+    [toast, showError, showInfo, showSuccess, clearError]
   );
 
   return (

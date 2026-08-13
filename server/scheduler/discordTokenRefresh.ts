@@ -6,7 +6,8 @@ import { isEncryptionConfigured } from '../encryption.js';
 const log = createLogger('discord-token-refresh');
 
 const parsedInterval = Number(process.env.DISCORD_TOKEN_REFRESH_INTERVAL_MS || 60 * 60 * 1000);
-const CHECK_INTERVAL_MS = Number.isFinite(parsedInterval) && parsedInterval > 0 ? parsedInterval : 60 * 60 * 1000;
+const CHECK_INTERVAL_MS =
+  Number.isFinite(parsedInterval) && parsedInterval > 0 ? parsedInterval : 60 * 60 * 1000;
 
 let interval: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -52,7 +53,9 @@ export function startDiscordTokenRefreshScheduler(): void {
   }
 
   if (!isEncryptionConfigured()) {
-    log.warn('Discord token refresh scheduler disabled: TOKEN_ENCRYPTION_KEY is missing or invalid');
+    log.warn(
+      'Discord token refresh scheduler disabled: TOKEN_ENCRYPTION_KEY is missing or invalid'
+    );
     return;
   }
 

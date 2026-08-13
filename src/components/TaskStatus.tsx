@@ -14,7 +14,10 @@ interface TaskStatusProps {
 
 export function TaskStatus({ game, socket }: TaskStatusProps) {
   const { request } = useApi();
-  const [pendingTask, setPendingTask] = useState<{ id: string; action: 'confirm' | 'unconfirm' } | null>(null);
+  const [pendingTask, setPendingTask] = useState<{
+    id: string;
+    action: 'confirm' | 'unconfirm';
+  } | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -84,7 +87,9 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
                 </span>
               )}
             </span>
-            <span className={`text-sm font-semibold ${confirmedBy ? 'text-[var(--accent)]' : 'text-slate-500'}`}>
+            <span
+              className={`text-sm font-semibold ${confirmedBy ? 'text-[var(--accent)]' : 'text-slate-500'}`}
+            >
               {confirmedBy ? `✓ ${confirmedBy}` : 'Offen'}
             </span>
           </li>

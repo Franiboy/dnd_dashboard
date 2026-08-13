@@ -19,9 +19,17 @@ interface SideDrawerProps {
   children: ReactNode;
 }
 
-export function SideDrawer({ side = 'right', width = '18rem', maxWidth = 'calc(100vw - 16rem)', fitContent = false, children }: SideDrawerProps) {
+export function SideDrawer({
+  side = 'right',
+  width = '18rem',
+  maxWidth = 'calc(100vw - 16rem)',
+  fitContent = false,
+  children,
+}: SideDrawerProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const items = Children.toArray(children).filter(isValidElement<SideDrawerItemProps>) as ReactElement<SideDrawerItemProps>[];
+  const items = Children.toArray(children).filter(
+    isValidElement<SideDrawerItemProps>
+  ) as ReactElement<SideDrawerItemProps>[];
   const activeItem = items.find((item) => item.props.id === activeId);
 
   const isRight = side === 'right';
@@ -50,9 +58,7 @@ export function SideDrawer({ side = 'right', width = '18rem', maxWidth = 'calc(1
               isFirst ? 'border-t border-[var(--border)]' : ''
             } ${
               isLast
-                ? (isRight
-                    ? 'rounded-bl-lg'
-                    : 'rounded-br-lg') + ' border-b border-[var(--border)]'
+                ? (isRight ? 'rounded-bl-lg' : 'rounded-br-lg') + ' border-b border-[var(--border)]'
                 : 'border-b border-[var(--border)]'
             } ${
               isActive
@@ -105,7 +111,10 @@ export function SideDrawer({ side = 'right', width = '18rem', maxWidth = 'calc(1
   return (
     <>
       {backdrop}
-      <div className="pointer-events-none fixed z-40 flex" style={{ top: 'calc(var(--header-height) - 1px)', bottom: 0, [side]: 0 }}>
+      <div
+        className="pointer-events-none fixed z-40 flex"
+        style={{ top: 'calc(var(--header-height) - 1px)', bottom: 0, [side]: 0 }}
+      >
         {contentAfterButtons ? (
           <>
             {rail}
