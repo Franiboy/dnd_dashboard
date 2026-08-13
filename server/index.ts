@@ -125,6 +125,12 @@ app.get('/api/version', (req, res) => {
   res.json(getVersion());
 });
 
+// Liveness/health check for deployment verification and monitoring.
+app.get('/health', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
 app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/ai', aiRouter);
