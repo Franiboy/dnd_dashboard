@@ -162,11 +162,15 @@ The bot joins voice channels and stores recordings under `recordings/`. The sche
 
 ## Tests
 
-Currently no test runner is configured. The server can be started with a separate test database:
+Tests run with [Vitest](https://vitest.dev). The server tests use an in-memory SQLite database (`DB_PATH=:memory:`); the client tests run in a `jsdom` environment.
 
 ```bash
-npm run test:server
+npm test        # run all tests once
+npm run test:watch  # run tests in watch mode
+npm run test:server # start the server with a separate test database
 ```
+
+Server and client test files live next to the code they test and use the `*.test.ts` or `*.test.tsx` extension. Shared setup and environment configuration is in `vitest.config.ts`.
 
 ## Important Files
 

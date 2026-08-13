@@ -16,3 +16,6 @@
 - Feature flags (`aiEnabled`, `recordingEnabled`) are determined from `.env` and `version.ts`.
 - New "apps" are maintained centrally in `src/lib/apps.ts` and used via the exported `isAppVisible()` helper in `AppSwitcher`, `Home` and `ProtectedRoute` so `disabledApps`, `adminOnly`, `hideForInitialAdmin` and `requiresFeature` are checked consistently everywhere.
 - Routes that require a feature flag (`requiresFeature`) use `ProtectedRoute` with `appId` and `version` and show a loading state while `/api/version` is loading.
+- Tests are written with Vitest and live next to the code they test (`*.test.ts` / `*.test.tsx`).
+- Server tests use an in-memory SQLite database configured in `vitest.config.ts`; `server/vitest.setup.ts` runs migrations before each test file.
+- Client tests run in `jsdom` with `@testing-library/react`; `src/vitest.setup.ts` cleans up the DOM after each test.
