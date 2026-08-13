@@ -40,6 +40,10 @@ AI_MODEL=opencode/deepseek-v4-flash-free
 # Optional: cheaper model for short AI tasks like diary summaries and bingo suggestions.
 # If not set, AI_MODEL is used.
 AI_CHEAP_MODEL=opencode/deepseek-v4-flash-free
+# OpenCode CLI binary. Defaults to `opencode` (V1 CLI).
+# Set to `opencode2` to use the V2 CLI. In V2 mode the CLI talks to a running
+# `opencode2` background service (started via `opencode2 service start` or
+# `opencode2 serve --service`), enabling reusable and deletable sessions.
 # AI_OPENCODE_BIN=opencode
 
 # Bingo AI suggestions (optional)
@@ -79,7 +83,7 @@ AI_CHEAP_MODEL=opencode/deepseek-v4-flash-free
 - `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `opencode/deepseek-v4-flash-free`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled.
 - `AI_CHEAP_MODEL` is used for short AI tasks (summaries, entities).
 - `AI_CHEAP_MODEL` is also used for bingo suggestion generation.
-- `AI_OPENCODE_BIN` overrides the `opencode` command.
+- `AI_OPENCODE_BIN` overrides the `opencode` command. Set it to `opencode2` to use the V2 CLI. In V2 mode the CLI uses a running `opencode2` background service so sessions can be reused and cleaned up; start it with `opencode2 service start`.
 - Normal and cheap model can also be overridden persistently at runtime in the Admin UI (section "KI-Modelle"). The selected values are stored in the `ai_settings` table and take precedence over `AI_MODEL` / `AI_CHEAP_MODEL`.
 - `BINGO_SUGGESTION_TARGET`, `BINGO_SUGGESTION_THRESHOLD`, and `BINGO_SUGGESTION_BATCH` configure the pre-generated suggestion pool (defaults: 20, 5, 15).
 - `MCP_TOKEN_SECRET` defaults to `JWT_SECRET`.
