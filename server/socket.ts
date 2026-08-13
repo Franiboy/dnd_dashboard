@@ -1,5 +1,10 @@
 import type { Server } from 'socket.io';
-import type { BingoGame, ClientToServerEvents, ServerToClientEvents, User } from '../shared/types.js';
+import type {
+  BingoGame,
+  ClientToServerEvents,
+  ServerToClientEvents,
+  User,
+} from '../shared/types.js';
 import { getAuthenticatedUser } from './auth.js';
 import {
   addTask,
@@ -22,7 +27,10 @@ import {
 export function getGameForUser(user: User): BingoGame {
   const current = getGame();
   if (user.isAdmin) return current;
-  return { ...current, tasks: current.tasks.filter((t) => !t.isPrivate || t.assignedTo?.includes(user.id)) };
+  return {
+    ...current,
+    tasks: current.tasks.filter((t) => !t.isPrivate || t.assignedTo?.includes(user.id)),
+  };
 }
 
 export function broadcastGameState(io: Server<ClientToServerEvents, ServerToClientEvents>): void {
@@ -41,7 +49,8 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
   }
 
   io.use((socket, next) => {
-    const authToken = typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined;
+    const authToken =
+      typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined;
     const user = getAuthenticatedUser(socket.handshake as any, authToken ? [authToken] : []);
     if (!user || !user.isApproved) return next(new Error('Unauthorized'));
     (socket as any).user = user;
@@ -82,7 +91,11 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const isPrivate = typeof raw === 'string' ? false : !!raw?.isPrivate;
       const assignedTo = Array.isArray(raw?.assignedTo) ? raw.assignedTo : [];
       if (!text?.trim()) return socket.emit('error', 'Text fehlt.');
-      if (isPrivate && assignedTo.length === 0) return socket.emit('error', 'Private Aufgaben müssen mindestens einer Person zugewiesen werden.');
+      if (isPrivate && assignedTo.length === 0)
+        return socket.emit(
+          'error',
+          'Private Aufgaben müssen mindestens einer Person zugewiesen werden.'
+        );
       addTask(text, { isPrivate, assignedTo });
       broadcastState();
     });
@@ -157,7 +170,11 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
     socket.on('confirmTask', (taskId) => {
       const playerId = socketPlayerMap.get(socket.id);
       if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
-      const beforeBingo = new Set(getGame().players.filter((p) => p.status === 'bingo').map((p) => p.id));
+      const beforeBingo = new Set(
+        getGame()
+          .players.filter((p) => p.status === 'bingo')
+          .map((p) => p.id)
+      );
       confirmTask(playerId, taskId);
       getGame().players.forEach((p) => {
         if (p.status === 'bingo' && !beforeBingo.has(p.id)) {
@@ -171,7 +188,9 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const sourceId = socketPlayerMap.get(socket.id);
       const current = getGame();
       const source = sourceId ? current.players.find((p) => p.id === sourceId) : undefined;
-      const beforeBingo = new Set(current.players.filter((p) => p.status === 'bingo').map((p) => p.id));
+      const beforeBingo = new Set(
+        current.players.filter((p) => p.status === 'bingo').map((p) => p.id)
+      );
       confirmTaskFor(playerId, taskId, source?.name || 'Unbekannt');
       getGame().players.forEach((p) => {
         if (p.status === 'bingo' && !beforeBingo.has(p.id)) {

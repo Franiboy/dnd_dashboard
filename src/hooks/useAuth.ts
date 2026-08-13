@@ -10,7 +10,10 @@ export interface AuthContextValue {
   loading: boolean;
   error: string | null;
   loginAdmin: (username: string, password: string) => Promise<boolean>;
-  handleDiscordCallback: (code: string, state: string) => Promise<{ ok: boolean; pending?: boolean; message?: string }>;
+  handleDiscordCallback: (
+    code: string,
+    state: string
+  ) => Promise<{ ok: boolean; pending?: boolean; message?: string }>;
   startDiscordLogin: () => Promise<string | null>;
   logout: () => Promise<void>;
   checkApproved: () => Promise<boolean>;

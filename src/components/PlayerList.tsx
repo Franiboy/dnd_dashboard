@@ -13,7 +13,9 @@ export function PlayerList({ game, playerId, className }: PlayerListProps) {
   return (
     <div className={`h-full flex flex-col ${className || ''}`}>
       <ul className="flex-1 min-h-0 overflow-auto space-y-3">
-        {onlinePlayers.length === 0 && <li className="text-slate-500 italic">Noch keine Spieler.</li>}
+        {onlinePlayers.length === 0 && (
+          <li className="text-slate-500 italic">Noch keine Spieler.</li>
+        )}
         {onlinePlayers.map((p) => (
           <li
             key={p.id}
@@ -23,7 +25,9 @@ export function PlayerList({ game, playerId, className }: PlayerListProps) {
           >
             <span className="flex items-center gap-2 text-[var(--text-h)] font-medium min-w-0">
               <Avatar src={p.avatarUrl} name={p.name} className="w-7 h-7 shrink-0" />
-              <span className="truncate">{p.name} {p.id === playerId && '(Du)'}</span>
+              <span className="truncate">
+                {p.name} {p.id === playerId && '(Du)'}
+              </span>
             </span>
             <span className="flex items-center gap-3 shrink-0">
               {p.locked && (
@@ -46,8 +50,8 @@ export function PlayerList({ game, playerId, className }: PlayerListProps) {
                   p.status === 'bingo'
                     ? 'bg-[var(--accent)] text-slate-900'
                     : p.status === 'playing'
-                    ? 'bg-[var(--warning)] text-slate-900'
-                    : 'bg-slate-700 text-slate-300'
+                      ? 'bg-[var(--warning)] text-slate-900'
+                      : 'bg-slate-700 text-slate-300'
                 }`}
               >
                 {p.status === 'lobby' && 'Lobby'}

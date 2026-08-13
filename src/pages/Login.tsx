@@ -65,7 +65,9 @@ export function Login({ onDiscordLogin, error }: LoginProps) {
           </Link>
         )}
 
-        {(error || localError) && <p className="text-[var(--danger)] text-sm mt-4">{error || localError}</p>}
+        {(error || localError) && (
+          <p className="text-[var(--danger)] text-sm mt-4">{error || localError}</p>
+        )}
       </div>
     </div>
   );

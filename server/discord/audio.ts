@@ -25,7 +25,10 @@ import { createRequire } from 'node:module';
 const requireModule = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const OpusModule = requireModule('@discordjs/opus') as {
-  OpusEncoder: new (sampleRate: number, channels: number) => {
+  OpusEncoder: new (
+    sampleRate: number,
+    channels: number
+  ) => {
     encode(buf: Buffer): Buffer;
     decode(buf: Buffer): Buffer;
   };
@@ -78,7 +81,7 @@ export function getWavDurationSeconds(
   wavPath: string,
   sampleRate = 48000,
   channels = 2,
-  bitDepth = 16,
+  bitDepth = 16
 ): number {
   const bytesPerSecond = (sampleRate * channels * bitDepth) / 8;
   let fd: number | undefined;
@@ -123,7 +126,12 @@ export function getWavDurationSeconds(
   }
 }
 
-export function buildWavHeader(dataLength: number, sampleRate: number, channels: number, bitDepth: number): Buffer {
+export function buildWavHeader(
+  dataLength: number,
+  sampleRate: number,
+  channels: number,
+  bitDepth: number
+): Buffer {
   const byteRate = (sampleRate * channels * bitDepth) / 8;
   const blockAlign = (channels * bitDepth) / 8;
   const header = Buffer.alloc(44);
@@ -149,7 +157,7 @@ export async function writeWavFromPcm(
   sampleRate = 48000,
   channels = 2,
   bitDepth = 16,
-  segments?: PcmSegment[],
+  segments?: PcmSegment[]
 ): Promise<void> {
   const bytesPerSample = (channels * bitDepth) / 8;
   let dataLength: number;
@@ -165,7 +173,7 @@ export async function writeWavFromPcm(
           segment.startSample >= 0 &&
           Number.isFinite(segment.length) &&
           Number.isInteger(segment.length) &&
-          segment.length > 0,
+          segment.length > 0
       )
       .sort((a, b) => a.startSample - b.startSample);
   }
@@ -173,7 +181,7 @@ export async function writeWavFromPcm(
   if (sortedSegments.length > 0) {
     dataLength = sortedSegments.reduce(
       (max, segment) => Math.max(max, (segment.startSample + segment.length) * bytesPerSample),
-      0,
+      0
     );
   } else {
     const fileStat = await stat(pcmPath);

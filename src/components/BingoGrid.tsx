@@ -13,12 +13,22 @@ interface BingoGridProps {
   availableTasks?: Task[];
 }
 
-export function BingoGrid({ game, socket, playerId, className, controls, availableTasks }: BingoGridProps) {
+export function BingoGrid({
+  game,
+  socket,
+  playerId,
+  className,
+  controls,
+  availableTasks,
+}: BingoGridProps) {
   const player = game.players.find((p) => p.id === playerId);
   const board = player?.board;
   const [draggedCell, setDraggedCell] = useState<{ r: number; c: number } | null>(null);
   const [isOverDelete, setIsOverDelete] = useState(false);
-  const [pendingTask, setPendingTask] = useState<{ id: string; action: 'confirm' | 'unconfirm' } | null>(null);
+  const [pendingTask, setPendingTask] = useState<{
+    id: string;
+    action: 'confirm' | 'unconfirm';
+  } | null>(null);
   const [fillingCell, setFillingCell] = useState<{ r: number; c: number } | null>(null);
 
   useEffect(() => {
@@ -88,7 +98,10 @@ export function BingoGrid({ game, socket, playerId, className, controls, availab
       return;
     }
     const newBoard = board.map((row) => row.map((cell) => ({ ...cell })));
-    newBoard[draggedCell.r][draggedCell.c] = { ...newBoard[draggedCell.r][draggedCell.c], taskId: null };
+    newBoard[draggedCell.r][draggedCell.c] = {
+      ...newBoard[draggedCell.r][draggedCell.c],
+      taskId: null,
+    };
     updateBoard(newBoard);
     setDraggedCell(null);
   };
@@ -204,7 +217,9 @@ export function BingoGrid({ game, socket, playerId, className, controls, availab
                         {task.text}
                       </span>
                     ) : (
-                      <span className="text-slate-600 text-xs sm:text-sm">{canEdit ? '+' : '?'}</span>
+                      <span className="text-slate-600 text-xs sm:text-sm">
+                        {canEdit ? '+' : '?'}
+                      </span>
                     )}
                     {cell.confirmedBy && (
                       <span className="text-[10px] sm:text-xs text-[var(--accent)] mt-0.5 font-semibold truncate max-w-full">
@@ -246,13 +261,11 @@ export function BingoGrid({ game, socket, playerId, className, controls, availab
               {canEdit
                 ? 'Ziehe Aufgaben auf die Felder, Felder zum Tauschen, oder hierher zum Entfernen.'
                 : game.status === 'setup' && player?.locked
-                ? 'Board ist eingelockt. Warte auf Spielstart.'
-                : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
+                  ? 'Board ist eingelockt. Warte auf Spielstart.'
+                  : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
             </p>
             {controls && (
-              <div className="flex flex-col items-center gap-2 shrink-0">
-                {controls}
-              </div>
+              <div className="flex flex-col items-center gap-2 shrink-0">{controls}</div>
             )}
           </>
         )}
@@ -278,9 +291,14 @@ export function BingoGrid({ game, socket, playerId, className, controls, availab
       {fillingCell && (
         <TaskSelectModal
           tasks={availableTasks ?? []}
-          placedTaskIds={new Set(
-            board?.flat().filter((cell) => cell.taskId).map((cell) => cell.taskId!) ?? [],
-          )}
+          placedTaskIds={
+            new Set(
+              board
+                ?.flat()
+                .filter((cell) => cell.taskId)
+                .map((cell) => cell.taskId!) ?? []
+            )
+          }
           onSelect={placeTask}
           onClose={() => setFillingCell(null)}
         />

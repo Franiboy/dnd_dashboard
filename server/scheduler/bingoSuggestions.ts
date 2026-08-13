@@ -12,7 +12,9 @@ export function startBingoSuggestionScheduler(): void {
   if (interval) return;
 
   // Fill the pool once at startup so suggestions are ready before the first request.
-  ensureSuggestionPool().catch((err) => log.error('Initial bingo suggestion pool fill failed:', err));
+  ensureSuggestionPool().catch((err) =>
+    log.error('Initial bingo suggestion pool fill failed:', err)
+  );
 
   interval = setInterval(() => {
     ensureSuggestionPool().catch((err) => log.error('Bingo suggestion pool check failed:', err));

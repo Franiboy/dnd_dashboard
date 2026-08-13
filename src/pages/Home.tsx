@@ -15,7 +15,7 @@ export function Home({ version }: HomeProps) {
       app.id !== 'dashboard' &&
       app.id !== 'admin' &&
       effectiveUser &&
-      isAppVisible(app, effectiveUser, version),
+      isAppVisible(app, effectiveUser, version)
   );
 
   return (
@@ -29,7 +29,9 @@ export function Home({ version }: HomeProps) {
             to={app.path}
             className="group block bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--accent)] transition"
           >
-            <h2 className="text-2xl font-semibold text-[var(--text-h)] group-hover:text-[var(--accent)] transition">{app.label}</h2>
+            <h2 className="text-2xl font-semibold text-[var(--text-h)] group-hover:text-[var(--accent)] transition">
+              {app.label}
+            </h2>
             <p className="text-slate-400 mt-2">{app.description ?? ''}</p>
           </Link>
         ))}

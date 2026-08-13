@@ -1,5 +1,11 @@
 import { db } from '../database.js';
-import type { RecordingFile, RecordingSession, RecordingStatus, SessionDiaryEntryLink, SessionDiaryTransfer } from '../../shared/types.js';
+import type {
+  RecordingFile,
+  RecordingSession,
+  RecordingStatus,
+  SessionDiaryEntryLink,
+  SessionDiaryTransfer,
+} from '../../shared/types.js';
 
 interface CreateSessionInput {
   name: string;
@@ -20,9 +26,18 @@ export function createSession(input: CreateSessionInput): RecordingSession {
   const startedAt = new Date().toISOString();
   const result = db
     .prepare(
-      'INSERT INTO recording_sessions (name, status, guild_id, channel_id, created_by, started_at, directory, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO recording_sessions (name, status, guild_id, channel_id, created_by, started_at, directory, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     )
-    .run(input.name, 'recording', input.guildId, input.channelId, input.createdBy, startedAt, input.directory, startedAt);
+    .run(
+      input.name,
+      'recording',
+      input.guildId,
+      input.channelId,
+      input.createdBy,
+      startedAt,
+      input.directory,
+      startedAt
+    );
 
   const id = Number(result.lastInsertRowid);
   return {
@@ -52,7 +67,7 @@ export function createSession(input: CreateSessionInput): RecordingSession {
 export function getSessionById(id: number): RecordingSession | null {
   const row = db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE id = ?',
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE id = ?'
     )
     .get(id) as RecordingSession | undefined;
   return row ?? null;
@@ -78,7 +93,7 @@ export interface PendingAiSession {
 export function listSessionsPendingAi(): PendingAiSession[] {
   return db
     .prepare(
-      "SELECT id, transcript_improved_at as transcriptImprovedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = 'completed' AND transcript IS NOT NULL",
+      "SELECT id, transcript_improved_at as transcriptImprovedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = 'completed' AND transcript IS NOT NULL"
     )
     .all() as PendingAiSession[];
 }
@@ -86,7 +101,7 @@ export function listSessionsPendingAi(): PendingAiSession[] {
 export function getSessionSummaryById(id: number): SessionSummary | null {
   const row = db
     .prepare(
-      'SELECT id, name, started_at as startedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE id = ?',
+      'SELECT id, name, started_at as startedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE id = ?'
     )
     .get(id) as SessionSummary | undefined;
   return row ?? null;
@@ -98,7 +113,7 @@ export function listPreviousSessionSummaries(id: number, limit = 5): SessionSumm
   if (!startedAt) return [];
   return db
     .prepare(
-      'SELECT id, name, started_at as startedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE started_at < ? ORDER BY started_at DESC LIMIT ?',
+      'SELECT id, name, started_at as startedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE started_at < ? ORDER BY started_at DESC LIMIT ?'
     )
     .all(startedAt, limit) as SessionSummary[];
 }
@@ -119,7 +134,7 @@ export function listRecentCompletedSessions(limit = 5): RecentCompletedSession[]
        FROM recording_sessions
        WHERE status = 'completed' AND transcript IS NOT NULL AND transcript <> ''
        ORDER BY started_at DESC
-       LIMIT ?`,
+       LIMIT ?`
     )
     .all(limit) as RecentCompletedSession[];
 }
@@ -136,16 +151,19 @@ export function listSessions(): RecordingSession[] {
         s.long_summary as longSummary, s.long_summary_generated_at as longSummaryGeneratedAt,
         COALESCE((SELECT COUNT(*) FROM recording_files f WHERE f.session_id = s.id AND f.wav_path IS NOT NULL), 0) as hasWavFiles
       FROM recording_sessions s
-      ORDER BY started_at DESC`,
+      ORDER BY started_at DESC`
     )
-    .all() as (Omit<RecordingSession, 'hasWavFiles' | 'transcript'> & { hasWavFiles: number; transcript: null })[];
+    .all() as (Omit<RecordingSession, 'hasWavFiles' | 'transcript'> & {
+    hasWavFiles: number;
+    transcript: null;
+  })[];
   return rows.map((row) => ({ ...row, hasWavFiles: !!row.hasWavFiles }));
 }
 
 export function listPendingTranscriptionSessions(): RecordingSession[] {
   return db
     .prepare(
-      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC",
+      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC"
     )
     .all() as RecordingSession[];
 }
@@ -153,14 +171,32 @@ export function listPendingTranscriptionSessions(): RecordingSession[] {
 export function listSessionsByStatus(status: RecordingStatus): RecordingSession[] {
   return db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = ? ORDER BY started_at ASC',
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = ? ORDER BY started_at ASC'
     )
     .all(status) as RecordingSession[];
 }
 
 export function updateSession(
   id: number,
-  updates: Partial<Pick<RecordingSession, 'status' | 'stoppedAt' | 'transcript' | 'error' | 'directory' | 'trimStartSeconds' | 'trimEndSeconds' | 'transcribedTrimStartSeconds' | 'transcribedTrimEndSeconds' | 'transcriptImprovedAt' | 'summary' | 'summaryGeneratedAt' | 'longSummary' | 'longSummaryGeneratedAt'>>,
+  updates: Partial<
+    Pick<
+      RecordingSession,
+      | 'status'
+      | 'stoppedAt'
+      | 'transcript'
+      | 'error'
+      | 'directory'
+      | 'trimStartSeconds'
+      | 'trimEndSeconds'
+      | 'transcribedTrimStartSeconds'
+      | 'transcribedTrimEndSeconds'
+      | 'transcriptImprovedAt'
+      | 'summary'
+      | 'summaryGeneratedAt'
+      | 'longSummary'
+      | 'longSummaryGeneratedAt'
+    >
+  >
 ): void {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -234,7 +270,7 @@ export function updateSession(
 export function createFile(input: CreateFileInput): RecordingFile {
   const result = db
     .prepare(
-      'INSERT INTO recording_files (session_id, user_id, display_name, pcm_path) VALUES (?, ?, ?, ?)',
+      'INSERT INTO recording_files (session_id, user_id, display_name, pcm_path) VALUES (?, ?, ?, ?)'
     )
     .run(input.sessionId, input.userId, input.displayName, input.pcmPath);
 
@@ -254,7 +290,7 @@ export function createFile(input: CreateFileInput): RecordingFile {
 export function getFilesBySessionId(sessionId: number): RecordingFile[] {
   return db
     .prepare(
-      'SELECT id, session_id as sessionId, user_id as userId, display_name as displayName, pcm_path as pcmPath, wav_path as wavPath, duration, transcript_path as transcriptPath FROM recording_files WHERE session_id = ?',
+      'SELECT id, session_id as sessionId, user_id as userId, display_name as displayName, pcm_path as pcmPath, wav_path as wavPath, duration, transcript_path as transcriptPath FROM recording_files WHERE session_id = ?'
     )
     .all(sessionId) as RecordingFile[];
 }
@@ -273,7 +309,7 @@ export function getRecordingConfig(): RecordingConfig {
 export function setRecordingConfig(channelId: string | null): void {
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO recording_config (id, channel_id, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET channel_id = excluded.channel_id, updated_at = excluded.updated_at',
+    'INSERT INTO recording_config (id, channel_id, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET channel_id = excluded.channel_id, updated_at = excluded.updated_at'
   ).run(channelId, now);
 }
 
@@ -286,7 +322,7 @@ export function deleteSession(id: number): { directory: string | null } {
 
 export function updateFile(
   id: number,
-  updates: Partial<Pick<RecordingFile, 'wavPath' | 'duration' | 'transcriptPath'>>,
+  updates: Partial<Pick<RecordingFile, 'wavPath' | 'duration' | 'transcriptPath'>>
 ): void {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -311,7 +347,9 @@ export function updateFile(
 }
 
 export function clearFileTranscriptPathsBySession(sessionId: number): void {
-  db.prepare('UPDATE recording_files SET transcript_path = NULL WHERE session_id = ?').run(sessionId);
+  db.prepare('UPDATE recording_files SET transcript_path = NULL WHERE session_id = ?').run(
+    sessionId
+  );
 }
 
 export interface PendingDiaryTransferSession {
@@ -322,7 +360,7 @@ export interface PendingDiaryTransferSession {
 
 export function listPendingSessionToDiaryTransfers(
   userId: string,
-  limit?: number,
+  limit?: number
 ): PendingDiaryTransferSession[] {
   let sql = `SELECT s.id, s.name, s.started_at AS startedAt
        FROM recording_sessions s
@@ -345,21 +383,24 @@ export function recordSessionToDiaryTransfer(
   sessionId: number,
   userId: string,
   entryId: number,
-  autoAccepted: boolean,
+  autoAccepted: boolean
 ): void {
   db.prepare(
-    'INSERT OR REPLACE INTO session_diary_transfers (session_id, user_id, entry_id, auto_accepted, created_at) VALUES (?, ?, ?, ?, ?)',
+    'INSERT OR REPLACE INTO session_diary_transfers (session_id, user_id, entry_id, auto_accepted, created_at) VALUES (?, ?, ?, ?, ?)'
   ).run(sessionId, userId, entryId, autoAccepted ? 1 : 0, new Date().toISOString());
 }
 
-export function getSessionToDiaryTransfer(sessionId: number, userId: string): SessionDiaryTransfer | null {
+export function getSessionToDiaryTransfer(
+  sessionId: number,
+  userId: string
+): SessionDiaryTransfer | null {
   const row = db
     .prepare(
       `SELECT t.entry_id as entryId, t.created_at as transferredAt, t.auto_accepted as autoAccepted,
         CASE WHEN s.updated_at IS NOT NULL AND t.created_at < s.updated_at THEN 1 ELSE 0 END as isOutdated
        FROM session_diary_transfers t
        JOIN recording_sessions s ON s.id = t.session_id
-       WHERE t.session_id = ? AND t.user_id = ?`,
+       WHERE t.session_id = ? AND t.user_id = ?`
     )
     .get(sessionId, userId) as
     | { entryId: number; transferredAt: string; autoAccepted: number; isOutdated: number }
@@ -380,9 +421,15 @@ export function listSessionToDiaryTransfers(userId: string): Record<number, Sess
         CASE WHEN s.updated_at IS NOT NULL AND t.created_at < s.updated_at THEN 1 ELSE 0 END as isOutdated
        FROM session_diary_transfers t
        JOIN recording_sessions s ON s.id = t.session_id
-       WHERE t.user_id = ?`,
+       WHERE t.user_id = ?`
     )
-    .all(userId) as { sessionId: number; entryId: number; transferredAt: string; autoAccepted: number; isOutdated: number }[];
+    .all(userId) as {
+    sessionId: number;
+    entryId: number;
+    transferredAt: string;
+    autoAccepted: number;
+    isOutdated: number;
+  }[];
   const result: Record<number, SessionDiaryTransfer> = {};
   for (const row of rows) {
     result[row.sessionId] = {
@@ -397,7 +444,7 @@ export function listSessionToDiaryTransfers(userId: string): Record<number, Sess
 
 export function listAllSessionDiaryEntryLinks(
   currentUserId: string,
-  isAdmin: boolean,
+  isAdmin: boolean
 ): Record<number, SessionDiaryEntryLink[]> {
   const sql = `
     SELECT t.session_id AS sessionId, t.entry_id AS entryId, t.user_id AS userId,
@@ -408,7 +455,7 @@ export function listAllSessionDiaryEntryLinks(
     ${isAdmin ? '' : 'WHERE t.user_id = ?'}
     ORDER BY t.created_at DESC
   `;
-  const params: (string)[] = isAdmin ? [] : [currentUserId];
+  const params: string[] = isAdmin ? [] : [currentUserId];
   const rows = db.prepare(sql).all(...params) as {
     sessionId: number;
     entryId: number;

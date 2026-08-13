@@ -20,7 +20,7 @@ export async function summarizeSessionWithAi(
   sessionId: number,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<SessionSummaryResult> {
   const session = getSessionById(sessionId);
   if (!session || !session.transcript || !session.transcript.trim()) {
@@ -32,7 +32,9 @@ export async function summarizeSessionWithAi(
   mkdirSync(getSessionWorkDir(sessionId), { recursive: true });
   writeFileSync(workFile, session.transcript, 'utf-8');
 
-  log.info(`Starting session summaries for session ${sessionId} (${session.transcript.length} bytes)`);
+  log.info(
+    `Starting session summaries for session ${sessionId} (${session.transcript.length} bytes)`
+  );
 
   const longSummary = await generateLongSessionSummary(sessionId, workFile, user, model, onLog);
   if (!longSummary) {
@@ -40,7 +42,13 @@ export async function summarizeSessionWithAi(
     return { summary: null, longSummary: null };
   }
 
-  const shortSummary = await generateShortSessionSummary(sessionId, longSummary, user, model, onLog);
+  const shortSummary = await generateShortSessionSummary(
+    sessionId,
+    longSummary,
+    user,
+    model,
+    onLog
+  );
   if (!shortSummary) {
     log.warn(`No short summary generated for session ${sessionId}`);
     return { summary: null, longSummary };
@@ -55,7 +63,7 @@ async function generateLongSessionSummary(
   workFile: string,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<string | null> {
   const prompt = [
     'Du bist ein Assistent für ein D&D-Sessions-System. Du arbeitest mit Dateien und Tools und antwortest prägnant auf Deutsch.',
@@ -97,7 +105,9 @@ async function generateLongSessionSummary(
     return null;
   }
 
-  log.info(`Long summary loaded for session ${sessionId} (${updatedSession.longSummary.length} chars)`);
+  log.info(
+    `Long summary loaded for session ${sessionId} (${updatedSession.longSummary.length} chars)`
+  );
   return updatedSession.longSummary;
 }
 
@@ -106,7 +116,7 @@ async function generateShortSessionSummary(
   longSummary: string,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<string | null> {
   const prompt = [
     'Du bist ein Assistent für ein D&D-Sessions-System. Du arbeitest mit Tools und antwortest prägnant auf Deutsch.',
@@ -134,7 +144,9 @@ async function generateShortSessionSummary(
   });
 
   if (!result.success) {
-    log.error(`OpenCode failed for short session summary ${sessionId}: exitCode=${result.exitCode}`);
+    log.error(
+      `OpenCode failed for short session summary ${sessionId}: exitCode=${result.exitCode}`
+    );
     return null;
   }
 
@@ -144,7 +156,9 @@ async function generateShortSessionSummary(
     return null;
   }
 
-  log.info(`Short summary loaded for session ${sessionId} (${updatedSession.summary.length} chars)`);
+  log.info(
+    `Short summary loaded for session ${sessionId} (${updatedSession.summary.length} chars)`
+  );
   return updatedSession.summary;
 }
 
@@ -152,7 +166,7 @@ export async function processSessionSummaryEntities(
   sessionId: number,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<SessionSummaryResult> {
   const result = await summarizeSessionWithAi(sessionId, user, model, onLog);
   if (!result.longSummary || !result.summary) {
@@ -163,7 +177,9 @@ export async function processSessionSummaryEntities(
   const shortEntities = findExistingEntitiesInText(result.summary);
   const allEntities = {
     persons: Array.from(new Set([...longEntities.persons, ...shortEntities.persons])),
-    organizations: Array.from(new Set([...longEntities.organizations, ...shortEntities.organizations])),
+    organizations: Array.from(
+      new Set([...longEntities.organizations, ...shortEntities.organizations])
+    ),
     locations: Array.from(new Set([...longEntities.locations, ...shortEntities.locations])),
   };
   for (const name of allEntities.persons) markEntitySummaryDirty('persons', name);
@@ -176,6 +192,8 @@ export async function processSessionSummaryEntities(
     log.warn(`Knowledge distribution failed for session summary ${sessionId}:`, err);
   }
 
-  log.info(`Session ${sessionId}: marked ${allEntities.persons.length + allEntities.organizations.length + allEntities.locations.length} entities dirty and distributed knowledge`);
+  log.info(
+    `Session ${sessionId}: marked ${allEntities.persons.length + allEntities.organizations.length + allEntities.locations.length} entities dirty and distributed knowledge`
+  );
   return result;
 }

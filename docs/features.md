@@ -78,19 +78,19 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 
 ### MCP Scopes
 
-| Scope | Allowed tools |
-|-------|---------------|
-| `diary:read` | `get_diary_entry`, `search_diary_entries`, `get_previous_diary_entries`, `list_user_diary_entries` |
-| `diary:summarize` | `set_diary_summary` |
-| `diary:rewrite` | `set_diary_rewrite` |
-| `diary:draft` | `set_session_diary_draft` |
-| `entity:read` | `list_entities`, `get_entity` |
-| `entity:extract` | `link_diary_entity` |
-| `entity:summary` | `set_entity_summary` |
-| `knowledge:distribute` | `create_knowledge`, `delete_knowledge` |
-| `recording:read` | `get_session_summary`, `get_previous_session_summaries` |
-| `recording:summarize` | `set_session_summary`, `set_session_long_summary` |
-| `bingo:read` | `get_bingo_state` |
+| Scope                  | Allowed tools                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `diary:read`           | `get_diary_entry`, `search_diary_entries`, `get_previous_diary_entries`, `list_user_diary_entries` |
+| `diary:summarize`      | `set_diary_summary`                                                                                |
+| `diary:rewrite`        | `set_diary_rewrite`                                                                                |
+| `diary:draft`          | `set_session_diary_draft`                                                                          |
+| `entity:read`          | `list_entities`, `get_entity`                                                                      |
+| `entity:extract`       | `link_diary_entity`                                                                                |
+| `entity:summary`       | `set_entity_summary`                                                                               |
+| `knowledge:distribute` | `create_knowledge`, `delete_knowledge`                                                             |
+| `recording:read`       | `get_session_summary`, `get_previous_session_summaries`                                            |
+| `recording:summarize`  | `set_session_summary`, `set_session_long_summary`                                                  |
+| `bingo:read`           | `get_bingo_state`                                                                                  |
 
 ## Recording Module
 

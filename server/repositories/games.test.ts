@@ -11,9 +11,7 @@ describe('games repository', () => {
     const game: BingoGame = {
       id: 'game-1',
       status: 'setup',
-      tasks: [
-        { id: 'task-1', text: 'Kill a dragon', createdAt: '2026-01-01T00:00:00.000Z' },
-      ],
+      tasks: [{ id: 'task-1', text: 'Kill a dragon', createdAt: '2026-01-01T00:00:00.000Z' }],
       players: [],
       gridSize: 5,
       createdAt: '2026-01-01T00:00:00.000Z',

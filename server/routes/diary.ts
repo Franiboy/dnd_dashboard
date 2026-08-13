@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
-import { improveRewrittenWithCommand, processDiaryEntryAi, rewriteTextWithAi } from '../ai/rewrite.js';
+import {
+  improveRewrittenWithCommand,
+  processDiaryEntryAi,
+  rewriteTextWithAi,
+} from '../ai/rewrite.js';
 import { deleteOpenCodeSession } from '../ai/opencode.js';
 import { deleteRewrittenFile, getRewrittenFilePath, readRewrittenFile } from '../diaryFiles.js';
 import { createLogger } from '../logger.js';
@@ -214,7 +218,9 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
   }
   if (summary !== undefined) {
     if (!isSummaryValid(summary)) {
-      res.status(400).json({ error: `Zusammenfassung darf maximal ${SUMMARY_MAX_LENGTH} Zeichen haben` });
+      res
+        .status(400)
+        .json({ error: `Zusammenfassung darf maximal ${SUMMARY_MAX_LENGTH} Zeichen haben` });
       return;
     }
     updates.summary = summary;
@@ -308,7 +314,9 @@ router.post('/entries/:id/rewrite', async (req: AuthRequest, res) => {
   const stopProgress = startProgressMessages(req.user!.id, 'KI schreibt den Text um...');
   try {
     const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    log.info(`Calling rewriteTextWithAi for entry ${id}, sessionId=${existing.rewriteSessionId ?? 'none'}`);
+    log.info(
+      `Calling rewriteTextWithAi for entry ${id}, sessionId=${existing.rewriteSessionId ?? 'none'}`
+    );
     const { content: rewritten, sessionId } = await rewriteTextWithAi(
       id,
       existing.content,
@@ -316,7 +324,7 @@ router.post('/entries/:id/rewrite', async (req: AuthRequest, res) => {
       existing.rewriteSessionId ?? null,
       req.user,
       undefined,
-      onLog,
+      onLog
     );
     if (rewritten === null) {
       log.error(`rewriteTextWithAi returned null for entry ${id}`);
@@ -390,7 +398,7 @@ router.post('/entries/:id/rewrite-command', async (req: AuthRequest, res) => {
       existing.rewriteSessionId,
       req.user,
       undefined,
-      onLog,
+      onLog
     );
     if (rewritten === null) {
       log.error(`improveRewrittenWithCommand returned null for entry ${id}`);

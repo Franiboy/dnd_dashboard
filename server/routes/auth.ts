@@ -103,9 +103,17 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
       if (existingByUsername) {
         return res.status(400).json({ error: 'Ein Account mit diesem Username existiert bereits' });
       }
-      const created = createDiscordUser(discordAuth.discordId, discordAuth.username, discordAuth.displayName, discordAuth.avatarUrl);
+      const created = createDiscordUser(
+        discordAuth.discordId,
+        discordAuth.username,
+        discordAuth.displayName,
+        discordAuth.avatarUrl
+      );
       user = findUserById(created.id);
-    } else if (user.displayName !== discordAuth.displayName || user.avatarUrl !== discordAuth.avatarUrl) {
+    } else if (
+      user.displayName !== discordAuth.displayName ||
+      user.avatarUrl !== discordAuth.avatarUrl
+    ) {
       updateDiscordProfile(user.id, discordAuth.displayName, discordAuth.avatarUrl);
       user = findUserById(user.id);
     }
@@ -117,8 +125,15 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     if (!user.isApproved) {
       const token = createToken(user);
       setAuthCookie(res, token);
-      storeDiscordTokens(user.id, discordAuth.accessToken, discordAuth.refreshToken, discordAuth.expiresAt);
-      return res.status(403).json({ error: 'Account wurde noch nicht freigegeben', user: toSafeUser(user) });
+      storeDiscordTokens(
+        user.id,
+        discordAuth.accessToken,
+        discordAuth.refreshToken,
+        discordAuth.expiresAt
+      );
+      return res
+        .status(403)
+        .json({ error: 'Account wurde noch nicht freigegeben', user: toSafeUser(user) });
     }
 
     const allowed = checkLoginAllowed(user);
@@ -127,7 +142,12 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     }
 
     resetFailedLogins(user);
-    storeDiscordTokens(user.id, discordAuth.accessToken, discordAuth.refreshToken, discordAuth.expiresAt);
+    storeDiscordTokens(
+      user.id,
+      discordAuth.accessToken,
+      discordAuth.refreshToken,
+      discordAuth.expiresAt
+    );
     const token = createToken(user);
     setAuthCookie(res, token);
     res.json({ ok: true, user: toSafeUser(user) });
@@ -187,7 +207,9 @@ router.put('/me/active-person', authMiddleware, (req: AuthRequest, res) => {
   const personName = typeof name === 'string' && name.trim() ? name.trim() : null;
 
   if (personName) {
-    const row = db.prepare('SELECT 1 FROM persons WHERE name = ? COLLATE NOCASE').get(personName) as { '1': number } | undefined;
+    const row = db
+      .prepare('SELECT 1 FROM persons WHERE name = ? COLLATE NOCASE')
+      .get(personName) as { '1': number } | undefined;
     if (!row) {
       res.status(400).json({ error: 'Person existiert nicht' });
       return;

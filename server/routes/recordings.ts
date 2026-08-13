@@ -2,14 +2,25 @@ import { Router, type Response, type NextFunction } from 'express';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { authMiddleware, requireAdmin, requireApproved, type AuthRequest } from '../auth.js';
-import { getBotStatus, getAllVoiceChannels, finishRecording, getActiveRecording, getMonitoredChannel } from '../discord/bot.js';
+import {
+  getBotStatus,
+  getAllVoiceChannels,
+  finishRecording,
+  getActiveRecording,
+  getMonitoredChannel,
+} from '../discord/bot.js';
 import { runTranscription, getTranscriptionProgress } from '../discord/transcriber.js';
 import { isRecordingFeatureEnabled } from '../discord/config.js';
 import { isAiEnabled } from '../ai/config.js';
 import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
 import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
 import { generateSessionDiaryDraft } from '../ai/sessionToDiary.js';
-import { onSessionsUpdated, onStatusUpdated, onProgressUpdated, emitSessionsUpdated } from '../discord/recordingsEvents.js';
+import {
+  onSessionsUpdated,
+  onStatusUpdated,
+  onProgressUpdated,
+  emitSessionsUpdated,
+} from '../discord/recordingsEvents.js';
 import {
   getSessionById,
   listSessions,
@@ -140,7 +151,11 @@ router.get('/events', (req, res) => {
 });
 
 router.get('/status', (_req, res) => {
-  res.json({ bot: getBotStatus(), active: getActiveRecording(), monitoredChannel: getMonitoredChannel() });
+  res.json({
+    bot: getBotStatus(),
+    active: getActiveRecording(),
+    monitoredChannel: getMonitoredChannel(),
+  });
 });
 
 router.get('/channels', requireAdmin, async (_req, res) => {
@@ -218,14 +233,22 @@ router.put('/:id/trim', requireAdmin, (req, res) => {
 
   const { trimStartSeconds, trimEndSeconds } = req.body;
   if (
-    (trimStartSeconds !== undefined && trimStartSeconds !== null && typeof trimStartSeconds !== 'number') ||
+    (trimStartSeconds !== undefined &&
+      trimStartSeconds !== null &&
+      typeof trimStartSeconds !== 'number') ||
     (trimEndSeconds !== undefined && trimEndSeconds !== null && typeof trimEndSeconds !== 'number')
   ) {
     res.status(400).json({ error: 'Trim-Werte müssen Zahlen oder null sein' });
     return;
   }
 
-  if (trimStartSeconds !== undefined && trimEndSeconds !== undefined && trimStartSeconds !== null && trimEndSeconds !== null && trimStartSeconds >= trimEndSeconds) {
+  if (
+    trimStartSeconds !== undefined &&
+    trimEndSeconds !== undefined &&
+    trimStartSeconds !== null &&
+    trimEndSeconds !== null &&
+    trimStartSeconds >= trimEndSeconds
+  ) {
     res.status(400).json({ error: 'Start muss vor Ende liegen' });
     return;
   }
@@ -288,8 +311,10 @@ router.post('/:id/trim-transcript', requireAdmin, async (req, res) => {
     transcript: newTranscript,
     trimStartSeconds: startSeconds !== undefined ? startSeconds : session.trimStartSeconds,
     trimEndSeconds: endSeconds !== undefined ? endSeconds : session.trimEndSeconds,
-    transcribedTrimStartSeconds: startSeconds !== undefined ? startSeconds : session.transcribedTrimStartSeconds,
-    transcribedTrimEndSeconds: endSeconds !== undefined ? endSeconds : session.transcribedTrimEndSeconds,
+    transcribedTrimStartSeconds:
+      startSeconds !== undefined ? startSeconds : session.transcribedTrimStartSeconds,
+    transcribedTrimEndSeconds:
+      endSeconds !== undefined ? endSeconds : session.transcribedTrimEndSeconds,
   });
   emitSessionsUpdated();
 
@@ -303,7 +328,11 @@ router.post('/:id/transcribe', requireAdmin, (req, res) => {
     res.status(404).json({ error: 'Aufnahme nicht gefunden' });
     return;
   }
-  if (session.status !== 'pending_transcription' && session.status !== 'error' && session.status !== 'completed') {
+  if (
+    session.status !== 'pending_transcription' &&
+    session.status !== 'error' &&
+    session.status !== 'completed'
+  ) {
     res.status(400).json({ error: 'Session kann aktuell nicht transkribiert werden' });
     return;
   }

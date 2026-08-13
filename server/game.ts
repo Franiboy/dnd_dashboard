@@ -60,7 +60,7 @@ function isValidBoard(board: Cell[][], size: number, userId?: string): boolean {
 
 export function addTask(
   text: string,
-  { isPrivate = false, assignedTo = [] }: { isPrivate?: boolean; assignedTo?: string[] } = {},
+  { isPrivate = false, assignedTo = [] }: { isPrivate?: boolean; assignedTo?: string[] } = {}
 ): Task {
   const task: Task = {
     id: createId(),
@@ -76,11 +76,12 @@ export function addTask(
 
 export function updateTask(
   taskId: string,
-  updates: { text?: string; isPrivate?: boolean; assignedTo?: string[] },
+  updates: { text?: string; isPrivate?: boolean; assignedTo?: string[] }
 ): BingoGame {
   const task = game.tasks.find((t) => t.id === taskId);
   if (!task) throw new Error('Aufgabe nicht gefunden.');
-  if (game.status !== 'setup') throw new Error('Aufgaben können nur vor Spielstart bearbeitet werden.');
+  if (game.status !== 'setup')
+    throw new Error('Aufgaben können nur vor Spielstart bearbeitet werden.');
 
   if (updates.text !== undefined) {
     const text = updates.text.trim();
@@ -94,7 +95,8 @@ export function updateTask(
 
   if (task.isPrivate) {
     const assignedTo = updates.assignedTo ?? task.assignedTo ?? [];
-    if (assignedTo.length === 0) throw new Error('Private Aufgaben müssen mindestens einer Person zugewiesen werden.');
+    if (assignedTo.length === 0)
+      throw new Error('Private Aufgaben müssen mindestens einer Person zugewiesen werden.');
     task.assignedTo = assignedTo;
   } else {
     task.assignedTo = [];
@@ -124,7 +126,11 @@ export function removeTask(taskId: string): BingoGame {
   return game;
 }
 
-export function joinPlayer(name: string, userId?: string, avatarUrl?: string | null): { game: BingoGame; playerId: string } {
+export function joinPlayer(
+  name: string,
+  userId?: string,
+  avatarUrl?: string | null
+): { game: BingoGame; playerId: string } {
   const id = createId();
   const player: Player = {
     id,
@@ -210,7 +216,8 @@ export function updateBoard(playerId: string, board: Cell[][]): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
   if (!player) throw new Error('Spieler nicht gefunden.');
   if (game.status !== 'setup') throw new Error('Board kann nur vor Spielstart bearbeitet werden.');
-  if (player.locked) throw new Error('Board ist gesperrt. Entsperre es, um Änderungen vorzunehmen.');
+  if (player.locked)
+    throw new Error('Board ist gesperrt. Entsperre es, um Änderungen vorzunehmen.');
   if (!isValidBoard(board, game.gridSize, player.userId)) throw new Error('Ungültiges Board.');
   player.board = board;
   persist();
@@ -241,7 +248,11 @@ export function unlockBoard(playerId: string): BingoGame {
   return game;
 }
 
-export function confirmTask(sourcePlayerId: string, taskId: string, confirmedByName?: string): BingoGame {
+export function confirmTask(
+  sourcePlayerId: string,
+  taskId: string,
+  confirmedByName?: string
+): BingoGame {
   if (game.status !== 'playing') return game;
   const source = game.players.find((p) => p.id === sourcePlayerId);
   const confirmedBy = confirmedByName || source?.name || 'Unbekannt';
@@ -273,7 +284,11 @@ export function confirmTask(sourcePlayerId: string, taskId: string, confirmedByN
   return game;
 }
 
-export function confirmTaskFor(targetPlayerId: string, taskId: string, sourceName: string): BingoGame {
+export function confirmTaskFor(
+  targetPlayerId: string,
+  taskId: string,
+  sourceName: string
+): BingoGame {
   const target = game.players.find((p) => p.id === targetPlayerId);
   if (!target) return game;
   return confirmTask(targetPlayerId, taskId, sourceName);

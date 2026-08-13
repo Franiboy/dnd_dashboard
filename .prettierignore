@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-server
+*.db
+*.db-*
+.env
+.env.*
+coverage
+recordings
+data
+package-lock.json
+*.log

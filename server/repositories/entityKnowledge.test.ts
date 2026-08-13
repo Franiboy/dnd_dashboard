@@ -10,13 +10,7 @@ import {
 
 describe('entityKnowledge repository', () => {
   it('creates and retrieves a knowledge entry', () => {
-    const entry = createEntityKnowledge(
-      'persons',
-      'Gandalf',
-      'About',
-      'A wise wizard',
-      'manual',
-    );
+    const entry = createEntityKnowledge('persons', 'Gandalf', 'About', 'A wise wizard', 'manual');
 
     expect(entry.entityType).toBe('persons');
     expect(entry.entityName).toBe('Gandalf');
@@ -41,7 +35,7 @@ describe('entityKnowledge repository', () => {
       'The Fellowship',
       null,
       'Original group',
-      'manual',
+      'manual'
     );
 
     const updated = updateEntityKnowledge(entry.id, {
@@ -55,13 +49,7 @@ describe('entityKnowledge repository', () => {
   });
 
   it('marks an entry as deleted and hides it from active lists', () => {
-    const entry = createEntityKnowledge(
-      'persons',
-      'Saruman',
-      null,
-      'Fallen wizard',
-      'manual',
-    );
+    const entry = createEntityKnowledge('persons', 'Saruman', null, 'Fallen wizard', 'manual');
 
     const deleted = markEntityKnowledgeDeleted(entry.id, 'test deletion');
     expect(deleted).toBeTruthy();

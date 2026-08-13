@@ -23,9 +23,7 @@ describe('users', () => {
 
   it('returns a safe user without password or discord tokens', () => {
     createAdminUser('safeadmin', 'Safe Admin', 'password');
-    const safe = toSafeUser(
-      findUserByUsername('safeadmin')!,
-    );
+    const safe = toSafeUser(findUserByUsername('safeadmin')!);
 
     expect(safe.username).toBe('safeadmin');
     expect('passwordHash' in safe).toBe(false);

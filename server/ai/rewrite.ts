@@ -2,7 +2,11 @@ import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
 import { getCheapModel, getNormalModel } from './modelConfig.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
 import { readRewrittenFile } from '../diaryFiles.js';
-import { clearDiaryEntryDirty, getDiaryEntryById, getEntryEntities } from '../repositories/diary.js';
+import {
+  clearDiaryEntryDirty,
+  getDiaryEntryById,
+  getEntryEntities,
+} from '../repositories/diary.js';
 import { markEntitySummaryDirty } from '../repositories/entitySummaries.js';
 import { createLogger } from '../logger.js';
 
@@ -52,7 +56,7 @@ export async function rewriteTextWithAi(
   existingSessionId: string | null,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<RewriteResult> {
   const plainText = stripHtml(originalHtml).trim();
   if (!plainText) {
@@ -95,9 +99,7 @@ export async function rewriteTextWithAi(
     '',
     'Tagebucheintrag:',
     originalHtml,
-    ...(mode === 'improve'
-      ? ['', 'Aktuelles Rewrite (verbessere dieses):', previousContent]
-      : []),
+    ...(mode === 'improve' ? ['', 'Aktuelles Rewrite (verbessere dieses):', previousContent] : []),
   ].join('\n');
 
   const result = await runOpenCode({
@@ -139,7 +141,7 @@ export async function improveRewrittenWithCommand(
   sessionId: string,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<RewriteResult> {
   const plainOriginal = stripHtml(originalHtml).trim();
 
@@ -173,9 +175,7 @@ export async function improveRewrittenWithCommand(
     '',
     'Aktuelles Rewrite (bearbeite dieses):',
     existingRewrittenContent,
-    ...(plainOriginal
-      ? ['', 'Originaler Tagebucheintrag zur Referenz:', originalHtml]
-      : []),
+    ...(plainOriginal ? ['', 'Originaler Tagebucheintrag zur Referenz:', originalHtml] : []),
   ].join('\n');
 
   log.info(`Applying rewrite command for entry ${entryId}: ${command}`);
@@ -200,7 +200,9 @@ export async function improveRewrittenWithCommand(
     return { content: null, sessionId: result.sessionId ?? sessionId };
   }
 
-  log.info(`Using rewritten file content after command for entry ${entryId} (${fileContent.length} bytes)`);
+  log.info(
+    `Using rewritten file content after command for entry ${entryId} (${fileContent.length} bytes)`
+  );
   return { content: normalizeToHtml(fileContent), sessionId: result.sessionId ?? sessionId };
 }
 
@@ -209,7 +211,7 @@ export async function summarizeTextWithAi(
   text: string,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<string | null> {
   const plainText = stripHtml(text);
   if (!plainText) {
@@ -294,7 +296,7 @@ export async function extractEntitiesFromDiary(
   text: string,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<DiaryEntities> {
   const plainText = stripHtml(text);
   if (!plainText) {
@@ -352,7 +354,7 @@ export async function processDiaryEntryAi(
   entryId: number,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void,
+  onLog?: (line: string) => void
 ): Promise<boolean> {
   const entry = getDiaryEntryById(entryId);
   if (!entry) {
@@ -371,7 +373,9 @@ export async function processDiaryEntryAi(
   for (const name of entities.locations) markEntitySummaryDirty('locations', name);
 
   if (entities.persons.length + entities.organizations.length + entities.locations.length > 0) {
-    log.info(`Marked ${entities.persons.length + entities.organizations.length + entities.locations.length} entity summaries as dirty for entry ${entryId}`);
+    log.info(
+      `Marked ${entities.persons.length + entities.organizations.length + entities.locations.length} entity summaries as dirty for entry ${entryId}`
+    );
   }
 
   try {

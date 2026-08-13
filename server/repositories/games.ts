@@ -2,7 +2,8 @@ import type { BingoGame } from '../../shared/types.js';
 import { db } from '../database.js';
 
 export function loadGame(): BingoGame | null {
-  const row = db.prepare('SELECT data FROM games WHERE id = 1').get() as { data: string } | undefined;
+  const row = db.prepare('SELECT data FROM games WHERE id = 1').get() as
+    { data: string } | undefined;
   if (!row) return null;
   const parsed = JSON.parse(row.data) as BingoGame;
   for (const player of parsed.players) {

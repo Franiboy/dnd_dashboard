@@ -2,7 +2,13 @@ import { Router, type Response } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getRecentLogs, getLogsPaginated, subscribeLogs } from '../logger.js';
 import type { LogEntry, LogLevel } from '../../shared/types.js';
-import { clearModelCache, getCheapModel, getNormalModel, isValidModel, listAvailableModels } from '../ai/modelConfig.js';
+import {
+  clearModelCache,
+  getCheapModel,
+  getNormalModel,
+  isValidModel,
+  listAvailableModels,
+} from '../ai/modelConfig.js';
 import { getAiModelSettings, setAiModelSettings } from '../repositories/aiSettings.js';
 import {
   deleteUser,
@@ -39,11 +45,16 @@ function notifyLogUpdate(entry: LogEntry) {
 
 subscribeLogs(notifyLogUpdate);
 
-function checkAdminAction(req: AuthRequest, targetId: string): { ok: true } | { ok: false; error: string } {
+function checkAdminAction(
+  req: AuthRequest,
+  targetId: string
+): { ok: true } | { ok: false; error: string } {
   const target = findUserById(targetId);
   if (!target) return { ok: false, error: 'User nicht gefunden' };
-  if (isInitialAdmin(target)) return { ok: false, error: 'Der Ursprungsadmin kann nicht verändert werden' };
-  if (target.id === req.user!.id) return { ok: false, error: 'Du kannst deinen eigenen Account nicht verändern' };
+  if (isInitialAdmin(target))
+    return { ok: false, error: 'Der Ursprungsadmin kann nicht verändert werden' };
+  if (target.id === req.user!.id)
+    return { ok: false, error: 'Du kannst deinen eigenen Account nicht verändern' };
   return { ok: true };
 }
 
@@ -209,7 +220,10 @@ router.post('/transcription-jobs', authMiddleware, requireAdmin, (req: AuthReque
   if (started) {
     res.json({ started: true, message: 'Transkription-Jobs wurden gestartet.' });
   } else {
-    res.status(409).json({ started: false, message: 'Transkription-Jobs laufen bereits oder sind deaktiviert.' });
+    res.status(409).json({
+      started: false,
+      message: 'Transkription-Jobs laufen bereits oder sind deaktiviert.',
+    });
   }
 });
 
@@ -218,7 +232,10 @@ router.post('/bingo-suggestion-refill', authMiddleware, requireAdmin, (req: Auth
   if (started) {
     res.json({ started: true, message: 'Bingo-Vorschlags-Nachfüllung wurde gestartet.' });
   } else {
-    res.status(409).json({ started: false, message: 'Bingo-Vorschlags-Nachfüllung läuft bereits oder KI ist deaktiviert.' });
+    res.status(409).json({
+      started: false,
+      message: 'Bingo-Vorschlags-Nachfüllung läuft bereits oder KI ist deaktiviert.',
+    });
   }
 });
 

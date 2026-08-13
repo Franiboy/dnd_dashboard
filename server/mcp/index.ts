@@ -119,26 +119,35 @@ function loggedTool<T extends z.ZodRawShape>(
   name: string,
   description: string,
   argsSchema: T,
-  handler: (args: z.infer<z.ZodObject<T>>) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>,
+  handler: (
+    args: z.infer<z.ZodObject<T>>
+  ) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>
 ): void {
-  (server.tool as unknown as (...args: unknown[]) => void)(name, description, argsSchema, async (args: unknown) => {
-    const summary = formatToolArgs(args as Record<string, unknown>);
-    log.info(`MCP tool called: ${name}(${summary})`);
-    const start = Date.now();
-    try {
-      const result = await handler(args as z.infer<z.ZodObject<T>>);
-      const outputText = result.content.map((c) => c.text).join('');
-      const isError = result.isError ?? false;
-      log.info(
-        `MCP tool finished: ${name} (duration=${Date.now() - start}ms, isError=${isError}, outputChars=${outputText.length})`,
-      );
-      return result;
-    } catch (err) {
-      const duration = Date.now() - start;
-      log.error(`MCP tool failed: ${name} (duration=${duration}ms): ${err instanceof Error ? err.message : String(err)}`);
-      throw err;
+  (server.tool as unknown as (...args: unknown[]) => void)(
+    name,
+    description,
+    argsSchema,
+    async (args: unknown) => {
+      const summary = formatToolArgs(args as Record<string, unknown>);
+      log.info(`MCP tool called: ${name}(${summary})`);
+      const start = Date.now();
+      try {
+        const result = await handler(args as z.infer<z.ZodObject<T>>);
+        const outputText = result.content.map((c) => c.text).join('');
+        const isError = result.isError ?? false;
+        log.info(
+          `MCP tool finished: ${name} (duration=${Date.now() - start}ms, isError=${isError}, outputChars=${outputText.length})`
+        );
+        return result;
+      } catch (err) {
+        const duration = Date.now() - start;
+        log.error(
+          `MCP tool failed: ${name} (duration=${duration}ms): ${err instanceof Error ? err.message : String(err)}`
+        );
+        throw err;
+      }
     }
-  });
+  );
 }
 
 if (requireScope('diary:summarize')) {
@@ -158,7 +167,7 @@ if (requireScope('diary:summarize')) {
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Setzen der Zusammenfassung');
       }
-    },
+    }
   );
 }
 
@@ -179,7 +188,7 @@ if (requireScope('diary:rewrite')) {
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Speichern des Rewrites');
       }
-    },
+    }
   );
 }
 
@@ -208,9 +217,11 @@ if (requireScope('diary:draft')) {
         const created = createSessionDiaryDraft(sessionUserId, title, sessionId, html);
         return success(`Neuer Entwurf als Eintrag ${created.id} erstellt.`);
       } catch (err) {
-        return error(err instanceof Error ? err.message : 'Fehler beim Speichern des Tagebuch-Entwurfs');
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Speichern des Tagebuch-Entwurfs'
+        );
       }
-    },
+    }
   );
 }
 
@@ -238,7 +249,7 @@ if (requireScope('entity:extract')) {
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Verknüpfen der Entität');
       }
-    },
+    }
   );
 }
 
@@ -260,7 +271,7 @@ if (requireScope('entity:summary')) {
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Setzen der Zusammenfassung');
       }
-    },
+    }
   );
 }
 
@@ -277,12 +288,20 @@ if (requireScope('knowledge:distribute')) {
     async ({ type, name, content, title }) => {
       try {
         const canonical = ensureEntityExists(type, name);
-        const entry = createEntityKnowledge(type, canonical, title?.trim() || null, content.trim(), 'ai_extracted');
+        const entry = createEntityKnowledge(
+          type,
+          canonical,
+          title?.trim() || null,
+          content.trim(),
+          'ai_extracted'
+        );
         return success(`Wissenseintrag ${entry.id} für ${type}/${canonical} erstellt.`);
       } catch (err) {
-        return error(err instanceof Error ? err.message : 'Fehler beim Erstellen des Wissenseintrags');
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Erstellen des Wissenseintrags'
+        );
       }
-    },
+    }
   );
 
   loggedTool(
@@ -299,9 +318,11 @@ if (requireScope('knowledge:distribute')) {
         markEntityKnowledgeDeleted(id, reason?.trim() || null);
         return success(`Wissenseintrag ${id} als gelöscht markiert.`);
       } catch (err) {
-        return error(err instanceof Error ? err.message : 'Fehler beim Löschen des Wissenseintrags');
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Löschen des Wissenseintrags'
+        );
       }
-    },
+    }
   );
 }
 
@@ -332,7 +353,7 @@ if (requireScope('diary:read')) {
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Laden des Tagebucheintrags');
       }
-    },
+    }
   );
 
   loggedTool(
@@ -345,7 +366,11 @@ if (requireScope('diary:read')) {
     async ({ query, limit }) => {
       try {
         if (!sessionUserId) return error('Kein Benutzerkontext vorhanden');
-        const entries = searchDiaryEntries(query, sessionIsAdmin ? undefined : sessionUserId, limit ?? 5);
+        const entries = searchDiaryEntries(
+          query,
+          sessionIsAdmin ? undefined : sessionUserId,
+          limit ?? 5
+        );
         if (entries.length === 0) return success('Keine Tagebucheinträge gefunden.');
         const lines = entries.map((e) => {
           const plain = stripHtml(e.content);
@@ -355,7 +380,7 @@ if (requireScope('diary:read')) {
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler bei der Suche');
       }
-    },
+    }
   );
 
   loggedTool(
@@ -377,9 +402,11 @@ if (requireScope('diary:read')) {
         });
         return success(lines.join('\n\n'));
       } catch (err) {
-        return error(err instanceof Error ? err.message : 'Fehler beim Laden der vorherigen Einträge');
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Laden der vorherigen Einträge'
+        );
       }
-    },
+    }
   );
 
   loggedTool(
@@ -401,7 +428,7 @@ if (requireScope('diary:read')) {
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Laden der Tagebucheinträge');
       }
-    },
+    }
   );
 }
 
@@ -428,7 +455,7 @@ if (requireScope('entity:read')) {
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Laden der Entitäten');
       }
-    },
+    }
   );
 
   loggedTool(
@@ -443,13 +470,19 @@ if (requireScope('entity:read')) {
       try {
         const canonical = findEntityCanonicalName(type, name);
         if (!canonical) {
-          return error(`Entität ${type}/${name} nicht gefunden. Verwende list_entities, um passende Namen zu finden.`);
+          return error(
+            `Entität ${type}/${name} nicht gefunden. Verwende list_entities, um passende Namen zu finden.`
+          );
         }
         const summary = getEntitySummary(type, canonical);
         const knowledge = listActiveEntityKnowledge(type, canonical);
         const diaryEntries =
           includeDiaryEntries !== false
-            ? listDiaryEntryContentsByEntity(type, canonical, sessionIsAdmin ? undefined : sessionUserId ?? undefined)
+            ? listDiaryEntryContentsByEntity(
+                type,
+                canonical,
+                sessionIsAdmin ? undefined : (sessionUserId ?? undefined)
+              )
             : [];
 
         const lines: string[] = [`Entität: ${canonical} (${type})`];
@@ -479,7 +512,7 @@ if (requireScope('entity:read')) {
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Laden der Entität');
       }
-    },
+    }
   );
 }
 
@@ -519,9 +552,11 @@ if (requireScope('recording:read')) {
         if (!session) return error(`Session ${sessionId} nicht gefunden.`);
         return success(formatSessionSummary(session));
       } catch (err) {
-        return error(err instanceof Error ? err.message : 'Fehler beim Laden der Session-Zusammenfassung');
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Laden der Session-Zusammenfassung'
+        );
       }
-    },
+    }
   );
 
   loggedTool(
@@ -537,9 +572,11 @@ if (requireScope('recording:read')) {
         if (sessions.length === 0) return success('Keine vorherigen Sessions gefunden.');
         return success(sessions.map(formatSessionSummary).join('\n\n---\n\n'));
       } catch (err) {
-        return error(err instanceof Error ? err.message : 'Fehler beim Laden der vorherigen Sessions');
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Laden der vorherigen Sessions'
+        );
       }
-    },
+    }
   );
 }
 
@@ -563,7 +600,7 @@ if (requireScope('recording:summarize')) {
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Setzen der Zusammenfassung');
       }
-    },
+    }
   );
 
   loggedTool(
@@ -583,9 +620,11 @@ if (requireScope('recording:summarize')) {
         });
         return success(`Lange Zusammenfassung für Session ${sessionId} gesetzt.`);
       } catch (err) {
-        return error(err instanceof Error ? err.message : 'Fehler beim Setzen der langen Zusammenfassung');
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Setzen der langen Zusammenfassung'
+        );
       }
-    },
+    }
   );
 }
 
@@ -613,14 +652,16 @@ if (requireScope('bingo:read')) {
           ...(pendingSuggestions.length > 0 ? pendingSuggestions.map((t) => `- ${t}`) : ['Keine']),
           '',
           'Zuletzt abgelehnte Vorschläge (nicht erneut vorschlagen):',
-          ...(rejectedSuggestions.length > 0 ? rejectedSuggestions.map((t) => `- ${t}`) : ['Keine']),
+          ...(rejectedSuggestions.length > 0
+            ? rejectedSuggestions.map((t) => `- ${t}`)
+            : ['Keine']),
         ];
 
         return success(lines.join('\n'));
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Laden des Bingo-Zustands');
       }
-    },
+    }
   );
 }
 
@@ -648,9 +689,11 @@ if (requireScope('bingo:write')) {
         submitBingoSuggestionBatch(batchId, normalized);
         return success(`${normalized.length} Bingo-Vorschläge für Batch ${batchId} übergeben.`);
       } catch (err) {
-        return error(err instanceof Error ? err.message : 'Fehler beim Übergeben der Bingo-Vorschläge');
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Übergeben der Bingo-Vorschläge'
+        );
       }
-    },
+    }
   );
 }
 

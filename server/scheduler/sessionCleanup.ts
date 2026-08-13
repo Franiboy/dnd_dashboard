@@ -14,7 +14,11 @@ let interval: ReturnType<typeof setInterval> | null = null;
 async function runCleanup() {
   try {
     const keepSessionIds = new Set(listActiveRewriteSessionIds());
-    const deleted = await cleanupOpenCodeSessions({ keepSessionIds, maxAgeMs: MAX_AGE_MS, prefix: 'dnd-' });
+    const deleted = await cleanupOpenCodeSessions({
+      keepSessionIds,
+      maxAgeMs: MAX_AGE_MS,
+      prefix: 'dnd-',
+    });
     log.info(`Session cleanup finished, deleted ${deleted} sessions`);
   } catch (err) {
     log.warn(`Session cleanup failed: ${err}`);

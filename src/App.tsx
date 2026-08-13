@@ -27,7 +27,10 @@ interface PublicRoutesProps {
   error: string | null;
   loginAdmin: (username: string, password: string) => Promise<boolean>;
   startDiscordLogin: () => Promise<string | null>;
-  handleDiscordCallback: (code: string, state: string) => Promise<{ ok: boolean; pending?: boolean; message?: string }>;
+  handleDiscordCallback: (
+    code: string,
+    state: string
+  ) => Promise<{ ok: boolean; pending?: boolean; message?: string }>;
   checkApproved: () => Promise<boolean>;
 }
 
@@ -51,14 +54,30 @@ function PublicRoutes({
     <Routes>
       <Route path="/" element={<Login onDiscordLogin={startDiscordLogin} error={error} />} />
       <Route path="/admin-login" element={<AdminLogin onLogin={loginAdmin} error={error} />} />
-      <Route path="/auth/discord" element={<AuthCallback onCallback={handleDiscordCallback} onCheckApproved={checkApproved} />} />
+      <Route
+        path="/auth/discord"
+        element={
+          <AuthCallback onCallback={handleDiscordCallback} onCheckApproved={checkApproved} />
+        }
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
 
 function App() {
-  const { user, effectiveUser, loading, error, loginAdmin, handleDiscordCallback, startDiscordLogin, logout, checkApproved, updateUser } = useAuth();
+  const {
+    user,
+    effectiveUser,
+    loading,
+    error,
+    loginAdmin,
+    handleDiscordCallback,
+    startDiscordLogin,
+    logout,
+    checkApproved,
+    updateUser,
+  } = useAuth();
   const [version, setVersion] = useState<VersionInfo | null | undefined>(undefined);
 
   useEffect(() => {
@@ -116,15 +135,56 @@ function App() {
     <BrowserRouter>
       <MappingsProvider>
         <EntityDialogProvider>
-          <Layout user={effectiveUser} version={version} realUser={currentUser} onLogout={logout} onUserChange={updateUser}>
+          <Layout
+            user={effectiveUser}
+            version={version}
+            realUser={currentUser}
+            onLogout={logout}
+            onUserChange={updateUser}
+          >
             <Suspense fallback={pageLoader}>
               <Routes>
-                <Route path="/admin" element={<ProtectedRoute user={currentUser} appId="admin" version={version}><Admin currentUser={currentUser} /></ProtectedRoute>} />
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute user={currentUser} appId="admin" version={version}>
+                      <Admin currentUser={currentUser} />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="/" element={<Home version={version} />} />
-                <Route path="/tagebuch" element={<ProtectedRoute user={effectiveUser} appId="notes" version={version}><Diary /></ProtectedRoute>} />
-                <Route path="/welt" element={<ProtectedRoute user={effectiveUser} appId="world" version={version}><World /></ProtectedRoute>} />
-                <Route path="/sessions" element={<ProtectedRoute user={effectiveUser} appId="sessions" version={version}><Sessions user={effectiveUser} /></ProtectedRoute>} />
-                <Route path="/bingo" element={<ProtectedRoute user={effectiveUser} appId="bingo" version={version}><Bingo user={effectiveUser} /></ProtectedRoute>} />
+                <Route
+                  path="/tagebuch"
+                  element={
+                    <ProtectedRoute user={effectiveUser} appId="notes" version={version}>
+                      <Diary />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/welt"
+                  element={
+                    <ProtectedRoute user={effectiveUser} appId="world" version={version}>
+                      <World />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/sessions"
+                  element={
+                    <ProtectedRoute user={effectiveUser} appId="sessions" version={version}>
+                      <Sessions user={effectiveUser} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/bingo"
+                  element={
+                    <ProtectedRoute user={effectiveUser} appId="bingo" version={version}>
+                      <Bingo user={effectiveUser} />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </Suspense>

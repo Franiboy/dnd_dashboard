@@ -15,20 +15,24 @@ interface EntityConfig {
 
 const entityConfig: Record<keyof DiaryEntities, EntityConfig> = {
   persons: { table: 'persons', linkTable: 'diary_entry_persons', column: 'person_id' },
-  organizations: { table: 'organizations', linkTable: 'diary_entry_organizations', column: 'organization_id' },
+  organizations: {
+    table: 'organizations',
+    linkTable: 'diary_entry_organizations',
+    column: 'organization_id',
+  },
   locations: { table: 'locations', linkTable: 'diary_entry_locations', column: 'location_id' },
 };
 
 function rowToDiaryEntry(
   row: Record<string, unknown>,
   entities: DiaryEntities,
-  includeRewritten = true,
+  includeRewritten = true
 ): DiaryEntry {
   const rewrittenFilePath = (row.rewritten_file_path as string | null | undefined) ?? null;
   const legacyRewrittenContent = (row.rewritten_content as string | null | undefined) ?? null;
   const rewrittenContent = includeRewritten
     ? rewrittenFilePath
-      ? readRewrittenFile(row.id as number) ?? legacyRewrittenContent
+      ? (readRewrittenFile(row.id as number) ?? legacyRewrittenContent)
       : legacyRewrittenContent
     : rewrittenFilePath
       ? null
@@ -71,7 +75,7 @@ function buildEntryEntitiesMap(entryIds: number[]): Map<number, DiaryEntities> {
     entityTable: string,
     linkTable: string,
     column: string,
-    key: keyof DiaryEntities,
+    key: keyof DiaryEntities
   ) => {
     const rows = db
       .prepare(
@@ -79,7 +83,7 @@ function buildEntryEntitiesMap(entryIds: number[]): Map<number, DiaryEntities> {
          FROM ${entityTable} e
          JOIN ${linkTable} l ON l.${column} = e.id
          WHERE l.diary_entry_id IN (${entryIds.map(() => '?').join(',')})
-         ORDER BY e.name`,
+         ORDER BY e.name`
       )
       .all(...entryIds) as { entry_id: number; name: string }[];
 
@@ -128,7 +132,9 @@ export function listAllEntityNames(): DiaryEntities {
 export function findEntityCanonicalName(type: keyof DiaryEntities, name: string): string | null {
   const { table } = entityConfig[type];
   const canonical = resolveEntityName(name.trim(), type);
-  const existing = db.prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`).get(canonical) as { name: string } | undefined;
+  const existing = db
+    .prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`)
+    .get(canonical) as { name: string } | undefined;
   return existing ? existing.name : null;
 }
 
@@ -142,7 +148,7 @@ export function ensureEntityExists(type: keyof DiaryEntities, name: string): str
 }
 
 function getAliasEntries(
-  type: keyof DiaryEntities,
+  type: keyof DiaryEntities
 ): Map<string, { alias: string; canonical: string }> {
   const rows = db
     .prepare('SELECT alias, canonical FROM entity_aliases WHERE type = ?')
@@ -267,7 +273,7 @@ export function findExistingEntitiesInText(text: string): DiaryEntities {
 
 export function mergeEntities(
   aiEntities: DiaryEntities,
-  existingEntities: DiaryEntities,
+  existingEntities: DiaryEntities
 ): DiaryEntities {
   const merge = (aiItems: string[], existingItems: string[]): string[] => {
     const byLower = new Map<string, string>();
@@ -293,9 +299,10 @@ export function mergeEntities(
 type EntityBlacklists = Record<keyof DiaryEntities, Set<string>>;
 
 function getBlacklists(): EntityBlacklists {
-  const rows = db
-    .prepare('SELECT type, name FROM entity_blacklist')
-    .all() as { type: string; name: string }[];
+  const rows = db.prepare('SELECT type, name FROM entity_blacklist').all() as {
+    type: string;
+    name: string;
+  }[];
 
   const lists: EntityBlacklists = {
     persons: new Set<string>(),
@@ -317,7 +324,9 @@ export function filterBlacklisted(entities: DiaryEntities): DiaryEntities {
 
   return {
     persons: entities.persons.filter((name) => !blacklists.persons.has(name.toLowerCase())),
-    organizations: entities.organizations.filter((name) => !blacklists.organizations.has(name.toLowerCase())),
+    organizations: entities.organizations.filter(
+      (name) => !blacklists.organizations.has(name.toLowerCase())
+    ),
     locations: entities.locations.filter((name) => !blacklists.locations.has(name.toLowerCase())),
   };
 }
@@ -331,13 +340,13 @@ export function blacklistEntity(name: string, type: keyof DiaryEntities): void {
   const tx = db.transaction(() => {
     db.prepare('INSERT OR IGNORE INTO entity_blacklist (type, name) VALUES (?, ?)').run(
       type,
-      normalized,
+      normalized
     );
     db.prepare(`DELETE FROM ${table} WHERE name = ? COLLATE NOCASE`).run(normalized);
     db.prepare('DELETE FROM entity_aliases WHERE type = ? AND (alias = ? OR canonical = ?)').run(
       type,
       normalized,
-      normalized,
+      normalized
     );
   });
 
@@ -346,7 +355,7 @@ export function blacklistEntity(name: string, type: keyof DiaryEntities): void {
 
 function entityExistsInAnyType(
   name: string,
-  excludeType?: keyof DiaryEntities,
+  excludeType?: keyof DiaryEntities
 ): { type: keyof DiaryEntities; name: string } | null {
   const normalized = name.trim().toLowerCase();
   if (normalized.length === 0) return null;
@@ -354,9 +363,8 @@ function entityExistsInAnyType(
   for (const type of ['persons', 'organizations', 'locations'] as const) {
     if (type === excludeType) continue;
     const { table } = entityConfig[type];
-    const row = db
-      .prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`)
-      .get(name) as { name: string } | undefined;
+    const row = db.prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`).get(name) as
+      { name: string } | undefined;
     if (row) return { type, name: row.name };
   }
 
@@ -368,7 +376,7 @@ function setLinkedEntities(
   names: string[],
   entityTable: string,
   linkTable: string,
-  column: string,
+  column: string
 ): void {
   const normalized = [...new Set(names.map((n) => n.trim()).filter((n) => n.length > 0))];
 
@@ -381,7 +389,9 @@ function setLinkedEntities(
 
   const insertEntity = db.prepare(`INSERT OR IGNORE INTO ${entityTable} (name) VALUES (?)`);
   const getEntity = db.prepare(`SELECT id FROM ${entityTable} WHERE name = ?`);
-  const linkEntity = db.prepare(`INSERT INTO ${linkTable} (diary_entry_id, ${column}) VALUES (?, ?)`);
+  const linkEntity = db.prepare(
+    `INSERT INTO ${linkTable} (diary_entry_id, ${column}) VALUES (?, ?)`
+  );
 
   const tx = db.transaction((targetId: number, namesToLink: string[]) => {
     for (const name of namesToLink) {
@@ -414,7 +424,13 @@ export function setDiaryEntryPersons(entryId: number, persons: string[]): void {
 }
 
 export function setDiaryEntryOrganizations(entryId: number, organizations: string[]): void {
-  setLinkedEntities(entryId, organizations, 'organizations', 'diary_entry_organizations', 'organization_id');
+  setLinkedEntities(
+    entryId,
+    organizations,
+    'organizations',
+    'diary_entry_organizations',
+    'organization_id'
+  );
 }
 
 export function setDiaryEntryLocations(entryId: number, locations: string[]): void {
@@ -425,14 +441,22 @@ export function createDiaryEntry(
   userId: string,
   title: string,
   content: string,
-  summary?: string | null,
+  summary?: string | null
 ): DiaryEntry {
   const now = new Date().toISOString();
   const result = db
     .prepare(
-      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     )
-    .run(userId, sanitizePlainText(title), sanitizeHtml(content).trim(), summary ? sanitizePlainText(summary) : null, 1, now, now);
+    .run(
+      userId,
+      sanitizePlainText(title),
+      sanitizeHtml(content).trim(),
+      summary ? sanitizePlainText(summary) : null,
+      1,
+      now,
+      now
+    );
   return getDiaryEntryById(Number(result.lastInsertRowid))!;
 }
 
@@ -442,7 +466,7 @@ export function getDiaryEntryById(id: number): DiaryEntry | null {
       `SELECT d.*, s.name AS session_name
        FROM diary_entries d
        LEFT JOIN recording_sessions s ON s.id = d.session_draft_for
-       WHERE d.id = ?`,
+       WHERE d.id = ?`
     )
     .get(id) as Record<string, unknown> | undefined;
   if (!row) return null;
@@ -456,23 +480,19 @@ export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
        FROM diary_entries d
        LEFT JOIN recording_sessions s ON s.id = d.session_draft_for
        WHERE d.user_id = ?
-       ORDER BY d.created_at DESC`,
+       ORDER BY d.created_at DESC`
     )
     .all(userId) as Record<string, unknown>[];
   const entryIds = rows.map((row) => row.id as number);
   const entitiesMap = buildEntryEntitiesMap(entryIds);
   return rows.map((row) =>
-    rowToDiaryEntry(
-      row,
-      entitiesMap.get(row.id as number) ?? emptyEntities(),
-      false,
-    ),
+    rowToDiaryEntry(row, entitiesMap.get(row.id as number) ?? emptyEntities(), false)
   );
 }
 
 export function listDiaryEntryHeadlinesByUser(
   userId: string,
-  limit = 20,
+  limit = 20
 ): { id: number; title: string; content: string; createdAt: string }[] {
   const rows = db
     .prepare(
@@ -480,7 +500,7 @@ export function listDiaryEntryHeadlinesByUser(
        FROM diary_entries
        WHERE user_id = ?
        ORDER BY created_at DESC
-       LIMIT ?`,
+       LIMIT ?`
     )
     .all(userId, limit) as { id: number; title: string; content: string; createdAt: string }[];
   return rows.map((row) => ({
@@ -492,7 +512,7 @@ export function listDiaryEntryHeadlinesByUser(
 export function listPreviousDiaryEntriesByUser(
   userId: string,
   beforeCreatedAt: string,
-  limit = 3,
+  limit = 3
 ): { id: number; title: string; content: string; createdAt: string }[] {
   const rows = db
     .prepare(
@@ -500,21 +520,21 @@ export function listPreviousDiaryEntriesByUser(
        FROM diary_entries
        WHERE user_id = ? AND created_at < ?
        ORDER BY created_at DESC
-       LIMIT ?`,
+       LIMIT ?`
     )
     .all(userId, beforeCreatedAt, limit) as {
-      id: number;
-      title: string;
-      content: string;
-      createdAt: string;
-    }[];
+    id: number;
+    title: string;
+    content: string;
+    createdAt: string;
+  }[];
   return rows;
 }
 
 export function searchDiaryEntries(
   query: string,
   userId?: string,
-  limit = 5,
+  limit = 5
 ): { id: number; title: string; content: string; createdAt: string }[] {
   const escaped = query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
   const like = `%${escaped}%`;
@@ -528,14 +548,19 @@ export function searchDiaryEntries(
   }
   sql += ' ORDER BY created_at DESC LIMIT ?';
   params.push(limit);
-  const rows = db.prepare(sql).all(...params) as { id: number; title: string; content: string; createdAt: string }[];
+  const rows = db.prepare(sql).all(...params) as {
+    id: number;
+    title: string;
+    content: string;
+    createdAt: string;
+  }[];
   return rows;
 }
 
 export function listDiaryEntryContentsByEntity(
   type: keyof DiaryEntities,
   name: string,
-  userId?: string,
+  userId?: string
 ): { id: number; title: string; content: string; createdAt: string }[] {
   const { table, linkTable, column } = entityConfig[type];
   const params: (string | number)[] = [name];
@@ -549,18 +574,35 @@ export function listDiaryEntryContentsByEntity(
     params.push(userId);
   }
   sql += ' ORDER BY de.created_at DESC';
-  const rows = db.prepare(sql).all(...params) as { id: number; title: string; content: string; createdAt: string }[];
+  const rows = db.prepare(sql).all(...params) as {
+    id: number;
+    title: string;
+    content: string;
+    createdAt: string;
+  }[];
   return rows;
 }
 
 export function updateDiaryEntry(
   id: number,
   updates: Partial<
-    Pick<DiaryEntry, 'title' | 'content' | 'summary' | 'rewrittenContent' | 'persons' | 'organizations' | 'locations' | 'aiDirty' | 'aiProcessedAt' | 'sessionDraftFor'> & {
+    Pick<
+      DiaryEntry,
+      | 'title'
+      | 'content'
+      | 'summary'
+      | 'rewrittenContent'
+      | 'persons'
+      | 'organizations'
+      | 'locations'
+      | 'aiDirty'
+      | 'aiProcessedAt'
+      | 'sessionDraftFor'
+    > & {
       rewrittenFilePath?: string | null;
       rewriteSessionId?: string | null;
     }
-  >,
+  >
 ): DiaryEntry | null {
   const existing = getDiaryEntryById(id);
   if (!existing) return null;
@@ -619,12 +661,7 @@ export function updateDiaryEntry(
   const hasOrganizationsUpdate = updates.organizations !== undefined;
   const hasLocationsUpdate = updates.locations !== undefined;
 
-  if (
-    fields.length === 0 &&
-    !hasPersonsUpdate &&
-    !hasOrganizationsUpdate &&
-    !hasLocationsUpdate
-  ) {
+  if (fields.length === 0 && !hasPersonsUpdate && !hasOrganizationsUpdate && !hasLocationsUpdate) {
     return existing;
   }
 
@@ -651,34 +688,28 @@ export function createSessionDiaryDraft(
   userId: string,
   title: string,
   sessionId: number,
-  html: string,
+  html: string
 ): DiaryEntry {
   const now = new Date().toISOString();
   const result = db
     .prepare(
-      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     )
-    .run(
-      userId,
-      sanitizePlainText(title),
-      sanitizeHtml('').trim(),
-      null,
-      0,
-      sessionId,
-      now,
-      now,
-    );
+    .run(userId, sanitizePlainText(title), sanitizeHtml('').trim(), null, 0, sessionId, now, now);
   const entryId = Number(result.lastInsertRowid);
   const filePath = getRewrittenFilePath(entryId);
   writeRewrittenFile(entryId, sanitizeHtml(html).trim());
-  db.prepare('UPDATE diary_entries SET rewritten_file_path = ? WHERE id = ?').run(filePath, entryId);
+  db.prepare('UPDATE diary_entries SET rewritten_file_path = ? WHERE id = ?').run(
+    filePath,
+    entryId
+  );
   return getDiaryEntryById(entryId)!;
 }
 
 export function applySessionDiaryDraftToEntry(
   entryId: number,
   sessionId: number,
-  html: string,
+  html: string
 ): DiaryEntry | null {
   const existing = getDiaryEntryById(entryId);
   if (!existing) return null;
@@ -691,11 +722,11 @@ export function applySessionDiaryDraftToEntry(
 
 export function getDiaryEntryBySessionDraftFor(
   sessionId: number,
-  userId: string,
+  userId: string
 ): DiaryEntry | null {
   const row = db
     .prepare(
-      'SELECT * FROM diary_entries WHERE session_draft_for = ? AND user_id = ? ORDER BY updated_at DESC LIMIT 1',
+      'SELECT * FROM diary_entries WHERE session_draft_for = ? AND user_id = ? ORDER BY updated_at DESC LIMIT 1'
     )
     .get(sessionId, userId) as Record<string, unknown> | undefined;
   if (!row) return null;
@@ -722,7 +753,7 @@ function isEntityBlacklisted(name: string, type: keyof DiaryEntities): boolean {
 export function reclassifyEntity(
   name: string,
   fromType: keyof DiaryEntities,
-  toType: keyof DiaryEntities,
+  toType: keyof DiaryEntities
 ): void {
   const normalized = name.trim();
   if (normalized.length === 0 || fromType === toType) return;
@@ -748,7 +779,7 @@ export function reclassifyEntity(
     } else {
       if (entityExistsInAnyType(normalized, fromType)) return;
       targetId = Number(
-        db.prepare(`INSERT INTO ${to.table} (name) VALUES (?)`).run(normalized).lastInsertRowid,
+        db.prepare(`INSERT INTO ${to.table} (name) VALUES (?)`).run(normalized).lastInsertRowid
       );
     }
 
@@ -756,7 +787,7 @@ export function reclassifyEntity(
       .prepare(`SELECT diary_entry_id FROM ${from.linkTable} WHERE ${from.column} = ?`)
       .all(source.id) as { diary_entry_id: number }[];
     const insertLink = db.prepare(
-      `INSERT OR IGNORE INTO ${to.linkTable} (diary_entry_id, ${to.column}) VALUES (?, ?)`,
+      `INSERT OR IGNORE INTO ${to.linkTable} (diary_entry_id, ${to.column}) VALUES (?, ?)`
     );
     for (const { diary_entry_id } of links) {
       insertLink.run(diary_entry_id, targetId);
@@ -769,14 +800,14 @@ export function reclassifyEntity(
       .prepare('SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE')
       .all(fromType, normalized) as { alias: string }[];
     const insertAlias = db.prepare(
-      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)',
+      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)'
     );
     for (const { alias } of aliases) {
       insertAlias.run(toType, alias, normalized);
     }
     db.prepare('DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE').run(
       fromType,
-      normalized,
+      normalized
     );
 
     mergeEntityKnowledge(fromType, normalized, toType, normalized);
@@ -786,11 +817,7 @@ export function reclassifyEntity(
   tx();
 }
 
-export function addEntityAlias(
-  type: keyof DiaryEntities,
-  alias: string,
-  canonical: string,
-): void {
+export function addEntityAlias(type: keyof DiaryEntities, alias: string, canonical: string): void {
   const aliasNormalized = alias.trim();
   const canonicalNormalized = canonical.trim();
   if (
@@ -801,7 +828,10 @@ export function addEntityAlias(
     return;
   }
 
-  if (isEntityBlacklisted(aliasNormalized, type) || isEntityBlacklisted(canonicalNormalized, type)) {
+  if (
+    isEntityBlacklisted(aliasNormalized, type) ||
+    isEntityBlacklisted(canonicalNormalized, type)
+  ) {
     return;
   }
   if (entityExistsInAnyType(aliasNormalized, type)) return;
@@ -823,7 +853,7 @@ export function addEntityAlias(
         .prepare(`SELECT diary_entry_id FROM ${linkTable} WHERE ${column} = ?`)
         .all(aliasRow.id) as { diary_entry_id: number }[];
       const insertLink = db.prepare(
-        `INSERT OR IGNORE INTO ${linkTable} (diary_entry_id, ${column}) VALUES (?, ?)`,
+        `INSERT OR IGNORE INTO ${linkTable} (diary_entry_id, ${column}) VALUES (?, ?)`
       );
       for (const { diary_entry_id } of links) {
         insertLink.run(diary_entry_id, canonicalRow.id);
@@ -835,11 +865,11 @@ export function addEntityAlias(
 
     db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?').run(
       type,
-      aliasNormalized,
+      aliasNormalized
     );
 
     db.prepare(
-      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)',
+      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)'
     ).run(type, aliasNormalized, canonicalNormalized);
   });
 
@@ -848,7 +878,7 @@ export function addEntityAlias(
 
 export function getEntityDetail(
   type: keyof DiaryEntities,
-  name: string,
+  name: string
 ): { type: keyof DiaryEntities; canonical: string; aliases: string[] } | null {
   const { table } = entityConfig[type];
   const canonical = resolveEntityName(name.trim(), type);
@@ -860,7 +890,7 @@ export function getEntityDetail(
 
   const aliasRows = db
     .prepare(
-      'SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE ORDER BY alias COLLATE NOCASE',
+      'SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE ORDER BY alias COLLATE NOCASE'
     )
     .all(type, row.name) as { alias: string }[];
 
@@ -875,7 +905,7 @@ export function updateEntity(
   type: keyof DiaryEntities,
   oldName: string,
   newName: string,
-  aliases: string[],
+  aliases: string[]
 ): void {
   const oldNormalized = oldName.trim();
   const newNormalized = newName.trim();
@@ -890,7 +920,7 @@ export function updateEntity(
     ...new Set(
       aliases
         .map((a) => a.trim())
-        .filter((a) => a.length > 0 && a.toLowerCase() !== newNormalized.toLowerCase()),
+        .filter((a) => a.length > 0 && a.toLowerCase() !== newNormalized.toLowerCase())
     ),
   ];
 
@@ -911,18 +941,18 @@ export function updateEntity(
       }
       db.prepare(`UPDATE ${table} SET name = ? WHERE id = ?`).run(newNormalized, oldRow.id);
       db.prepare(
-        'UPDATE entity_aliases SET canonical = ? WHERE type = ? AND canonical = ? COLLATE NOCASE',
+        'UPDATE entity_aliases SET canonical = ? WHERE type = ? AND canonical = ? COLLATE NOCASE'
       ).run(newNormalized, type, oldRow.name);
       renameEntityKnowledge(type, oldRow.name, newNormalized);
     }
 
     db.prepare('DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE').run(
       type,
-      newNormalized,
+      newNormalized
     );
 
     const insertAlias = db.prepare(
-      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)',
+      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)'
     );
     const deleteAlias = db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?');
 
@@ -964,7 +994,7 @@ export function unblacklistEntity(name: string, type: keyof DiaryEntities): void
   if (normalized.length === 0) return;
   db.prepare('DELETE FROM entity_blacklist WHERE type = ? AND name = ? COLLATE NOCASE').run(
     type,
-    normalized,
+    normalized
   );
 }
 
@@ -991,13 +1021,15 @@ export function listDirtyDiaryEntries(limit?: number): DiaryEntry[] {
   const entryIds = rows.map((row) => row.id as number);
   const entitiesMap = buildEntryEntitiesMap(entryIds);
   return rows.map((row) =>
-    rowToDiaryEntry(row, entitiesMap.get(row.id as number) ?? emptyEntities(), false),
+    rowToDiaryEntry(row, entitiesMap.get(row.id as number) ?? emptyEntities(), false)
   );
 }
 
 export function listActiveRewriteSessionIds(): string[] {
   const rows = db
-    .prepare('SELECT DISTINCT rewrite_session_id AS id FROM diary_entries WHERE rewrite_session_id IS NOT NULL')
+    .prepare(
+      'SELECT DISTINCT rewrite_session_id AS id FROM diary_entries WHERE rewrite_session_id IS NOT NULL'
+    )
     .all() as { id: string }[];
   return rows.map((r) => r.id).filter((id): id is string => !!id);
 }

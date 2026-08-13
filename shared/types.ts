@@ -93,7 +93,12 @@ export interface ClientToServerEvents {
   join: () => void;
   addTask: (payload: { text: string; isPrivate?: boolean; assignedTo?: string[] }) => void;
   removeTask: (taskId: string) => void;
-  updateTask: (payload: { taskId: string; text?: string; isPrivate?: boolean; assignedTo?: string[] }) => void;
+  updateTask: (payload: {
+    taskId: string;
+    text?: string;
+    isPrivate?: boolean;
+    assignedTo?: string[];
+  }) => void;
   setGridSize: (gridSize: number) => void;
   startGame: () => void;
   updateBoard: (board: Cell[][]) => void;
@@ -105,7 +110,8 @@ export interface ClientToServerEvents {
   resetGame: () => void;
 }
 
-export type RecordingStatus = 'recording' | 'pending_transcription' | 'processing' | 'completed' | 'error';
+export type RecordingStatus =
+  'recording' | 'pending_transcription' | 'processing' | 'completed' | 'error';
 
 export interface RecordingFile {
   id: number;

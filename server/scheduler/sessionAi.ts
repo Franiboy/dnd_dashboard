@@ -54,9 +54,7 @@ async function processSession(id: number): Promise<void> {
 
 export async function processPendingSessions(): Promise<void> {
   const pending = listSessionsPendingAi();
-  const needsWork = pending.filter(
-    (s) => sessionNeedsImprovement(s) || sessionNeedsSummary(s),
-  );
+  const needsWork = pending.filter((s) => sessionNeedsImprovement(s) || sessionNeedsSummary(s));
   if (needsWork.length === 0) {
     log.info('No sessions pending AI processing');
     return;
