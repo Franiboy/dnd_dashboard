@@ -1,0 +1,18 @@
+[Unit]
+Description=D&D Dashboard (Node.js production)
+After=network.target
+
+[Service]
+Type=simple
+User=franiboy
+WorkingDirectory=/dnd_dashboard
+Environment=NODE_ENV=production
+Environment=PATH=/home/franiboy/.nvm/versions/node/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin
+ExecStart=/home/franiboy/.nvm/versions/node/v24.15.0/bin/node /dnd_dashboard/dist-server/server/index.js
+Restart=on-failure
+RestartSec=3
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

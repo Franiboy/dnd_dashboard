@@ -41,3 +41,5 @@ jobs:
       - name: Run deploy script
         run: bash scripts/dnd-deploy.sh
         shell: bash
+        env:
+          DND_DEPLOY_REPO: /dnd_dashboard

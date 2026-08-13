@@ -1,0 +1,7 @@
+[Unit]
+Description=D&D Dashboard health check (restart on failure)
+
+[Service]
+Type=oneshot
+User=franiboy
+ExecStart=/dnd_dashboard/scripts/dnd-healthcheck.sh
