@@ -12,6 +12,7 @@ REPO="/dnd_dashboard"
 BRANCH="main"
 LOG="/home/franiboy/logs/dnd-deploy.log"
 LOCK="/tmp/dnd-deploy.lock"
+ROLLBACK_DIR="/tmp/dnd-deploy-rollback"
 HEALTH_URL="http://localhost:3001/health"
 HEALTH_RETRIES=12
 HEALTH_SLEEP=5
@@ -62,6 +63,17 @@ if ! git diff --quiet "$LOCAL" "$REMOTE" -- package-lock.json package.json 2>/de
   fi
 fi
 
+# Snapshot the currently-running build so rollback is a restore, not a rebuild.
+rm -rf "$ROLLBACK_DIR"
+mkdir -p "$ROLLBACK_DIR"
+if [ -d "$REPO/dist" ]; then
+  cp -a "$REPO/dist" "$ROLLBACK_DIR/dist"
+fi
+if [ -d "$REPO/dist-server" ]; then
+  cp -a "$REPO/dist-server" "$ROLLBACK_DIR/dist-server"
+fi
+log "Snapshotted previous build to $ROLLBACK_DIR"
+
 log "Building..."
 if ! npm run build >>"$LOG" 2>&1; then
   log "Build failed; restoring $LOCAL"
@@ -84,8 +96,24 @@ done
 
 log "HEALTH CHECK FAILED for $REMOTE; rolling back to $LOCAL"
 git checkout -f "$LOCAL" >>"$LOG" 2>&1
-npm ci >>"$LOG" 2>&1
-npm run build >>"$LOG" 2>&1
+
+# If deps changed, reinstall to match the old lockfile before restoring the build.
+if ! git diff --quiet "$LOCAL" "$REMOTE" -- package-lock.json package.json 2>/dev/null; then
+  log "Rollback: deps changed, running npm ci against old lockfile..."
+  npm ci >>"$LOG" 2>&1
+fi
+
+# Restore the previously-working build from the snapshot (fast, no rebuild).
+if [ -d "$ROLLBACK_DIR/dist" ]; then
+  rm -rf "$REPO/dist"
+  cp -a "$ROLLBACK_DIR/dist" "$REPO/dist"
+fi
+if [ -d "$ROLLBACK_DIR/dist-server" ]; then
+  rm -rf "$REPO/dist-server"
+  cp -a "$ROLLBACK_DIR/dist-server" "$REPO/dist-server"
+fi
+log "Restored previous build from $ROLLBACK_DIR"
+
 sudo systemctl restart dnd-dashboard >>"$LOG" 2>&1
 
 for i in $(seq 1 "$HEALTH_RETRIES"); do
