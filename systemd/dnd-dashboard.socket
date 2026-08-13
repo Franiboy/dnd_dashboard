@@ -1,0 +1,10 @@
+[Unit]
+Description=D&D Dashboard HTTP socket (held across restarts)
+
+[Socket]
+ListenStream=3001
+NoDelay=true
+FreeBind=true
+
+[Install]
+WantedBy=sockets.target
