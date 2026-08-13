@@ -19,8 +19,7 @@ LOCK="/tmp/dnd-backup.lock"
 ZSTD_LEVEL=3
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-export PATH="${NVM_DIR}/versions/node/v24.15.0/bin:$PATH"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use --silent default
 
 mkdir -p "$LOG_DIR"
 
