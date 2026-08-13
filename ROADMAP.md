@@ -17,8 +17,6 @@ Das Dashboard ist eine interne Web-App für eine D&D-Gruppe: Discord-Login, Bing
 
 ### Was die größten Hebel für die nächsten Monate sind
 
-- **Keine automatisierten Tests** – weder Unit- noch Integration- noch E2E-Tests.
-- **Keine CI/CD-Pipeline**.
 - **KI-Aufgaben laufen als Prozesse im Express-Loop**; bei Neustart sind laufende Jobs verloren.
 - **Starke Kopplung an `opencode run` CLI** als einziger KI-Provider.
 - **SQLite ist Single-Instance-gebunden**; ein späterer Umzug auf Postgres/Redis sollte vorbereitet werden.
@@ -43,20 +41,20 @@ Das Dashboard ist eine interne Web-App für eine D&D-Gruppe: Discord-Login, Bing
 
 Fokus: Technische Schulden reduzieren, Vertrauen in Änderungen schaffen.
 
-| #   | Epic                                   | Ziel                                              | Akzeptanzkriterien                                                                                                                                    |
-| --- | -------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1.1 | **Test-Infrastruktur**                 | Verlässliche Rückmeldung bei Refactorings         | Vitest für Server eingerichtet; Unit-Tests für `repositories/`, `auth.ts`, `ai/actions.ts`; Integrationstests mit `dnd_test.db`; `npm test` lauffähig |
-| 1.2 | **CI/CD Pipeline**                     | Keine Regressionen mehr unbemerkt                 | GitHub Actions Workflow für `lint`, `typecheck`, `build`, `test` bei PRs; mind. ein Blocking-Check                                                    |
-| 1.3 | **Zentrale Konfigurationsvalidierung** | `.env`-Fehler früh erkennen                       | `zod`-Schema für alle env-vars; klare Fehlermeldung beim Server-Start                                                                                 |
-| 1.4 | **Zentrale Express-Fehlerbehandlung**  | Weniger duplizierter Code, bessere HTTP-Responses | `errorHandler`-Middleware; eigene `AppError`-Klasse; 404/500-Responses zentralisiert                                                                  |
-| 1.5 | **TypeScript härten**                  | Typ-Sicherheit erhöhen                            | Kein `any` in `auth.ts`/Routes; `cookie-parser`-Typen korrekt integriert                                                                              |
-| 1.6 | **Health & Readiness Endpoints**       | Betrieb leichter überwachen                       | `/health`, `/ready`; DB-Check; optional Memory/Version                                                                                                |
+| #   | Epic                                   | Ziel                                              | Akzeptanzkriterien                                                                                                                                    | Status      |
+| --- | -------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 1.1 | **Test-Infrastruktur**                 | Verlässliche Rückmeldung bei Refactorings         | Vitest für Server eingerichtet; Unit-Tests für `repositories/`, `auth.ts`, `ai/actions.ts`; Integrationstests mit `dnd_test.db`; `npm test` lauffähig | ✅ erledigt |
+| 1.2 | **CI/CD Pipeline**                     | Keine Regressionen mehr unbemerkt                 | GitHub Actions Workflow für `lint`, `build`, `test` bei push/PR + Deploy bei `main` (`.github/workflows/ci-cd.yml`, Self-Hosted-Runner)               | ✅ erledigt |
+| 1.3 | **Zentrale Konfigurationsvalidierung** | `.env`-Fehler früh erkennen                       | `zod`-Schema für alle env-vars; klare Fehlermeldung beim Server-Start                                                                                 | ⏳ offen    |
+| 1.4 | **Zentrale Express-Fehlerbehandlung**  | Weniger duplizierter Code, bessere HTTP-Responses | `errorHandler`-Middleware; eigene `AppError`-Klasse; 404/500-Responses zentralisiert                                                                  | ⏳ offen    |
+| 1.5 | **TypeScript härten**                  | Typ-Sicherheit erhöhen                            | Kein `any` in `auth.ts`/Routes; `cookie-parser`-Typen korrekt integriert                                                                              | ✅ erledigt |
+| 1.6 | **Health & Readiness Endpoints**       | Betrieb leichter überwachen                       | `/health`, `/ready`; DB-Check; optional Memory/Version (aktuell nur `/health`, ohne DB-Check/`/ready`)                                                | 🟡 teilw.   |
 
 **Quick Wins in Phase 1:**
 
-- `npm run test` als Alias für Vitest einrichten (statt nur `test:server`).
-- `.env.example` um fehlende Variablen ergänzen und gegen `zod`-Schema prüfen.
-- `migrations.ts` aufsplitten in datierte Dateien (z. B. `migrations/001_create_users.ts`) – die Datei ist bereits 570+ Zeilen lang.
+- ✅ `npm run test` als Alias für Vitest ist eingerichtet (statt nur `test:server`).
+- `.env.example` um fehlende Variablen ergänzen und gegen `zod`-Schema prüfen (Epic 1.3).
+- `migrations.ts` aufsplitten in datierte Dateien (z. B. `migrations/001_create_users.ts`) – die Datei ist inzwischen rund 600 Zeilen lang.
 
 ---
 
@@ -138,23 +136,23 @@ Fokus: Produktion, Multi-User-Betrieb, erweiterte Features.
 
 ## 6. Risiken & Gegenmaßnahmen
 
-| Risiko                                 | Auswirkung                    | Gegenmaßnahme                                                  |
-| -------------------------------------- | ----------------------------- | -------------------------------------------------------------- |
-| `opencode` CLI ändert sich             | KI-Features brechen           | Provider-Abstraktion bauen (Phase 2.2)                         |
-| SQLite wird zu groß/langsam            | Performance-Probleme          | FTS5, VACUUM, langfristig Postgres-Migration planen            |
-| Discord-Bot/API-Änderungen             | Aufnahmen funktionieren nicht | Audio-Modul hinter Interface abstrahieren; Tests mit Mocks     |
-| Lange KI-Jobs blockieren Server        | Timeouts, verlorene Jobs      | Job-Queue mit Retry und Persistenz (Phase 2.1)                 |
-| Fehlende Tests bremsen Refactoring aus | Technische Schulden wachsen   | Phase 1 komplett abschließen, bevor große Refactorings starten |
+| Risiko                          | Auswirkung                    | Gegenmaßnahme                                                 |
+| ------------------------------- | ----------------------------- | ------------------------------------------------------------- |
+| `opencode` CLI ändert sich      | KI-Features brechen           | Provider-Abstraktion bauen (Phase 2.2)                        |
+| SQLite wird zu groß/langsam     | Performance-Probleme          | FTS5, VACUUM, langfristig Postgres-Migration planen           |
+| Discord-Bot/API-Änderungen      | Aufnahmen funktionieren nicht | Audio-Modul hinter Interface abstrahieren; Tests mit Mocks    |
+| Lange KI-Jobs blockieren Server | Timeouts, verlorene Jobs      | Job-Queue mit Retry und Persistenz (Phase 2.1)                |
+| Test-Abdeckung stagniert        | Technische Schulden wachsen   | Test-Abdeckung kontinuierlich in Phase 1+ halten und ausbauen |
 
 ---
 
 ## 7. Nächste konkrete Schritte (Was als erstes angehen)
 
 1. `ROADMAP.md` mit dem Team abstimmen und priorisieren.
-2. Epic 1.1 (Vitest + erste Tests) und 1.2 (GitHub Actions) in einem kleinen Spike umsetzen.
+2. ~~Epic 1.1 (Vitest + erste Tests) und 1.2 (GitHub Actions) in einem kleinen Spike umsetzen~~ – beides ist erledigt.
 3. `migrations.ts` refactoren, um zukünftige Schema-Änderungen übersichtlicher zu machen.
-4. `.env`-Validierung mit `zod` implementieren.
-5. Erste Health-Checks ergänzen, damit ein zukünftiges Deployment überwacht werden kann.
+4. `.env`-Validierung mit `zod` implementieren (Epic 1.3).
+5. Health-Checks vervollständigen, damit ein zukünftiges Deployment überwacht werden kann (Epic 1.6: `/ready` + DB-Check ergänzen).
 
 ---
 
