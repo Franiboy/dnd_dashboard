@@ -11,7 +11,10 @@ This document describes the high-level structure of the D&D Dashboard.
 | `server/database.ts`          | Central `better-sqlite3` connection (`dnd.db`) with WAL and foreign keys                               |
 | `server/encryption.ts`        | Symmetric encryption helpers for sensitive tokens (AES-256-GCM)                                        |
 | `server/users.ts`             | SQLite user management, password hashing, account lockout, Discord profile and encrypted token storage |
-| `server/migrations.ts`        | Database schema migrations on startup                                                                  |
+| `server/env.ts`               | Zod-validated environment configuration and startup validation                                         |
+| `server/schema.ts`            | Declarative target database schema (tables, columns, indexes, references)                              |
+| `server/migrations.ts`        | Schema-diff engine: applies missing tables/columns/indexes against `schema.ts` + data-level hooks      |
+| `server/errors.ts`            | Central `AppError` class, 404 handler and Express error middleware                                     |
 | `server/logger.ts`            | Centralized, categorized logger with in-memory buffer and SSE subscription                             |
 | `server/version.ts`           | Returns active feature flags (`aiEnabled`, `recordingEnabled`)                                         |
 | `server/socket.ts`            | Socket.io event handlers for Bingo                                                                     |

@@ -74,6 +74,8 @@ AI_CHEAP_MODEL=opencode/deepseek-v4-flash-free
 
 ## Variable Reference
 
+> All variables validated at server startup against the `zod` schema in `server/env.ts`. Invalid values abort startup with a descriptive error. When unset, variables below use their documented defaults.
+
 - `PORT` is optional, default is `3001`.
 - `JWT_SECRET` must be set, otherwise the server will not start.
 - `JWT_EXPIRES_IN_DAYS` controls how long a dashboard login session remains valid (default: 7).
