@@ -3,7 +3,6 @@ import { parseTranscriptLines, sliceTranscriptForBoundaryDetection } from './ses
 
 const HEADER_LINE = 'Transkript der Session';
 const SHORT_TS = '[12:30] Nils: Moin, wie geht es euch?';
-const HOUR_TS = '[01:05:00] Nils: Hier beginnt das Spiel.';
 const END_TS = '[05:00:00] Nils: Damit endet die Session für heute.';
 const GOODBYE_TS = '[05:20:00] Nils: Bis zum nächsten Mal, tschüss!';
 
