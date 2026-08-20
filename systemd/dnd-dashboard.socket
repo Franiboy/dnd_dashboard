@@ -2,7 +2,10 @@
 Description=D&D Dashboard HTTP socket (held across restarts)
 
 [Socket]
-ListenStream=3001
+# Bind to loopback only: nginx proxies external traffic to 127.0.0.1:3001.
+# This keeps the raw server unreachable from the network and makes the
+# trusted-X-Forwarded-For rate limiting safe (TRUST_PROXY=1).
+ListenStream=127.0.0.1:3001
 NoDelay=true
 FreeBind=true
 

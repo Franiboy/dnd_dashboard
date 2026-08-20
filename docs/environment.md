@@ -93,6 +93,7 @@ AI_CHEAP_MODEL=opencode/deepseek-v4-flash-free
 - `BINGO_SUGGESTION_TARGET`, `BINGO_SUGGESTION_THRESHOLD`, and `BINGO_SUGGESTION_BATCH` configure the pre-generated suggestion pool (defaults: 20, 5, 15).
 - `MCP_TOKEN_SECRET` defaults to `JWT_SECRET`.
 - Optional: `CORS_ORIGIN` for allowed cross-origin origins (comma-separated). If not set, development allows only `http://localhost:5173` and `http://localhost:3001`; in production no cross-origin requests are allowed.
+- Optional: `TRUST_PROXY=true`/`1` when running behind a reverse proxy (nginx, caddy) that sets `X-Forwarded-For`/`X-Forwarded-Proto`. Required for `express-rate-limit` to identify real client IPs. Default: `false`.
 - Optional: `VITE_SERVER_URL` for the Socket.io client in the frontend.
 - Optional: `DB_PATH=dnd_test.db` for tests or a separate database.
 - Optional: `NODE_ENV=production` enables static serving of `dist/`.

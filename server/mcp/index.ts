@@ -58,8 +58,12 @@ const payload = token ? verifyMcpSessionToken(token) : null;
 const allowedScopes = new Set<McpScope>(payload?.scopes ?? []);
 
 if (!payload) {
-  log.error('MCP server started without valid session token');
-  process.exit(1);
+  // No/expired session token: run with empty scopes instead of exiting.
+  // All tools are registered behind requireScope(), so a token-less server
+  // exposes no functionality. Hard-exiting here made opencode's MCP layer
+  // retry/loop and produced "MCP server started without valid session token"
+  // errors on every token-less spawn (e.g. by the opencode2 service).
+  log.warn('MCP server started without valid session token; running with empty scopes');
 }
 
 log.info(`MCP server starting with scopes: ${[...allowedScopes].join(', ')}`);
