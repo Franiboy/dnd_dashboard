@@ -52,11 +52,10 @@ const envSchema = z.object({
   WHISPER_FP16: booleanFromEnv,
   WHISPER_INITIAL_PROMPT: z.string().optional(),
   WHISPER_NOISE_REDUCE: booleanFromEnv,
-  WHISPER_VAD_NOISE_DB: z.coerce.number().optional(),
   WHISPER_VAD_MIN_SILENCE: z.coerce.number().optional(),
   WHISPER_VAD_MIN_SPEECH: z.coerce.number().optional(),
-  WHISPER_VAD_GAP_MERGE: z.coerce.number().optional(),
   WHISPER_FILTER_NO_SPEECH_PROB: z.coerce.number().optional(),
+  WHISPER_COMPUTE_TYPE: z.enum(['int8', 'int8_float16', 'float16', 'float32']).optional(),
 
   LOG_RETENTION_MAX: z.coerce.number().int().positive().default(100000),
 });
