@@ -46,6 +46,35 @@ function playerPerspectiveLines(user: McpSessionUser): string[] {
   return lines;
 }
 
+function formatOffset(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return [h, m, s].map((v) => String(v).padStart(2, '0')).join(':');
+}
+
+function sessionBoundaryLines(session: {
+  gameBoundaryDetectedAt: string | null;
+  gameStartSeconds: number | null;
+  gameEndSeconds: number | null;
+}): string[] {
+  if (
+    !session.gameBoundaryDetectedAt ||
+    session.gameStartSeconds === null ||
+    session.gameEndSeconds === null
+  ) {
+    return [
+      '',
+      'Achte darauf, dass die Aufnahme vor und nach der eigentlichen Spiel-Session Vorbesprechung/Teambesprechung und Small Talk enthält. Beziehe dich im Tagebucheintrag nur auf die tatsächliche Spiel-Session, nicht auf organisatorisches Vorgeplänkel oder Verabschiedungen.',
+    ];
+  }
+  return [
+    '',
+    `Die eigentliche Spiel-Session beginnt im Transkript bei Offset ${session.gameStartSeconds} Sekunden (${formatOffset(session.gameStartSeconds)}) und endet bei Offset ${session.gameEndSeconds} Sekunden (${formatOffset(session.gameEndSeconds)}).`,
+    'Alles davor (Vorbesprechung, Small Talk) und danach (Small Talk, Verabschiedung) gehört NICHT zur Spiel-Session und darf nicht in den Tagebucheintrag einfließen.',
+  ];
+}
+
 export async function generateSessionDiaryDraft(
   sessionId: number,
   user: McpSessionUser,
@@ -83,6 +112,8 @@ export async function generateSessionDiaryDraft(
     '- Wenn ein bestehender Tagebucheintrag des Spielers zum aktuellen, laufenden Spieltag gehört, erweitere diesen Eintrag (targetEntryId = ID des Eintrags).',
     '- Wenn mit dieser Session ein neuer Spieltag anbricht, erstelle einen neuen Tagebucheintrag (targetEntryId weglassen).',
     ...playerPerspectiveLines(user),
+    '',
+    ...sessionBoundaryLines(session),
     '',
     'Verfügbare Tools:',
     `- get_session_summary(sessionId=${session.id}): Liefert Kurz- und Lang-Zusammenfassung der Session.`,

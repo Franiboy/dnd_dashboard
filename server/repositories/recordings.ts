@@ -61,13 +61,16 @@ export function createSession(input: CreateSessionInput): RecordingSession {
     summaryGeneratedAt: null,
     longSummary: null,
     longSummaryGeneratedAt: null,
+    gameStartSeconds: null,
+    gameEndSeconds: null,
+    gameBoundaryDetectedAt: null,
   };
 }
 
 export function getSessionById(id: number): RecordingSession | null {
   const row = db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE id = ?'
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt FROM recording_sessions WHERE id = ?'
     )
     .get(id) as RecordingSession | undefined;
   return row ?? null;
@@ -88,12 +91,13 @@ export interface PendingAiSession {
   transcriptImprovedAt: string | null;
   longSummary: string | null;
   longSummaryGeneratedAt: string | null;
+  gameBoundaryDetectedAt: string | null;
 }
 
 export function listSessionsPendingAi(): PendingAiSession[] {
   return db
     .prepare(
-      "SELECT id, transcript_improved_at as transcriptImprovedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = 'completed' AND transcript IS NOT NULL"
+      "SELECT id, transcript_improved_at as transcriptImprovedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_boundary_detected_at as gameBoundaryDetectedAt FROM recording_sessions WHERE status = 'completed' AND transcript IS NOT NULL"
     )
     .all() as PendingAiSession[];
 }
@@ -149,6 +153,7 @@ export function listSessions(): RecordingSession[] {
         s.transcribed_trim_start_seconds as transcribedTrimStartSeconds, s.transcribed_trim_end_seconds as transcribedTrimEndSeconds,
         s.transcript_improved_at as transcriptImprovedAt, s.summary, s.summary_generated_at as summaryGeneratedAt,
         s.long_summary as longSummary, s.long_summary_generated_at as longSummaryGeneratedAt,
+        s.game_start_seconds as gameStartSeconds, s.game_end_seconds as gameEndSeconds, s.game_boundary_detected_at as gameBoundaryDetectedAt,
         COALESCE((SELECT COUNT(*) FROM recording_files f WHERE f.session_id = s.id AND f.wav_path IS NOT NULL), 0) as hasWavFiles
       FROM recording_sessions s
       ORDER BY started_at DESC`
@@ -163,7 +168,7 @@ export function listSessions(): RecordingSession[] {
 export function listPendingTranscriptionSessions(): RecordingSession[] {
   return db
     .prepare(
-      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC"
+      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC"
     )
     .all() as RecordingSession[];
 }
@@ -171,7 +176,7 @@ export function listPendingTranscriptionSessions(): RecordingSession[] {
 export function listSessionsByStatus(status: RecordingStatus): RecordingSession[] {
   return db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt FROM recording_sessions WHERE status = ? ORDER BY started_at ASC'
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt FROM recording_sessions WHERE status = ? ORDER BY started_at ASC'
     )
     .all(status) as RecordingSession[];
 }
@@ -195,6 +200,9 @@ export function updateSession(
       | 'summaryGeneratedAt'
       | 'longSummary'
       | 'longSummaryGeneratedAt'
+      | 'gameStartSeconds'
+      | 'gameEndSeconds'
+      | 'gameBoundaryDetectedAt'
     >
   >
 ): void {
@@ -256,6 +264,18 @@ export function updateSession(
   if (updates.longSummaryGeneratedAt !== undefined) {
     fields.push('long_summary_generated_at = ?');
     values.push(updates.longSummaryGeneratedAt);
+  }
+  if (updates.gameStartSeconds !== undefined) {
+    fields.push('game_start_seconds = ?');
+    values.push(updates.gameStartSeconds);
+  }
+  if (updates.gameEndSeconds !== undefined) {
+    fields.push('game_end_seconds = ?');
+    values.push(updates.gameEndSeconds);
+  }
+  if (updates.gameBoundaryDetectedAt !== undefined) {
+    fields.push('game_boundary_detected_at = ?');
+    values.push(updates.gameBoundaryDetectedAt);
   }
 
   if (fields.length === 0) return;

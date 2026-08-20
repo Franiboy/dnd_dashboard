@@ -14,6 +14,7 @@ export type McpScope =
   | 'knowledge:distribute'
   | 'recording:read'
   | 'recording:summarize'
+  | 'recording:boundaries'
   | 'bingo:read'
   | 'bingo:write';
 
