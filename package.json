@@ -24,6 +24,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run format && npm run lint:fix && npm test",
+    "setup:atlas": "bash scripts/setup-projectatlas.sh",
     "prepare": "husky"
   },
   "dependencies": {
