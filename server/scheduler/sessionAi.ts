@@ -31,29 +31,31 @@ async function processSession(id: number): Promise<void> {
     return;
   }
 
-  // Determine the actual game play boundaries before improving/summarizing, so
-  // the summaries focus on the game instead of pre-session team discussion and
-  // post-session small talk.
-  if (!session.gameBoundaryDetectedAt) {
-    log.info(`Detecting game boundaries for session ${id}`);
-    await detectSessionBoundaries(id, SCHEDULER_USER, undefined);
-    session = getSessionById(id);
-    if (!session || !session.transcript) {
-      log.warn(`Session ${id} disappeared after boundary detection`);
-      return;
-    }
-  }
-
   if (sessionNeedsImprovement(session)) {
     log.info(`Improving transcript for session ${id}`);
     const result = await improveSessionTranscriptWithAi(id, SCHEDULER_USER, undefined);
     if (result.transcript === null) {
       log.warn(`Transcript improvement failed or produced no changes for session ${id}`);
-      return;
+    } else {
+      session = getSessionById(id);
+      if (!session || !session.transcript) {
+        log.warn(`Session ${id} disappeared after transcript improvement`);
+        return;
+      }
     }
+  }
+
+  // Determine the actual game play boundaries AFTER transcript improvement, so
+  // the AI reads the cleaned-up text and can identify start/end more reliably.
+  // The summary focuses on the game instead of pre-session team discussion and
+  // post-session small talk. Also runs when improvement failed, so boundaries
+  // are never skipped.
+  if (!session?.gameBoundaryDetectedAt) {
+    log.info(`Detecting game boundaries for session ${id}`);
+    await detectSessionBoundaries(id, SCHEDULER_USER, undefined);
     session = getSessionById(id);
     if (!session || !session.transcript) {
-      log.warn(`Session ${id} disappeared after transcript improvement`);
+      log.warn(`Session ${id} disappeared after boundary detection`);
       return;
     }
   }
