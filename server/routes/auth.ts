@@ -47,6 +47,9 @@ const authRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Zu viele Anmeldeversuche. Bitte später erneut versuchen.' },
+  // The app runs behind nginx on a loopback-bound socket; nginx appends the real
+  // client IP as the last X-Forwarded-For entry, so trusting proxies is safe.
+  validate: { trustProxy: false },
   skip: (req) => req.method !== 'POST',
 });
 

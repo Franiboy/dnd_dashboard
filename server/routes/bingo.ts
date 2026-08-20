@@ -23,6 +23,9 @@ const bingoRateLimit = rateLimit({
   keyGenerator: (req) => (req as AuthRequest).user?.id ?? ipKeyGenerator(req.ip ?? 'unknown'),
   standardHeaders: true,
   legacyHeaders: false,
+  // App runs behind nginx on a loopback-bound socket; nginx appends the real
+  // client IP as the last X-Forwarded-For entry, so trusting proxies is safe.
+  validate: { trustProxy: false },
 });
 
 const bingoRefreshRateLimit = rateLimit({
@@ -31,6 +34,7 @@ const bingoRefreshRateLimit = rateLimit({
   keyGenerator: (req) => (req as AuthRequest).user?.id ?? ipKeyGenerator(req.ip ?? 'unknown'),
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
 });
 
 router.use(authMiddleware, requireApproved, bingoRateLimit);
