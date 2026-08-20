@@ -84,7 +84,7 @@ AI_CHEAP_MODEL=opencode/deepseek-v4-flash-free
 - `DISCORD_*` must be configured for Discord login.
 - `DISCORD_TOKEN_REFRESH_INTERVAL_MS` controls how often stored Discord OAuth tokens are refreshed and profile data is synced (default: 3600000, 1 hour).
 - `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` enable the recording bot.
-- `WHISPER_*` configure local transcription. `WHISPER_VAD_*` tune the ffmpeg silence detector that removes long pauses before Whisper processes the audio, which greatly reduces repeated hallucinations.
+- `WHISPER_*` configure local transcription (faster-whisper, CTranslate2 + Silero VAD on CPU). `WHISPER_VAD_MIN_SILENCE` (default 2.0s) is how long a pause must be to split speech regions; shorter pauses stay in the same region so the model keeps context. Long pauses where a speaker is silent are skipped entirely while timestamps stay on the original recording timeline. `WHISPER_COMPUTE_TYPE` (default `int8`, or `float16`) trades a tiny amount of speed for integer vs float inference on CPU; quality is effectively identical. `WHISPER_CONDITION_ON_PREVIOUS` (default true) keeps context across consecutive speech regions. `WHISPER_FP16` is deprecated and ignored since faster-whisper uses `WHISPER_COMPUTE_TYPE`.
 - `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `opencode/deepseek-v4-flash-free`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled.
 - `AI_CHEAP_MODEL` is used for short AI tasks (summaries, entities).
 - `AI_CHEAP_MODEL` is also used for bingo suggestion generation.
