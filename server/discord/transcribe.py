@@ -6,7 +6,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import traceback
 import wave
 from difflib import SequenceMatcher
@@ -25,85 +24,26 @@ def format_timestamp(seconds: float) -> str:
 
 
 _FRAMES_PER_SECOND = 100
-_N_FRAMES = 1500
 
 
 class DecodeProgress:
     def __init__(self) -> None:
         self.total = 0
         self.completed = 0
-        self.chunk_budget = 0
-        self.chunk_credited = 0
 
     def reset(self, total: int) -> None:
         self.total = max(0, total)
         self.completed = 0
-        self.chunk_budget = 0
-        self.chunk_credited = 0
 
-    def begin_chunk(self, frames: int) -> None:
-        self.chunk_budget = max(0, frames)
-        self.chunk_credited = 0
-
-    def tick(self) -> None:
-        if self.total <= 0 or self.chunk_budget <= 0:
+    def report_position(self, current: int) -> None:
+        if self.total <= 0:
             return
-        self.chunk_credited = min(self.chunk_budget, self.chunk_credited + _N_FRAMES)
-        current = min(self.total, self.completed + self.chunk_credited)
+        current = min(self.total, max(self.completed, current))
+        self.completed = current
         emit({"type": "progress", "current": current, "total": self.total})
-
-    def end_chunk(self) -> None:
-        if self.chunk_budget <= 0:
-            return
-        self.completed = min(self.total, self.completed + self.chunk_budget)
-        self.chunk_budget = 0
-        self.chunk_credited = 0
-        emit({"type": "progress", "current": self.completed, "total": self.total})
 
 
 _progress = DecodeProgress()
-
-
-def patch_tqdm() -> None:
-    try:
-        import tqdm as tqdm_module
-
-        patched = set()
-
-        def wrap_update(cls, original):
-            if id(cls) in patched:
-                return
-            patched.add(id(cls))
-
-            def update(self, n: int = 1) -> None:
-                original(self, n)
-                total = getattr(self, "total", None)
-                if total:
-                    emit({"type": "progress", "current": getattr(self, "n", 0), "total": total})
-
-            cls.update = update
-
-        classes = [tqdm_module.tqdm]
-        if hasattr(tqdm_module, "std"):
-            classes.append(tqdm_module.std.tqdm)
-        if hasattr(tqdm_module, "auto"):
-            classes.append(tqdm_module.auto.tqdm)
-
-        for cls in classes:
-            if cls is not None and hasattr(cls, "update"):
-                wrap_update(cls, cls.update)
-    except Exception:
-        pass
-
-
-def patch_model_decode(model) -> None:
-    original_decode = model.decode
-
-    def patched_decode(segment, *args, **kwargs):
-        _progress.tick()
-        return original_decode(segment, *args, **kwargs)
-
-    model.decode = patched_decode
 
 
 def preprocess_audio(input_path: str) -> str:
@@ -228,90 +168,6 @@ def _get_audio_duration(wav_path: str) -> float:
         return 0.0
 
 
-def _detect_silence(
-    input_path: str,
-    noise_db: float,
-    min_duration: float,
-    errors: list[str],
-) -> list[tuple[float, float]] | None:
-    try:
-        result = subprocess.run(
-            [
-                "ffmpeg", "-y", "-i", input_path,
-                "-af", f"silencedetect=noise={noise_db}dB:d={min_duration}",
-                "-f", "null", "-",
-            ],
-            capture_output=True, text=True, check=False,
-        )
-        stderr = result.stderr or ""
-
-        if result.returncode != 0:
-            errors.append(f"VAD (silencedetect) failed for {os.path.basename(input_path)}: {stderr.strip()[:500]}")
-            return None
-
-        starts = [float(m) for m in re.findall(r"silence_start:\s*([\d.]+)", stderr)]
-        ends = [float(m) for m in re.findall(r"silence_end:\s*([\d.]+)", stderr)]
-        duration = _get_audio_duration(input_path)
-
-        intervals: list[tuple[float, float]] = []
-        for i, start in enumerate(starts):
-            end = ends[i] if i < len(ends) else duration
-            if end > start:
-                intervals.append((start, end))
-        return intervals
-    except Exception as e:
-        errors.append(f"VAD (silencedetect) error for {os.path.basename(input_path)}: {e}")
-        return None
-
-
-def _compute_speech_intervals(
-    input_path: str,
-    silence_intervals: list[tuple[float, float]] | None,
-    min_speech_duration: float,
-    gap_merge: float,
-) -> list[tuple[float, float]]:
-    duration = _get_audio_duration(input_path)
-    if duration <= 0:
-        return []
-
-    if silence_intervals is None or not silence_intervals:
-        return [(0.0, duration)] if duration >= min_speech_duration else []
-
-    silence = sorted(silence_intervals)
-    speech: list[tuple[float, float]] = []
-    cursor = 0.0
-    for s, e in silence:
-        if s > cursor:
-            speech.append((cursor, min(s, duration)))
-        cursor = max(cursor, e)
-    if cursor < duration:
-        speech.append((cursor, duration))
-
-    if gap_merge > 0 and len(speech) > 1:
-        merged: list[tuple[float, float]] = [speech[0]]
-        for s, e in speech[1:]:
-            prev_s, prev_e = merged[-1]
-            if s - prev_e <= gap_merge:
-                merged[-1] = (prev_s, e)
-            else:
-                merged.append((s, e))
-        speech = merged
-
-    return [(s, e) for s, e in speech if (e - s) >= min_speech_duration]
-
-
-def _extract_audio_segment(input_path: str, output_path: str, start: float, end: float) -> None:
-    subprocess.run(
-        [
-            "ffmpeg", "-y", "-i", input_path,
-            "-ss", str(start), "-to", str(end),
-            "-ar", "16000", "-ac", "1", "-sample_fmt", "s16",
-            output_path,
-        ],
-        capture_output=True, check=True,
-    )
-
-
 def _normalize_text(text: str) -> str:
     return re.sub(r"[^a-zäöüß0-9]", "", text.lower())
 
@@ -369,88 +225,71 @@ def _transcribe_file(
     display_name: str,
     args: argparse.Namespace,
 ) -> tuple[list[dict], list[str]]:
+    """Transcribe one speaker WAV with faster-whisper + Silero VAD.
+
+    faster-whisper skips non-speech regions internally (Silero VAD) while
+    keeping the original timeline for every segment, so long pauses where the
+    speaker was silent are neither transcribed nor cut into tiny chunks. The
+    VAD is configured to merge short pauses (< vad_min_silence) into the
+    surrounding speech, preserving model context.
+    """
     errors: list[str] = []
-    silence_intervals = _detect_silence(
-        audio_path,
-        noise_db=args.vad_noise_db,
-        min_duration=args.vad_min_silence,
-        errors=errors,
-    )
-    speech_intervals = _compute_speech_intervals(
-        audio_path,
-        silence_intervals,
-        min_speech_duration=args.vad_min_speech,
-        gap_merge=args.vad_gap_merge,
-    )
+    duration = _get_audio_duration(audio_path)
+    if duration <= 0:
+        return [], [f"No audio in {os.path.basename(audio_path)}"]
 
-    if not speech_intervals:
-        return [], errors
+    _progress.reset(int(duration * _FRAMES_PER_SECOND))
 
-    total_frames = sum(int((end - start) * _FRAMES_PER_SECOND) for start, end in speech_intervals)
-    _progress.reset(total_frames)
+    vad_parameters = {
+        "min_silence_duration_ms": max(100, int(args.vad_min_silence * 1000)),
+        "min_speech_duration_ms": max(50, int(args.vad_min_speech * 1000)),
+        "speech_pad_ms": 400,
+    }
+
+    language = args.language
+    if language and language.lower() in ("auto", "detect"):
+        language = None
 
     file_segments: list[dict] = []
-    duration = _get_audio_duration(audio_path)
+    try:
+        segments, _info = model.transcribe(
+            audio_path,
+            language=language,
+            temperature=0.0,
+            beam_size=5,
+            best_of=5,
+            patience=1.0,
+            compression_ratio_threshold=1.8,
+            no_speech_threshold=0.6,
+            no_repeat_ngram_size=3,
+            condition_on_previous_text=args.condition_on_previous,
+            vad_filter=True,
+            vad_parameters=vad_parameters,
+            initial_prompt=args.initial_prompt or None,
+            word_timestamps=False,
+        )
+        for seg in segments:
+            start = float(getattr(seg, "start", 0.0) or 0.0)
+            end = float(getattr(seg, "end", start) or start)
+            text = str(getattr(seg, "text", "") or "").strip()
+            entry = {
+                "start": start,
+                "end": end,
+                "text": text,
+                "speaker": display_name,
+                "no_speech_prob": float(getattr(seg, "no_speech_prob", 0.0) or 0.0),
+                "avg_logprob": float(getattr(seg, "avg_logprob", 0.0) or 0.0),
+            }
+            _progress.report_position(int(end * _FRAMES_PER_SECOND))
 
-    # If the whole file is one continuous speech segment (e.g. VAD disabled or
-    # ffmpeg unavailable), transcribe it directly without re-encoding.
-    direct_transcribe = (
-        len(speech_intervals) == 1
-        and abs(speech_intervals[0][0] - 0.0) < 0.01
-        and abs(speech_intervals[0][1] - duration) < 0.01
-    )
-
-    with tempfile.TemporaryDirectory(prefix="whisper_chunks_") as tmpdir:
-        for i, (start, end) in enumerate(speech_intervals):
-            chunk_path = os.path.join(tmpdir, f"chunk_{i:04d}.wav")
-            try:
-                if direct_transcribe:
-                    chunk_path = audio_path
-                else:
-                    _extract_audio_segment(audio_path, chunk_path, start, end)
-            except FileNotFoundError as e:
-                errors.append(f"Chunk {i} for {display_name}: ffmpeg not found ({e})")
+            if _is_likely_hallucination(entry, args.filter_no_speech_prob, args.initial_prompt):
                 continue
-            except subprocess.CalledProcessError as e:
-                stderr = e.stderr.decode("utf-8", errors="ignore") if isinstance(e.stderr, bytes) else str(e.stderr or "")
-                errors.append(f"Chunk {i} for {display_name}: ffmpeg extraction failed: {stderr.strip()[:500]}")
-                continue
+            file_segments.append(entry)
+    except Exception as e:
+        errors.append(f"{display_name}: faster-whisper transcription failed: {e}")
+        return [], errors
 
-            try:
-                _progress.begin_chunk(int((end - start) * _FRAMES_PER_SECOND))
-                result = model.transcribe(
-                    chunk_path,
-                    language=args.language,
-                    fp16=args.fp16,
-                    verbose=False,
-                    temperature=0.0,
-                    compression_ratio_threshold=1.8,
-                    logprob_threshold=-0.9,
-                    no_speech_threshold=0.6,
-                    condition_on_previous_text=False,
-                    initial_prompt=args.initial_prompt,
-                    beam_size=5,
-                    best_of=5,
-                    patience=1.0,
-                )
-                _progress.end_chunk()
-
-                for seg in result.get("segments", []):
-                    rel_start = float(seg.get("start", 0.0))
-                    rel_end = float(seg.get("end", 0.0))
-                    seg["start"] = start + rel_start
-                    seg["end"] = min(end, start + rel_end)
-                    seg["speaker"] = display_name
-
-                    if _is_likely_hallucination(seg, args.filter_no_speech_prob, args.initial_prompt):
-                        continue
-
-                    file_segments.append(seg)
-            except Exception as e:
-                errors.append(f"Chunk {i} for {display_name}: Whisper transcription failed: {e}")
-                continue
-
-    file_segments.sort(key=lambda s: float(s["start"]))
+    file_segments.sort(key=lambda s: s["start"])
     return file_segments, errors
 
 
@@ -458,7 +297,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="base")
     parser.add_argument("--language", default="de")
-    parser.add_argument("--fp16", type=lambda x: x.lower() == "true", default=False)
+    parser.add_argument("--fp16", type=lambda x: x.lower() == "true", default=False, help="deprecated; use --compute-type")
+    parser.add_argument("--compute-type", default="int8", help="int8, int8_float16, float16 or float32")
+    parser.add_argument("--condition-on-previous", type=lambda x: x.lower() != "false", default=True)
     parser.add_argument("--trim-start", type=float, default=0)
     parser.add_argument("--trim-end", type=float, default=None)
     parser.add_argument("--output-dir", required=True)
@@ -466,19 +307,17 @@ def main() -> None:
     parser.add_argument("--completed-files", default="[]", help="JSON array of already completed {id, userId, wavPath, displayName, transcriptPath}")
     parser.add_argument("--initial-prompt", default=None)
     parser.add_argument("--noise-reduce", type=lambda x: x.lower() == "true", default=True)
-    parser.add_argument("--vad-noise-db", type=float, default=-40.0)
-    parser.add_argument("--vad-min-silence", type=float, default=0.5)
-    parser.add_argument("--vad-min-speech", type=float, default=0.3)
-    parser.add_argument("--vad-gap-merge", type=float, default=0.0)
+    parser.add_argument("--vad-noise-db", type=float, default=-40.0, help="deprecated; kept for CLI compatibility")
+    parser.add_argument("--vad-min-silence", type=float, default=2.0, help="seconds of silence that split speech regions")
+    parser.add_argument("--vad-min-speech", type=float, default=0.5, help="minimum speech region duration in seconds")
+    parser.add_argument("--vad-gap-merge", type=float, default=0.0, help="deprecated; use --vad-min-silence")
     parser.add_argument("--filter-no-speech-prob", type=float, default=0.9)
     args = parser.parse_args()
 
-    patch_tqdm()
-
     try:
-        import whisper
+        from faster_whisper import WhisperModel
     except Exception as e:
-        emit({"type": "error", "error": f"Failed to load Whisper: {e}"})
+        emit({"type": "error", "error": f"Failed to load faster-whisper: {e}. Run: python3 -m pip install --user faster-whisper"})
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
@@ -503,13 +342,13 @@ def main() -> None:
     trim_end = args.trim_end if args.trim_end is not None else float("inf")
 
     try:
-        model = whisper.load_model(args.model)
+        model = WhisperModel(args.model, device="cpu", compute_type=args.compute_type)
     except Exception as e:
-        emit({"type": "error", "error": f"Failed to load model: {e}"})
+        emit({"type": "error", "error": f"Failed to load faster-whisper model: {e}"})
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
-    patch_model_decode(model)
+    emit({"type": "progress", "message": f"Loaded {args.model} (compute_type={args.compute_type})"})
 
     all_segments = []
     errors = []
@@ -546,10 +385,6 @@ def main() -> None:
             for error in file_errors:
                 errors.append(f"{display_name}: {error}")
                 emit({"type": "file_error", "index": i, "error": error})
-
-            if not file_segments:
-                # Fall back to a single empty transcript file so the file is marked as completed.
-                file_segments = []
 
             for seg in file_segments:
                 if seg["end"] <= trim_start or seg["start"] >= trim_end:

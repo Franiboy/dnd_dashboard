@@ -28,11 +28,11 @@ function envNumber(name: string, defaultValue: number): number {
   return Number.isNaN(parsed) ? defaultValue : parsed;
 }
 
-const WHISPER_VAD_NOISE_DB = envNumber('WHISPER_VAD_NOISE_DB', -40);
-const WHISPER_VAD_MIN_SILENCE = envNumber('WHISPER_VAD_MIN_SILENCE', 0.5);
-const WHISPER_VAD_MIN_SPEECH = envNumber('WHISPER_VAD_MIN_SPEECH', 0.3);
-const WHISPER_VAD_GAP_MERGE = envNumber('WHISPER_VAD_GAP_MERGE', 0);
+const WHISPER_VAD_MIN_SILENCE = envNumber('WHISPER_VAD_MIN_SILENCE', 2.0);
+const WHISPER_VAD_MIN_SPEECH = envNumber('WHISPER_VAD_MIN_SPEECH', 0.5);
 const WHISPER_FILTER_NO_SPEECH_PROB = envNumber('WHISPER_FILTER_NO_SPEECH_PROB', 0.9);
+const WHISPER_COMPUTE_TYPE = process.env.WHISPER_COMPUTE_TYPE || 'int8';
+const WHISPER_CONDITION_ON_PREVIOUS = process.env.WHISPER_CONDITION_ON_PREVIOUS !== 'false';
 const MAX_STDERR_LENGTH = 5000;
 
 function appendStderr(buffer: string, chunk: string, maxLength: number): string {
@@ -288,14 +288,14 @@ function runTranscriptionScript(
     completedFilesArg,
     '--noise-reduce',
     String(WHISPER_NOISE_REDUCE),
-    '--vad-noise-db',
-    String(WHISPER_VAD_NOISE_DB),
     '--vad-min-silence',
     String(WHISPER_VAD_MIN_SILENCE),
     '--vad-min-speech',
     String(WHISPER_VAD_MIN_SPEECH),
-    '--vad-gap-merge',
-    String(WHISPER_VAD_GAP_MERGE),
+    '--compute-type',
+    WHISPER_COMPUTE_TYPE,
+    '--condition-on-previous',
+    String(WHISPER_CONDITION_ON_PREVIOUS),
     '--filter-no-speech-prob',
     String(WHISPER_FILTER_NO_SPEECH_PROB),
   ];
