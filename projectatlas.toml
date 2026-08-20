@@ -1,0 +1,64 @@
+# ProjectAtlas project-local configuration (schema: projectatlas.toml).
+#
+# ProjectAtlas (https://github.com/styler-ai/ProjectAtlas) is the standard
+# local repository-intelligence tool for coding agents in this repository.
+# It keeps a persistent SQLite map of folders, files, purposes, summaries,
+# symbols and relations so agents (OpenCode) find the right code before
+# spending context on broad reads.
+#
+# This file is the committed source of truth shared by every clone.
+# Local runtime state (`.projectatlas/`, index DB, generated MCP configs)
+# is gitignored. Set everything up once per clone with:
+#
+#   npm run setup:atlas
+#
+# Updates to scan/ignore settings belong here; ProjectAtlas also inherits
+# `.gitignore` dynamically on every scan/watch run, so there is no need to
+# mirror gitignore entries manually.
+
+[project]
+root = "."
+# Compatibility export path used only by `projectatlas map`.
+map_path = ".projectatlas/projectatlas.toon"
+nonsource_files_path = ".projectatlas/projectatlas-nonsource-files.toon"
+
+[scan]
+# Source languages of this repository. `.projectatlas init` writes a broader
+# registry-derived default; this list pins the project-specific surface so
+# every clone indexes exactly the same files.
+source_extensions = [
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".json", ".css", ".html", ".md",
+  ".toml", ".yml", ".yaml", ".sh",
+]
+exclude_dir_names = [
+  ".git", ".projectatlas", "node_modules", "dist", "dist-server", "dist-ssr",
+  "coverage", "recordings", "data", ".venv", "__pycache__", ".idea",
+]
+exclude_dir_suffixes = [".egg-info"]
+exclude_path_prefixes = []
+# Config/ops/asset trees that are summarized as non-source instead of code.
+non_source_path_prefixes = ["public", "deploy", "systemd", ".github"]
+max_scan_lines = 80
+text_index_max_bytes = 2000000
+
+[scan.language_overrides]
+
+[purpose]
+default_style = "javadoc"
+line_comment_prefixes = ["//", "#", "--", ";"]
+
+[summary_rules]
+# UI strings and content are partly German; keep them readable in summaries.
+ascii_only = false
+no_commas = true
+max_length = 140
+
+[untracked]
+allowed_filenames = []
+allowlist_dir_prefixes = []
+allowlist_files = []
+asset_allowed_prefixes = []
+asset_extensions = [
+  ".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp", ".ico", ".pdf", ".ttf",
+  ".woff", ".woff2",
+]

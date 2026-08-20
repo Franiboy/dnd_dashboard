@@ -25,6 +25,10 @@ opencode.json
 __pycache__/
 *.pyc
 
+# ProjectAtlas local runtime state (index DB + generated MCP configs).
+# The shared config `projectatlas.toml` IS committed.
+.projectatlas/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

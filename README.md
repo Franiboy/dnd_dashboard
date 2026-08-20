@@ -31,12 +31,20 @@ Web-based dashboard for Dungeons & Dragons with multiple modules: Bingo, Diary/W
 - Node.js >= 22
 - npm
 - For AI: [OpenCode](https://github.com/opencode-ai/opencode) CLI installed and in PATH
+- For AI: [ProjectAtlas](https://github.com/styler-ai/ProjectAtlas) repository intelligence (installed automatically by `npm run setup:atlas`)
 - For recordings: Discord bot token, Python + ffmpeg + OpenAI Whisper
 
 ## Installation
 
 ```bash
 npm install
+```
+
+Install the standard local repository intelligence for AI agents
+(ProjectAtlas: index, MCP config merged into `opencode.json`):
+
+```bash
+npm run setup:atlas
 ```
 
 Copy the example environment variables:

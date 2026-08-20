@@ -87,6 +87,17 @@ For larger refactorings or before releases, also run:
 npm run build
 ```
 
+## ProjectAtlas (Repository Intelligence)
+
+ProjectAtlas is the standard local repository-intelligence tool for coding agents in this project. It keeps a persistent SQLite map of folders, files, purposes, summaries, symbols and relations in the gitignored `.projectatlas/` directory. The shared scan configuration is committed in `projectatlas.toml`.
+
+- **First-run setup:** after `npm install`, run `npm run setup:atlas`. It installs the pinned native runtime (v0.4.4), builds the index and merges the `projectatlas` MCP server into the local, git-ignored `opencode.json`.
+- **Atlas-first workflow:** when the `atlas_*` MCP tools are available, use them before broad file reads – start with one compact `atlas_session_brief`, then follow its returned selectors down to the smallest exact source slice.
+- **Refresh cadence:** run `projectatlas watch --once` (MCP: `atlas_watch_once`) after a batch of edits; a continuous `projectatlas watch` may run during long sessions.
+- **Structure checks:** `projectatlas lint --purpose-level low` flags stale/duplicate purposes. Curate folder and high-impact file purposes during normal work with `projectatlas purpose set` / `atlas_purpose_set`.
+- **Token impact:** `projectatlas token --view tui` shows the local saved-tokens dashboard.
+- Never commit `.projectatlas/` (gitignored). Scan/ignore changes belong in the committed `projectatlas.toml`; ProjectAtlas inherits `.gitignore` dynamically.
+
 ## Documentation
 
 - [`docs/architecture.md`](./docs/architecture.md) – File structure and architecture overview
