@@ -1,5 +1,6 @@
 import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
 import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
+import { detectSessionBoundaries } from '../ai/sessionBoundary.js';
 import { createLogger } from '../logger.js';
 import { getSessionById, listSessionsPendingAi } from '../repositories/recordings.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
@@ -30,6 +31,19 @@ async function processSession(id: number): Promise<void> {
     return;
   }
 
+  // Determine the actual game play boundaries before improving/summarizing, so
+  // the summaries focus on the game instead of pre-session team discussion and
+  // post-session small talk.
+  if (!session.gameBoundaryDetectedAt) {
+    log.info(`Detecting game boundaries for session ${id}`);
+    await detectSessionBoundaries(id, SCHEDULER_USER, undefined);
+    session = getSessionById(id);
+    if (!session || !session.transcript) {
+      log.warn(`Session ${id} disappeared after boundary detection`);
+      return;
+    }
+  }
+
   if (sessionNeedsImprovement(session)) {
     log.info(`Improving transcript for session ${id}`);
     const result = await improveSessionTranscriptWithAi(id, SCHEDULER_USER, undefined);
@@ -54,7 +68,9 @@ async function processSession(id: number): Promise<void> {
 
 export async function processPendingSessions(): Promise<void> {
   const pending = listSessionsPendingAi();
-  const needsWork = pending.filter((s) => sessionNeedsImprovement(s) || sessionNeedsSummary(s));
+  const needsWork = pending.filter(
+    (s) => !s.gameBoundaryDetectedAt || sessionNeedsImprovement(s) || sessionNeedsSummary(s)
+  );
   if (needsWork.length === 0) {
     log.info('No sessions pending AI processing');
     return;
