@@ -11,6 +11,13 @@ import { getSessionWorkDir, getSessionWorkFile } from './sessionWorkdir.js';
 
 const log = createLogger('sessionSummary');
 
+function formatOffset(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return [h, m, s].map((v) => String(v).padStart(2, '0')).join(':');
+}
+
 export interface SessionSummaryResult {
   summary: string | null;
   longSummary: string | null;
@@ -65,6 +72,21 @@ async function generateLongSessionSummary(
   model?: string,
   onLog?: (line: string) => void
 ): Promise<string | null> {
+  const session = getSessionById(sessionId);
+  const boundaryHints =
+    session?.gameBoundaryDetectedAt &&
+    session.gameStartSeconds !== null &&
+    session.gameEndSeconds !== null
+      ? [
+          '',
+          `Die eigentliche Spiel-Session beginnt im Transkript bei Offset ${session.gameStartSeconds} Sekunden (${formatOffset(session.gameStartSeconds)}) und endet bei Offset ${session.gameEndSeconds} Sekunden (${formatOffset(session.gameEndSeconds)}).`,
+          'Alles davor (Vorbesprechung, Small Talk) und danach (Small Talk, Verabschiedung) gehört NICHT zur Session und darf inhaltlich NICHT in die Zusammenfassung einfließen oder zählen.',
+        ]
+      : [
+          '',
+          'Achte darauf, dass die Aufnahme vor und nach der eigentlichen Spiel-Session Vorbesprechung/Teambesprechung und Small Talk enthält. Beziehe dich in der Zusammenfassung nur auf die tatsächliche Spiel-Session, nicht auf organisatorisches Vorgeplänkel oder Verabschiedungen.',
+        ];
+
   const prompt = [
     'Du bist ein Assistent für ein D&D-Sessions-System. Du arbeitest mit Dateien und Tools und antwortest prägnant auf Deutsch.',
     '',
@@ -82,6 +104,7 @@ async function generateLongSessionSummary(
     '- Verwende die exakte Schreibweise von Entitäten aus der Datenbank.',
     '- Nutze HTML, aber keine Markdown-Code-Blöcke.',
     '- Wenn keine relevanten Hintergrundinformationen existieren, erstelle die Zusammenfassung trotzdem direkt.',
+    ...boundaryHints,
   ].join('\n');
 
   const result = await runOpenCode({

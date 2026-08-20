@@ -543,6 +543,43 @@ function formatSessionSummary(session: {
   return lines.join('\n');
 }
 
+if (requireScope('recording:boundaries')) {
+  // The recording contains pre-session team discussion / small talk and
+  // post-session chit-chat alongside the actual game play. This tool stores
+  // the AI-detected start/end of the game, as seconds from the recording start
+  // (the scale used by the transcript timestamps [MM:SS] / [HH:MM:SS]).
+  loggedTool(
+    'set_session_boundaries',
+    'Speichert die ermittelten Start- und Endzeitpunkte der eigentlichen Spiel-Session innerhalb einer Aufnahme. Sekundenangaben sind Offsets vom Beginn der Aufnahme (0 Sekunden = Aufnahmebeginn, [HH:MM:SS] im Transkript).',
+    {
+      sessionId: z.number().int().positive(),
+      startSeconds: z.number().min(0),
+      endSeconds: z.number().min(0),
+    },
+    async ({ sessionId, startSeconds, endSeconds }) => {
+      try {
+        if (endSeconds <= startSeconds) {
+          return error('endSeconds muss größer als startSeconds sein.');
+        }
+        const session = getSessionById(sessionId);
+        if (!session) return error(`Session ${sessionId} nicht gefunden.`);
+        updateSession(sessionId, {
+          gameStartSeconds: startSeconds,
+          gameEndSeconds: endSeconds,
+          gameBoundaryDetectedAt: new Date().toISOString(),
+        });
+        return success(
+          `Spielzeitgrenzen für Session ${sessionId} gespeichert: ${startSeconds}s bis ${endSeconds}s.`
+        );
+      } catch (err) {
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Speichern der Spielzeitgrenzen'
+        );
+      }
+    }
+  );
+}
+
 if (requireScope('recording:read')) {
   loggedTool(
     'get_session_summary',

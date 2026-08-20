@@ -160,6 +160,11 @@ export interface RecordingSession {
   summaryGeneratedAt: string | null;
   longSummary: string | null;
   longSummaryGeneratedAt: string | null;
+  /** AI-detected start of the actual game play, in seconds from recording start. */
+  gameStartSeconds: number | null;
+  /** AI-detected end of the actual game play, in seconds from recording start. */
+  gameEndSeconds: number | null;
+  gameBoundaryDetectedAt: string | null;
   hasWavFiles?: boolean;
   files?: RecordingFile[];
 }

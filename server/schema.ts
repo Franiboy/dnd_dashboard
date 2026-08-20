@@ -85,6 +85,13 @@ export const schema: Record<string, TableDef> = {
       summary_generated_at: { type: 'TEXT' },
       long_summary: { type: 'TEXT' },
       long_summary_generated_at: { type: 'TEXT' },
+      // AI-detected boundaries of the actual game play within the recording
+      // (seconds from the recording start, i.e. the transcript timestamp scale).
+      // The recording contains pre-session team discussion / small talk and
+      // post-session chit-chat that should be excluded from summarization.
+      game_start_seconds: { type: 'REAL' },
+      game_end_seconds: { type: 'REAL' },
+      game_boundary_detected_at: { type: 'TEXT' },
       updated_at: { type: 'TEXT' },
     },
   },
