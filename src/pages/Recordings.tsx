@@ -537,8 +537,9 @@ export function Sessions({ user }: SessionsProps) {
                         return (
                           <>
                             <p className="text-xs text-[var(--accent)] mb-1">
-                              Datei {progress.currentFile} von {progress.totalFiles}:{' '}
-                              {progress.fileName} ({filePercent.toFixed(0)}%)
+                              Transkription … {filePercent.toFixed(0)}% ({progress.currentFile} von{' '}
+                              {progress.totalFiles})
+                              {progress.fileName ? ` · gerade: ${progress.fileName}` : ''}
                             </p>
                             <div className="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                               <div
