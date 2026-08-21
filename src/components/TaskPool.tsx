@@ -14,6 +14,8 @@ interface TaskPoolProps {
   game: BingoGame;
   socket: Socket | null;
   isSetup: boolean;
+  /** Allow dragging tasks onto the board (setup and late joiners during play). */
+  canDrag?: boolean;
   className?: string;
   listClassName?: string;
   currentUser?: SafeUser | null;
@@ -24,6 +26,7 @@ export function TaskPool({
   game,
   socket,
   isSetup,
+  canDrag = isSetup,
   className,
   listClassName,
   currentUser,
@@ -194,6 +197,7 @@ export function TaskPool({
             task={task}
             users={users}
             isSetup={isSetup}
+            canDrag={canDrag}
             placed={placedTaskIds.has(task.id)}
             onEdit={startEdit}
             onRemove={remove}
@@ -287,6 +291,7 @@ function TaskListItem({
   task,
   users,
   isSetup,
+  canDrag = isSetup,
   placed,
   onEdit,
   onRemove,
@@ -294,6 +299,7 @@ function TaskListItem({
   task: Task;
   users: SafeUser[];
   isSetup: boolean;
+  canDrag?: boolean;
   placed: boolean;
   onEdit: (task: Task) => void;
   onRemove: (id: string) => void;
@@ -363,16 +369,16 @@ function TaskListItem({
   return (
     <li
       ref={rowRef}
-      draggable={isSetup}
+      draggable={canDrag}
       onDragStart={(e) => {
-        if (!isSetup) return;
+        if (!canDrag) return;
         e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'task', taskId: task.id }));
       }}
       className={`${twoLine ? 'flex flex-col' : 'flex items-center'} px-3 py-2 rounded border transition ${
         placed
           ? 'bg-[var(--accent-dim)] border-[var(--accent)]'
           : 'bg-slate-900/50 border-[var(--border)]'
-      } ${isSetup ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      } ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
       <span ref={textRef} className="min-w-0 flex-1 break-words text-[var(--text-h)]">
         {task.text}
