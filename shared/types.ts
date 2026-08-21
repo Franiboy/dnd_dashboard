@@ -16,6 +16,7 @@ export interface Player {
   userId?: string;
   avatarUrl?: string | null;
   name: string;
+  role?: UserRole;
   status: 'lobby' | 'playing' | 'bingo';
   board: Cell[][] | null;
   locked: boolean;
@@ -43,7 +44,8 @@ export interface ServerToClientEvents {
 
 // Role of a user within the campaign. Every user starts as a guest;
 // admins can promote users to dungeon master or player in the admin panel.
-// The value is not evaluated anywhere yet - it is only assigned and displayed.
+// Players and dungeon masters are permanent bingo participants: they always
+// appear in the bingo player list and may join a running game at any time.
 export type UserRole = 'guest' | 'dungeon_master' | 'player';
 
 export const USER_ROLES: readonly UserRole[] = ['guest', 'dungeon_master', 'player'];

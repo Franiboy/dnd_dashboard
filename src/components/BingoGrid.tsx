@@ -36,8 +36,9 @@ export function BingoGrid({
   }, [draggedCell]);
 
   const taskMap = new Map(game.tasks.map((t) => [t.id, t]));
-  const isDrafting = game.status === 'setup';
-  const canEdit = isDrafting && !player?.locked;
+  // Boards are editable in setup and, for late joiners, during the running
+  // game until they are locked.
+  const canEdit = !player?.locked && (game.status === 'setup' || game.status === 'playing');
 
   const updateBoard = (newBoard: Cell[][]) => {
     if (!socket || !playerId) return;
@@ -262,7 +263,9 @@ export function BingoGrid({
                 ? 'Ziehe Aufgaben auf die Felder, Felder zum Tauschen, oder hierher zum Entfernen.'
                 : game.status === 'setup' && player?.locked
                   ? 'Board ist eingelockt. Warte auf Spielstart.'
-                  : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
+                  : player?.status === 'lobby'
+                    ? 'Fülle dein Board und locke es ein, um am Spiel teilzunehmen.'
+                    : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
             </p>
             {controls && (
               <div className="flex flex-col items-center gap-2 shrink-0">{controls}</div>

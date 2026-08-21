@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'crypto';
-import type { BingoGame, Cell, Player, Task } from '../shared/types.js';
+import type { BingoGame, Cell, Player, Task, UserRole } from '../shared/types.js';
 import { loadGame, saveGame } from './repositories/games.js';
+import { getAllUsers } from './users.js';
 import { runMigrations } from './migrations.js';
 
 function createId(): string {
@@ -22,8 +23,51 @@ function defaultGame(): BingoGame {
 runMigrations();
 
 let game: BingoGame = loadGame() || defaultGame();
+syncPlayersFromUsers();
 
 export function getGame(): BingoGame {
+  return game;
+}
+
+// Keep the player list in sync with user roles: every user with the role
+// 'player' or 'dungeon_master' is a permanent participant and appears in the
+// list even before checking in. Existing entries are matched by userId and are
+// kept (also after a role change) so boards and wins are never lost; only
+// missing participants are added.
+export function syncPlayersFromUsers(): BingoGame {
+  let changed = false;
+  for (const user of getAllUsers()) {
+    if (user.role !== 'player' && user.role !== 'dungeon_master') continue;
+    const existing = game.players.find((p) => p.userId === user.id);
+    if (existing) {
+      if (
+        existing.name !== user.displayName ||
+        existing.avatarUrl !== user.avatarUrl ||
+        existing.role !== user.role
+      ) {
+        existing.name = user.displayName;
+        existing.avatarUrl = user.avatarUrl;
+        existing.role = user.role;
+        changed = true;
+      }
+      continue;
+    }
+    game.players.push({
+      id: createId(),
+      userId: user.id,
+      avatarUrl: user.avatarUrl,
+      name: user.displayName,
+      role: user.role,
+      status: 'lobby',
+      board: createEmptyBoard(game.gridSize),
+      locked: false,
+      online: false,
+      joinedAt: new Date().toISOString(),
+      wins: 0,
+    });
+    changed = true;
+  }
+  if (changed) persist();
   return game;
 }
 
@@ -115,12 +159,13 @@ export function removeTask(taskId: string): BingoGame {
       for (let c = 0; c < p.board[r].length; c++) {
         if (p.board[r][c].taskId === taskId) {
           p.board[r][c] = { ...p.board[r][c], taskId: null };
-          p.locked = false;
           changed = true;
         }
       }
     }
-    if (changed) p.locked = false;
+    // Only unlock in setup; during a running game a locked board must stay
+    // locked so it cannot be retro-edited.
+    if (changed && game.status === 'setup') p.locked = false;
   });
   persist();
   return game;
@@ -129,7 +174,8 @@ export function removeTask(taskId: string): BingoGame {
 export function joinPlayer(
   name: string,
   userId?: string,
-  avatarUrl?: string | null
+  avatarUrl?: string | null,
+  role?: UserRole
 ): { game: BingoGame; playerId: string } {
   const id = createId();
   const player: Player = {
@@ -137,6 +183,7 @@ export function joinPlayer(
     userId,
     avatarUrl,
     name: name.trim(),
+    role,
     status: 'lobby',
     board: createEmptyBoard(game.gridSize),
     locked: false,
@@ -183,30 +230,25 @@ export function startGame(): BingoGame {
   if (game.status !== 'setup') {
     throw new Error('Spiel kann nur aus der Setup-Phase gestartet werden.');
   }
+  syncPlayersFromUsers();
   const needed = game.gridSize * game.gridSize;
   if (game.tasks.length < needed) {
     throw new Error(`Mindestens ${needed} Aufgaben nötig.`);
   }
-  const onlinePlayers = game.players.filter((p) => p.online);
-  if (onlinePlayers.length === 0) {
-    throw new Error('Mindestens ein Spieler muss beigetreten sein.');
-  }
-  const notLocked = onlinePlayers.find((p) => !p.locked);
-  if (notLocked) {
-    throw new Error('Alle Spieler müssen ihr Board einlocken.');
-  }
-  const invalidBoard = onlinePlayers.find(
-    (p) =>
-      !p.board ||
-      !isValidBoard(p.board, game.gridSize, p.userId) ||
-      p.board.some((row) => row.some((cell) => !cell.taskId))
-  );
-  if (invalidBoard) {
-    throw new Error('Nicht alle Boards sind vollständig ausgefüllt.');
-  }
   game.status = 'playing';
+  // The game starts at any time: players with a complete locked board play
+  // immediately; everyone else stays in the lobby and can fill and lock their
+  // board during the running game.
+  const isFull = (board: Cell[][]) => board.every((row) => row.every((cell) => cell.taskId));
   game.players.forEach((p) => {
-    p.status = 'playing';
+    const board = p.board;
+    const ready = !!(
+      p.locked &&
+      board &&
+      isValidBoard(board, game.gridSize, p.userId) &&
+      isFull(board)
+    );
+    p.status = ready ? 'playing' : 'lobby';
   });
   persist();
   return game;
@@ -215,9 +257,13 @@ export function startGame(): BingoGame {
 export function updateBoard(playerId: string, board: Cell[][]): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
   if (!player) throw new Error('Spieler nicht gefunden.');
-  if (game.status !== 'setup') throw new Error('Board kann nur vor Spielstart bearbeitet werden.');
   if (player.locked)
     throw new Error('Board ist gesperrt. Entsperre es, um Änderungen vorzunehmen.');
+  // Boards are editable in setup and, for late joiners, during the running
+  // game until they are locked.
+  if (game.status !== 'setup' && game.status !== 'playing') {
+    throw new Error('Board kann nur vor oder während des Spiels bearbeitet werden.');
+  }
   if (!isValidBoard(board, game.gridSize, player.userId)) throw new Error('Ungültiges Board.');
   player.board = board;
   persist();
@@ -227,7 +273,9 @@ export function updateBoard(playerId: string, board: Cell[][]): BingoGame {
 export function lockBoard(playerId: string): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
   if (!player) throw new Error('Spieler nicht gefunden.');
-  if (game.status !== 'setup') throw new Error('Board kann nur vor Spielstart eingelockt werden.');
+  if (game.status !== 'setup' && game.status !== 'playing') {
+    throw new Error('Board kann nur vor oder während des Spiels eingelockt werden.');
+  }
   if (!player.board || !isValidBoard(player.board, game.gridSize, player.userId)) {
     throw new Error('Board ist ungültig.');
   }
@@ -235,6 +283,7 @@ export function lockBoard(playerId: string): BingoGame {
     throw new Error('Board muss vollständig ausgefüllt sein, bevor es eingelockt wird.');
   }
   player.locked = true;
+  if (game.status === 'playing') player.status = 'playing';
   persist();
   return game;
 }
@@ -339,6 +388,8 @@ export function finishAndResetGame(): BingoGame {
     p.board = createEmptyBoard(game.gridSize);
     p.locked = false;
   });
+  // Pick up role changes that happened during the round.
+  syncPlayersFromUsers();
   persist();
   return game;
 }
