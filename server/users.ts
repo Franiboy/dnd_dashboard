@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import crypto from 'node:crypto';
-import type { SafeUser, User } from '../shared/types.js';
+import { USER_ROLES, type SafeUser, type User, type UserRole } from '../shared/types.js';
 import { db } from './database.js';
 import { createLogger } from './logger.js';
 import { decrypt, encrypt, isEncryptionConfigured } from './encryption.js';
@@ -11,7 +11,7 @@ export const INITIAL_ADMIN_USERNAME = 'admin';
 
 // Column list for user rows; avoid loading encrypted Discord token columns when they are not needed.
 const USER_COLUMNS =
-  'id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, disabled_apps, active_person, auto_session_to_diary, auto_accept_session_diary, failed_login_attempts, locked_until, created_at';
+  'id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, role, disabled_apps, active_person, auto_session_to_diary, auto_accept_session_diary, failed_login_attempts, locked_until, created_at';
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 const MAX_FAILED_ATTEMPTS = 5;
@@ -29,6 +29,10 @@ function parseJsonArray(value: unknown): string[] {
   }
 }
 
+function parseUserRole(value: unknown): UserRole {
+  return USER_ROLES.includes(value as UserRole) ? (value as UserRole) : 'guest';
+}
+
 function rowToUser(row: any): User {
   return {
     id: row.id,
@@ -39,6 +43,7 @@ function rowToUser(row: any): User {
     avatarUrl: row.avatar_url || null,
     isAdmin: !!row.is_admin,
     isApproved: !!row.is_approved,
+    role: parseUserRole(row.role),
     disabledApps: parseJsonArray(row.disabled_apps),
     activePerson: row.active_person || null,
     autoSessionToDiary: !!row.auto_session_to_diary,
@@ -57,6 +62,7 @@ export function toSafeUser(user: User): SafeUser {
     avatarUrl: user.avatarUrl,
     isAdmin: user.isAdmin,
     isApproved: user.isApproved,
+    role: user.role,
     disabledApps: user.disabledApps,
     activePerson: user.activePerson,
     autoSessionToDiary: user.autoSessionToDiary,
@@ -191,6 +197,16 @@ export function setUserAdmin(id: string, isAdmin: boolean): SafeUser | null {
   const user = findUserById(id);
   if (!user) return null;
   db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(isAdmin ? 1 : 0, id);
+  return toSafeUser(
+    rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!
+  );
+}
+
+export function setUserRole(id: string, role: UserRole): SafeUser | null {
+  if (!USER_ROLES.includes(role)) return null;
+  const user = findUserById(id);
+  if (!user) return null;
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
   return toSafeUser(
     rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!
   );
