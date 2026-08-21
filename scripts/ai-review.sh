@@ -141,7 +141,9 @@ restore_project_config
 for f in "${PIPELINE_FILES[@]}"; do
 	if [ "$(sha256sum "$f" | cut -d' ' -f1)" != "${PIPELINE_HASHES[$f]}" ]; then
 		log "WARNING: AI modified $f while it was in use; reverting self-edit"
-		git checkout -- "$f"
+		# Restore from HEAD (index AND working tree): restoring from the index
+		# alone would resurrect an edit the model had already staged.
+		git checkout HEAD -- "$f"
 	fi
 done
 
