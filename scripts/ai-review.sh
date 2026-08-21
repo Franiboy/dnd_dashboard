@@ -50,13 +50,32 @@ has_label() {
 	gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | grep -qx "$1"
 }
 
+PROD_REPO="${DND_PROD_REPO:-/dnd_dashboard}"
+
 deploy_production() {
 	# Auto-merges happen with the workflow GITHUB_TOKEN, whose push events
 	# deliberately do not trigger further workflow runs – the deploy job on
-	# main would never run for them. Deploy directly instead; dnd-deploy.sh
-	# fast-forwards /dnd_dashboard to origin/main with full rollback safety.
-	log "Deploying production checkout /dnd_dashboard"
-	DND_DEPLOY_REPO=/dnd_dashboard bash scripts/dnd-deploy.sh
+	# main would never run for them. Deploy directly instead.
+	#
+	# dnd-deploy.sh exits 0 as a no-op when a concurrent deployment holds its
+	# lock, so verify afterwards that the production checkout really reached
+	# this merge and retry briefly if it did not.
+	log "Deploying production checkout $PROD_REPO"
+	git fetch origin "$BASE_BRANCH" --quiet
+	local expected
+	expected="$(git rev-parse "origin/${BASE_BRANCH}")"
+	local attempt
+	for attempt in 1 2 3 4 5 6; do
+		if DND_DEPLOY_REPO="$PROD_REPO" bash scripts/dnd-deploy.sh &&
+			git -C "$PROD_REPO" merge-base --is-ancestor "$expected" HEAD; then
+			log "Production verified at $(git -C "$PROD_REPO" rev-parse --short HEAD)"
+			return 0
+		fi
+		log "Deployment not confirmed yet (attempt $attempt/6); retrying in 15s"
+		sleep 15
+	done
+	log "ERROR: production checkout did not reach ${expected:0:7}"
+	return 1
 }
 
 merge_pr() {
@@ -95,11 +114,11 @@ Then review the following pull request diff against branch \"$BASE_BRANCH\".
 Rules:
 - Fix CRITICAL findings only: security vulnerabilities, data loss, crashes or bugs introduced by this diff, broken functionality.
 - NEVER undo or restructure the core approach this PR implements (see its title/body and commit messages). If you believe the approach itself is wrong but it works, do NOT rewrite it: report your concern in \"$BLOCKERS_FILE\" instead and change nothing else.
+- NEVER modify the pipeline itself: scripts/ai-review.sh and .github/workflows/ are off limits. Report concerns about them in \"$BLOCKERS_FILE\" instead.
 - Do NOT touch style, naming, formatting, test coverage nits; do not refactor anything unrelated to this diff.
 - Only modify files that are part of this diff (plus minimal adjacent changes your fix requires).
 - Repository conventions: comments and commit messages in English, ESM imports.
 - If you find a critical problem you CANNOT fix safely, do not guess: write a concise description to the file \"$BLOCKERS_FILE\" and change nothing else.
-- When done and everything critical is fixed (or there was nothing critical), make sure \"$BLOCKERS_FILE\" does NOT exist.
 
 Here is the diff:
 
@@ -107,8 +126,24 @@ $DIFF"
 
 log "Running OpenCode review (model: $MODEL)"
 hide_project_config
+
+# Checksums of pipeline-critical files. The review must never edit its own
+# running script or the workflow definition; revert and continue if it does.
+PIPELINE_FILES=(scripts/ai-review.sh .github/workflows/ci-cd.yml)
+declare -A PIPELINE_HASHES
+for f in "${PIPELINE_FILES[@]}"; do
+	PIPELINE_HASHES[$f]="$(sha256sum "$f" | cut -d' ' -f1)"
+done
+
 opencode run -m "$MODEL" --auto --title "AI PR review #$PR_NUMBER" "$PROMPT"
 restore_project_config
+
+for f in "${PIPELINE_FILES[@]}"; do
+	if [ "$(sha256sum "$f" | cut -d' ' -f1)" != "${PIPELINE_HASHES[$f]}" ]; then
+		log "WARNING: AI modified $f while it was in use; reverting self-edit"
+		git checkout -- "$f"
+	fi
+done
 
 if [ -f "$BLOCKERS_FILE" ]; then
 	fail_with_blockers
