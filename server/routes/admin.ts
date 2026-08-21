@@ -160,12 +160,13 @@ router.post('/users/:id/admin', authMiddleware, requireAdmin, (req: AuthRequest,
 
 router.post('/users/:id/role', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const targetId = req.params.id as string;
-  const check = checkAdminAction(req, targetId);
-  if (!check.ok) return res.status(403).json({ error: check.error });
   const { role } = req.body;
   if (typeof role !== 'string' || !USER_ROLES.includes(role as UserRole)) {
     return res.status(400).json({ error: 'Ungültige Rolle' });
   }
+  // Unlike other admin actions, the role may also be changed on the own
+  // account and the initial admin - it does not affect admin permissions.
+  if (!findUserById(targetId)) return res.status(404).json({ error: 'User nicht gefunden' });
   const user = setUserRole(targetId, role as UserRole);
   if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
   notifyUserUpdate();
