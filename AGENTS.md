@@ -1,13 +1,14 @@
 # AGENTS.md – D&D Dashboard
 
-This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-08-13.
+This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-08-21.
 
 ## Critical Working Rules for Assistants
 
 These rules take precedence before every code change.
 
-- **If you are already in a Git worktree, use it; otherwise work in the current branch.** Check whether the current directory is a worktree (e.g. with `git worktree list`).
-- **If you are in a worktree, clean it up after a successful merge and push.** After explicit user confirmation, merge the branch into `main`, then delete the merged feature branch (local and remote) and remove the worktree used for development.
+- **Always work in a dedicated Git worktree on a separate feature branch – never directly on `main`.** Create one before starting any change, even small ones (e.g. `git worktree add /tmp/opencode/<project>-<topic> -b <type>/<topic> origin/main`). If you are already inside a worktree, use it instead of creating another one (check with `git worktree list`).
+- **Finish every task with commit, push and pull request after coordinating with the user.** Commits and pushes each require explicit user approval; then open a PR against `main` so CI and the AI review pipeline can validate the change. Never push directly to `main`.
+- **Clean up after a successful merge.** Delete the merged feature branch (local and remote) and remove the worktree used for development.
 - **No commits without explicit user approval.**
 - **No push without explicit user approval.**
 - **No force-push, branch deletions or history rewrites without approval.**
