@@ -69,6 +69,19 @@ if ! git diff --quiet "$LOCAL" "$REMOTE" -- package-lock.json package.json 2>/de
   fi
 fi
 
+# Migrate the database BEFORE building. This ordering is intentional and must
+# not be changed: the build itself already reads tables that new migrations
+# change (buildVersion.ts -> isAiEnabled() -> getAiModelSettings() queries
+# ai_settings), so building against an unmigrated production database fails.
+# runMigrations() is an idempotent declarative schema diff (additive columns/
+# tables) wrapped in one transaction, safe to run against the running server.
+log "Applying database migrations..."
+if ! npm run db:migrate >>"$LOG" 2>&1; then
+  log "ABORTED: database migration failed; restoring $LOCAL"
+  git checkout -f "$LOCAL" >>"$LOG" 2>&1
+  exit 1
+fi
+
 # Snapshot the currently-running build so rollback is a restore, not a rebuild.
 rm -rf "$ROLLBACK_DIR"
 mkdir -p "$ROLLBACK_DIR"
