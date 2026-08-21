@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   checkLoginAllowed,
   createAdminUser,
+  createDiscordUser,
   findUserByUsername,
   recordFailedLogin,
   resetFailedLogins,
+  setUserRole,
   toSafeUser,
   verifyPassword,
 } from './users.js';
@@ -28,6 +30,38 @@ describe('users', () => {
     expect(safe.username).toBe('safeadmin');
     expect('passwordHash' in safe).toBe(false);
     expect(safe.isInitialAdmin).toBe(false);
+  });
+
+  it('defaults new users to the guest role', () => {
+    const admin = createAdminUser('roleadmin', 'Role Admin', 'password');
+    expect(admin.role).toBe('guest');
+
+    const discord = createDiscordUser('discord-role-1', 'roleuser', 'Role User', null);
+    expect(discord.role).toBe('guest');
+  });
+
+  it('assigns and changes user roles', () => {
+    createAdminUser('assignable', 'Assignable User', 'password');
+
+    const master = setUserRole(findUserByUsername('assignable')!.id, 'dungeon_master');
+    expect(master?.role).toBe('dungeon_master');
+
+    const player = setUserRole(findUserByUsername('assignable')!.id, 'player');
+    expect(player?.role).toBe('player');
+
+    const guest = setUserRole(findUserByUsername('assignable')!.id, 'guest');
+    expect(guest?.role).toBe('guest');
+  });
+
+  it('rejects unknown roles', () => {
+    createAdminUser('rolereject', 'Role Reject', 'password');
+    const id = findUserByUsername('rolereject')!.id;
+
+    const invalid = setUserRole(id, 'wizard' as never);
+    expect(invalid).toBeNull();
+
+    const stillGuest = findUserByUsername('rolereject')!;
+    expect(stillGuest.role).toBe('guest');
   });
 
   it('tracks failed logins and lockout', () => {

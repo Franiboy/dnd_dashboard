@@ -41,6 +41,13 @@ export interface ServerToClientEvents {
   joined: (playerId: string) => void;
 }
 
+// Role of a user within the campaign. Every user starts as a guest;
+// admins can promote users to dungeon master or player in the admin panel.
+// The value is not evaluated anywhere yet - it is only assigned and displayed.
+export type UserRole = 'guest' | 'dungeon_master' | 'player';
+
+export const USER_ROLES: readonly UserRole[] = ['guest', 'dungeon_master', 'player'];
+
 export interface User {
   id: string;
   username: string;
@@ -50,6 +57,7 @@ export interface User {
   avatarUrl: string | null;
   isAdmin: boolean;
   isApproved: boolean;
+  role: UserRole;
   disabledApps: string[];
   activePerson: string | null;
   autoSessionToDiary: boolean;
@@ -66,6 +74,7 @@ export interface SafeUser {
   avatarUrl: string | null;
   isAdmin: boolean;
   isApproved: boolean;
+  role: UserRole;
   disabledApps: string[];
   activePerson: string | null;
   autoSessionToDiary: boolean;
