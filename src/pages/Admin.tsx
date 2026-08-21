@@ -481,7 +481,7 @@ export function Admin({ currentUser }: AdminProps) {
                         <select
                           value={u.role}
                           onChange={(e) => action(u.id, '/role', { role: e.target.value })}
-                          disabled={u.isInitialAdmin || isOwn(u) || isActionLoading(u.id, '/role')}
+                          disabled={isActionLoading(u.id, '/role')}
                           aria-label={`Rolle von ${u.displayName}`}
                           className="bg-slate-800 border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
                         >
