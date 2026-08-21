@@ -53,6 +53,7 @@ interface ElementRow {
   url: string | null;
   from_id: string | null;
   to_id: string | null;
+  locked: number;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +78,7 @@ function rowToElement(row: ElementRow): WhiteboardElement {
     url: row.url,
     fromId: row.from_id,
     toId: row.to_id,
+    locked: !!row.locked,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -171,6 +173,7 @@ export function sanitizeElementInput(
     url: null,
     fromId: null,
     toId: null,
+    locked: false,
     createdAt: now,
     updatedAt: now,
   };
@@ -213,6 +216,7 @@ export function sanitizePatch(patch: unknown): WhiteboardPatch {
   if (fromId !== undefined) clean.fromId = fromId;
   const toId = asReference(raw.toId);
   if (toId !== undefined) clean.toId = toId;
+  if (typeof raw.locked === 'boolean') clean.locked = raw.locked;
 
   return clean;
 }
@@ -247,6 +251,7 @@ function applyPatch(element: WhiteboardElement, patch: WhiteboardPatch): void {
   }
   if (patch.fromId !== undefined && element.type === 'arrow') element.fromId = patch.fromId;
   if (patch.toId !== undefined && element.type === 'arrow') element.toId = patch.toId;
+  if (patch.locked !== undefined) element.locked = patch.locked;
 }
 
 // ---------------------------------------------------------------------------
@@ -257,8 +262,8 @@ function insertElement(element: WhiteboardElement): void {
   db.prepare(
     `INSERT INTO whiteboard_elements
        (id, type, zone, owner_id, owner_name, x, y, x2, y2, width, height,
-        color, text, description, status, url, from_id, to_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        color, text, description, status, url, from_id, to_id, locked, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     element.id,
     element.type,
@@ -278,6 +283,7 @@ function insertElement(element: WhiteboardElement): void {
     element.url,
     element.fromId,
     element.toId,
+    element.locked ? 1 : 0,
     element.createdAt,
     element.updatedAt
   );
@@ -328,7 +334,7 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
   db.prepare(
     `UPDATE whiteboard_elements SET
        x = ?, y = ?, x2 = ?, y2 = ?, width = ?, height = ?, color = ?, text = ?,
-       description = ?, status = ?, url = ?, from_id = ?, to_id = ?, updated_at = ?
+       description = ?, status = ?, url = ?, from_id = ?, to_id = ?, locked = ?, updated_at = ?
      WHERE id = ?`
   ).run(
     next.x,
@@ -344,6 +350,7 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
     next.url,
     next.fromId,
     next.toId,
+    next.locked ? 1 : 0,
     next.updatedAt,
     id
   );

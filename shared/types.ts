@@ -80,6 +80,8 @@ export interface WhiteboardElement {
   url: string | null;
   fromId: string | null;
   toId: string | null;
+  /** Pinned elements cannot be moved or resized until unlocked. */
+  locked: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -99,6 +101,7 @@ export interface WhiteboardPatch {
   url?: string | null;
   fromId?: string | null;
   toId?: string | null;
+  locked?: boolean;
 }
 
 /**

@@ -2,7 +2,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
@@ -11,13 +10,33 @@ import { TASK_STATUS_META, nextTaskStatus } from './whiteboardShared';
 
 const IMAGE_URL_RE = /\.(png|jpe?g|gif|webp|avif|svg)(\?.*)?$/i;
 
+function LockIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={12}
+      height={12}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      {open ? <path d="M8 11V7a4 4 0 0 1 7.83-1.26" /> : <path d="M8 11V7a4 4 0 0 1 8 0v4" />}
+    </svg>
+  );
+}
+
 interface WhiteboardElementViewProps {
   element: WhiteboardElement;
   selected: boolean;
   editing: boolean;
+  dragging: boolean;
   onPointerDown: (event: ReactPointerEvent, element: WhiteboardElement) => void;
   onStartResize: (event: ReactPointerEvent, element: WhiteboardElement) => void;
-  onOpenEdit: (id: string) => void;
+  onRequestEdit: (id: string) => void;
   onCloseEdit: () => void;
   onUpdate: (id: string, patch: WhiteboardPatch) => void;
   onDelete: (id: string) => void;
@@ -160,25 +179,14 @@ export function WhiteboardElementView({
   element,
   selected,
   editing,
+  dragging,
   onPointerDown,
   onStartResize,
-  onOpenEdit,
+  onRequestEdit,
   onCloseEdit,
   onUpdate,
   onDelete,
 }: WhiteboardElementViewProps) {
-  const downPosRef = useRef<{ x: number; y: number } | null>(null);
-
-  const handleClick = (event: ReactMouseEvent) => {
-    if (element.type !== 'link' || !element.url || editing) return;
-    const down = downPosRef.current;
-    downPosRef.current = null;
-    if (!down) return;
-    const moved = Math.hypot(event.clientX - down.x, event.clientY - down.y);
-    if (moved > 4) return;
-    window.open(element.url, '_blank', 'noopener,noreferrer');
-  };
-
   let body: ReactNode = null;
 
   if (element.type === 'note') {
@@ -279,18 +287,24 @@ export function WhiteboardElementView({
         top: element.y,
         width: element.width,
         height: element.height,
-        cursor: editing ? 'default' : 'grab',
+        cursor: editing ? 'default' : dragging ? 'grabbing' : element.locked ? 'default' : 'grab',
       }}
       onPointerDown={(e) => {
-        downPosRef.current = { x: e.clientX, y: e.clientY };
         if (!editing) onPointerDown(e, element);
       }}
       onDoubleClick={() => {
-        if (!editing) onOpenEdit(element.id);
+        if (!editing) onRequestEdit(element.id);
       }}
-      onClick={handleClick}
     >
       {body}
+      {element.locked && !editing && (
+        <div
+          className="pointer-events-none absolute -left-2 -top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-slate-200 shadow"
+          title="Fixiert – nicht verschiebbar"
+        >
+          <LockIcon open={false} />
+        </div>
+      )}
       {selected && !editing && (
         <>
           <button
@@ -305,14 +319,54 @@ export function WhiteboardElementView({
           >
             ×
           </button>
-          <div
-            title="Größe ändern"
-            onPointerDown={(e) => {
+          <button
+            type="button"
+            title="Bearbeiten"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
               e.stopPropagation();
-              onStartResize(e, element);
+              onRequestEdit(element.id);
             }}
-            className="absolute -bottom-1.5 -right-1.5 h-4 w-4 cursor-nwse-resize rounded-sm border-2 border-[var(--accent)] bg-[var(--panel)]"
-          />
+            className="absolute -right-3 top-5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)] text-slate-900 shadow hover:brightness-110"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width={12}
+              height={12}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            title={element.locked ? 'Lösen (wieder verschiebbar)' : 'Fixieren (nicht verschiebbar)'}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdate(element.id, { locked: !element.locked });
+            }}
+            className={`absolute -left-3 -top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full text-white shadow hover:brightness-110 ${
+              element.locked ? 'bg-[var(--warning)]' : 'bg-slate-600'
+            }`}
+          >
+            <LockIcon open={!element.locked} />
+          </button>
+          {!element.locked && (
+            <div
+              title="Größe ändern"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                onStartResize(e, element);
+              }}
+              className="absolute -bottom-1.5 -right-1.5 h-4 w-4 cursor-nwse-resize rounded-sm border-2 border-[var(--accent)] bg-[var(--panel)]"
+            />
+          )}
         </>
       )}
     </div>

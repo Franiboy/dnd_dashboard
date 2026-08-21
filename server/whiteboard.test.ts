@@ -120,6 +120,14 @@ describe('whiteboard element lifecycle', () => {
     expect(updated.x).toBe(42.7);
     expect(updated.height).toBe(60);
 
+    // Locking persists and round-trips through the list query.
+    const locked = updateElement(created.id, sanitizePatch({ locked: true }), alice);
+    expect(locked.locked).toBe(true);
+    const stored = listElementsForUser(alice).find((e) => e.id === created.id)!;
+    expect(stored.locked).toBe(true);
+    const unlocked = updateElement(created.id, sanitizePatch({ locked: false }), alice);
+    expect(unlocked.locked).toBe(false);
+
     removeElement(created.id, alice);
     expect(listElementsForUser(alice).find((e) => e.id === created.id)).toBeUndefined();
   });

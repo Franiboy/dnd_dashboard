@@ -43,6 +43,8 @@ type Gesture =
       isArrow: boolean;
       grabDX: number;
       grabDY: number;
+      downX: number;
+      downY: number;
       lastEmit: number;
     }
   | {
@@ -115,10 +117,21 @@ export function WhiteboardBoard({
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
   const gestureRef = useRef<Gesture | null>(null);
-  const activePointersRef = useRef(new Map<number, { x: number; y: number }>());
+  // Manual double-click tracking: element gestures deliberately avoid pointer
+  // capture because it retargets native click/dblclick events away from the
+  // element, so we detect two quick taps ourselves.
+  const lastTapRef = useRef<{ id: string; x: number; y: number; t: number } | null>(null);
   const [rectPreview, setRectPreview] = useState<RectPreview | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Drives cursor feedback: open hand on hover comes from the elements
+  // themselves; closed hand while panning or dragging an element.
+  const [cursorMode, setCursorMode] = useState<'idle' | 'panning' | 'dragging'>('idle');
+
+  // Window-level listeners keep drags alive outside the canvas bounds. They
+  // delegate to the freshest closures via refs to avoid stale state.
+  const windowMoveRef = useRef<((e: PointerEvent) => void) | null>(null);
+  const windowUpRef = useRef<((e: PointerEvent) => void) | null>(null);
 
   const elementsById = useMemo(() => new Map(elements.map((e) => [e.id, e])), [elements]);
 
@@ -234,6 +247,7 @@ export function WhiteboardBoard({
           url: null,
           fromId: fromHit?.id ?? null,
           toId: toHit?.id ?? null,
+          locked: false,
           createdAt: now,
           updatedAt: now,
         });
@@ -274,6 +288,7 @@ export function WhiteboardBoard({
         url: null,
         fromId: null,
         toId: null,
+        locked: false,
         createdAt: now,
         updatedAt: now,
       });
@@ -292,41 +307,20 @@ export function WhiteboardBoard({
     ]
   );
 
-  const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (editingId) return;
-    if (e.button !== 0 && e.button !== 1) return;
-    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    containerRef.current?.setPointerCapture(e.pointerId);
-    const { wx, wy } = screenToWorld(e.clientX, e.clientY);
-
-    if (tool === 'select') {
-      gestureRef.current = { kind: 'pan', lastX: e.clientX, lastY: e.clientY };
-      return;
-    }
-    const hit = findElementAt(wx, wy);
-    gestureRef.current = {
-      kind: 'create',
-      startWX: wx,
-      startWY: wy,
-      anchorFromId: tool === 'arrow' ? (hit?.id ?? null) : null,
-    };
-    setRectPreview({ x1: wx, y1: wy, x2: wx, y2: wy });
-  };
-
-  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const runGestureMove = (clientX: number, clientY: number) => {
     const g = gestureRef.current;
     if (!g) return;
 
     if (g.kind === 'pan') {
-      const dx = e.clientX - g.lastX;
-      const dy = e.clientY - g.lastY;
-      g.lastX = e.clientX;
-      g.lastY = e.clientY;
+      const dx = clientX - g.lastX;
+      const dy = clientY - g.lastY;
+      g.lastX = clientX;
+      g.lastY = clientY;
       setCamera((cam) => ({ ...cam, x: cam.x + dx, y: cam.y + dy }));
       return;
     }
 
-    const { wx, wy } = screenToWorld(e.clientX, e.clientY);
+    const { wx, wy } = screenToWorld(clientX, clientY);
 
     if (g.kind === 'create') {
       setRectPreview((prev) => (prev ? { ...prev, x2: wx, y2: wy } : prev));
@@ -379,14 +373,15 @@ export function WhiteboardBoard({
     }
   };
 
-  const finishGesture = (e: ReactPointerEvent<HTMLDivElement>) => {
-    activePointersRef.current.delete(e.pointerId);
+  const finishGestureCore = (clientX: number, clientY: number) => {
     const g = gestureRef.current;
     gestureRef.current = null;
+    unbindWindowGesture();
+    setCursorMode('idle');
     if (!g) return;
 
     if (g.kind === 'create') {
-      const { wx, wy } = screenToWorld(e.clientX, e.clientY);
+      const { wx, wy } = screenToWorld(clientX, clientY);
       finishCreate(g, wx, wy);
       setRectPreview(null);
       return;
@@ -398,6 +393,12 @@ export function WhiteboardBoard({
           updateElement(el.id, { x: el.x, y: el.y, x2: el.x2, y2: el.y2 });
         } else {
           updateElement(el.id, { x: el.x, y: el.y });
+          // A click without movement on a link card opens its URL. Handled
+          // here because element drags avoid pointer capture on purpose.
+          const moved = Math.hypot(clientX - g.downX, clientY - g.downY);
+          if (!g.isArrow && el.type === 'link' && el.url && moved < 5) {
+            window.open(el.url, '_blank', 'noopener,noreferrer');
+          }
         }
       }
       endLocalEdit(g.id);
@@ -410,10 +411,92 @@ export function WhiteboardBoard({
     }
   };
 
+  // Latest-closure refs so window listeners never work with stale state.
+  const latestMoveRef = useRef(runGestureMove);
+  latestMoveRef.current = runGestureMove;
+  const latestFinishRef = useRef(finishGestureCore);
+  latestFinishRef.current = finishGestureCore;
+
+  function bindWindowGesture() {
+    if (windowMoveRef.current) return;
+    const move = (e: PointerEvent) => latestMoveRef.current(e.clientX, e.clientY);
+    const up = (e: PointerEvent) => latestFinishRef.current(e.clientX, e.clientY);
+    windowMoveRef.current = move;
+    windowUpRef.current = up;
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  }
+
+  function unbindWindowGesture() {
+    const move = windowMoveRef.current;
+    const up = windowUpRef.current;
+    if (!move || !up) return;
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    windowMoveRef.current = null;
+    windowUpRef.current = null;
+  }
+
+  const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (editingId) return;
+    if (e.button !== 0 && e.button !== 1) return;
+    const { wx, wy } = screenToWorld(e.clientX, e.clientY);
+
+    if (tool === 'select') {
+      // Pressing empty canvas drops the current selection and pans.
+      setSelectedId(null);
+      gestureRef.current = { kind: 'pan', lastX: e.clientX, lastY: e.clientY };
+      bindWindowGesture();
+      setCursorMode('panning');
+      return;
+    }
+    const hit = findElementAt(wx, wy);
+    gestureRef.current = {
+      kind: 'create',
+      startWX: wx,
+      startWY: wy,
+      anchorFromId: tool === 'arrow' ? (hit?.id ?? null) : null,
+    };
+    setRectPreview({ x1: wx, y1: wy, x2: wx, y2: wy });
+    bindWindowGesture();
+  };
+
+  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    runGestureMove(e.clientX, e.clientY);
+  };
+
+  const finishGesture = (e: ReactPointerEvent<HTMLDivElement>) => {
+    finishGestureCore(e.clientX, e.clientY);
+  };
+
   const startElementDrag = (event: ReactPointerEvent, element: WhiteboardElement) => {
     event.stopPropagation();
+    setSelectedId(element.id);
     if (!canEdit(element)) return;
-    containerRef.current?.setPointerCapture(event.pointerId);
+
+    const now = performance.now();
+    const last = lastTapRef.current;
+    lastTapRef.current = { id: element.id, x: event.clientX, y: event.clientY, t: now };
+    if (
+      last &&
+      last.id === element.id &&
+      now - last.t < 600 &&
+      Math.hypot(event.clientX - last.x, event.clientY - last.y) < 8
+    ) {
+      lastTapRef.current = null;
+      openEdit(element.id);
+      return;
+    }
+
+    // Locked elements stay selectable and editable but cannot be moved.
+    if (element.locked) return;
+
+    // No pointer capture here: it would retarget the second click of a
+    // double-click away from the element. Window listeners keep drags alive.
+    bindWindowGesture();
+    setCursorMode('dragging');
     const { wx, wy } = screenToWorld(event.clientX, event.clientY);
     gestureRef.current = {
       kind: 'move',
@@ -421,16 +504,18 @@ export function WhiteboardBoard({
       isArrow: false,
       grabDX: wx - element.x,
       grabDY: wy - element.y,
+      downX: event.clientX,
+      downY: event.clientY,
       lastEmit: performance.now(),
     };
     beginLocalEdit(element.id);
-    setSelectedId(element.id);
   };
 
   const startElementResize = (event: ReactPointerEvent, element: WhiteboardElement) => {
     event.stopPropagation();
-    if (!canEdit(element)) return;
-    containerRef.current?.setPointerCapture(event.pointerId);
+    if (!canEdit(element) || element.locked) return;
+    bindWindowGesture();
+    setCursorMode('dragging');
     gestureRef.current = {
       kind: 'resize',
       id: element.id,
@@ -445,7 +530,8 @@ export function WhiteboardBoard({
   const startArrowDrag = (event: ReactPointerEvent, element: WhiteboardElement) => {
     event.stopPropagation();
     if (!canEdit(element)) return;
-    containerRef.current?.setPointerCapture(event.pointerId);
+    bindWindowGesture();
+    setCursorMode('dragging');
     const { wx, wy } = screenToWorld(event.clientX, event.clientY);
     gestureRef.current = {
       kind: 'move',
@@ -453,6 +539,8 @@ export function WhiteboardBoard({
       isArrow: true,
       grabDX: wx - element.x,
       grabDY: wy - element.y,
+      downX: event.clientX,
+      downY: event.clientY,
       lastEmit: performance.now(),
     };
     beginLocalEdit(element.id);
@@ -483,10 +571,10 @@ export function WhiteboardBoard({
   return (
     <div
       ref={containerRef}
-      className="relative flex-1 overflow-hidden"
+      className="absolute inset-0 overflow-hidden"
       style={{
         touchAction: 'none',
-        cursor: tool === 'select' ? 'default' : 'crosshair',
+        cursor: tool !== 'select' ? 'crosshair' : cursorMode === 'idle' ? 'default' : 'grabbing',
         backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.22) 1px, transparent 1px)',
         backgroundSize: `${28 * camera.scale}px ${28 * camera.scale}px`,
         backgroundPosition: `${camera.x}px ${camera.y}px`,
@@ -555,7 +643,10 @@ export function WhiteboardBoard({
                   y2={end.y}
                   stroke="transparent"
                   strokeWidth={18}
-                  style={{ pointerEvents: 'stroke', cursor: 'grab' }}
+                  style={{
+                    pointerEvents: 'stroke',
+                    cursor: selected && cursorMode === 'dragging' ? 'grabbing' : 'grab',
+                  }}
                   onPointerDown={(e) => startArrowDrag(e, arrow)}
                 />
               </g>
@@ -609,9 +700,10 @@ export function WhiteboardBoard({
               element={element}
               selected={selectedId === element.id && !editingId}
               editing={editingId === element.id}
+              dragging={cursorMode === 'dragging'}
               onPointerDown={startElementDrag}
               onStartResize={startElementResize}
-              onOpenEdit={(id) => {
+              onRequestEdit={(id) => {
                 setSelectedId(id);
                 openEdit(id);
               }}

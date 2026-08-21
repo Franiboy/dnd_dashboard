@@ -398,6 +398,7 @@ export const schema: Record<string, TableDef> = {
       url: { type: 'TEXT' },
       from_id: { type: 'TEXT' },
       to_id: { type: 'TEXT' },
+      locked: { type: 'INTEGER', notNull: true, default: '0' },
       created_at: { type: 'TEXT', notNull: true },
       updated_at: { type: 'TEXT', notNull: true },
     },
