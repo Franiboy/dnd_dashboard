@@ -7,6 +7,7 @@
 // never inject unexpected fields or values.
 
 import { randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
 import type { Server, Socket } from 'socket.io';
 import type {
   ClientToServerEvents,
@@ -19,13 +20,27 @@ import type {
   WhiteboardZone,
 } from '../shared/types.js';
 import { db } from './database.js';
+import { getEnv } from './env.js';
 
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
+
+/** Directory where pasted/uploaded board images are stored. */
+export function getWhiteboardUploadDir(): string {
+  return getEnv().WHITEBOARD_UPLOAD_DIR;
+}
+
+export function ensureWhiteboardUploadDir(): string {
+  const dir = getWhiteboardUploadDir();
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
 
 const ELEMENT_TYPES: readonly WhiteboardElementType[] = ['note', 'task', 'arrow', 'link'];
 const TASK_STATUSES: readonly WhiteboardTaskStatus[] = ['open', 'in_progress', 'done'];
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 const HTTP_URL_RE = /^https?:\/\/\S+$/i;
+// Internal upload targets served by the authenticated static route.
+const UPLOAD_URL_RE = /^\/uploads\/whiteboard\/[A-Za-z0-9._-]+$/;
 
 const MAX_TEXT = 500;
 const MAX_DESCRIPTION = 2000;
@@ -130,7 +145,9 @@ function asUrl(value: unknown): string | null | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim().slice(0, MAX_URL);
   if (!trimmed) return null;
-  if (!HTTP_URL_RE.test(trimmed)) throw new WhiteboardError('Links müssen mit http(s) beginnen.');
+  if (!HTTP_URL_RE.test(trimmed) && !UPLOAD_URL_RE.test(trimmed)) {
+    throw new WhiteboardError('Links müssen mit http(s) beginnen.');
+  }
   return trimmed;
 }
 

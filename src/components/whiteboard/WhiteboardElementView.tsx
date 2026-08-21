@@ -1,4 +1,4 @@
-import {
+﻿import {
   useEffect,
   useRef,
   useState,
@@ -7,16 +7,28 @@ import {
   type RefObject,
 } from 'react';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
-import { TASK_STATUS_META, nextTaskStatus } from './whiteboardShared';
+import { TASK_STATUS_META, isBoardImageUrl, nextTaskStatus } from './whiteboardShared';
 
-const IMAGE_URL_RE = /\.(png|jpe?g|gif|webp|avif|svg)(\?.*)?$/i;
+/**
+ * Content is laid out in this fixed design width per element type and then
+ * scaled by element.width / designWidth. Text, icons and paddings therefore
+ * grow/shrink with the element while staying vector-crisp.
+ */
+const DESIGN_WIDTHS: Record<string, number> = {
+  note: 220,
+  task: 280,
+  link: 260,
+};
 
-function LockIcon({ open }: { open: boolean }) {
+const MIN_CONTENT_SCALE = 0.15;
+const MAX_CONTENT_SCALE = 12;
+
+function LockIcon({ open, size = 12 }: { open: boolean; size?: number }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width={12}
-      height={12}
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -35,12 +47,15 @@ interface WhiteboardElementViewProps {
   selected: boolean;
   editing: boolean;
   dragging: boolean;
+  cropping: boolean;
   onPointerDown: (event: ReactPointerEvent, element: WhiteboardElement) => void;
   onStartResize: (event: ReactPointerEvent, element: WhiteboardElement) => void;
   onRequestEdit: (id: string) => void;
   onCloseEdit: () => void;
   onUpdate: (id: string, patch: WhiteboardPatch) => void;
   onDelete: (id: string) => void;
+  onCropApply: (crop: { x: number; y: number; w: number; h: number }) => void;
+  onCropCancel: () => void;
 }
 
 interface NoteDraftProps {
@@ -110,7 +125,7 @@ function NoteEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
         }
       }}
       className="h-full w-full resize-none rounded-md border border-slate-900/20 bg-white/40 p-1 text-slate-900 outline-none"
-      placeholder="Notiz schreiben…"
+      placeholder="Notiz schreibenâ€¦"
     />
   );
 }
@@ -145,7 +160,7 @@ function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           }
         }}
         className="w-full rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-sm font-semibold text-[var(--text-h)] outline-none"
-        placeholder="Aufgabe…"
+        placeholder="Aufgabeâ€¦"
       />
       <textarea
         value={description}
@@ -161,7 +176,7 @@ function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           }
         }}
         className="min-h-0 flex-1 resize-none rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-xs text-[var(--text)] outline-none"
-        placeholder="Beschreibung (optional)…"
+        placeholder="Beschreibung (optional)â€¦"
       />
     </div>
   );
@@ -195,7 +210,7 @@ function LinkEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           }
         }}
         className="w-full rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-xs text-[var(--text-h)] outline-none"
-        placeholder="https://…"
+        placeholder="https://â€¦"
       />
       <input
         value={label}
@@ -222,13 +237,22 @@ export function WhiteboardElementView({
   selected,
   editing,
   dragging,
+  cropping,
   onPointerDown,
   onStartResize,
   onRequestEdit,
   onCloseEdit,
   onUpdate,
   onDelete,
+  onCropApply,
+  onCropCancel,
 }: WhiteboardElementViewProps) {
+  const isImageLink = element.type === 'link' && isBoardImageUrl(element.url ?? '');
+  const designWidth = DESIGN_WIDTHS[element.type] ?? element.width;
+  const contentScale = Math.min(
+    MAX_CONTENT_SCALE,
+    Math.max(MIN_CONTENT_SCALE, element.width / designWidth)
+  );
   let body: ReactNode = null;
 
   if (element.type === 'note') {
@@ -259,7 +283,7 @@ export function WhiteboardElementView({
         ) : (
           <>
             <div className="break-words text-sm font-semibold leading-tight text-[var(--text-h)]">
-              {element.text || <span className="italic opacity-50">Doppelklick für Aufgabe</span>}
+              {element.text || <span className="italic opacity-50">Doppelklick fÃ¼r Aufgabe</span>}
             </div>
             {element.description && (
               <div className="line-clamp-3 whitespace-pre-wrap break-words text-xs text-[var(--text)]">
@@ -274,7 +298,7 @@ export function WhiteboardElementView({
                 onUpdate(element.id, { status: nextTaskStatus(status) });
               }}
               className={`mt-auto self-start rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.className}`}
-              title="Status ändern"
+              title="Status Ã¤ndern"
             >
               {meta.label}
             </button>
@@ -283,7 +307,7 @@ export function WhiteboardElementView({
       </div>
     );
   } else if (element.type === 'link') {
-    const isImage = element.url ? IMAGE_URL_RE.test(element.url) : false;
+    const isImage = element.url ? isBoardImageUrl(element.url) : false;
     body = (
       <div className="group relative h-full w-full overflow-hidden rounded-lg border-2 border-[var(--border)] bg-[var(--panel)] shadow">
         {editing ? (
@@ -291,19 +315,12 @@ export function WhiteboardElementView({
             <LinkEditor element={element} onUpdate={onUpdate} onCloseEdit={onCloseEdit} />
           </div>
         ) : isImage && element.url ? (
-          <>
-            <img
-              src={element.url}
-              alt={element.text || 'Vorschau'}
-              draggable={false}
-              className="pointer-events-none h-full w-full object-cover"
-            />
-            {element.text && (
-              <div className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-2 py-0.5 text-xs text-white">
-                {element.text}
-              </div>
-            )}
-          </>
+          <img
+            src={element.url}
+            alt={element.text || 'Vorschau'}
+            draggable={false}
+            className="pointer-events-none h-full w-full object-cover"
+          />
         ) : (
           <div className="flex h-full w-full flex-col justify-center gap-0.5 p-2">
             <div className="truncate text-sm font-medium text-[var(--accent)]">
@@ -338,31 +355,56 @@ export function WhiteboardElementView({
         if (!editing) onRequestEdit(element.id);
       }}
     >
-      {body}
-      {element.locked && !editing && (
+      {/* Content layer: fixed design width scaled to the element box so text
+          and icons always match the element size. */}
+      <div className="absolute inset-0 overflow-hidden rounded-lg">
         <div
-          className="pointer-events-none absolute -left-2 -top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-slate-200 shadow"
-          title="Fixiert – nicht verschiebbar"
+          className="absolute left-0 top-0 origin-top-left"
+          style={{
+            width: designWidth,
+            height: element.height / contentScale,
+            transform: `scale(${contentScale})`,
+          }}
         >
-          <LockIcon open={false} />
+          {body}
+        </div>
+      </div>
+      {element.locked && !editing && !cropping && (
+        <div
+          className="pointer-events-none absolute z-10 flex items-center justify-center rounded-full bg-slate-700 text-slate-200 shadow"
+          style={{
+            left: -8 * contentScale,
+            top: -8 * contentScale,
+            width: 20 * contentScale,
+            height: 20 * contentScale,
+          }}
+          title="Fixiert â€“ nicht verschiebbar"
+        >
+          <LockIcon open={false} size={Math.max(10, 11 * contentScale)} />
         </div>
       )}
-      {selected && !editing && (
+      {selected && !editing && !cropping && (
         <>
           <button
             type="button"
-            title="Löschen"
+            title="LÃ¶schen"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onDelete(element.id);
             }}
-            className="absolute -right-3 -top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--danger)] p-0 text-white shadow hover:brightness-110"
+            className="absolute z-10 flex items-center justify-center rounded-full bg-[var(--danger)] p-0 text-white shadow hover:brightness-110"
+            style={{
+              width: 24 * contentScale,
+              height: 24 * contentScale,
+              right: -12 * contentScale,
+              top: -12 * contentScale,
+            }}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width={12}
-              height={12}
+              width={12 * contentScale}
+              height={12 * contentScale}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -375,13 +417,279 @@ export function WhiteboardElementView({
           </button>
           <button
             type="button"
-            title="Bearbeiten"
+            title={isImageLink ? 'Zuschneiden' : 'Bearbeiten'}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onRequestEdit(element.id);
             }}
-            className="absolute -right-3 top-5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)] text-slate-900 shadow hover:brightness-110"
+            className="absolute z-10 flex items-center justify-center rounded-full bg-[var(--accent)] text-slate-900 shadow hover:brightness-110"
+            style={{
+              width: 24 * contentScale,
+              height: 24 * contentScale,
+              right: -12 * contentScale,
+              top: 28 * contentScale,
+            }}
+          >
+            {isImageLink ? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width={12 * contentScale}
+                height={12 * contentScale}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+                <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+              </svg>
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width={12 * contentScale}
+                height={12 * contentScale}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            title={
+              element.locked ? 'LÃ¶sen (wieder verschiebbar)' : 'Fixieren (nicht verschiebbar)'
+            }
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdate(element.id, { locked: !element.locked });
+            }}
+            className={`absolute z-10 flex items-center justify-center rounded-full text-white shadow hover:brightness-110 ${
+              element.locked ? 'bg-[var(--warning)]' : 'bg-slate-600'
+            }`}
+            style={{
+              width: 24 * contentScale,
+              height: 24 * contentScale,
+              left: -12 * contentScale,
+              top: -12 * contentScale,
+            }}
+          >
+            <LockIcon open={!element.locked} size={12 * contentScale} />
+          </button>
+          {!element.locked && (
+            <div
+              title="GrÃ¶ÃŸe Ã¤ndern"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                onStartResize(e, element);
+              }}
+              className="absolute cursor-nwse-resize rounded-sm border-[var(--accent)] bg-[var(--panel)]"
+              style={{
+                width: 16 * contentScale,
+                height: 16 * contentScale,
+                right: -8 * contentScale,
+                bottom: -8 * contentScale,
+                borderWidth: Math.max(1.5, 2 * contentScale),
+              }}
+            />
+          )}
+        </>
+      )}
+      {cropping && <CropOverlay onApply={onCropApply} onCancel={onCropCancel} />}
+    </div>
+  );
+}
+
+interface CropRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const CROP_MIN = 0.08;
+
+function clampCrop(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function CropOverlay({
+  onApply,
+  onCancel,
+}: {
+  onApply: (crop: CropRect) => void;
+  onCancel: () => void;
+}) {
+  const [rect, setRect] = useState<CropRect>({ x: 0, y: 0, w: 1, h: 1 });
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  const toPercent = (clientX: number, clientY: number) => {
+    const bounds = rootRef.current!.getBoundingClientRect();
+    return {
+      px: clampCrop((clientX - bounds.left) / bounds.width, 0, 1),
+      py: clampCrop((clientY - bounds.top) / bounds.height, 0, 1),
+    };
+  };
+
+  const beginDrag = (mode: 'move' | 'nw' | 'ne' | 'sw' | 'se', e: ReactPointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const start = toPercent(e.clientX, e.clientY);
+    const base = { ...rect };
+    const move = (ev: PointerEvent) => {
+      const p = toPercent(ev.clientX, ev.clientY);
+      setRect((prev) => {
+        if (mode === 'move') {
+          return {
+            ...prev,
+            x: clampCrop(base.x + (p.px - start.px), 0, 1 - base.w),
+            y: clampCrop(base.y + (p.py - start.py), 0, 1 - base.h),
+          };
+        }
+        let { x, y, w, h } = base;
+        if (mode === 'se') {
+          w = clampCrop(p.px - x, CROP_MIN, 1 - x);
+          h = clampCrop(p.py - y, CROP_MIN, 1 - y);
+        } else if (mode === 'nw') {
+          const rightEdge = x + w;
+          const bottomEdge = y + h;
+          x = clampCrop(p.px, 0, rightEdge - CROP_MIN);
+          w = rightEdge - x;
+          y = clampCrop(p.py, 0, bottomEdge - CROP_MIN);
+          h = bottomEdge - y;
+        } else if (mode === 'ne') {
+          const bottomEdge = y + h;
+          w = clampCrop(p.px - x, CROP_MIN, 1 - x);
+          y = clampCrop(p.py, 0, bottomEdge - CROP_MIN);
+          h = bottomEdge - y;
+        } else {
+          const rightEdge = x + w;
+          x = clampCrop(p.px, 0, rightEdge - CROP_MIN);
+          w = rightEdge - x;
+          h = clampCrop(p.py - y, CROP_MIN, 1 - y);
+        }
+        return { x, y, w, h };
+      });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const handleStyle = (mode: string) => ({
+    position: 'absolute' as const,
+    width: 14,
+    height: 14,
+    cursor: `${mode}-resize`,
+  });
+
+  return (
+    <>
+      <div className="pointer-events-none absolute inset-0 z-20">
+        <div
+          className="absolute bg-black/55"
+          style={{ left: 0, top: 0, width: '100%', height: `${rect.y * 100}%` }}
+        />
+        <div
+          className="absolute bg-black/55"
+          style={{ left: 0, bottom: 0, width: '100%', height: `${(1 - rect.y - rect.h) * 100}%` }}
+        />
+        <div
+          className="absolute bg-black/55"
+          style={{
+            left: 0,
+            top: `${rect.y * 100}%`,
+            width: `${rect.x * 100}%`,
+            height: `${rect.h * 100}%`,
+          }}
+        />
+        <div
+          className="absolute bg-black/55"
+          style={{
+            right: 0,
+            top: `${rect.y * 100}%`,
+            width: `${(1 - rect.x - rect.w) * 100}%`,
+            height: `${rect.h * 100}%`,
+          }}
+        />
+      </div>
+      <div ref={rootRef} className="absolute inset-0 z-30">
+        <div
+          className="absolute cursor-move border-2 border-[var(--accent)] shadow-[0_0_0_9999px_rgba(0,0,0,0)]"
+          style={{
+            left: `${rect.x * 100}%`,
+            top: `${rect.y * 100}%`,
+            width: `${rect.w * 100}%`,
+            height: `${rect.h * 100}%`,
+          }}
+          onPointerDown={(e) => beginDrag('move', e)}
+        >
+          <div
+            className="absolute -left-1.5 -top-1.5 h-3.5 w-3.5 rounded-full border-2 border-[var(--panel)] bg-[var(--accent)] cursor-nwse-resize"
+            style={handleStyle('nw')}
+            onPointerDown={(e) => beginDrag('nw', e)}
+          />
+          <div
+            className="absolute -right-1.5 -top-1.5 h-3.5 w-3.5 rounded-full border-2 border-[var(--panel)] bg-[var(--accent)] cursor-nesw-resize"
+            style={handleStyle('ne')}
+            onPointerDown={(e) => beginDrag('ne', e)}
+          />
+          <div
+            className="absolute -bottom-1.5 -left-1.5 h-3.5 w-3.5 rounded-full border-2 border-[var(--panel)] bg-[var(--accent)] cursor-nesw-resize"
+            style={handleStyle('sw')}
+            onPointerDown={(e) => beginDrag('sw', e)}
+          />
+          <div
+            className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-full border-2 border-[var(--panel)] bg-[var(--accent)] cursor-nwse-resize"
+            style={handleStyle('se')}
+            onPointerDown={(e) => beginDrag('se', e)}
+          />
+        </div>
+        <div className="absolute flex gap-2" style={{ left: 8, top: 'calc(100% + 10px)' }}>
+          <button
+            type="button"
+            title="Zuschneiden Ã¼bernehmen"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onApply(rect);
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-slate-900 shadow hover:brightness-110"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width={14}
+              height={14}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            title="Abbrechen"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCancel();
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-600 text-white shadow hover:brightness-110"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -390,39 +698,15 @@ export function WhiteboardElementView({
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth={2.5}
+              strokeWidth={3}
               strokeLinecap="round"
-              strokeLinejoin="round"
             >
-              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
-          <button
-            type="button"
-            title={element.locked ? 'Lösen (wieder verschiebbar)' : 'Fixieren (nicht verschiebbar)'}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onUpdate(element.id, { locked: !element.locked });
-            }}
-            className={`absolute -left-3 -top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full text-white shadow hover:brightness-110 ${
-              element.locked ? 'bg-[var(--warning)]' : 'bg-slate-600'
-            }`}
-          >
-            <LockIcon open={!element.locked} />
-          </button>
-          {!element.locked && (
-            <div
-              title="Größe ändern"
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                onStartResize(e, element);
-              }}
-              className="absolute -bottom-1.5 -right-1.5 h-4 w-4 cursor-nwse-resize rounded-sm border-2 border-[var(--accent)] bg-[var(--panel)]"
-            />
-          )}
-        </>
-      )}
-    </div>
+        </div>
+      </div>
+    </>
   );
 }

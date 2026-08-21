@@ -9,7 +9,15 @@ import {
 import { WHITEBOARD_DIVIDER_Y } from '../../../shared/types';
 import type { SafeUser, WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { WhiteboardElementView } from './WhiteboardElementView';
-import { ARROW_COLOR, type WhiteboardTool } from './whiteboardShared';
+import { ARROW_COLOR, isBoardImageUrl, type WhiteboardTool } from './whiteboardShared';
+import {
+  isUploadableImage,
+  loadImageElement,
+  probeImageSize,
+  stripImageExtension,
+  uploadWhiteboardImage,
+} from './imageUpload';
+import { useError } from '../../hooks/useError';
 
 const MIN_SCALE = 0.02;
 const MAX_SCALE = 20;
@@ -50,6 +58,8 @@ type Gesture =
   | {
       kind: 'resize';
       id: string;
+      /** When set, height follows width to keep the image aspect ratio. */
+      ratio: number | null;
       startW: number;
       startH: number;
       lastEmit: number;
@@ -113,6 +123,7 @@ export function WhiteboardBoard({
   endLocalEdit,
 }: WhiteboardBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { showError } = useError();
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
@@ -124,9 +135,12 @@ export function WhiteboardBoard({
   const [rectPreview, setRectPreview] = useState<RectPreview | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [croppingId, setCroppingId] = useState<string | null>(null);
   // Drives cursor feedback: open hand on hover comes from the elements
   // themselves; closed hand while panning or dragging an element.
   const [cursorMode, setCursorMode] = useState<'idle' | 'panning' | 'dragging'>('idle');
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const lastMouseRef = useRef<{ x: number; y: number } | null>(null);
 
   // Window-level listeners keep drags alive outside the canvas bounds. They
   // delegate to the freshest closures via refs to avoid stale state.
@@ -364,7 +378,7 @@ export function WhiteboardBoard({
       const el = elementsById.get(g.id);
       if (!el) return;
       const nw = Math.max(80, wx - el.x);
-      const nh = Math.max(60, wy - el.y);
+      const nh = g.ratio ? Math.max(60, nw / g.ratio) : Math.max(60, wy - el.y);
       applyPatchLocal(g.id, { width: nw, height: nh });
       if (performance.now() - g.lastEmit > EMIT_INTERVAL_MS) {
         g.lastEmit = performance.now();
@@ -393,10 +407,11 @@ export function WhiteboardBoard({
           updateElement(el.id, { x: el.x, y: el.y, x2: el.x2, y2: el.y2 });
         } else {
           updateElement(el.id, { x: el.x, y: el.y });
-          // A click without movement on a link card opens its URL. Handled
-          // here because element drags avoid pointer capture on purpose.
+          // A click without movement on a link card opens its URL. Image
+          // elements (screenshots) stay on the board instead. Handled here
+          // because element drags avoid pointer capture on purpose.
           const moved = Math.hypot(clientX - g.downX, clientY - g.downY);
-          if (!g.isArrow && el.type === 'link' && el.url && moved < 5) {
+          if (!g.isArrow && el.type === 'link' && el.url && !isBoardImageUrl(el.url) && moved < 5) {
             window.open(el.url, '_blank', 'noopener,noreferrer');
           }
         }
@@ -439,8 +454,86 @@ export function WhiteboardBoard({
     windowUpRef.current = null;
   }
 
+  const addImageFile = useCallback(
+    async (file: File, worldPoint: { x: number; y: number }) => {
+      if (!isUploadableImage(file)) {
+        showError('Nur PNG, JPEG, GIF oder WebP bis 8 MB.');
+        return;
+      }
+      setUploadingCount((n) => n + 1);
+      try {
+        const url = await uploadWhiteboardImage(file);
+        const dims = await probeImageSize(url);
+        const targetWidth = 360;
+        const width = dims ? Math.round(targetWidth) : DEFAULT_SIZES.link.width;
+        const height = dims
+          ? Math.round((dims.h / dims.w) * targetWidth)
+          : DEFAULT_SIZES.link.height;
+        const now = new Date().toISOString();
+        const id = crypto.randomUUID();
+        createElement({
+          id,
+          type: 'link',
+          zone: zoneForWorldY(worldPoint.y),
+          ownerId: user.id,
+          ownerName: user.displayName,
+          x: Math.round(worldPoint.x - width / 2),
+          y: Math.round(worldPoint.y - height / 2),
+          x2: null,
+          y2: null,
+          width,
+          height,
+          color: '#60a5fa',
+          text: stripImageExtension(file.name || 'Screenshot'),
+          description: null,
+          status: null,
+          url,
+          fromId: null,
+          toId: null,
+          locked: false,
+          createdAt: now,
+          updatedAt: now,
+        });
+        setSelectedId(id);
+      } catch (err) {
+        showError(err instanceof Error ? err.message : 'Upload fehlgeschlagen.');
+      } finally {
+        setUploadingCount((n) => n - 1);
+      }
+    },
+    [user.id, user.displayName, createElement, showError]
+  );
+
+  // Ctrl+V pastes screenshots/images from the clipboard onto the board.
+  useEffect(() => {
+    const onPaste = async (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      const files = Array.from(e.clipboardData?.files ?? []).filter(isUploadableImage);
+      if (files.length === 0) return;
+      e.preventDefault();
+      const el = containerRef.current;
+      const fallback = el
+        ? { x: el.clientWidth / 2, y: el.clientHeight / 3 }
+        : { x: 0, y: WHITEBOARD_DIVIDER_Y - 200 };
+      for (const file of files) {
+        const at = lastMouseRef.current
+          ? screenToWorld(lastMouseRef.current.x, lastMouseRef.current.y)
+          : screenToWorld(fallback.x, fallback.y);
+        await addImageFile(file, { x: at.wx, y: at.wy });
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [addImageFile, screenToWorld]);
+
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (editingId) return;
+    if (croppingId) {
+      // Clicking outside the crop frame cancels cropping.
+      setCroppingId(null);
+      return;
+    }
     if (e.button !== 0 && e.button !== 1) return;
     const { wx, wy } = screenToWorld(e.clientX, e.clientY);
 
@@ -464,6 +557,7 @@ export function WhiteboardBoard({
   };
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    lastMouseRef.current = { x: e.clientX, y: e.clientY };
     runGestureMove(e.clientX, e.clientY);
   };
 
@@ -473,6 +567,7 @@ export function WhiteboardBoard({
 
   const startElementDrag = (event: ReactPointerEvent, element: WhiteboardElement) => {
     event.stopPropagation();
+    if (croppingId) return;
     setSelectedId(element.id);
     if (!canEdit(element)) return;
 
@@ -524,12 +619,15 @@ export function WhiteboardBoard({
     gestureRef.current = {
       kind: 'resize',
       id: element.id,
+      // Images keep their aspect ratio while scaling.
+      ratio: isBoardImageUrl(element.url ?? '')
+        ? element.width / Math.max(1, element.height)
+        : null,
       startW: element.width,
       startH: element.height,
       lastEmit: performance.now(),
     };
     beginLocalEdit(element.id);
-    setSelectedId(element.id);
   };
 
   const startArrowDrag = (event: ReactPointerEvent, element: WhiteboardElement) => {
@@ -552,17 +650,78 @@ export function WhiteboardBoard({
     setSelectedId(element.id);
   };
 
-  const openEdit = (id: string) => {
-    const element = elementsById.get(id);
-    if (!element || !canEdit(element)) return;
-    setEditingId(id);
-    beginLocalEdit(id);
-  };
+  const openEdit = useCallback(
+    (id: string) => {
+      const element = elementsById.get(id);
+      if (!element || !canEdit(element)) return;
+      setEditingId(id);
+      beginLocalEdit(id);
+    },
+    [elementsById, canEdit, beginLocalEdit]
+  );
 
-  const closeEdit = () => {
-    if (editingId) endLocalEdit(editingId);
-    setEditingId(null);
-  };
+  const closeEdit = useCallback(() => {
+    setEditingId((current) => {
+      if (current) endLocalEdit(current);
+      return null;
+    });
+  }, [endLocalEdit]);
+
+  const requestElementInteraction = useCallback(
+    (id: string) => {
+      const element = elementsById.get(id);
+      if (!element || !canEdit(element)) return;
+      // Images get a crop tool instead of a text editor.
+      if (element.type === 'link' && isBoardImageUrl(element.url ?? '')) {
+        setSelectedId(id);
+        setCroppingId(id);
+        return;
+      }
+      setSelectedId(id);
+      openEdit(id);
+    },
+    [elementsById, canEdit, openEdit]
+  );
+
+  const handleCropApply = useCallback(
+    async (id: string, crop: { x: number; y: number; w: number; h: number }) => {
+      const element = elementsById.get(id);
+      if (!element?.url) return;
+      setUploadingCount((n) => n + 1);
+      try {
+        const img = await loadImageElement(element.url);
+        if (!img) throw new Error('Bild konnte nicht geladen werden.');
+        const sw = Math.max(1, Math.round(crop.w * img.naturalWidth));
+        const sh = Math.max(1, Math.round(crop.h * img.naturalHeight));
+        const sx = Math.round(crop.x * img.naturalWidth);
+        const sy = Math.round(crop.y * img.naturalHeight);
+        const canvas = document.createElement('canvas');
+        canvas.width = sw;
+        canvas.height = sh;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Zuschneiden nicht unterstÃ¼tzt.');
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, 'image/png')
+        );
+        if (!blob) throw new Error('Zuschneiden fehlgeschlagen.');
+        const url = await uploadWhiteboardImage(
+          new File([blob], 'crop.png', { type: 'image/png' })
+        );
+        updateElement(id, {
+          url,
+          width: Math.max(80, Math.round(crop.w * element.width)),
+          height: Math.max(60, Math.round(crop.h * element.height)),
+        });
+      } catch (err) {
+        showError(err instanceof Error ? err.message : 'Zuschneiden fehlgeschlagen.');
+      } finally {
+        setUploadingCount((n) => n - 1);
+        setCroppingId(null);
+      }
+    },
+    [elementsById, updateElement, showError]
+  );
 
   const dividerScreenY = camera.y + WHITEBOARD_DIVIDER_Y * camera.scale;
   const centerWorldY =
@@ -589,6 +748,15 @@ export function WhiteboardBoard({
       onPointerUp={finishGesture}
       onPointerCancel={finishGesture}
       onContextMenu={(e) => e.preventDefault()}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        const files = Array.from(e.dataTransfer?.files ?? []).filter(isUploadableImage);
+        for (const file of files) {
+          const at = screenToWorld(e.clientX, e.clientY);
+          void addImageFile(file, { x: at.wx, y: at.wy });
+        }
+      }}
     >
       <div
         className="absolute left-0 top-0 h-0 w-0 will-change-transform"
@@ -706,13 +874,15 @@ export function WhiteboardBoard({
               selected={selectedId === element.id && !editingId}
               editing={editingId === element.id}
               dragging={cursorMode === 'dragging'}
+              cropping={croppingId === element.id}
               onPointerDown={startElementDrag}
               onStartResize={startElementResize}
-              onRequestEdit={(id) => {
-                setSelectedId(id);
-                openEdit(id);
-              }}
+              onRequestEdit={requestElementInteraction}
               onCloseEdit={closeEdit}
+              onCropApply={(crop) => {
+                if (croppingId) void handleCropApply(croppingId, crop);
+              }}
+              onCropCancel={() => setCroppingId(null)}
               onUpdate={(id, patch) => updateElement(id, patch)}
               onDelete={(id) => {
                 removeElement(id);
@@ -730,19 +900,19 @@ export function WhiteboardBoard({
           className="absolute right-3 -translate-y-full rounded-md bg-[var(--panel)]/90 px-2 py-0.5 text-xs font-semibold text-[var(--accent)] shadow"
           style={{ top: '-2px' }}
         >
-          Öffentlich – alle sehen & bearbeiten
+          Ã–ffentlich â€“ alle sehen & bearbeiten
         </span>
         <span
           className="absolute right-3 rounded-md bg-[var(--panel)]/90 px-2 py-0.5 text-xs font-medium text-slate-300 shadow"
           style={{ top: '6px' }}
         >
-          Privat – nur deine Elemente ({user.displayName})
+          Privat â€“ nur deine Elemente ({user.displayName})
         </span>
       </div>
 
       <div className="absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-[var(--border)] bg-[var(--panel)]/95 px-4 py-1 text-xs font-medium shadow backdrop-blur">
         {centerZone === 'public'
-          ? 'Neue Elemente hier sind Öffentlich'
+          ? 'Neue Elemente hier sind Ã–ffentlich'
           : 'Neue Elemente hier sind Privat'}
       </div>
 
@@ -767,11 +937,11 @@ export function WhiteboardBoard({
           }
           className="h-8 w-8 rounded-md text-slate-200 hover:bg-slate-700"
         >
-          −
+          âˆ’
         </button>
         <button
           type="button"
-          title="Ansicht zurücksetzen"
+          title="Ansicht zurÃ¼cksetzen"
           onClick={() => {
             const el = containerRef.current;
             if (!el) return;
@@ -800,6 +970,12 @@ export function WhiteboardBoard({
         </button>
       </div>
 
+      {uploadingCount > 0 && (
+        <div className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--panel)]/95 px-4 py-1.5 text-sm text-[var(--text-h)] shadow backdrop-blur">
+          Bild wird hochgeladenâ€¦
+        </div>
+      )}
+
       {selectedId && !editingId && (
         <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
           <button
@@ -813,7 +989,7 @@ export function WhiteboardBoard({
             }}
             className="rounded-lg bg-[var(--danger)]/90 px-3 py-1.5 text-sm font-medium text-white shadow hover:brightness-110"
           >
-            Auswahl löschen (Entf)
+            Auswahl lÃ¶schen (Entf)
           </button>
         </div>
       )}

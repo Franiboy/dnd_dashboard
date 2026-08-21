@@ -20,6 +20,7 @@ const envSchema = z.object({
   LISTEN_FDS: z.coerce.number().int().nonnegative().default(0),
   DB_PATH: z.string().default('dnd.db'),
   RECORDINGS_DIR: z.string().default('recordings'),
+  WHITEBOARD_UPLOAD_DIR: z.string().default('data/whiteboard'),
   TRUST_PROXY: booleanFromEnv,
   CORS_ORIGIN: z.string().optional(),
 

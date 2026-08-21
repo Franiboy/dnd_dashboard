@@ -138,6 +138,7 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
   - Tasks: cards with title, description and a status pill cycling open -> in progress -> done.
   - Arrows: connections between points or anchored to elements; anchored endpoints follow their target element.
   - Links: URL references with optional label; image URLs render as previews.
+- Images: screenshots can be pasted with `Strg+V` or dropped onto the canvas. Files are uploaded to `POST /api/whiteboard/uploads`, stored in `WHITEBOARD_UPLOAD_DIR` (default `data/whiteboard/`) and served through the authenticated `/uploads/whiteboard/` route. Allowed types: PNG, JPEG, GIF, WebP, max 8 MB.
 - Creation: pick a tool in the toolbar, then drag a rectangle on the canvas. The zone (public/private) is decided by where the element center lands relative to the divider.
 - Editing: drag to move, corner handle to resize, double-click to edit text, `Entf`/`Backspace` deletes the selection, `Esc` cancels.
 - Persistence: SQLite table `whiteboard_elements` via the declarative schema engine; initial load through `GET /api/whiteboard`.

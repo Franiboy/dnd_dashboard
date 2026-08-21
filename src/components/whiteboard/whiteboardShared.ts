@@ -1,5 +1,12 @@
 import type { WhiteboardTaskStatus } from '../../../shared/types';
 
+/** Image targets render as previews and must not open in a new tab. */
+const BOARD_IMAGE_URL_RE = /\.(png|jpe?g|gif|webp|avif|svg)(\?.*)?$/i;
+
+export function isBoardImageUrl(url: string): boolean {
+  return BOARD_IMAGE_URL_RE.test(url);
+}
+
 export type WhiteboardTool = 'select' | 'note' | 'task' | 'arrow' | 'link';
 
 export const NOTE_COLORS: readonly string[] = [
