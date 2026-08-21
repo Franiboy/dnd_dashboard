@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { db } from '../database.js';
 import {
   createEntityKnowledge,
   getEntityKnowledgeEntry,
   listActiveEntityKnowledge,
   listEntityKnowledge,
   markEntityKnowledgeDeleted,
+  setEntityKnowledgeOrigin,
   updateEntityKnowledge,
 } from './entityKnowledge.js';
 
@@ -55,5 +57,66 @@ describe('entityKnowledge repository', () => {
     expect(deleted).toBeTruthy();
     expect(deleted!.status).toBe('deleted');
     expect(listActiveEntityKnowledge('persons', 'Saruman')).toHaveLength(0);
+  });
+
+  it('stamps a diary origin and resolves the diary title', () => {
+    const now = new Date().toISOString();
+    const diary = db
+      .prepare(
+        'INSERT INTO diary_entries (user_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run('tester', 'Der Kampf am Fluss', 'Inhalt', now, now);
+
+    const entry = createEntityKnowledge(
+      'persons',
+      'Gandalf Origin',
+      null,
+      'Kämpfte am Fluss',
+      'ai_extracted'
+    );
+    expect(entry.originType).toBeNull();
+    expect(entry.originTitle).toBeNull();
+
+    setEntityKnowledgeOrigin([entry.id], 'diary', Number(diary.lastInsertRowid));
+
+    const stamped = getEntityKnowledgeEntry(entry.id);
+    expect(stamped!.originType).toBe('diary');
+    expect(stamped!.originId).toBe(Number(diary.lastInsertRowid));
+    expect(stamped!.originTitle).toBe('Der Kampf am Fluss');
+  });
+
+  it('stamps a session origin and resolves the session name', () => {
+    const session = db
+      .prepare(
+        `INSERT INTO recording_sessions (name, status, guild_id, channel_id, created_by, started_at, directory)
+         VALUES (?, 'stopped', 'g', 'c', 'tester', ?, 'dir')`
+      )
+      .run('Session Alpha', new Date().toISOString());
+
+    const entry = createEntityKnowledge(
+      'locations',
+      'Bree Origin',
+      null,
+      'Besucht in der Session',
+      'ai_extracted'
+    );
+    setEntityKnowledgeOrigin([entry.id], 'session', Number(session.lastInsertRowid));
+
+    const stamped = listEntityKnowledge('locations', 'Bree Origin')[0];
+    expect(stamped.originType).toBe('session');
+    expect(stamped.originTitle).toBe('Session Alpha');
+  });
+
+  it('keeps manual entries without origin', () => {
+    const entry = createEntityKnowledge(
+      'organizations',
+      'Manual Guild Origin',
+      null,
+      'Manuell gepflegt',
+      'manual'
+    );
+    expect(entry.originType).toBeNull();
+    expect(entry.originId).toBeNull();
+    expect(entry.originTitle).toBeNull();
   });
 });

@@ -1,13 +1,35 @@
-import type { EntityKnowledgeEntry, EntityType } from '../../shared/types.js';
+import type { EntityKnowledgeEntry, EntityType, KnowledgeOriginType } from '../../shared/types.js';
 import { db } from '../database.js';
 import { sanitizePlainText } from '../utils/sanitizeHtml.js';
 import { markEntitySummaryDirty, renameEntitySummary } from './entitySummaries.js';
 
-const selectColumns = `id, entity_type AS entityType, entity_name AS entityName, title, content, source, status, status_reason AS statusReason, created_at AS createdAt, updated_at AS updatedAt`;
+// Origin titles are resolved live so renamed diary entries / sessions stay current.
+const selectColumns = `
+  k.id,
+  k.entity_type AS entityType,
+  k.entity_name AS entityName,
+  k.title,
+  k.content,
+  k.source,
+  k.status,
+  k.status_reason AS statusReason,
+  k.origin_type AS originType,
+  k.origin_id AS originId,
+  CASE k.origin_type
+    WHEN 'diary' THEN d.title
+    WHEN 'session' THEN s.name
+  END AS originTitle,
+  k.created_at AS createdAt,
+  k.updated_at AS updatedAt`;
+
+const selectFrom = `
+  FROM entity_knowledge_entries k
+  LEFT JOIN diary_entries d ON k.origin_type = 'diary' AND d.id = k.origin_id
+  LEFT JOIN recording_sessions s ON k.origin_type = 'session' AND s.id = k.origin_id`;
 
 export function listAllKnowledge(): EntityKnowledgeEntry[] {
   const rows = db
-    .prepare(`SELECT ${selectColumns} FROM entity_knowledge_entries ORDER BY id`)
+    .prepare(`SELECT ${selectColumns} ${selectFrom} ORDER BY k.id`)
     .all() as EntityKnowledgeEntry[];
   return rows;
 }
@@ -19,9 +41,9 @@ export function listEntityKnowledge(
   const rows = db
     .prepare(
       `SELECT ${selectColumns}
-       FROM entity_knowledge_entries
-       WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE
-       ORDER BY created_at DESC`
+       ${selectFrom}
+       WHERE k.entity_type = ? AND k.entity_name = ? COLLATE NOCASE
+       ORDER BY k.created_at DESC`
     )
     .all(entityType, entityName) as EntityKnowledgeEntry[];
   return rows;
@@ -34,9 +56,9 @@ export function listActiveEntityKnowledge(
   const rows = db
     .prepare(
       `SELECT ${selectColumns}
-       FROM entity_knowledge_entries
-       WHERE entity_type = ? AND entity_name = ? COLLATE NOCASE AND status = 'active'
-       ORDER BY created_at DESC`
+       ${selectFrom}
+       WHERE k.entity_type = ? AND k.entity_name = ? COLLATE NOCASE AND k.status = 'active'
+       ORDER BY k.created_at DESC`
     )
     .all(entityType, entityName) as EntityKnowledgeEntry[];
   return rows;
@@ -46,8 +68,8 @@ export function getEntityKnowledgeEntry(id: number): EntityKnowledgeEntry | null
   const row = db
     .prepare(
       `SELECT ${selectColumns}
-       FROM entity_knowledge_entries
-       WHERE id = ?`
+       ${selectFrom}
+       WHERE k.id = ?`
     )
     .get(id) as EntityKnowledgeEntry | undefined;
   return row ?? null;
@@ -79,6 +101,24 @@ export function createEntityKnowledge(
   const entry = getEntityKnowledgeEntry(Number(result.lastInsertRowid))!;
   markEntitySummaryDirty(entityType, entityName);
   return entry;
+}
+
+/**
+ * Stamps knowledge entries with the text they were extracted from.
+ * Used after AI distribution to record display-only provenance.
+ */
+export function setEntityKnowledgeOrigin(
+  ids: number[],
+  originType: KnowledgeOriginType,
+  originId: number
+): void {
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => '?').join(', ');
+  db.prepare(
+    `UPDATE entity_knowledge_entries
+     SET origin_type = ?, origin_id = ?
+     WHERE id IN (${placeholders})`
+  ).run(originType, originId, ...ids);
 }
 
 export function updateEntityKnowledge(

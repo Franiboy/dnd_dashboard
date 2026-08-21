@@ -231,6 +231,9 @@ export interface EntityUpdatePayload {
   aliases: string[];
 }
 
+/** Origin of a knowledge entry, if it was extracted from a source text. */
+export type KnowledgeOriginType = 'diary' | 'session';
+
 export interface EntityKnowledgeEntry {
   id: number;
   entityType: EntityType;
@@ -240,6 +243,11 @@ export interface EntityKnowledgeEntry {
   source: string;
   status: 'active' | 'deleted';
   statusReason: string | null;
+  /** Where this entry was extracted from, if known. Display-only, never linked. */
+  originType: KnowledgeOriginType | null;
+  originId: number | null;
+  /** Title/name of the origin (diary entry title or session name) at display time. */
+  originTitle: string | null;
   createdAt: string;
   updatedAt: string;
 }
