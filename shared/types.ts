@@ -163,6 +163,8 @@ export interface SafeUser {
 export interface VersionInfo {
   aiEnabled: boolean;
   recordingEnabled: boolean;
+  /** Local development only: the backend offers an automatic admin login. */
+  devAutoLogin?: boolean;
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

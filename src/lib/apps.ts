@@ -8,8 +8,6 @@ export interface AppMeta {
   description?: string;
   disableable?: boolean;
   adminOnly?: boolean;
-  /** Hide this app for the initial admin account (username "admin"). */
-  hideForInitialAdmin?: boolean;
   /** Optional feature flag required for the app to be visible. */
   requiresFeature?: 'recordingEnabled';
   /** Optional icon ID; defaults to the app id. */
@@ -21,15 +19,16 @@ export function isAppVisible(
   user: SafeUser,
   version: VersionInfo | null | undefined
 ): boolean {
+  // Admins have unrestricted access to every app.
+  if (user.isAdmin) return true;
   if (user.disabledApps.includes(app.id)) return false;
   if (app.adminOnly && !user.isAdmin) return false;
-  if (app.hideForInitialAdmin && user.isInitialAdmin) return false;
   if (app.requiresFeature === 'recordingEnabled' && !version?.recordingEnabled) return false;
   return true;
 }
 
 export const APPS: AppMeta[] = [
-  { id: 'dashboard', label: 'Dashboard', path: '/', hideForInitialAdmin: true },
+  { id: 'dashboard', label: 'Dashboard', path: '/' },
   {
     id: 'notes',
     label: 'Tagebuch',
@@ -37,7 +36,6 @@ export const APPS: AppMeta[] = [
     description:
       'Persönliche Tagebucheinträge pro Spieler hinterlegen und mit der KI überarbeiten lassen.',
     disableable: true,
-    hideForInitialAdmin: true,
   },
   {
     id: 'bingo',
@@ -45,7 +43,6 @@ export const APPS: AppMeta[] = [
     path: '/bingo',
     description: 'Aufgaben sammeln, Bingo-Runde starten und gegeneinander spielen.',
     disableable: true,
-    hideForInitialAdmin: true,
   },
   {
     id: 'world',
@@ -53,7 +50,6 @@ export const APPS: AppMeta[] = [
     path: '/welt',
     description: 'Übersicht aller bekannten Personen, Organisationen und Orte.',
     disableable: true,
-    hideForInitialAdmin: true,
   },
   {
     id: 'sessions',
@@ -70,7 +66,6 @@ export const APPS: AppMeta[] = [
     description:
       'Gemeinsames Board für Notizen und Aufgaben – oben öffentlich, darunter dein privater Bereich.',
     disableable: true,
-    hideForInitialAdmin: true,
   },
   { id: 'admin', label: 'Admin', path: '/admin', adminOnly: true, iconId: 'admin' },
 ];
