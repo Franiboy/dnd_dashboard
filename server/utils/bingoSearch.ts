@@ -18,9 +18,9 @@ export function searchBingoSuggestions(term: string): BingoSuggestionSearchResul
     .prepare(
       `SELECT id, text, source
 			 FROM bingo_suggestions
-			 WHERE text LIKE '%${term}%'
+			 WHERE text LIKE '%' || ? || '%'
 			 ORDER BY text`
     )
-    .all() as BingoSuggestionSearchResult[];
+    .all(term) as BingoSuggestionSearchResult[];
   return rows;
 }
