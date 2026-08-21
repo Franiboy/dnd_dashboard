@@ -50,9 +50,19 @@ has_label() {
 	gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | grep -qx "$1"
 }
 
+deploy_production() {
+	# Auto-merges happen with the workflow GITHUB_TOKEN, whose push events
+	# deliberately do not trigger further workflow runs – the deploy job on
+	# main would never run for them. Deploy directly instead; dnd-deploy.sh
+	# fast-forwards /dnd_dashboard to origin/main with full rollback safety.
+	log "Deploying production checkout /dnd_dashboard"
+	DND_DEPLOY_REPO=/dnd_dashboard bash scripts/dnd-deploy.sh
+}
+
 merge_pr() {
 	log "Squash merging PR #$PR_NUMBER"
 	gh pr merge "$PR_NUMBER" --squash --delete-branch
+	deploy_production
 }
 
 fail_with_blockers() {
