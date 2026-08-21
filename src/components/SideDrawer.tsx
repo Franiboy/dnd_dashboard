@@ -41,7 +41,7 @@ export function SideDrawer({
 
   const rail = (
     <div
-      className={`pointer-events-auto flex flex-col items-start self-start ${
+      className={`pointer-events-auto flex flex-col self-start ${
         isRight ? 'rounded-bl-lg border-l' : 'rounded-br-lg border-r'
       } border-[var(--border)] bg-[var(--panel)]`}
     >
@@ -54,7 +54,7 @@ export function SideDrawer({
             key={item.props.id}
             type="button"
             onClick={() => setActiveId(isActive ? null : item.props.id)}
-            className={`flex w-max items-center gap-2 whitespace-nowrap bg-[var(--panel)] px-4 py-2 text-sm font-medium transition ${
+            className={`flex w-full items-center gap-2 whitespace-nowrap bg-[var(--panel)] px-4 py-2 text-sm font-medium transition ${
               isFirst ? 'border-t border-[var(--border)]' : ''
             } ${
               isLast
