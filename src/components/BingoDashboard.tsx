@@ -29,17 +29,19 @@ function getAvailableTaskCount(game: BingoGame, userId?: string): number {
 
 function SetupControls({ game, socket }: { game: BingoGame; socket: Socket | null }) {
   const needed = game.gridSize * game.gridSize;
-  const onlinePlayers = game.players.filter((p) => p.online);
-  const playerAvailableCounts = onlinePlayers.map((p) => ({
-    name: p.name,
-    count: getAvailableTaskCount(game, p.userId ?? undefined),
-  }));
-  const sortedByCount = [...playerAvailableCounts].sort((a, b) => a.count - b.count);
-  const bottleneck = sortedByCount[0];
   const totalEnough = game.tasks.length >= needed;
-  const everyoneEnough =
-    playerAvailableCounts.length > 0 && playerAvailableCounts.every((p) => p.count >= needed);
-  const canStartByTasks = totalEnough && everyoneEnough;
+  // Soft warning only: the game can be started at any time; players who cannot
+  // fill their board (e.g. due to private tasks) simply join later.
+  const bottleneck = [...game.players]
+    .map((p) => ({
+      name: p.name,
+      count: getAvailableTaskCount(game, p.userId ?? undefined),
+    }))
+    .sort((a, b) => a.count - b.count)[0];
+  const warning =
+    bottleneck && bottleneck.count < needed
+      ? `${bottleneck.name} hat nur ${bottleneck.count} von ${needed} verfügbaren Aufgaben`
+      : null;
 
   return (
     <div className="flex items-center gap-2 sm:gap-3">
@@ -55,15 +57,13 @@ function SetupControls({ game, socket }: { game: BingoGame; socket: Socket | nul
       </select>
       <button
         onClick={() => socket?.emit('startGame')}
-        disabled={!canStartByTasks}
+        disabled={!totalEnough}
         title={
           !totalEnough
             ? `${game.tasks.length} Aufgaben, mindestens ${needed} nötig`
-            : playerAvailableCounts.length === 0
-              ? `Mindestens ${needed} pro Spieler nötig`
-              : bottleneck && bottleneck.count < needed
-                ? `${bottleneck.name} hat nur ${bottleneck.count} von ${needed} Aufgaben`
-                : 'Spiel starten'
+            : warning
+              ? `Spiel starten – Hinweis: ${warning}`
+              : 'Spiel starten'
         }
         className="px-3 py-1.5 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50 text-xs"
       >
@@ -88,18 +88,21 @@ function BoardControls({
 }) {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  const lockButton = player && isSetup && (
-    <button
-      onClick={() => socket?.emit(player.locked ? 'unlockBoard' : 'lockBoard')}
-      className={`px-4 py-2 rounded font-semibold transition text-sm ${
-        player.locked
-          ? 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
-          : 'bg-[var(--accent)] text-slate-900 hover:bg-green-400'
-      }`}
-    >
-      {player.locked ? 'Entsperren' : 'Einlocken'}
-    </button>
-  );
+  // Boards can be locked in setup and, for late joiners, during the running
+  // game (until locked - unlocking is setup-only to avoid retro-editing).
+  const lockButton =
+    player && (isSetup || (isPlaying && !player.locked)) ? (
+      <button
+        onClick={() => socket?.emit(player.locked ? 'unlockBoard' : 'lockBoard')}
+        className={`px-4 py-2 rounded font-semibold transition text-sm ${
+          player.locked
+            ? 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
+            : 'bg-[var(--accent)] text-slate-900 hover:bg-green-400'
+        }`}
+      >
+        {player.locked ? 'Entsperren' : 'Einlocken'}
+      </button>
+    ) : null;
 
   return (
     <>
@@ -169,6 +172,9 @@ export function BingoDashboard({
 }: BingoDashboardProps) {
   const [activeTab, setActiveTab] = useState<MobileTab>('field');
 
+  // Late joiners fill their board while the game is already running.
+  const editingBoard = (isSetup || isPlaying) && !!player && !player.locked;
+
   const fieldPanelActions =
     isAdmin && isSetup ? <SetupControls game={game} socket={socket} /> : undefined;
 
@@ -206,11 +212,12 @@ export function BingoDashboard({
   const taskPanel =
     isSetup || isPlaying ? (
       <Panel title="Aufgaben" className="flex-1 min-h-0">
-        {isSetup ? (
+        {editingBoard ? (
           <TaskPool
             game={game}
             socket={socket}
             isSetup={isSetup}
+            canDrag
             currentUser={user}
             playerId={playerId}
             className="h-full flex flex-col"
@@ -238,7 +245,18 @@ export function BingoDashboard({
 
         {isPlaying && (
           <SideDrawerItem id="bingo-tasks" label="Aufgaben" icon={<span>📋</span>}>
-            {isAdmin ? (
+            {editingBoard ? (
+              <TaskPool
+                game={game}
+                socket={socket}
+                isSetup={false}
+                canDrag
+                currentUser={user}
+                playerId={playerId}
+                className="h-full flex flex-col"
+                listClassName="flex-1 min-h-0 overflow-auto"
+              />
+            ) : isAdmin ? (
               <TaskStatus game={game} socket={socket} />
             ) : (
               <p className="text-slate-400">Warte bis der Spielleiter das Spiel beendet.</p>
@@ -248,7 +266,7 @@ export function BingoDashboard({
       </SideDrawer>
 
       {/* Desktop layout */}
-      {isPlaying ? (
+      {isPlaying && !editingBoard ? (
         <div className="hidden md:block flex-1 min-h-0">{fieldPanel}</div>
       ) : (
         <div className="hidden md:grid md:grid-cols-[1.5fr_1fr] lg:grid-cols-[1.75fr_1fr] gap-4 flex-1 min-h-0">
@@ -259,7 +277,7 @@ export function BingoDashboard({
 
       {/* Mobile layout */}
       <div className="md:hidden flex flex-col flex-1 min-h-0 gap-3">
-        {isPlaying ? (
+        {isPlaying && !editingBoard ? (
           // During play the field takes the full width; tasks live in the SideDrawer.
           <div className="flex-1 min-h-0">{fieldPanel}</div>
         ) : (
