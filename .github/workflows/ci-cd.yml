@@ -64,3 +64,53 @@ jobs:
         shell: bash
         env:
           DND_DEPLOY_REPO: /dnd_dashboard
+
+  ai-review:
+    name: AI review
+    needs: ci
+    if: github.event_name == 'pull_request'
+    runs-on: self-hosted
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      # OpenCode model used for the review (provider/model format).
+      AI_REVIEW_MODEL: opencode-go/gpt-5.6-luna
+      # PRs with this label are never merged automatically.
+      AI_HOLD_LABEL: hold
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - name: Put OpenCode on PATH
+        run: echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: |
+          # Same marker trick as the ci job: this job runs right after it on the
+          # same runner, so node_modules is already present and up to date.
+          hash="$(sha256sum package-lock.json | cut -d' ' -f1)-$(node -v)"
+          marker="$HOME/.cache/dnd-ci/npm-$hash"
+          mkdir -p "$HOME/.cache/dnd-ci"
+          if [ -f "$marker" ] && [ -d node_modules ]; then
+            echo "node_modules unchanged, skipping npm ci"
+          else
+            npm ci
+            : > "$marker"
+          fi
+
+      - name: AI review, fix and merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: bash scripts/ai-review.sh
