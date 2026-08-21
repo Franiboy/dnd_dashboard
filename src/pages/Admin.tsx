@@ -26,10 +26,8 @@ interface RecordingStatus {
 
 interface AiModelConfig {
   models: string[];
-  normalModel: string;
-  cheapModel: string;
-  normalModelOverridden: boolean;
-  cheapModelOverridden: boolean;
+  model: string;
+  modelOverridden: boolean;
 }
 
 interface AdminProps {
@@ -102,7 +100,7 @@ export function Admin({ currentUser }: AdminProps) {
     const { data, error: saveError } = await request<AiModelConfig>('/api/admin/ai/models', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ normalModel: aiModels.normalModel, cheapModel: aiModels.cheapModel }),
+      body: JSON.stringify({ model: aiModels.model }),
     });
     setAiSaving(false);
     if (data) {
@@ -431,6 +429,179 @@ export function Admin({ currentUser }: AdminProps) {
             </div>
           </div>
         </SideDrawerItem>
+
+        <SideDrawerItem
+          id="ai-model"
+          label="KI-Modell"
+          icon={
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+              <rect x="9" y="9" width="6" height="6" />
+              <path d="M15 2v2" />
+              <path d="M9 2v2" />
+              <path d="M2 15h2" />
+              <path d="M2 9h2" />
+              <path d="M20 15h2" />
+              <path d="M20 9h2" />
+              <path d="M15 20v2" />
+              <path d="M9 20v2" />
+            </svg>
+          }
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[var(--text-h)]">KI-Modell</h2>
+              <button
+                type="button"
+                onClick={refreshAiModels}
+                disabled={!aiModels}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 text-[var(--text-h)] hover:bg-slate-600 transition disabled:opacity-50"
+              >
+                Aktualisieren
+              </button>
+            </div>
+
+            {!aiModels ? (
+              <Loading text="Modelle werden geladen..." />
+            ) : (
+              <div className="space-y-4">
+                {aiModels.models.length === 0 && (
+                  <p className="text-sm text-slate-500">
+                    Keine Modelle verfügbar. Prüfe, dass opencode installiert ist und erreichbar
+                    ist.
+                  </p>
+                )}
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Modell</label>
+                  <select
+                    value={aiModels.model}
+                    onChange={(e) =>
+                      setAiModels((prev) => (prev ? { ...prev, model: e.target.value } : prev))
+                    }
+                    className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
+                  >
+                    {aiModels.models.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  {aiModels.modelOverridden && (
+                    <p className="text-xs text-[var(--accent)] mt-1">
+                      Überschreibt die .env-Konfiguration
+                    </p>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500">
+                  Das Modell wird für alle KI-Funktionen verwendet (Tagebuch, Zusammenfassungen,
+                  Entitäten, Bingo-Vorschläge).
+                </p>
+                <button
+                  type="button"
+                  onClick={saveAiModels}
+                  disabled={aiSaving}
+                  className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+                >
+                  {aiSaving ? <Loading text="" size="sm" /> : 'Speichern'}
+                </button>
+              </div>
+            )}
+          </div>
+        </SideDrawerItem>
+
+        <SideDrawerItem
+          id="sessions"
+          label="Sessions"
+          icon={
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" x2="12" y1="19" y2="22" />
+            </svg>
+          }
+        >
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold text-[var(--text-h)]">Sessions</h2>
+            {recordingLoading ? (
+              <Loading text="Konfiguration wird geladen..." />
+            ) : (
+              <>
+                {!recordingStatus?.bot.enabled && (
+                  <p className="text-sm text-slate-500">
+                    Discord-Bot ist nicht konfiguriert. Trage DISCORD_BOT_TOKEN und DISCORD_GUILD_ID
+                    in die .env ein.
+                  </p>
+                )}
+
+                {recordingStatus?.bot.enabled && !recordingStatus.bot.ready && (
+                  <p className="text-sm text-slate-500">Discord-Bot verbindet...</p>
+                )}
+
+                {recordingStatus?.bot.enabled && recordingStatus.bot.ready && (
+                  <>
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">
+                        Überwachter Voice-Channel
+                      </label>
+                      <select
+                        value={selectedRecordingChannel}
+                        onChange={(e) => setSelectedRecordingChannel(e.target.value)}
+                        disabled={recordingChannels.length === 0}
+                        className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
+                      >
+                        <option value="">
+                          {recordingChannels.length === 0
+                            ? 'Keine Voice-Channels verfügbar'
+                            : 'Bitte wählen'}
+                        </option>
+                        {recordingChannels.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.participants.length} online)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={saveRecordingConfig}
+                      disabled={recordingSaving}
+                      className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+                    >
+                      {recordingSaving ? <Loading text="" size="sm" /> : 'Speichern'}
+                    </button>
+                    <p className="text-sm text-slate-400">
+                      {recordingStatus.active
+                        ? `Aktuell wird in ${recordingStatus.monitoredChannel?.channelName ?? recordingStatus.monitoredChannel?.channelId ?? 'Unbekannt'} aufgezeichnet.`
+                        : recordingStatus.monitoredChannel?.channelId
+                          ? `Bereit für Aufnahme in ${recordingStatus.monitoredChannel.channelName ?? recordingStatus.monitoredChannel.channelId}. Die Aufnahme startet automatisch, sobald jemand den Channel betritt.`
+                          : 'Wähle einen Channel aus, damit Aufnahmen automatisch gestartet werden.'}
+                    </p>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </SideDrawerItem>
       </SideDrawer>
 
       {currentUser.isAdmin && (
@@ -577,157 +748,6 @@ export function Admin({ currentUser }: AdminProps) {
               </table>
             )}
           </div>
-          <div className="mt-6 bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-[var(--text-h)]">KI-Modelle</h2>
-              <button
-                type="button"
-                onClick={refreshAiModels}
-                disabled={!aiModels}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 text-[var(--text-h)] hover:bg-slate-600 transition disabled:opacity-50"
-              >
-                Aktualisieren
-              </button>
-            </div>
-
-            {!aiModels ? (
-              <Loading text="Modelle werden geladen..." />
-            ) : (
-              <div className="space-y-4">
-                {aiModels.models.length === 0 && (
-                  <p className="text-sm text-slate-500">
-                    Keine Modelle verfügbar. Prüfe, dass opencode installiert ist und erreichbar
-                    ist.
-                  </p>
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-slate-400 mb-1">Normales Modell</label>
-                    <select
-                      value={aiModels.normalModel}
-                      onChange={(e) =>
-                        setAiModels((prev) =>
-                          prev ? { ...prev, normalModel: e.target.value } : prev
-                        )
-                      }
-                      className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
-                    >
-                      {aiModels.models.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                    {aiModels.normalModelOverridden && (
-                      <p className="text-xs text-[var(--accent)] mt-1">
-                        Überschreibt die .env-Konfiguration
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm text-slate-400 mb-1">Cheap-Modell</label>
-                    <select
-                      value={aiModels.cheapModel}
-                      onChange={(e) =>
-                        setAiModels((prev) =>
-                          prev ? { ...prev, cheapModel: e.target.value } : prev
-                        )
-                      }
-                      className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
-                    >
-                      {aiModels.models.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                    {aiModels.cheapModelOverridden && (
-                      <p className="text-xs text-[var(--accent)] mt-1">
-                        Überschreibt die .env-Konfiguration
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={saveAiModels}
-                    disabled={aiSaving}
-                    className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
-                  >
-                    {aiSaving ? <Loading text="" size="sm" /> : 'Speichern'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-6 bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5">
-            <h2 className="text-xl font-semibold text-[var(--text-h)] mb-4">Sessions</h2>
-
-            {recordingLoading ? (
-              <Loading text="Konfiguration wird geladen..." />
-            ) : (
-              <div className="space-y-4">
-                {!recordingStatus?.bot.enabled && (
-                  <p className="text-sm text-slate-500">
-                    Discord-Bot ist nicht konfiguriert. Trage DISCORD_BOT_TOKEN und DISCORD_GUILD_ID
-                    in die .env ein.
-                  </p>
-                )}
-
-                {recordingStatus?.bot.enabled && !recordingStatus.bot.ready && (
-                  <p className="text-sm text-slate-500">Discord-Bot verbindet...</p>
-                )}
-
-                {recordingStatus?.bot.enabled && recordingStatus.bot.ready && (
-                  <div className="flex flex-col sm:flex-row gap-4 items-end">
-                    <div className="flex-1 w-full">
-                      <label className="block text-sm text-slate-400 mb-1">
-                        Überwachter Voice-Channel
-                      </label>
-                      <select
-                        value={selectedRecordingChannel}
-                        onChange={(e) => setSelectedRecordingChannel(e.target.value)}
-                        disabled={recordingChannels.length === 0}
-                        className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
-                      >
-                        <option value="">
-                          {recordingChannels.length === 0
-                            ? 'Keine Voice-Channels verfügbar'
-                            : 'Bitte wählen'}
-                        </option>
-                        {recordingChannels.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.participants.length} online)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={saveRecordingConfig}
-                      disabled={recordingSaving}
-                      className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
-                    >
-                      {recordingSaving ? <Loading text="" size="sm" /> : 'Speichern'}
-                    </button>
-                  </div>
-                )}
-
-                {recordingStatus?.bot.enabled && recordingStatus.bot.ready && (
-                  <p className="text-sm text-slate-400">
-                    {recordingStatus.active
-                      ? `Aktuell wird in ${recordingStatus.monitoredChannel?.channelName ?? recordingStatus.monitoredChannel?.channelId ?? 'Unbekannt'} aufgezeichnet.`
-                      : recordingStatus.monitoredChannel?.channelId
-                        ? `Bereit für Aufnahme in ${recordingStatus.monitoredChannel.channelName ?? recordingStatus.monitoredChannel.channelId}. Die Aufnahme startet automatisch, sobald jemand den Channel betritt.`
-                        : 'Wähle einen Channel aus, damit Aufnahmen automatisch gestartet werden.'}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
           <div className="mt-6">
             <LogPanel />
           </div>

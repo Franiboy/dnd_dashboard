@@ -19,17 +19,9 @@ function getOpenCodeBin(): string {
   return process.env.AI_OPENCODE_BIN || 'opencode';
 }
 
-export function getNormalModel(): string {
+export function getModel(): string {
   const settings = getAiModelSettings();
-  if (isValidModel(settings.normalModel)) return settings.normalModel!.trim();
-  if (isValidModel(process.env.AI_MODEL)) return process.env.AI_MODEL.trim();
-  return DEFAULT_MODEL;
-}
-
-export function getCheapModel(): string {
-  const settings = getAiModelSettings();
-  if (isValidModel(settings.cheapModel)) return settings.cheapModel!.trim();
-  if (isValidModel(process.env.AI_CHEAP_MODEL)) return process.env.AI_CHEAP_MODEL.trim();
+  if (isValidModel(settings.model)) return settings.model!.trim();
   if (isValidModel(process.env.AI_MODEL)) return process.env.AI_MODEL.trim();
   return DEFAULT_MODEL;
 }

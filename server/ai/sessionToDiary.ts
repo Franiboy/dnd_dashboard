@@ -5,7 +5,7 @@ import { getDiaryEntryBySessionDraftFor } from '../repositories/diary.js';
 import { getSessionById } from '../repositories/recordings.js';
 import type { DiaryEntry } from '../../shared/types.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
-import { getNormalModel } from './modelConfig.js';
+import { getModel } from './modelConfig.js';
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
 import { getSessionWorkDir } from './sessionWorkdir.js';
 
@@ -150,7 +150,7 @@ export async function generateSessionDiaryDraft(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || getNormalModel(),
+    model: model || getModel(),
     title: `dnd-session-to-diary-${sessionId}-${Date.now()}`,
     scopes: ['recording:read', 'diary:read', 'diary:draft', 'entity:read'],
     user,
