@@ -107,6 +107,7 @@ ProjectAtlas is the standard local repository-intelligence tool for coding agent
 - [`docs/apps.md`](./docs/apps.md) – App navigator and admin/user rules
 - [`docs/features.md`](./docs/features.md) – Bingo, diary/world and recording modules
 - [`docs/sse.md`](./docs/sse.md) – Server-Sent Events pattern and endpoints
+- [`docs/ci-cd.md`](./docs/ci-cd.md) – CI/CD pipeline, self-hosted runner and AI review automation
 - [`docs/edge-cases.md`](./docs/edge-cases.md) – Known edge cases and protected files
 - [`CodingStandards.md`](./CodingStandards.md) – Code style, import conventions and quality guidelines
 - [`README.md`](./README.md) – End-user setup and feature overview
