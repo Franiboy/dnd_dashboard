@@ -8,7 +8,15 @@ import { Modal } from '../components/Modal';
 import { AppIcon } from '../components/AppIcon';
 import { APPS } from '../lib/apps';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
-import type { RecordingChannel, SafeUser } from '../../shared/types';
+import type { RecordingChannel, SafeUser, UserRole } from '../../shared/types';
+
+const USER_ROLE_LABELS: Record<UserRole, string> = {
+  guest: 'Gast',
+  dungeon_master: 'Dungeon Master',
+  player: 'Spieler',
+};
+
+const USER_ROLE_OPTIONS: UserRole[] = ['guest', 'dungeon_master', 'player'];
 
 interface RecordingStatus {
   bot: { ready: boolean; enabled: boolean };
@@ -438,6 +446,7 @@ export function Admin({ currentUser }: AdminProps) {
                   <tr className="border-b border-[var(--border)]">
                     <th className="p-3">Anzeigename</th>
                     <th className="p-3">Status</th>
+                    <th className="p-3">Rolle</th>
                     <th className="p-3">Admin</th>
                     <th className="p-3">Aktionen</th>
                   </tr>
@@ -467,6 +476,21 @@ export function Admin({ currentUser }: AdminProps) {
                         ) : (
                           <span className="text-[var(--danger)]">Wartend</span>
                         )}
+                      </td>
+                      <td className="p-3">
+                        <select
+                          value={u.role}
+                          onChange={(e) => action(u.id, '/role', { role: e.target.value })}
+                          disabled={u.isInitialAdmin || isOwn(u) || isActionLoading(u.id, '/role')}
+                          aria-label={`Rolle von ${u.displayName}`}
+                          className="bg-slate-800 border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
+                        >
+                          {USER_ROLE_OPTIONS.map((role) => (
+                            <option key={role} value={role}>
+                              {USER_ROLE_LABELS[role]}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                       <td className="p-3">{u.isAdmin ? 'Ja' : 'Nein'}</td>
                       <td className="p-3 flex flex-wrap gap-2">

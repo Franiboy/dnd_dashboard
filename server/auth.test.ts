@@ -1,25 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { createToken, verifyToken } from './auth.js';
 
+const baseUser = {
+  id: 'user-123',
+  username: 'testuser',
+  displayName: 'Test User',
+  passwordHash: null,
+  discordId: null,
+  avatarUrl: null,
+  isAdmin: false,
+  isApproved: true,
+  role: 'guest' as const,
+  disabledApps: [],
+  activePerson: null,
+  autoSessionToDiary: false,
+  autoAcceptSessionDiary: false,
+  failedLoginAttempts: 0,
+  lockedUntil: null,
+  createdAt: new Date().toISOString(),
+};
+
 describe('auth tokens', () => {
   it('creates a token that can be verified', () => {
-    const user = {
-      id: 'user-123',
-      username: 'testuser',
-      displayName: 'Test User',
-      passwordHash: null,
-      discordId: null,
-      avatarUrl: null,
-      isAdmin: false,
-      isApproved: true,
-      disabledApps: [],
-      activePerson: null,
-      autoSessionToDiary: false,
-      autoAcceptSessionDiary: false,
-      failedLoginAttempts: 0,
-      lockedUntil: null,
-      createdAt: new Date().toISOString(),
-    };
+    const user = { ...baseUser };
 
     const token = createToken(user);
     const decoded = verifyToken(token);
@@ -32,23 +35,7 @@ describe('auth tokens', () => {
   });
 
   it('returns null for a tampered token', () => {
-    const user = {
-      id: 'user-456',
-      username: 'hacker',
-      displayName: 'Hacker',
-      passwordHash: null,
-      discordId: null,
-      avatarUrl: null,
-      isAdmin: false,
-      isApproved: true,
-      disabledApps: [],
-      activePerson: null,
-      autoSessionToDiary: false,
-      autoAcceptSessionDiary: false,
-      failedLoginAttempts: 0,
-      lockedUntil: null,
-      createdAt: new Date().toISOString(),
-    };
+    const user = { ...baseUser, id: 'user-456', username: 'hacker', displayName: 'Hacker' };
 
     const token = createToken(user);
     const tampered = token.slice(0, -3) + 'xxx';

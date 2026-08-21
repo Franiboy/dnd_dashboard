@@ -43,6 +43,7 @@ export const schema: Record<string, TableDef> = {
       avatar_url: { type: 'TEXT' },
       is_admin: { type: 'INTEGER', notNull: true, default: '0' },
       is_approved: { type: 'INTEGER', notNull: true, default: '0' },
+      role: { type: 'TEXT', notNull: true, default: "'guest'" },
       failed_login_attempts: { type: 'INTEGER', notNull: true, default: '0' },
       locked_until: { type: 'TEXT' },
       created_at: { type: 'TEXT', notNull: true },
