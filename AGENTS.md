@@ -48,6 +48,7 @@ npm run client           # Vite dev server only
 npm run build            # Client (tsc + vite build) + server + version.json
 npm run build:server     # Build server only
 npm run build:version    # Writes dist-server/version.json from Git commit count
+npm run db:migrate       # Apply database migrations without starting the server
 npm run start            # Production server (requires prior build)
 npm run preview          # Vite production preview
 npm run test             # Run all Vitest tests
