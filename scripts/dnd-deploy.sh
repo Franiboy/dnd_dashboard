@@ -69,6 +69,19 @@ if ! git diff --quiet "$LOCAL" "$REMOTE" -- package-lock.json package.json 2>/de
   fi
 fi
 
+# Migrate the database BEFORE building. This ordering is intentional and must
+# not be changed: the build itself already reads tables that new migrations
+# change (buildVersion.ts -> isAiEnabled() -> getAiModelSettings() queries
+# ai_settings), so building against an unmigrated production database fails.
+# runMigrations() is an idempotent declarative schema diff (additive columns/
+# tables) wrapped in one transaction, safe to run against the running server.
+log "Applying database migrations..."
+if ! npm run db:migrate >>"$LOG" 2>&1; then
+  log "ABORTED: database migration failed; restoring $LOCAL"
+  git checkout -f "$LOCAL" >>"$LOG" 2>&1
+  exit 1
+fi
+
 # Snapshot the currently-running build so rollback is a restore, not a rebuild.
 rm -rf "$ROLLBACK_DIR"
 mkdir -p "$ROLLBACK_DIR"
@@ -84,26 +97,6 @@ log "Building..."
 if ! npm run build >>"$LOG" 2>&1; then
   log "Build failed; restoring $LOCAL"
   git checkout -f "$LOCAL" >>"$LOG" 2>&1
-  exit 1
-fi
-
-# Migrate only after a successful build. This prevents a failed build from
-# leaving the old release paired with a potentially changed database schema.
-log "Applying database migrations..."
-if ! npm run db:migrate >>"$LOG" 2>&1; then
-  log "ABORTED: database migration failed; restoring $LOCAL"
-  git checkout -f "$LOCAL" >>"$LOG" 2>&1
-  if ! git diff --quiet "$LOCAL" "$REMOTE" -- package-lock.json package.json 2>/dev/null; then
-    npm ci >>"$LOG" 2>&1
-  fi
-  if [ -d "$ROLLBACK_DIR/dist" ]; then
-    rm -rf "$REPO/dist"
-    cp -a "$ROLLBACK_DIR/dist" "$REPO/dist"
-  fi
-  if [ -d "$ROLLBACK_DIR/dist-server" ]; then
-    rm -rf "$REPO/dist-server"
-    cp -a "$ROLLBACK_DIR/dist-server" "$REPO/dist-server"
-  fi
   exit 1
 fi
 
