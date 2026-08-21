@@ -22,6 +22,7 @@ import {
 } from '../users.js';
 import { USER_ROLES, type UserRole } from '../../shared/types.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
+import { syncPlayersFromUsers } from '../game.js';
 import { runNightlyJobNow } from '../scheduler/summaryScheduler.js';
 import { runTranscriptionJobsNow } from '../discord/scheduler.js';
 import { runBingoSuggestionRefillNow } from '../ai/bingoSuggestions.js';
@@ -169,6 +170,9 @@ router.post('/users/:id/role', authMiddleware, requireAdmin, (req: AuthRequest, 
   if (!findUserById(targetId)) return res.status(404).json({ error: 'User nicht gefunden' });
   const user = setUserRole(targetId, role as UserRole);
   if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  // Players and dungeon masters are permanent bingo participants; reflect the
+  // role change in the bingo player list immediately.
+  syncPlayersFromUsers();
   notifyUserUpdate();
   res.json(user);
 });

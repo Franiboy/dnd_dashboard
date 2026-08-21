@@ -18,6 +18,7 @@ import {
   setGridSize,
   setPlayerOnline,
   startGame,
+  syncPlayersFromUsers,
   unconfirmTask,
   unlockBoard,
   updateBoard,
@@ -65,8 +66,12 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const displayName = user?.displayName;
       if (!displayName) return socket.emit('error', 'Name fehlt.');
 
+      // Make sure role-based participants exist before matching.
+      syncPlayersFromUsers();
       const currentGame = getGame();
-      const existing = currentGame.players.find((p) => p.name === displayName);
+      const existing =
+        currentGame.players.find((p) => p.userId && p.userId === user.id) ??
+        currentGame.players.find((p) => p.name === displayName);
       if (existing) {
         if (user.id && !existing.userId) existing.userId = user.id;
         if (user.avatarUrl !== undefined && existing.avatarUrl !== user.avatarUrl) {
@@ -79,7 +84,7 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
         return;
       }
 
-      const { playerId } = joinPlayer(displayName, user.id, user.avatarUrl);
+      const { playerId } = joinPlayer(displayName, user.id, user.avatarUrl, user.role);
       socketPlayerMap.set(socket.id, playerId);
       socket.emit('joined', playerId);
       broadcastState();
