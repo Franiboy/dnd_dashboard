@@ -192,12 +192,14 @@ function migrateAiSettingsSingleModel(): void {
 }
 
 export function runMigrations(): void {
-  // Apply non-generative data migrations that reshape schema first.
-  migrateEntityBlacklistTypes();
-  dropLegacyDiaryEntryDate();
-  // Apply the declarative schema diff (tables, columns, indexes).
-  applySchema();
-  // Backfills that depend on the schema being present.
-  migrateAiSettingsSingleModel();
-  fillRecordingSessionUpdatedAt();
+  db.transaction(() => {
+    // Apply non-generative data migrations that reshape schema first.
+    migrateEntityBlacklistTypes();
+    dropLegacyDiaryEntryDate();
+    // Apply the declarative schema diff (tables, columns, indexes).
+    applySchema();
+    // Backfills that depend on the schema being present.
+    migrateAiSettingsSingleModel();
+    fillRecordingSessionUpdatedAt();
+  })();
 }

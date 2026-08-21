@@ -79,10 +79,12 @@ if [ "${#DIFF}" -gt "$MAX_DIFF_CHARS" ]; then
 fi
 
 PROMPT="You are a strict code reviewer for this repository (a D&D dashboard: React 19/Vite/TypeScript frontend, Express/SQLite backend, ESM everywhere).
-Review the following pull request diff against branch \"$BASE_BRANCH\".
+First run: gh pr view $PR_NUMBER --json title,body --jq '.title + \"\\n\\n\" + .body' to understand the intent of this pull request.
+Then review the following pull request diff against branch \"$BASE_BRANCH\".
 
 Rules:
 - Fix CRITICAL findings only: security vulnerabilities, data loss, crashes or bugs introduced by this diff, broken functionality.
+- NEVER undo or restructure the core approach this PR implements (see its title/body and commit messages). If you believe the approach itself is wrong but it works, do NOT rewrite it: report your concern in \"$BLOCKERS_FILE\" instead and change nothing else.
 - Do NOT touch style, naming, formatting, test coverage nits; do not refactor anything unrelated to this diff.
 - Only modify files that are part of this diff (plus minimal adjacent changes your fix requires).
 - Repository conventions: comments and commit messages in English, ESM imports.

@@ -4,11 +4,11 @@ The pipeline lives in [`.github/workflows/ci-cd.yml`](../.github/workflows/ci-cd
 
 ## Jobs
 
-| Job         | When                        | What                                                                                   |
-| ----------- | --------------------------- | -------------------------------------------------------------------------------------- |
-| `ci`        | push to `main`, every PR    | Lint, build, test                                                                      |
-| `deploy`    | push to `main` only         | `scripts/dnd-deploy.sh`: fast-forward pull, rebuild, health check, rollback on failure |
-| `ai-review` | PRs only, after `ci` passed | AI code review, auto-fix of critical findings, auto-merge                              |
+| Job         | When                        | What                                                                                                                         |
+| ----------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `ci`        | push to `main`, every PR    | Lint, build, test                                                                                                            |
+| `deploy`    | push to `main` only         | `scripts/dnd-deploy.sh`: fast-forward pull, DB migrations (`npm run db:migrate`), rebuild, health check, rollback on failure |
+| `ai-review` | PRs only, after `ci` passed | AI code review, auto-fix of critical findings, auto-merge                                                                    |
 
 Feature branches are validated exclusively via the `pull_request` event (exactly one run per PR), `push` triggers only for `main`.
 
