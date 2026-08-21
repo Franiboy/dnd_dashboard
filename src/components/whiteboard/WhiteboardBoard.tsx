@@ -486,16 +486,21 @@ export function WhiteboardBoard({
       Math.hypot(event.clientX - last.x, event.clientY - last.y) < 8
     ) {
       lastTapRef.current = null;
+      // Suppress the browser defaults of this press (focus shift to body,
+      // text selection) so the freshly focused editor keeps its focus.
+      event.preventDefault();
       openEdit(element.id);
       return;
     }
 
-    // Locked elements stay selectable and editable but cannot be moved.
-    if (element.locked) return;
-
-    // No pointer capture here: it would retarget the second click of a
-    // double-click away from the element. Window listeners keep drags alive.
+    // Locked elements stay selectable and editable but cannot be moved;
+    // dragging them pans the canvas exactly like the background does.
     bindWindowGesture();
+    if (!canEdit(element) || element.locked) {
+      setCursorMode('panning');
+      gestureRef.current = { kind: 'pan', lastX: event.clientX, lastY: event.clientY };
+      return;
+    }
     setCursorMode('dragging');
     const { wx, wy } = screenToWorld(event.clientX, event.clientY);
     gestureRef.current = {

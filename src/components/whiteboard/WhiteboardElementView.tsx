@@ -4,6 +4,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { TASK_STATUS_META, nextTaskStatus } from './whiteboardShared';
@@ -57,6 +58,24 @@ function useFocusOnMount<T extends HTMLElement & { select: () => void }>() {
   return ref;
 }
 
+/**
+ * Blurs arriving within this window after mount are focus races caused by
+ * the opening gesture's compat mouse events shifting focus to <body>, not
+ * real user commits. They are ignored and focus is restored instead.
+ */
+const BLUR_GRACE_MS = 150;
+
+function useBlurGuard(ref: RefObject<HTMLElement | null>) {
+  const mountedAt = useRef(performance.now());
+  return () => {
+    if (performance.now() - mountedAt.current < BLUR_GRACE_MS) {
+      ref.current?.focus();
+      return true;
+    }
+    return false;
+  };
+}
+
 function commitField(
   element: WhiteboardElement,
   patch: WhiteboardPatch,
@@ -70,13 +89,17 @@ function commitField(
 function NoteEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
   const [draft, setDraft] = useState(element.text);
   const ref = useFocusOnMount<HTMLTextAreaElement>();
+  const shouldIgnoreBlur = useBlurGuard(ref);
   return (
     <textarea
       ref={ref}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onPointerDown={(e) => e.stopPropagation()}
-      onBlur={() => commitField(element, { text: draft }, onUpdate, onCloseEdit)}
+      onBlur={() => {
+        if (shouldIgnoreBlur()) return;
+        commitField(element, { text: draft }, onUpdate, onCloseEdit);
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.stopPropagation();
@@ -96,13 +119,22 @@ function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
   const [title, setTitle] = useState(element.text);
   const [description, setDescription] = useState(element.description ?? '');
   const titleRef = useFocusOnMount<HTMLInputElement>();
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const shouldIgnoreBlur = useBlurGuard(wrapperRef);
   return (
-    <div className="flex h-full flex-col gap-1" onPointerDown={(e) => e.stopPropagation()}>
+    <div
+      ref={wrapperRef}
+      className="flex h-full flex-col gap-1"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <input
         ref={titleRef}
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        onBlur={() => commitField(element, { text: title, description }, onUpdate, onCloseEdit)}
+        onBlur={() => {
+          if (shouldIgnoreBlur()) return;
+          commitField(element, { text: title, description }, onUpdate, onCloseEdit);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.stopPropagation();
@@ -118,7 +150,10 @@ function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
       <textarea
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        onBlur={() => commitField(element, { text: title, description }, onUpdate, onCloseEdit)}
+        onBlur={() => {
+          if (shouldIgnoreBlur()) return;
+          commitField(element, { text: title, description }, onUpdate, onCloseEdit);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.stopPropagation();
@@ -136,6 +171,7 @@ function LinkEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
   const [url, setUrl] = useState(element.url ?? '');
   const [label, setLabel] = useState(element.text);
   const ref = useFocusOnMount<HTMLInputElement>();
+  const shouldIgnoreBlur = useBlurGuard(ref);
   return (
     <div
       className="flex h-full flex-col justify-center gap-1"
@@ -145,7 +181,10 @@ function LinkEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
         ref={ref}
         value={url}
         onChange={(e) => setUrl(e.target.value)}
-        onBlur={() => commitField(element, { url: url.trim(), text: label }, onUpdate, onCloseEdit)}
+        onBlur={() => {
+          if (shouldIgnoreBlur()) return;
+          commitField(element, { url: url.trim(), text: label }, onUpdate, onCloseEdit);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.stopPropagation();
@@ -161,7 +200,10 @@ function LinkEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
       <input
         value={label}
         onChange={(e) => setLabel(e.target.value)}
-        onBlur={() => commitField(element, { url: url.trim(), text: label }, onUpdate, onCloseEdit)}
+        onBlur={() => {
+          if (shouldIgnoreBlur()) return;
+          commitField(element, { url: url.trim(), text: label }, onUpdate, onCloseEdit);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.stopPropagation();
@@ -315,9 +357,21 @@ export function WhiteboardElementView({
               e.stopPropagation();
               onDelete(element.id);
             }}
-            className="absolute -right-3 -top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--danger)] text-xs font-bold text-white shadow hover:brightness-110"
+            className="absolute -right-3 -top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--danger)] p-0 text-white shadow hover:brightness-110"
           >
-            ×
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width={12}
+              height={12}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
           <button
             type="button"
