@@ -260,6 +260,10 @@ export const schema: Record<string, TableDef> = {
       source: { type: 'TEXT', notNull: true, default: "'manual'" },
       status: { type: 'TEXT', notNull: true, default: "'active'" },
       status_reason: { type: 'TEXT' },
+      // Optional reference to the text this entry was extracted from.
+      // Display-only provenance; never used for navigation.
+      origin_type: { type: 'TEXT' },
+      origin_id: { type: 'INTEGER' },
       created_at: { type: 'TEXT', notNull: true },
       updated_at: { type: 'TEXT', notNull: true },
     },
