@@ -2,13 +2,7 @@ import { Router, type Response } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getRecentLogs, getLogsPaginated, subscribeLogs } from '../logger.js';
 import type { LogEntry, LogLevel } from '../../shared/types.js';
-import {
-  clearModelCache,
-  getCheapModel,
-  getNormalModel,
-  isValidModel,
-  listAvailableModels,
-} from '../ai/modelConfig.js';
+import { clearModelCache, getModel, isValidModel, listAvailableModels } from '../ai/modelConfig.js';
 import { getAiModelSettings, setAiModelSettings } from '../repositories/aiSettings.js';
 import {
   deleteUser,
@@ -203,10 +197,8 @@ router.get('/ai/models', authMiddleware, requireAdmin, async (req: AuthRequest, 
     const settings = getAiModelSettings();
     res.json({
       models,
-      normalModel: getNormalModel(),
-      cheapModel: getCheapModel(),
-      normalModelOverridden: isValidModel(settings.normalModel),
-      cheapModelOverridden: isValidModel(settings.cheapModel),
+      model: getModel(),
+      modelOverridden: isValidModel(settings.model),
     });
   } catch {
     res.status(500).json({ error: 'Modelle konnten nicht geladen werden' });
@@ -257,28 +249,18 @@ router.post('/bingo-suggestion-refill', authMiddleware, requireAdmin, (req: Auth
 });
 
 router.put('/ai/models', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
-  const { normalModel, cheapModel } = req.body;
-  const normalize = (value: unknown): string | null =>
-    typeof value === 'string' && value.trim() ? value.trim() : null;
+  const { model } = req.body;
+  const normalized = typeof model === 'string' && model.trim() ? model.trim() : null;
 
-  const normal = normalize(normalModel);
-  const cheap = normalize(cheapModel);
-
-  if (normal && !isValidModel(normal)) {
-    res.status(400).json({ error: 'Ungültiges Modell' });
-    return;
-  }
-  if (cheap && !isValidModel(cheap)) {
+  if (normalized && !isValidModel(normalized)) {
     res.status(400).json({ error: 'Ungültiges Modell' });
     return;
   }
 
-  const settings = setAiModelSettings(normal, cheap);
+  const settings = setAiModelSettings(normalized);
   res.json({
-    normalModel: getNormalModel(),
-    cheapModel: getCheapModel(),
-    normalModelOverridden: isValidModel(settings.normalModel),
-    cheapModelOverridden: isValidModel(settings.cheapModel),
+    model: getModel(),
+    modelOverridden: isValidModel(settings.model),
   });
 });
 

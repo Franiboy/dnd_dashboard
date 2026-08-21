@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { createLogger } from '../logger.js';
 import { getSessionById, updateSession } from '../repositories/recordings.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
-import { getNormalModel } from './modelConfig.js';
+import { getModel } from './modelConfig.js';
 import { runOpenCode } from './opencode.js';
 import { getSessionWorkDir, getSessionWorkFile } from './sessionWorkdir.js';
 
@@ -55,7 +55,7 @@ export async function improveSessionTranscriptWithAi(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || getNormalModel(),
+    model: model || getModel(),
     title: `dnd-session-rewrite-${sessionId}-${Date.now()}`,
     scopes: ['entity:read', 'diary:read'],
     user,

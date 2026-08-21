@@ -1,4 +1,4 @@
-import { getCheapModel } from './ai/modelConfig.js';
+import { getModel } from './ai/modelConfig.js';
 
 const DEFAULT_TARGET_POOL_SIZE = 20;
 const DEFAULT_REFILL_THRESHOLD = 5;
@@ -22,5 +22,5 @@ export function getGenerationBatchSize(): number {
 }
 
 export function getBingoModel(): string {
-  return getCheapModel();
+  return getModel();
 }

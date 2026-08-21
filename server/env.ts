@@ -39,7 +39,6 @@ const envSchema = z.object({
 
   AI_PROVIDER: z.string().optional(),
   AI_MODEL: z.string().optional(),
-  AI_CHEAP_MODEL: z.string().optional(),
   AI_OPENCODE_BIN: z.string().optional(),
 
   BINGO_SUGGESTION_TARGET: z.coerce.number().int().positive().optional(),

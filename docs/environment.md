@@ -37,9 +37,6 @@ WHISPER_MODEL=base
 AI_PROVIDER=opencode
 # Set to a real model, e.g. anthropic/claude-sonnet-4-20250514
 AI_MODEL=opencode/deepseek-v4-flash-free
-# Optional: cheaper model for short AI tasks like diary summaries and bingo suggestions.
-# If not set, AI_MODEL is used.
-AI_CHEAP_MODEL=opencode/deepseek-v4-flash-free
 # OpenCode CLI binary. Defaults to `opencode` (V1 CLI).
 # Set to `opencode2` to use the V2 CLI. In V2 mode the CLI talks to a running
 # `opencode2` background service (started via `opencode2 service start` or
@@ -85,11 +82,9 @@ AI_CHEAP_MODEL=opencode/deepseek-v4-flash-free
 - `DISCORD_TOKEN_REFRESH_INTERVAL_MS` controls how often stored Discord OAuth tokens are refreshed and profile data is synced (default: 3600000, 1 hour).
 - `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` enable the recording bot.
 - `WHISPER_*` configure local transcription (faster-whisper, CTranslate2 + Silero VAD on CPU). `WHISPER_VAD_MIN_SILENCE` (default 2.0s) is how long a pause must be to split speech regions; shorter pauses stay in the same region so the model keeps context. Long pauses where a speaker is silent are skipped entirely while timestamps stay on the original recording timeline. `WHISPER_COMPUTE_TYPE` (default `int8`, or `float16`) trades a tiny amount of speed for integer vs float inference on CPU; quality is effectively identical. `WHISPER_CONDITION_ON_PREVIOUS` (default true) keeps context across consecutive speech regions. `WHISPER_FP16` is deprecated and ignored since faster-whisper uses `WHISPER_COMPUTE_TYPE`.
-- `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `opencode/deepseek-v4-flash-free`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled.
-- `AI_CHEAP_MODEL` is used for short AI tasks (summaries, entities).
-- `AI_CHEAP_MODEL` is also used for bingo suggestion generation.
+- `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `opencode/deepseek-v4-flash-free`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled. The single model is used for all AI tasks (diary rewrite, summaries, entities, bingo suggestions).
 - `AI_OPENCODE_BIN` overrides the `opencode` command. Set it to `opencode2` to use the V2 CLI. In V2 mode the CLI uses a running `opencode2` background service so sessions can be reused and cleaned up; start it with `opencode2 service start`.
-- Normal and cheap model can also be overridden persistently at runtime in the Admin UI (section "KI-Modelle"). The selected values are stored in the `ai_settings` table and take precedence over `AI_MODEL` / `AI_CHEAP_MODEL`.
+- The model can also be overridden persistently at runtime in the Admin UI (SideDrawer section "KI-Modell"). The selected value is stored in the `ai_settings` table and takes precedence over `AI_MODEL`.
 - `BINGO_SUGGESTION_TARGET`, `BINGO_SUGGESTION_THRESHOLD`, and `BINGO_SUGGESTION_BATCH` configure the pre-generated suggestion pool (defaults: 20, 5, 15).
 - `MCP_TOKEN_SECRET` defaults to `JWT_SECRET`.
 - Optional: `CORS_ORIGIN` for allowed cross-origin origins (comma-separated). If not set, development allows only `http://localhost:5173` and `http://localhost:3001`; in production no cross-origin requests are allowed.
