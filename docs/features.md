@@ -68,6 +68,10 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
   - Aliases
 - Entities can be edited, merged, reclassified and blacklisted.
 - Knowledge distribution takes free text (e.g. from the diary) and assigns facts to entities.
+- Knowledge entries extracted from a diary entry or a session summary store their origin
+  (`origin_type` + `origin_id`). The entity dialog shows it as a read-only badge
+  ("Quelle: Tagebuch …" / "Quelle: Session …") for all users; it is never clickable.
+  Manual entries and free-text distributions have no origin.
 
 ### AI Workflow
 

@@ -380,7 +380,10 @@ export async function processDiaryEntryAi(
 
   try {
     const { distributeKnowledgeFromText } = await import('./knowledge.js');
-    await distributeKnowledgeFromText(entry.content, model, onLog);
+    await distributeKnowledgeFromText(entry.content, model, onLog, {
+      type: 'diary',
+      id: entryId,
+    });
   } catch (err) {
     log.warn(`Knowledge distribution failed for entry ${entryId}: ${err}`);
   }

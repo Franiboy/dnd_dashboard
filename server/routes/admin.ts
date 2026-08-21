@@ -12,7 +12,9 @@ import {
   setUserAdmin,
   setUserApproved,
   setUserDisabledApps,
+  setUserRole,
 } from '../users.js';
+import { USER_ROLES, type UserRole } from '../../shared/types.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 import { runNightlyJobNow } from '../scheduler/summaryScheduler.js';
 import { runTranscriptionJobsNow } from '../discord/scheduler.js';
@@ -145,6 +147,21 @@ router.post('/users/:id/admin', authMiddleware, requireAdmin, (req: AuthRequest,
   if (!check.ok) return res.status(403).json({ error: check.error });
   const { isAdmin } = req.body;
   const user = setUserAdmin(targetId, isAdmin);
+  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  notifyUserUpdate();
+  res.json(user);
+});
+
+router.post('/users/:id/role', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const targetId = req.params.id as string;
+  const { role } = req.body;
+  if (typeof role !== 'string' || !USER_ROLES.includes(role as UserRole)) {
+    return res.status(400).json({ error: 'Ungültige Rolle' });
+  }
+  // Unlike other admin actions, the role may also be changed on the own
+  // account and the initial admin - it does not affect admin permissions.
+  if (!findUserById(targetId)) return res.status(404).json({ error: 'User nicht gefunden' });
+  const user = setUserRole(targetId, role as UserRole);
   if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
   notifyUserUpdate();
   res.json(user);

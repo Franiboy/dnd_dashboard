@@ -210,7 +210,10 @@ export async function processSessionSummaryEntities(
   for (const name of allEntities.locations) markEntitySummaryDirty('locations', name);
 
   try {
-    await distributeKnowledgeFromText(result.longSummary, model, onLog);
+    await distributeKnowledgeFromText(result.longSummary, model, onLog, {
+      type: 'session',
+      id: sessionId,
+    });
   } catch (err) {
     log.warn(`Knowledge distribution failed for session summary ${sessionId}:`, err);
   }

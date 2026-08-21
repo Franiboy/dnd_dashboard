@@ -1,12 +1,22 @@
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
 import { getModel } from './modelConfig.js';
-import { listAllKnowledge } from '../repositories/entityKnowledge.js';
+import {
+  getEntityKnowledgeEntry,
+  listAllKnowledge,
+  setEntityKnowledgeOrigin,
+} from '../repositories/entityKnowledge.js';
 import { getEntitySummary } from '../repositories/entitySummaries.js';
 import { stripHtml } from './rewrite.js';
 import { createLogger } from '../logger.js';
-import type { EntityKnowledgeEntry, EntityType } from '../../shared/types.js';
+import type { EntityKnowledgeEntry, EntityType, KnowledgeOriginType } from '../../shared/types.js';
 
 const log = createLogger('knowledge');
+
+/** Text a knowledge distribution run was derived from. */
+export interface KnowledgeOrigin {
+  type: KnowledgeOriginType;
+  id: number;
+}
 
 interface DistributeResult {
   created: EntityKnowledgeEntry[];
@@ -63,7 +73,8 @@ function computeDistributionDiff(
 export async function distributeKnowledgeFromText(
   text: string,
   model?: string,
-  onLog?: (line: string) => void
+  onLog?: (line: string) => void,
+  origin?: KnowledgeOrigin
 ): Promise<DistributeResult> {
   const plainText = stripHtml(text).trim();
   if (!plainText) return { created: [], deleted: [] };
@@ -115,6 +126,15 @@ export async function distributeKnowledgeFromText(
   const allAfter = listAllKnowledge();
   const diff = computeDistributionDiff(snapshotBefore, allAfter);
 
+  // Record where the newly created entries came from (display-only provenance).
+  if (origin && diff.created.length > 0) {
+    const createdIds = diff.created.map((entry) => entry.id);
+    setEntityKnowledgeOrigin(createdIds, origin.type, origin.id);
+    diff.created = createdIds
+      .map((id) => getEntityKnowledgeEntry(id))
+      .filter((entry): entry is EntityKnowledgeEntry => entry !== null);
+  }
+
   if (result.sessionId) {
     deleteOpenCodeSession(result.sessionId);
   }
@@ -125,7 +145,9 @@ export async function distributeKnowledgeFromText(
   }
 
   log.info(
-    `Distributed ${diff.created.length} new entries and marked ${diff.deleted.length} entries as deleted`
+    `Distributed ${diff.created.length} new entries and marked ${diff.deleted.length} entries as deleted${
+      origin ? ` from ${origin.type} #${origin.id}` : ''
+    }`
   );
   return diff;
 }

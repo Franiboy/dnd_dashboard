@@ -591,7 +591,7 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
                           </>
                         ) : (
                           <>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                               {entry.title && (
                                 <p
                                   className={`text-xs font-semibold ${isDeleted ? 'text-slate-500 line-through' : 'text-[var(--accent)]'}`}
@@ -602,6 +602,19 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
                               {isDeleted && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--danger)]/10 text-[var(--danger)] font-medium">
                                   Gelöscht
+                                </span>
+                              )}
+                              {entry.originType && (
+                                <span
+                                  title={
+                                    entry.originType === 'diary'
+                                      ? `Aus Tagebucheintrag übernommen${entry.originTitle ? `: „${entry.originTitle}“` : ''}`
+                                      : `Aus Session-Zusammenfassung übernommen${entry.originTitle ? `: ${entry.originTitle}` : ''}`
+                                  }
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent)]/10 text-[var(--accent)] font-medium whitespace-nowrap"
+                                >
+                                  Quelle: {entry.originType === 'diary' ? 'Tagebuch' : 'Session'}
+                                  {entry.originTitle ? ` „${entry.originTitle}“` : ''}
                                 </span>
                               )}
                             </div>
