@@ -174,6 +174,23 @@ function dropLegacyDiaryEntryDate(): void {
   }
 }
 
+// Legacy ai_settings rows used separate normal_model/cheap_model columns.
+// Collapse any stored override into the single model column (normal wins).
+function migrateAiSettingsSingleModel(): void {
+  if (!tableExists('ai_settings')) return;
+  const cols = getExistingColumns('ai_settings');
+  if (!cols.has('model') || !cols.has('normal_model')) return;
+  db.exec(`
+    UPDATE ai_settings
+    SET model = COALESCE(
+      NULLIF(TRIM(normal_model), ''),
+      NULLIF(TRIM(cheap_model), '')
+    )
+    WHERE id = 1
+      AND (model IS NULL OR TRIM(model) = '');
+  `);
+}
+
 export function runMigrations(): void {
   // Apply non-generative data migrations that reshape schema first.
   migrateEntityBlacklistTypes();
@@ -181,5 +198,6 @@ export function runMigrations(): void {
   // Apply the declarative schema diff (tables, columns, indexes).
   applySchema();
   // Backfills that depend on the schema being present.
+  migrateAiSettingsSingleModel();
   fillRecordingSessionUpdatedAt();
 }

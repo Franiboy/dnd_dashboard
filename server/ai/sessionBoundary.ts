@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createLogger } from '../logger.js';
 import { getSessionById } from '../repositories/recordings.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
-import { getCheapModel } from './modelConfig.js';
+import { getModel } from './modelConfig.js';
 import { runOpenCode } from './opencode.js';
 import { getSessionWorkDir, getSessionWorkFile } from './sessionWorkdir.js';
 
@@ -151,7 +151,7 @@ export async function detectSessionBoundaries(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || getCheapModel(),
+    model: model || getModel(),
     title: `dnd-session-boundaries-${sessionId}-${Date.now()}`,
     scopes: ['recording:boundaries'],
     user,

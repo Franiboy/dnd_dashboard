@@ -147,11 +147,9 @@ The AI features require `AI_PROVIDER=opencode` and a valid `AI_MODEL`, e.g.:
 ```bash
 AI_PROVIDER=opencode
 AI_MODEL=anthropic/claude-sonnet-4-20250514
-# Optional for cheaper tasks:
-AI_CHEAP_MODEL=openai/gpt-4.1-mini
 ```
 
-Optionally `AI_OPENCODE_BIN` can set the path to the OpenCode CLI.
+Optionally `AI_OPENCODE_BIN` can set the path to the OpenCode CLI. The model can also be changed at runtime in the Admin UI (SideDrawer section "KI-Modell"); that choice is stored in the database and takes precedence over `AI_MODEL`.
 
 The AI uses a custom MCP server to call tools like `get_entity`, `set_diary_summary` and `create_knowledge`. The token for it is automatically generated from `JWT_SECRET` (or `MCP_TOKEN_SECRET`).
 

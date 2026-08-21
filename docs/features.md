@@ -22,7 +22,7 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 - During setup, a right-hand panel shows the pending suggestions. Users can accept a suggestion to add it as a public task or reject it to remove it.
 - Accepting a suggestion adds the task to the game, removes the suggestion, and broadcasts the updated game state via Socket.io.
 - The pool is filled on startup and checked every minute, so suggestions are usually available without waiting.
-- Suggestions use the `AI_CHEAP_MODEL` if set, otherwise `AI_MODEL`.
+- Suggestions use the configured `AI_MODEL` (or the model selected in the Admin UI).
 
 ## Important Socket.io Events
 
