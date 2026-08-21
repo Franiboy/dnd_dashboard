@@ -4,7 +4,7 @@ import { getSessionById, getSessionSummaryById } from '../repositories/recording
 import { findExistingEntitiesInText } from '../repositories/diary.js';
 import { markEntitySummaryDirty } from '../repositories/entitySummaries.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
-import { getCheapModel, getNormalModel } from './modelConfig.js';
+import { getModel } from './modelConfig.js';
 import { runOpenCode } from './opencode.js';
 import { distributeKnowledgeFromText } from './knowledge.js';
 import { getSessionWorkDir, getSessionWorkFile } from './sessionWorkdir.js';
@@ -110,7 +110,7 @@ async function generateLongSessionSummary(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || getNormalModel(),
+    model: model || getModel(),
     title: `dnd-session-long-summary-${sessionId}-${Date.now()}`,
     scopes: ['recording:read', 'recording:summarize', 'diary:read', 'entity:read'],
     user,
@@ -159,7 +159,7 @@ async function generateShortSessionSummary(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || getCheapModel(),
+    model: model || getModel(),
     title: `dnd-session-short-summary-${sessionId}-${Date.now()}`,
     scopes: ['recording:summarize'],
     user,

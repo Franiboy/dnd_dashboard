@@ -1,5 +1,5 @@
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
-import { getCheapModel, getNormalModel } from './modelConfig.js';
+import { getModel } from './modelConfig.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
 import { readRewrittenFile } from '../diaryFiles.js';
 import {
@@ -105,7 +105,7 @@ export async function rewriteTextWithAi(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || getNormalModel(),
+    model: model || getModel(),
     sessionId: existingSessionId || undefined,
     title,
     scopes: ['diary:read', 'entity:read', 'diary:rewrite'],
@@ -182,7 +182,7 @@ export async function improveRewrittenWithCommand(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || getNormalModel(),
+    model: model || getModel(),
     sessionId,
     scopes: ['diary:read', 'entity:read', 'diary:rewrite'],
     user,
@@ -252,7 +252,7 @@ export async function summarizeTextWithAi(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || getCheapModel(),
+    model: model || getModel(),
     title: `dnd-diary-summarize-${entryId}-${Date.now()}`,
     scopes: ['diary:read', 'entity:read', 'diary:summarize'],
     user,
@@ -332,7 +332,7 @@ export async function extractEntitiesFromDiary(
   const result = await runOpenCode({
     prompt,
     worktreePath: process.cwd(),
-    model: model || getCheapModel(),
+    model: model || getModel(),
     title: `dnd-diary-entities-${entryId}-${Date.now()}`,
     scopes: ['entity:read', 'entity:extract'],
     user,

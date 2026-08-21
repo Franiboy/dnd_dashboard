@@ -321,8 +321,7 @@ export const schema: Record<string, TableDef> = {
   ai_settings: {
     columns: {
       id: { type: 'INTEGER', primaryKey: true },
-      normal_model: { type: 'TEXT' },
-      cheap_model: { type: 'TEXT' },
+      model: { type: 'TEXT' },
       updated_at: { type: 'TEXT' },
     },
   },

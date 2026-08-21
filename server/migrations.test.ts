@@ -46,4 +46,21 @@ describe('schema migrations', () => {
       expect(tables).toContain(name);
     }
   });
+
+  it('migrates legacy ai_settings normal/cheap overrides into the single model column', () => {
+    // Simulate a legacy database that still carries the old columns.
+    db.exec('ALTER TABLE ai_settings ADD COLUMN normal_model TEXT');
+    db.exec('ALTER TABLE ai_settings ADD COLUMN cheap_model TEXT');
+    db.prepare('INSERT INTO ai_settings (id, model) VALUES (1, NULL)').run();
+    db.prepare(
+      "UPDATE ai_settings SET normal_model = 'opencode/legacy-normal', cheap_model = 'opencode/legacy-cheap' WHERE id = 1"
+    ).run();
+
+    runMigrations();
+
+    const row = db.prepare('SELECT model FROM ai_settings WHERE id = 1').get() as {
+      model: string | null;
+    };
+    expect(row.model).toBe('opencode/legacy-normal');
+  });
 });

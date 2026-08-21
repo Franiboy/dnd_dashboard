@@ -1,11 +1,11 @@
-import { getNormalModel, isValidModel } from './modelConfig.js';
+import { getModel, isValidModel } from './modelConfig.js';
 
 export { isValidModel } from './modelConfig.js';
 
 export function isAiEnabled(): boolean {
   const provider = process.env.AI_PROVIDER;
 
-  if (!provider || !isValidModel(getNormalModel())) {
+  if (!provider || !isValidModel(getModel())) {
     return false;
   }
 
