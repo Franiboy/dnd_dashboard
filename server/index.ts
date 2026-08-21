@@ -17,6 +17,7 @@ import bingoRouter from './routes/bingo.js';
 import diaryRouter from './routes/diary.js';
 import entitiesRouter from './routes/entities.js';
 import recordingsRouter from './routes/recordings.js';
+import whiteboardRouter from './routes/whiteboard.js';
 import { setupSocket } from './socket.js';
 import { getVersion } from './version.js';
 import { runMigrations } from './migrations.js';
@@ -160,6 +161,7 @@ app.use('/api/bingo', bingoRouter);
 app.use('/api/diary', diaryRouter);
 app.use('/api/entities', entitiesRouter);
 app.use('/api/recordings', recordingsRouter);
+app.use('/api/whiteboard', whiteboardRouter);
 
 // Serve static files in production and fall back to index.html for all non-API routes
 const distDir = path.join(__dirname, '..', '..', 'dist');

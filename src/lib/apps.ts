@@ -63,6 +63,15 @@ export const APPS: AppMeta[] = [
     disableable: true,
     requiresFeature: 'recordingEnabled',
   },
+  {
+    id: 'whiteboard',
+    label: 'Whiteboard',
+    path: '/whiteboard',
+    description:
+      'Gemeinsames Board für Notizen und Aufgaben – oben öffentlich, darunter dein privater Bereich.',
+    disableable: true,
+    hideForInitialAdmin: true,
+  },
   { id: 'admin', label: 'Admin', path: '/admin', adminOnly: true, iconId: 'admin' },
 ];
 
