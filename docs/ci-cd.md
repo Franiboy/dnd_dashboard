@@ -21,6 +21,7 @@ After the normal CI has passed, OpenCode CLI reviews the PR diff headlessly:
 3. **Blockers:** findings the model cannot fix safely are written to `.ai-review-blockers.md`, posted as a PR comment, and the job fails without merging.
 4. **Validation:** if the AI changed files, lint/build/test run again locally. Green → fix commit is pushed to the PR branch and the PR is squash-merged. Red → changes are discarded, a comment explains what failed.
 5. **Clean:** if the AI changed nothing, the PR is squash-merged right away.
+6. **Deploy:** every auto-merge immediately deploys afterwards (`scripts/dnd-deploy.sh` against `/dnd_dashboard`). This is necessary because merges performed with the workflow `GITHUB_TOKEN` do not trigger push events – the normal `deploy` job would never run for them.
 
 Configuration via job env vars in the workflow:
 
