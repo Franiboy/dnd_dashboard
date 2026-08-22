@@ -330,14 +330,36 @@ export function WhiteboardToolbar({
 
   return (
     <div ref={rootRef}>
-      {/* Main toolbar column */}
-      <div className="absolute left-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
+      {/* Main toolbar column. overflow-x-hidden prevents a stray horizontal
+          scrollbar (and horizontally pannable/clipped content) when the
+          vertical scrollbar squeezes the wide stroke-width row. */}
+      <div className="absolute left-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] flex-col overflow-x-hidden overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
         <div className="flex flex-col gap-1">
           {TOOL_BUTTONS.map(renderToolButton)}
-          {renderPenButton()}
+          {/* Relative wrapper anchors the drawing flyout to the pen button,
+              so it always opens to the right of the panel edge no matter how
+              wide the appearance controls make the panel. */}
+          <div className="relative">
+            {renderPenButton()}
+            {drawingToolsOpen && (
+              <div className="wb-flyout-in absolute left-full top-0 z-20 ml-1.5 flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
+                <span className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Zeichnen
+                </span>
+                {DRAWING_TOOLS.map(renderFlyoutItem)}
+                {/* Caret connecting the flyout to the pen button */}
+                <span
+                  className="absolute -left-1 top-3 h-2 w-2 rotate-45 border-b border-l border-[var(--border)] bg-[var(--panel)]"
+                  aria-hidden
+                />
+              </div>
+            )}
+          </div>
         </div>
+        {/* Single scroll container: the outer panel already caps and scrolls
+            the whole toolbar, so no nested scrollbar is needed here. */}
         {showControls && (
-          <div className="mt-1 flex max-h-[26rem] flex-col gap-3 overflow-y-auto border-t border-[var(--border)] pt-2">
+          <div className="mt-1 flex flex-col gap-3 border-t border-[var(--border)] pt-2">
             {shapeContext ? (
               <>
                 <ControlGroup label="Füllung">
@@ -398,23 +420,6 @@ export function WhiteboardToolbar({
           </div>
         )}
       </div>
-
-      {/* Drawing flyout: flush with the toolbar edge and vertically aligned
-          with the pen button (panel border/padding + two buttons + gaps),
-          so it opens like a native submenu. */}
-      {drawingToolsOpen && (
-        <div className="wb-flyout-in absolute left-16 top-[99px] z-20 flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
-          <span className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Zeichnen
-          </span>
-          {DRAWING_TOOLS.map(renderFlyoutItem)}
-          {/* Caret connecting the flyout to the pen button */}
-          <span
-            className="absolute -left-1 top-3 h-2 w-2 rotate-45 border-b border-l border-[var(--border)] bg-[var(--panel)]"
-            aria-hidden
-          />
-        </div>
-      )}
     </div>
   );
 }
