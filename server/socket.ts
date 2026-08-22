@@ -253,6 +253,8 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
 
     // Dungeon masters mark dm-pool moments on their own board only.
     socket.on('confirmOwnTask', (taskId) => {
+      if (!canManageDmTasks(user.role, user.isAdmin))
+        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben bestätigen.');
       const playerId = socketPlayerMap.get(socket.id);
       if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
       const beforeBingo = new Set(
@@ -270,6 +272,8 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
     });
 
     socket.on('unconfirmOwnTask', (taskId) => {
+      if (!canManageDmTasks(user.role, user.isAdmin))
+        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben zurücknehmen.');
       const playerId = socketPlayerMap.get(socket.id);
       if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
       unconfirmOwnTask(playerId, taskId);
