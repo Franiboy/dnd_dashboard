@@ -56,6 +56,12 @@ function parseTimestamp(ts: string): number | null {
   return parseInt(a, 10) * 60 + parseInt(b, 10);
 }
 
+const SESSION_DELETE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+function isDeletableSession(session: RecordingSession): boolean {
+  return Date.now() - new Date(session.startedAt).getTime() < SESSION_DELETE_WINDOW_MS;
+}
+
 function SessionDiaryTransferBadge({ transfer }: { transfer: SessionDiaryTransfer }) {
   const label = transfer.isOutdated
     ? 'Tagebuch veraltet'
@@ -91,6 +97,7 @@ export function Sessions({ user }: SessionsProps) {
   const [loadingTranscript, setLoadingTranscript] = useState<Set<number>>(new Set());
   const [expandedLongSummaries, setExpandedLongSummaries] = useState<Set<number>>(new Set());
   const [sessionToDelete, setSessionToDelete] = useState<number | null>(null);
+  const [audioToDelete, setAudioToDelete] = useState<number | null>(null);
   const [improvingId, setImprovingId] = useState<number | null>(null);
   const [summarizingId, setSummarizingId] = useState<number | null>(null);
   const [draftingId, setDraftingId] = useState<number | null>(null);
@@ -235,6 +242,18 @@ export function Sessions({ user }: SessionsProps) {
     setWorking(true);
     setSessionToDelete(null);
     await request(`/api/recordings/${sessionToDelete}`, { method: 'DELETE' });
+    setWorking(false);
+  }
+
+  function startDeleteAudio(sessionId: number) {
+    setAudioToDelete(sessionId);
+  }
+
+  async function confirmDeleteAudio() {
+    if (audioToDelete === null) return;
+    setWorking(true);
+    setAudioToDelete(null);
+    await request(`/api/recordings/${audioToDelete}/delete-audio`, { method: 'POST' });
     setWorking(false);
   }
 
@@ -559,15 +578,25 @@ export function Sessions({ user }: SessionsProps) {
                   <>
                     {(session.status === 'pending_transcription' ||
                       session.status === 'error' ||
-                      session.status === 'completed') && (
+                      session.status === 'completed') &&
+                      session.hasWavFiles && (
+                        <Button
+                          variant="secondary"
+                          disabled={working}
+                          onClick={() => startTranscriptionNow(session.id)}
+                        >
+                          {session.status === 'error'
+                            ? 'Transkription wiederholen'
+                            : 'Jetzt transkribieren'}
+                        </Button>
+                      )}
+                    {session.hasWavFiles && (
                       <Button
                         variant="secondary"
                         disabled={working}
-                        onClick={() => startTranscriptionNow(session.id)}
+                        onClick={() => startDeleteAudio(session.id)}
                       >
-                        {session.status === 'error'
-                          ? 'Transkription wiederholen'
-                          : 'Jetzt transkribieren'}
+                        Audiodateien löschen
                       </Button>
                     )}
                     {session.status === 'completed' && (
@@ -618,7 +647,7 @@ export function Sessions({ user }: SessionsProps) {
                       : 'Transkript anzeigen'}
                   </Button>
                 )}
-                {user.isAdmin && (
+                {user.isAdmin && isDeletableSession(session) && (
                   <Button
                     variant="danger"
                     disabled={working}
@@ -778,6 +807,23 @@ export function Sessions({ user }: SessionsProps) {
           onCancel={() => setSessionToDelete(null)}
         >
           <p>Möchtest du die Session wirklich löschen?</p>
+        </ConfirmDialog>
+      )}
+
+      {audioToDelete !== null && (
+        <ConfirmDialog
+          title="Audiodateien löschen"
+          confirmLabel="Löschen"
+          cancelLabel="Abbrechen"
+          variant="danger"
+          loading={working}
+          onConfirm={confirmDeleteAudio}
+          onCancel={() => setAudioToDelete(null)}
+        >
+          <p>
+            Möchtest du die WAV-Audiodateien dieser Session wirklich löschen? Das Transkript bleibt
+            erhalten.
+          </p>
         </ConfirmDialog>
       )}
     </div>

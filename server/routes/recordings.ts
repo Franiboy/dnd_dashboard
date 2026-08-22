@@ -10,6 +10,7 @@ import {
   getMonitoredChannel,
 } from '../discord/bot.js';
 import { runTranscription, getTranscriptionProgress } from '../discord/transcriber.js';
+import { deleteSessionAudioFiles } from '../discord/files.js';
 import { isRecordingFeatureEnabled } from '../discord/config.js';
 import { isAiEnabled } from '../ai/config.js';
 import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
@@ -348,6 +349,18 @@ router.post('/:id/transcribe', requireAdmin, (req, res) => {
   });
 
   res.json({ message: 'Transkription wird im Hintergrund gestartet' });
+});
+
+router.post('/:id/delete-audio', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+
+  const deleted = await deleteSessionAudioFiles(id);
+  res.json({ message: `${deleted} Audiodatei(en) gelöscht`, deleted });
 });
 
 router.post('/:id/improve-transcript', requireAdmin, async (req: AuthRequest, res) => {
