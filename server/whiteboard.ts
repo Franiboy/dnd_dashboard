@@ -358,10 +358,12 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
 
   db.prepare(
     `UPDATE whiteboard_elements SET
-       x = ?, y = ?, x2 = ?, y2 = ?, width = ?, height = ?, color = ?, text = ?,
+       owner_id = ?, owner_name = ?, x = ?, y = ?, x2 = ?, y2 = ?, width = ?, height = ?, color = ?, text = ?,
        description = ?, status = ?, url = ?, from_id = ?, to_id = ?, locked = ?, updated_at = ?
      WHERE id = ?`
   ).run(
+    next.ownerId,
+    next.ownerName,
     next.x,
     next.y,
     next.x2,
