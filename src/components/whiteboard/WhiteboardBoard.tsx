@@ -397,16 +397,19 @@ export function WhiteboardBoard({
         toId: null,
         shapeKind: null,
         fillColor: null,
-        strokeWidth,
+        // Freehand ink is never invisible, even if "no border" (0) is still
+        // selected as the shape default.
+        strokeWidth: Math.max(1, strokeWidth),
         points: geometry.points,
         zIndex: nextTopZIndex(elements),
         locked: false,
         createdAt: now,
         updatedAt: now,
       });
-      setSelection([id]);
+      // Deliberately no auto-selection: the pen stays active so further
+      // strokes can be drawn straight over the fresh one.
     },
-    [color, strokeWidth, elements, user.id, user.displayName, createElement, setSelection]
+    [color, strokeWidth, elements, user.id, user.displayName, createElement]
   );
 
   const runGestureMove = (clientX: number, clientY: number) => {
