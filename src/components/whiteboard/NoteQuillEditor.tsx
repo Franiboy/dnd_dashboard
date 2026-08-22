@@ -81,38 +81,12 @@ export function NoteQuillToolbarMarkup() {
         <select className="ql-background" title="Hervorheben" />
       </span>
       <span className="ql-formats">
-        <button type="button" className="ql-align" title="Linksbündig">
-          <svg {...STROKE_ICON_PROPS}>
-            <StrokePath d="M3 5h18" />
-            <StrokePath d="M3 10h12" />
-            <StrokePath d="M3 15h18" />
-            <StrokePath d="M3 20h12" />
-          </svg>
-        </button>
-        <button type="button" className="ql-align-center" title="Zentriert">
-          <svg {...STROKE_ICON_PROPS}>
-            <StrokePath d="M3 5h18" />
-            <StrokePath d="M6 10h12" />
-            <StrokePath d="M3 15h18" />
-            <StrokePath d="M6 20h12" />
-          </svg>
-        </button>
-        <button type="button" className="ql-align-right" title="Rechtsbündig">
-          <svg {...STROKE_ICON_PROPS}>
-            <StrokePath d="M3 5h18" />
-            <StrokePath d="M9 10h12" />
-            <StrokePath d="M3 15h18" />
-            <StrokePath d="M9 20h12" />
-          </svg>
-        </button>
-        <button type="button" className="ql-align-justify" title="Blocksatz">
-          <svg {...STROKE_ICON_PROPS}>
-            <StrokePath d="M3 5h18" />
-            <StrokePath d="M3 10h18" />
-            <StrokePath d="M3 15h18" />
-            <StrokePath d="M3 20h18" />
-          </svg>
-        </button>
+        <select className="ql-align" title="Ausrichtung">
+          <option value="" />
+          <option value="center" />
+          <option value="right" />
+          <option value="justify" />
+        </select>
       </span>
       <span className="ql-formats">
         <button type="button" className="ql-list" value="ordered" title="Nummerierte Liste">
@@ -338,6 +312,11 @@ export function NoteQuillEditor({
         closeEdit();
       }}
       onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          closeEdit();
+          return;
+        }
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
           closeEdit();
