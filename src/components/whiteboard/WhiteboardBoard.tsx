@@ -241,6 +241,14 @@ export function WhiteboardBoard({
     onSelectedElementId(primary ?? null);
   }, [selectedIds, elementsById, onSelectedElementId]);
 
+  // Selection is exclusive to the select tool: switching to a creation or
+  // draw tool drops it so overlays never intercept the next gesture.
+  useEffect(() => {
+    if (tool === 'select') return;
+    setSelectedIds([]);
+    setCroppingId(null);
+  }, [tool]);
+
   const canEdit = useCallback(
     (element: WhiteboardElement) => element.zone === 'public' || element.ownerId === user.id,
     [user.id]
@@ -893,6 +901,10 @@ export function WhiteboardBoard({
     if (event.button !== 0) return;
     // Touch/pen pointers pan the board instead of moving an element.
     if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
+    // Only the select tool targets elements. With any creation/draw tool the
+    // press falls through to the background so new elements can be created
+    // right on top of existing ones.
+    if (tool !== 'select') return;
     event.stopPropagation();
     if (croppingId) return;
 
@@ -972,6 +984,7 @@ export function WhiteboardBoard({
 
   const startElementResize = (event: ReactPointerEvent, element: WhiteboardElement) => {
     if (event.button !== 0) return;
+    if (tool !== 'select') return;
     event.stopPropagation();
     if (!canEdit(element) || element.locked) return;
     bindWindowGesture();
@@ -993,6 +1006,8 @@ export function WhiteboardBoard({
   const startArrowDrag = (event: ReactPointerEvent, element: WhiteboardElement) => {
     // Right/middle presses fall through to the board background pan.
     if (event.button !== 0) return;
+    // Creation/draw tools never target arrows; the press creates instead.
+    if (tool !== 'select') return;
     event.stopPropagation();
     if (!canEdit(element)) return;
     bindWindowGesture();
@@ -1093,6 +1108,7 @@ export function WhiteboardBoard({
 
   const requestElementInteraction = useCallback(
     (id: string) => {
+      if (tool !== 'select') return;
       const element = elementsById.get(id);
       if (!element || !canEdit(element)) return;
       // Shapes and strokes have no editor: selecting is all the interaction.
@@ -1109,7 +1125,7 @@ export function WhiteboardBoard({
       setSelection([id]);
       openEdit(id);
     },
-    [elementsById, canEdit, openEdit, setSelection]
+    [tool, elementsById, canEdit, openEdit, setSelection]
   );
 
   const handleCropApply = useCallback(
@@ -1257,7 +1273,12 @@ export function WhiteboardBoard({
                   strokeWidth={18}
                   style={{
                     pointerEvents: 'stroke',
-                    cursor: selected && cursorMode === 'dragging' ? 'grabbing' : 'grab',
+                    cursor:
+                      tool !== 'select'
+                        ? 'crosshair'
+                        : selected && cursorMode === 'dragging'
+                          ? 'grabbing'
+                          : 'grab',
                   }}
                   onPointerDown={(e) => startArrowDrag(e, arrow)}
                 />
@@ -1312,6 +1333,7 @@ export function WhiteboardBoard({
               dragging={cursorMode === 'dragging'}
               cropping={croppingId === element.id}
               cameraScale={camera.scale}
+              interactive={tool === 'select'}
               hideOverlayControls={selection !== null}
               onPointerDown={startElementDrag}
               onStartResize={startElementResize}

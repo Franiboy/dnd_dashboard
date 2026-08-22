@@ -67,6 +67,8 @@ interface WhiteboardElementViewProps {
   cropping: boolean;
   /** Current whiteboard camera zoom, used to keep overlay controls legible. */
   cameraScale: number;
+  /** False while a creation/draw tool is active: elements never grab the pointer. */
+  interactive: boolean;
   /**
    * True while several elements share one selection: the highlight ring stays,
    * but per-element buttons and the resize grip move to the shared frame.
@@ -371,6 +373,7 @@ export function WhiteboardElementView({
   dragging,
   cropping,
   cameraScale,
+  interactive,
   hideOverlayControls,
   onPointerDown,
   onStartResize,
@@ -551,7 +554,15 @@ export function WhiteboardElementView({
         top: element.y,
         width: element.width,
         height: element.height,
-        cursor: editing ? 'default' : dragging ? 'grabbing' : element.locked ? 'default' : 'grab',
+        cursor: editing
+          ? 'default'
+          : dragging
+            ? 'grabbing'
+            : interactive
+              ? element.locked
+                ? 'default'
+                : 'grab'
+              : 'crosshair',
       }}
       onPointerDown={(e) => {
         if (!editing) onPointerDown(e, element);
