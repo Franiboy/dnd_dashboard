@@ -23,6 +23,8 @@ export interface Player {
   online: boolean;
   joinedAt: string;
   wins?: number;
+  /** True once this player's first bingo of the current round has been counted as a win. */
+  winCounted?: boolean;
 }
 
 export interface BingoGame {

@@ -8,6 +8,7 @@ import type {
 import { getAuthenticatedUser } from './auth.js';
 import {
   addTask,
+  canParticipate,
   confirmTask,
   confirmTaskFor,
   finishAndResetGame,
@@ -66,6 +67,12 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const displayName = user?.displayName;
       if (!displayName) return socket.emit('error', 'Name fehlt.');
 
+      // Only players and dungeon masters actively play bingo; guests spectate
+      // and keep receiving state broadcasts without a player entry.
+      if (!canParticipate(user.role)) {
+        return socket.emit('error', 'Nur Spieler und Dungeon Master können am Bingo teilnehmen.');
+      }
+
       // Make sure role-based participants exist before matching.
       syncPlayersFromUsers();
       const currentGame = getGame();
@@ -101,13 +108,21 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
           'error',
           'Private Aufgaben müssen mindestens einer Person zugewiesen werden.'
         );
-      addTask(text, { isPrivate, assignedTo });
-      broadcastState();
+      try {
+        addTask(text, { isPrivate, assignedTo });
+        broadcastState();
+      } catch (e: any) {
+        socket.emit('error', e.message);
+      }
     });
 
     socket.on('removeTask', (taskId) => {
-      removeTask(taskId);
-      broadcastState();
+      try {
+        removeTask(taskId);
+        broadcastState();
+      } catch (e: any) {
+        socket.emit('error', e.message);
+      }
     });
 
     socket.on('updateTask', ({ taskId, text, isPrivate, assignedTo }) => {

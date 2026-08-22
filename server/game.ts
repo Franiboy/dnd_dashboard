@@ -86,6 +86,11 @@ function createEmptyBoard(size: number): Cell[][] {
   return board;
 }
 
+// Only permanent participants may actively play bingo; guests are spectators.
+export function canParticipate(role?: UserRole): boolean {
+  return role === 'player' || role === 'dungeon_master';
+}
+
 function isValidBoard(board: Cell[][], size: number, userId?: string): boolean {
   if (!Array.isArray(board) || board.length !== size) return false;
   for (let r = 0; r < size; r++) {
@@ -106,6 +111,8 @@ export function addTask(
   text: string,
   { isPrivate = false, assignedTo = [] }: { isPrivate?: boolean; assignedTo?: string[] } = {}
 ): Task {
+  if (game.status !== 'setup')
+    throw new Error('Aufgaben können nur vor Spielstart hinzugefügt werden.');
   const task: Task = {
     id: createId(),
     text: text.trim(),
@@ -151,6 +158,8 @@ export function updateTask(
 }
 
 export function removeTask(taskId: string): BingoGame {
+  if (game.status !== 'setup')
+    throw new Error('Aufgaben können nur vor Spielstart entfernt werden.');
   game.tasks = game.tasks.filter((t) => t.id !== taskId);
   game.players.forEach((p) => {
     if (!p.board) return;
@@ -177,6 +186,9 @@ export function joinPlayer(
   avatarUrl?: string | null,
   role?: UserRole
 ): { game: BingoGame; playerId: string } {
+  if (!canParticipate(role)) {
+    throw new Error('Nur Spieler und Dungeon Master können am Bingo teilnehmen.');
+  }
   const id = createId();
   const player: Player = {
     id,
@@ -249,6 +261,8 @@ export function startGame(): BingoGame {
       isFull(board)
     );
     p.status = ready ? 'playing' : 'lobby';
+    // A new round starts fresh win counting.
+    p.winCounted = false;
   });
   persist();
   return game;
@@ -297,6 +311,28 @@ export function unlockBoard(playerId: string): BingoGame {
   return game;
 }
 
+// Count at most one win per player per round: re-entering bingo after an
+// unconfirm or holding several bingo lines at once must not inflate the
+// tally. The flag resets when the next round starts.
+function markBingoIfReached(player: Player): void {
+  if (!player.board || !hasBingo(player.board)) return;
+  if (player.status === 'bingo') return;
+  player.status = 'bingo';
+  if (!player.winCounted) {
+    player.winCounted = true;
+    player.wins = (player.wins ?? 0) + 1;
+  }
+}
+
+function revokeBingoIfLost(player: Player): void {
+  if (!player.board) return;
+  if (hasBingo(player.board)) {
+    if (player.status !== 'bingo') player.status = 'bingo';
+  } else if (player.status === 'bingo') {
+    player.status = 'playing';
+  }
+}
+
 export function confirmTask(
   sourcePlayerId: string,
   taskId: string,
@@ -320,10 +356,7 @@ export function confirmTask(
         }
       }
     }
-    if (playerChanged && hasBingo(player.board) && player.status !== 'bingo') {
-      player.status = 'bingo';
-      player.wins = (player.wins ?? 0) + 1;
-    }
+    if (playerChanged) markBingoIfReached(player);
   }
 
   if (anyChanged) {
@@ -357,11 +390,7 @@ export function unconfirmTask(taskId: string): BingoGame {
         }
       }
     }
-    if (hasBingo(player.board)) {
-      if (player.status !== 'bingo') player.status = 'bingo';
-    } else {
-      if (player.status === 'bingo') player.status = 'playing';
-    }
+    revokeBingoIfLost(player);
   }
   if (changed) persist();
   return game;
@@ -387,6 +416,7 @@ export function finishAndResetGame(): BingoGame {
     p.status = 'lobby';
     p.board = createEmptyBoard(game.gridSize);
     p.locked = false;
+    p.winCounted = false;
   });
   // Pick up role changes that happened during the round.
   syncPlayersFromUsers();
