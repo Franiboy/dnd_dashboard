@@ -687,17 +687,18 @@ export function WhiteboardBoard({
     if (e.button !== 0) return;
     const { wx, wy } = screenToWorld(e.clientX, e.clientY);
 
+    // Touch/pen pointers have no right button, so they keep one-finger
+    // panning in every tool instead of accidentally creating or drawing.
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      if (tool === 'select') setSelection(null);
+      gestureRef.current = { kind: 'pan', lastX: e.clientX, lastY: e.clientY };
+      bindWindowGesture();
+      setCursorMode('panning');
+      return;
+    }
+
     if (tool === 'select') {
       const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-      // Touch/pen pointers have no right button, so they keep one-finger
-      // panning; mouse drags always rubber-band instead of panning.
-      if (e.pointerType === 'touch' || e.pointerType === 'pen') {
-        setSelection(null);
-        gestureRef.current = { kind: 'pan', lastX: e.clientX, lastY: e.clientY };
-        bindWindowGesture();
-        setCursorMode('panning');
-        return;
-      }
       // Any empty-canvas drag draws a rubber-band selection; Shift/Ctrl keeps
       // the current selection while banding. A plain click still drops the
       // selection immediately and via the empty band on release.
