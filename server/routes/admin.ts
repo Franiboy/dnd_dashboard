@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getRecentLogs, getLogsPaginated, subscribeLogs } from '../logger.js';
 import type { LogEntry, LogLevel } from '../../shared/types.js';
-import { clearModelCache, getModel, isValidModel, listAvailableModels } from '../ai/modelConfig.js';
+import { getModel, isValidModel, listAvailableModels } from '../ai/modelConfig.js';
 import { getAiModelSettings, setAiModelSettings } from '../repositories/aiSettings.js';
 import {
   deleteUser,
@@ -17,12 +17,49 @@ import {
 import { USER_ROLES, type UserRole } from '../../shared/types.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 import { syncPlayersFromUsers } from '../game.js';
-import { runNightlyJobNow } from '../scheduler/summaryScheduler.js';
-import { runTranscriptionJobsNow } from '../discord/scheduler.js';
-import { runBingoSuggestionRefillNow } from '../ai/bingoSuggestions.js';
+import { isNightlyJobRunning, runNightlyJobNow } from '../scheduler/summaryScheduler.js';
+import { isTranscriptionJobRunning, runTranscriptionJobsNow } from '../discord/scheduler.js';
+import {
+  isBingoSuggestionRefillRunning,
+  runBingoSuggestionRefillNow,
+} from '../ai/bingoSuggestions.js';
 
 const userEvents = new SseBroadcaster();
 const logEvents = new SseBroadcaster();
+const jobEvents = new SseBroadcaster();
+
+interface JobStatus {
+  nightly: boolean;
+  transcription: boolean;
+  bingoSuggestion: boolean;
+}
+
+function getJobStatus(): JobStatus {
+  return {
+    nightly: isNightlyJobRunning(),
+    transcription: isTranscriptionJobRunning(),
+    bingoSuggestion: isBingoSuggestionRefillRunning(),
+  };
+}
+
+function notifyJobUpdate() {
+  try {
+    jobEvents.broadcast('jobs', JSON.stringify(getJobStatus()));
+  } catch {
+    // ignore broadcast errors
+  }
+}
+
+// Jobs flip their running flag inside the scheduler modules, so scheduled
+// (non-API) starts and finishes are picked up by this short poll.
+let lastJobStatusJson = JSON.stringify(getJobStatus());
+setInterval(() => {
+  const json = JSON.stringify(getJobStatus());
+  if (json !== lastJobStatusJson) {
+    lastJobStatusJson = json;
+    notifyJobUpdate();
+  }
+}, 1000).unref();
 
 function notifyUserUpdate() {
   try {
@@ -209,33 +246,51 @@ router.get('/ai/models', authMiddleware, requireAdmin, async (req: AuthRequest, 
   }
 });
 
-router.post('/ai/models/refresh', authMiddleware, requireAdmin, async (req: AuthRequest, res) => {
-  try {
-    clearModelCache();
-    const models = await listAvailableModels(true);
-    res.json({ models });
-  } catch {
-    res.status(500).json({ error: 'Modelle konnten nicht aktualisiert werden' });
+router.get('/jobs/status', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  res.json(getJobStatus());
+});
+
+router.get('/jobs/events', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  // Send initial status
+  if (!writeSse(res, 'jobs', JSON.stringify(getJobStatus()))) {
+    return;
   }
+
+  const cleanup = jobEvents.add(res);
+  attachSseCleanup(req, res, cleanup);
 });
 
 router.post('/nightly-job', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const started = runNightlyJobNow();
   if (started) {
+    notifyJobUpdate();
     res.json({ started: true, message: 'Nightly-Job wurde gestartet.' });
   } else {
-    res.status(409).json({ started: false, message: 'Nightly-Job läuft bereits.' });
+    res.status(409).json({
+      started: false,
+      message: 'Nightly-Job läuft bereits.',
+      error: 'Nightly-Job läuft bereits.',
+    });
   }
 });
 
 router.post('/transcription-jobs', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const started = runTranscriptionJobsNow();
   if (started) {
+    notifyJobUpdate();
     res.json({ started: true, message: 'Transkription-Jobs wurden gestartet.' });
   } else {
+    const message = 'Transkription-Jobs laufen bereits oder sind deaktiviert.';
     res.status(409).json({
       started: false,
-      message: 'Transkription-Jobs laufen bereits oder sind deaktiviert.',
+      message,
+      error: message,
     });
   }
 });
@@ -243,11 +298,14 @@ router.post('/transcription-jobs', authMiddleware, requireAdmin, (req: AuthReque
 router.post('/bingo-suggestion-refill', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const started = runBingoSuggestionRefillNow();
   if (started) {
+    notifyJobUpdate();
     res.json({ started: true, message: 'Bingo-Vorschlags-Nachfüllung wurde gestartet.' });
   } else {
+    const message = 'Bingo-Vorschlags-Nachfüllung läuft bereits oder KI ist deaktiviert.';
     res.status(409).json({
       started: false,
-      message: 'Bingo-Vorschlags-Nachfüllung läuft bereits oder KI ist deaktiviert.',
+      message,
+      error: message,
     });
   }
 });

@@ -9,12 +9,13 @@ Besides Socket.io for Bingo, state updates are delivered via **Server-Sent Event
 
 ## Existing SSE Endpoints
 
-| Endpoint                      | Event                              | Payload                            | Description          |
-| ----------------------------- | ---------------------------------- | ---------------------------------- | -------------------- |
-| `GET /api/admin/users/events` | `users`                            | `SafeUser[]`                       | User list (admin)    |
-| `GET /api/admin/logs/events`  | `logs` / `log`                     | `LogEntry[]` / `LogEntry`          | Live logs (admin)    |
-| `GET /api/recordings/events`  | `status` / `sessions` / `progress` | Recording status and lists (admin) |
-| `GET /api/diary/ai-events`    | `log` / `connected`                | `{ message: string }`              | AI progress in diary |
+| Endpoint                      | Event                              | Payload                                       | Description                                                                           |
+| ----------------------------- | ---------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `GET /api/admin/users/events` | `users`                            | `SafeUser[]`                                  | User list (admin)                                                                     |
+| `GET /api/admin/logs/events`  | `logs` / `log`                     | `LogEntry[]` / `LogEntry`                     | Live logs (admin)                                                                     |
+| `GET /api/admin/jobs/events`  | `jobs`                             | `{ nightly, transcription, bingoSuggestion }` | Background job running states (admin), also available as `GET /api/admin/jobs/status` |
+| `GET /api/recordings/events`  | `status` / `sessions` / `progress` | Recording status and lists (admin)            |
+| `GET /api/diary/ai-events`    | `log` / `connected`                | `{ message: string }`                         | AI progress in diary                                                                  |
 
 ## Conventions for New SSE Streams
 
