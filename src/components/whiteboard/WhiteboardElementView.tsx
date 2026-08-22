@@ -65,6 +65,8 @@ interface WhiteboardElementViewProps {
   cropping: boolean;
   /** Current whiteboard camera zoom, used to keep overlay controls legible. */
   cameraScale: number;
+  /** False while a creation/draw tool is active: elements never grab the pointer. */
+  interactive: boolean;
   onPointerDown: (event: ReactPointerEvent, element: WhiteboardElement) => void;
   onStartResize: (event: ReactPointerEvent, element: WhiteboardElement) => void;
   onRequestEdit: (id: string) => void;
@@ -364,6 +366,7 @@ export function WhiteboardElementView({
   dragging,
   cropping,
   cameraScale,
+  interactive,
   onPointerDown,
   onStartResize,
   onRequestEdit,
@@ -543,7 +546,15 @@ export function WhiteboardElementView({
         top: element.y,
         width: element.width,
         height: element.height,
-        cursor: editing ? 'default' : dragging ? 'grabbing' : element.locked ? 'default' : 'grab',
+        cursor: editing
+          ? 'default'
+          : dragging
+            ? 'grabbing'
+            : interactive
+              ? element.locked
+                ? 'default'
+                : 'grab'
+              : 'crosshair',
       }}
       onPointerDown={(e) => {
         if (!editing) onPointerDown(e, element);
