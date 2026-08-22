@@ -427,7 +427,7 @@ export function WhiteboardBoard({
       if (Math.hypot(wx - last.wx, wy - last.wy) < 2 / cameraRef.current.scale) return;
       if (g.points.length >= 4000) return;
       g.points.push({ wx, wy });
-      setStrokePreview(g.points);
+      setStrokePreview([...g.points]);
       return;
     }
 
