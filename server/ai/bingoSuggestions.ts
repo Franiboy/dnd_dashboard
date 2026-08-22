@@ -352,11 +352,17 @@ export async function ensureSuggestionPool(
       }
     } catch (err) {
       log.error(`Failed to refill bingo suggestion pool "${audience}":`, err);
-    } finally {
-      delete refillPromises[audience];
     }
   })();
 
+  // Register before any cleanup can run: the IIFE above executes synchronously
+  // until its first await, so an early return (pool already filled) would
+  // resolve the promise before it is registered. A stale resolved entry here
+  // would report the refill as running forever and block all future refills.
+  // The deletion is therefore scheduled asynchronously after registration.
   refillPromises[audience] = promise;
+  void promise.finally(() => {
+    delete refillPromises[audience];
+  });
   return promise;
 }
