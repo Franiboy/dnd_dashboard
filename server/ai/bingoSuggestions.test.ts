@@ -6,9 +6,16 @@ vi.mock('./opencode.js', () => ({
 }));
 
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
-import { generateBingoSuggestionBatch } from './bingoSuggestions.js';
 import {
+  ensureSuggestionPool,
+  generateBingoSuggestionBatch,
+  isBingoSuggestionRefillRunning,
+} from './bingoSuggestions.js';
+import {
+  countPendingSuggestions,
+  createBingoSuggestions,
   getBingoSuggestionBatch,
+  rejectAllPendingSuggestions,
   submitBingoSuggestionBatch,
 } from '../repositories/bingoSuggestions.js';
 import type { TaskAudience } from '../../shared/types.js';
@@ -85,5 +92,52 @@ describe('generateBingoSuggestionBatch', () => {
     expect(result).toEqual(SUGGESTIONS);
     expect(getBingoSuggestionBatch(lastBatchId)?.status).toBe('completed');
     expect(deleteOpenCodeSession).toHaveBeenCalledWith('ses_test');
+  });
+});
+
+describe('ensureSuggestionPool', () => {
+  beforeEach(() => {
+    process.env.AI_PROVIDER = 'opencode';
+    process.env.AI_MODEL = 'test-model';
+    process.env.BINGO_SUGGESTION_TARGET = '20';
+    process.env.BINGO_SUGGESTION_THRESHOLD = '5';
+    process.env.BINGO_SUGGESTION_BATCH = '15';
+    rejectAllPendingSuggestions(AUDIENCE);
+    runOpenCodeMock.mockReset();
+    vi.mocked(deleteOpenCodeSession).mockClear();
+  });
+
+  it('does not report a running refill when the pool is already filled', async () => {
+    createBingoSuggestions(
+      Array.from({ length: 20 }, (_, i) => ({
+        text: `Vorhandener Vorschlag ${i + 1}`,
+        source: 'ai' as const,
+        audience: AUDIENCE,
+      }))
+    );
+    expect(countPendingSuggestions(AUDIENCE)).toBe(20);
+
+    await ensureSuggestionPool({ audience: AUDIENCE });
+
+    expect(isBingoSuggestionRefillRunning(AUDIENCE)).toBe(false);
+  });
+
+  it('reports running while a refill generation is in flight and clears afterwards', async () => {
+    let release!: (result: OpenCodeResult) => void;
+    runOpenCodeMock.mockImplementation(
+      () =>
+        new Promise<OpenCodeResult>((resolve) => {
+          release = resolve;
+        })
+    );
+
+    const refill = ensureSuggestionPool({ audience: AUDIENCE, force: true });
+
+    expect(isBingoSuggestionRefillRunning(AUDIENCE)).toBe(true);
+
+    release(failureResult(1));
+    await refill;
+
+    expect(isBingoSuggestionRefillRunning(AUDIENCE)).toBe(false);
   });
 });
