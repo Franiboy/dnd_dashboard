@@ -33,12 +33,14 @@ const MAX_CONTENT_SCALE = 12;
  * Overlay controls (lock badge, delete/edit/layer buttons, resize grip) scale
  * with contentScale but never render smaller than MIN_UI_SCREEN_PX on screen:
  * below that size circles rasterize as oval blobs and hit targets become
- * unusable, so uiScale compensates for camera zoom-out.
+ * unusable, so uiScale compensates for camera zoom-out. Shared with the
+ * multi-selection frame so both overlays stay visually identical.
  */
-const BASE_CONTROL_SIZE = 24;
-const MIN_UI_SCREEN_PX = 16;
+export const BASE_CONTROL_SIZE = 24;
+export const MIN_UI_SCREEN_PX = 16;
 
-function LockIcon({ open, size = 12 }: { open: boolean; size?: number }) {
+/** Shared overlay icon for locked/open elements (element badge + group frame). */
+export function LockIcon({ open, size = 12 }: { open: boolean; size?: number }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -67,6 +69,11 @@ interface WhiteboardElementViewProps {
   cameraScale: number;
   /** False while a creation/draw tool is active: elements never grab the pointer. */
   interactive: boolean;
+  /**
+   * True while several elements share one selection: the highlight ring stays,
+   * but per-element buttons and the resize grip move to the shared frame.
+   */
+  hideOverlayControls?: boolean;
   onPointerDown: (event: ReactPointerEvent, element: WhiteboardElement) => void;
   onStartResize: (event: ReactPointerEvent, element: WhiteboardElement) => void;
   onRequestEdit: (id: string) => void;
@@ -367,6 +374,7 @@ export function WhiteboardElementView({
   cropping,
   cameraScale,
   interactive,
+  hideOverlayControls,
   onPointerDown,
   onStartResize,
   onRequestEdit,
@@ -590,7 +598,7 @@ export function WhiteboardElementView({
           <LockIcon open={false} size={11 * uiScale} />
         </div>
       )}
-      {selected && !editing && !cropping && (
+      {selected && !editing && !cropping && !hideOverlayControls && (
         <>
           <button
             type="button"

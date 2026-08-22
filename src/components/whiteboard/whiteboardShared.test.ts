@@ -3,9 +3,11 @@ import type { WhiteboardElement } from '../../../shared/types';
 import {
   buildStrokeGeometry,
   compareStackOrder,
+  groupLayerMovePatches,
   isShapeTool,
   layerMovePatches,
   nextTopZIndex,
+  selectionBounds,
   shapeKindForTool,
 } from './whiteboardShared';
 
@@ -146,5 +148,114 @@ describe('shape tool helpers', () => {
     expect(shapeKindForTool('triangle')).toBe('triangle');
     // Non-shape tools fall back to the default outline variant.
     expect(shapeKindForTool('select')).toBe('rect');
+  });
+});
+
+describe('selectionBounds', () => {
+  it('spans all selected boxes and returns null without matches', () => {
+    const elements = [
+      element({ id: 'a', x: 100, y: 50, width: 200, height: 100 }),
+      element({ id: 'b', x: 0, y: 200, width: 150, height: 80 }),
+    ];
+    expect(selectionBounds(elements, ['a', 'b'])).toEqual({
+      x: 0,
+      y: 50,
+      width: 300,
+      height: 230,
+    });
+    expect(selectionBounds(elements, ['missing'])).toBeNull();
+  });
+
+  it('measures arrows by their endpoints instead of their box', () => {
+    const elements = [
+      element({ id: 'n', x: 10, y: 10, width: 100, height: 100 }),
+      element({
+        id: 'a',
+        type: 'arrow',
+        x: 500,
+        y: 400,
+        x2: 300,
+        y2: 600,
+        width: 0,
+        height: 0,
+      }),
+    ];
+    expect(selectionBounds(elements, ['a', 'n'])).toEqual({
+      x: 10,
+      y: 10,
+      width: 490,
+      height: 590,
+    });
+  });
+});
+
+describe('groupLayerMovePatches', () => {
+  it('shifts the whole selected block one level while keeping inner order', () => {
+    // Stack (bottom to top): a(selected), b, c(selected), d.
+    const elements = [
+      element({ id: 'a', zIndex: 0 }),
+      element({ id: 'b', zIndex: 1 }),
+      element({ id: 'c', zIndex: 2 }),
+      element({ id: 'd', zIndex: 3 }),
+    ];
+    expect(groupLayerMovePatches(elements, ['a', 'c'], 'forward')).toEqual([
+      { id: 'c', patch: { zIndex: 3 } },
+      { id: 'd', patch: { zIndex: 2 } },
+      { id: 'a', patch: { zIndex: 1 } },
+      { id: 'b', patch: { zIndex: 0 } },
+    ]);
+    // 'a' already sits at the bottom edge, so only 'c' slips below 'b'.
+    expect(groupLayerMovePatches(elements, ['a', 'c'], 'backward')).toEqual([
+      { id: 'c', patch: { zIndex: 1 } },
+      { id: 'b', patch: { zIndex: 2 } },
+    ]);
+  });
+
+  it('keeps the relative order of adjacent selected members intact', () => {
+    const elements = [
+      element({ id: 'a', zIndex: 0 }),
+      element({ id: 'b', zIndex: 1 }),
+      element({ id: 'x', zIndex: 2 }),
+    ];
+    // Both members move past x together: b first, then a follows behind it.
+    expect(groupLayerMovePatches(elements, ['a', 'b'], 'forward')).toEqual([
+      { id: 'b', patch: { zIndex: 2 } },
+      { id: 'x', patch: { zIndex: 1 } },
+      { id: 'a', patch: { zIndex: 1 } },
+      { id: 'x', patch: { zIndex: 0 } },
+    ]);
+  });
+
+  it('ignores locked and selected members as barriers but moves around them', () => {
+    const elements = [
+      element({ id: 'lockedSel', zIndex: 1, locked: true }),
+      element({ id: 'mover', zIndex: 2 }),
+      element({ id: 'above', zIndex: 3 }),
+    ];
+    // The locked member is part of the block and must not be crossed...
+    expect(groupLayerMovePatches(elements, ['lockedSel', 'mover'], 'backward')).toEqual([]);
+    // ...but an unlocked selection still moves past unrelated elements.
+    expect(groupLayerMovePatches(elements, ['mover'], 'backward').length).toBeGreaterThan(0);
+  });
+
+  it('skips arrows entirely', () => {
+    const elements = [
+      element({ id: 'a', zIndex: 0 }),
+      element({ id: 'arrow', type: 'arrow', zIndex: 9 }),
+    ];
+    expect(groupLayerMovePatches(elements, ['arrow'], 'forward')).toEqual([]);
+  });
+
+  it('breaks tied zIndex values with a fresh adjacent value', () => {
+    const legacy = [
+      element({ id: 'a', zIndex: 0 }),
+      element({ id: 'b', zIndex: 0 }),
+      element({ id: 'c', zIndex: 0 }),
+    ];
+    // Both tied movers receive new values; the unrelated peer stays put.
+    expect(groupLayerMovePatches(legacy, ['a', 'b'], 'forward')).toEqual([
+      { id: 'b', patch: { zIndex: 1 } },
+      { id: 'a', patch: { zIndex: 1 } },
+    ]);
   });
 });
