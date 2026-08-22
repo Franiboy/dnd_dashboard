@@ -149,24 +149,31 @@ function migrateEntityBlacklistTypes(): void {
   log.info('Migrated entity_blacklist types to plural form');
 }
 
-// Existing whiteboard_elements tables carry a CHECK constraint without the
-// 'text' element type. SQLite cannot alter a CHECK in place, so the table is
-// rebuilt once its DDL still matches the old type list.
+// Legacy whiteboard_elements tables only allow the original element types
+// in their CHECK constraint (without 'shape', 'stroke' or 'text'). Rebuild
+// the table so rows of every current type are accepted; all existing columns
+// are copied 1:1.
 function migrateWhiteboardElementTypes(): void {
   if (!tableExists('whiteboard_elements')) return;
   const row = db
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'whiteboard_elements'")
     .get() as { sql: string } | undefined;
-  if (!row || !row.sql.includes("'note', 'task', 'arrow', 'link')")) return;
-  const columns = Object.keys(schema.whiteboard_elements.columns).map(quote);
+  // Already rebuilt when the CHECK constraint knows the text type, which was
+  // added after 'shape'/'stroke'.
+  if (!row || /'text'/.test(row.sql)) return;
   db.exec('ALTER TABLE whiteboard_elements RENAME TO whiteboard_elements_old;');
   db.exec(createTableSql('whiteboard_elements', schema.whiteboard_elements));
-  db.exec(
-    `INSERT INTO whiteboard_elements (${columns.join(', ')})
-     SELECT ${columns.join(', ')} FROM whiteboard_elements_old;`
-  );
+  const oldCols = new Set([...getExistingColumns('whiteboard_elements_old').keys()]);
+  const shared = Object.keys(schema.whiteboard_elements.columns)
+    .filter((col) => oldCols.has(col))
+    .map((col) => `"${col}"`)
+    .join(', ');
+  db.exec(`
+    INSERT INTO whiteboard_elements (${shared})
+    SELECT ${shared} FROM whiteboard_elements_old;
+  `);
   db.exec('DROP TABLE whiteboard_elements_old;');
-  log.info('Migrated whiteboard_elements CHECK to include text elements');
+  log.info('Migrated whiteboard_elements to full element type list');
 }
 
 // Backfill recording_sessions.updated_at from the most recent timestamp column.
@@ -217,6 +224,7 @@ export function runMigrations(): void {
     migrateEntityBlacklistTypes();
     migrateWhiteboardElementTypes();
     dropLegacyDiaryEntryDate();
+    migrateWhiteboardElementTypes();
     // Apply the declarative schema diff (tables, columns, indexes).
     applySchema();
     // Backfills that depend on the schema being present.

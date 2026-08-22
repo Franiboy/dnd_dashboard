@@ -16,6 +16,7 @@ import type {
   WhiteboardElement,
   WhiteboardElementType,
   WhiteboardPatch,
+  WhiteboardShapeKind,
   WhiteboardTaskStatus,
   WhiteboardZone,
 } from '../shared/types.js';
@@ -35,7 +36,16 @@ export function ensureWhiteboardUploadDir(): string {
   return dir;
 }
 
-const ELEMENT_TYPES: readonly WhiteboardElementType[] = ['note', 'task', 'arrow', 'link', 'text'];
+const ELEMENT_TYPES: readonly WhiteboardElementType[] = [
+  'note',
+  'task',
+  'arrow',
+  'link',
+  'shape',
+  'stroke',
+  'text',
+];
+const SHAPE_KINDS: readonly WhiteboardShapeKind[] = ['rect', 'ellipse', 'triangle', 'diamond'];
 const TASK_STATUSES: readonly WhiteboardTaskStatus[] = ['open', 'in_progress', 'done'];
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 const HTTP_URL_RE = /^https?:\/\/\S+$/i;
@@ -49,6 +59,10 @@ const MAX_COORD = 1_000_000;
 const MAX_Z_INDEX = 100_000;
 const MIN_SIZE = 60;
 const MAX_SIZE = 4000;
+const MIN_STROKE_WIDTH = 1;
+const MAX_STROKE_WIDTH = 64;
+/** Upper bound of stored freehand points; extra input points are dropped. */
+const MAX_POINTS = 4000;
 
 interface ElementRow {
   id: string;
@@ -69,10 +83,33 @@ interface ElementRow {
   url: string | null;
   from_id: string | null;
   to_id: string | null;
+  shape_kind: string | null;
+  fill_color: string | null;
+  stroke_width: number;
+  points: string | null;
   z_index: number;
   locked: number;
   created_at: string;
   updated_at: string;
+}
+
+/** Parses the stored JSON point list back into normalized pairs. */
+function parsePoints(value: string | null): [number, number][] | null {
+  if (!value) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return null;
+    const pairs: [number, number][] = [];
+    for (let i = 0; i + 1 < parsed.length; i += 2) {
+      const x = parsed[i];
+      const y = parsed[i + 1];
+      if (typeof x !== 'number' || typeof y !== 'number') continue;
+      pairs.push([x, y]);
+    }
+    return pairs.length > 0 ? pairs : null;
+  } catch {
+    return null;
+  }
 }
 
 function rowToElement(row: ElementRow): WhiteboardElement {
@@ -95,6 +132,10 @@ function rowToElement(row: ElementRow): WhiteboardElement {
     url: row.url,
     fromId: row.from_id,
     toId: row.to_id,
+    shapeKind: row.shape_kind as WhiteboardShapeKind | null,
+    fillColor: row.fill_color,
+    strokeWidth: row.stroke_width,
+    points: parsePoints(row.points),
     zIndex: row.z_index ?? 0,
     locked: !!row.locked,
     createdAt: row.created_at,
@@ -166,6 +207,43 @@ function asEnum<T extends string>(value: unknown, allowed: readonly T[]): T | un
     : undefined;
 }
 
+function asStrokeWidth(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  return Math.max(MIN_STROKE_WIDTH, Math.min(MAX_STROKE_WIDTH, value));
+}
+
+function asFillColor(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return asColor(value);
+}
+
+/**
+ * Validates a freehand point list of [x, y] pairs with coordinates normalized
+ * to the element box (0..1). Invalid entries are dropped and the list is
+ * capped at MAX_POINTS.
+ */
+function asPoints(value: unknown): [number, number][] | null | undefined {
+  if (value === null) return null;
+  if (!Array.isArray(value)) return undefined;
+  const pairs: [number, number][] = [];
+  for (const pair of value) {
+    if (pairs.length >= MAX_POINTS) break;
+    if (!Array.isArray(pair) || pair.length !== 2) continue;
+    const [x, y] = pair;
+    if (typeof x !== 'number' || typeof y !== 'number') continue;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    const nx = Math.round(Math.min(1, Math.max(0, x)) * 10000) / 10000;
+    const ny = Math.round(Math.min(1, Math.max(0, y)) * 10000) / 10000;
+    pairs.push([nx, ny]);
+  }
+  return pairs.length > 0 ? pairs : null;
+}
+
+/** Serializes normalized stroke points for SQLite storage. */
+function serializePoints(points: [number, number][] | null): string | null {
+  return points ? JSON.stringify(points.flat()) : null;
+}
+
 /** Validates a full element payload coming from the client (create). */
 export function sanitizeElementInput(
   input: unknown,
@@ -205,6 +283,10 @@ export function sanitizeElementInput(
     url: null,
     fromId: null,
     toId: null,
+    shapeKind: null,
+    fillColor: null,
+    strokeWidth: 3,
+    points: null,
     zIndex: 0,
     locked: false,
     createdAt: now,
@@ -213,6 +295,10 @@ export function sanitizeElementInput(
 
   applyPatch(element, sanitizePatch(raw));
   if (element.status && !TASK_STATUSES.includes(element.status)) element.status = null;
+  // Shapes always render a concrete outline variant.
+  if (element.type === 'shape' && !SHAPE_KINDS.includes(element.shapeKind as WhiteboardShapeKind)) {
+    element.shapeKind = 'rect';
+  }
   return element;
 }
 
@@ -249,6 +335,14 @@ export function sanitizePatch(patch: unknown): WhiteboardPatch {
   if (fromId !== undefined) clean.fromId = fromId;
   const toId = asReference(raw.toId);
   if (toId !== undefined) clean.toId = toId;
+  const shapeKind = asEnum(raw.shapeKind, SHAPE_KINDS);
+  if (shapeKind !== undefined) clean.shapeKind = shapeKind;
+  const fillColor = asFillColor(raw.fillColor);
+  if (fillColor !== undefined) clean.fillColor = fillColor;
+  const strokeWidth = asStrokeWidth(raw.strokeWidth);
+  if (strokeWidth !== undefined) clean.strokeWidth = strokeWidth;
+  const points = asPoints(raw.points);
+  if (points !== undefined) clean.points = points;
   const zIndex = asZIndex(raw.zIndex);
   if (zIndex !== undefined) clean.zIndex = zIndex;
   const zone = asEnum(raw.zone, ['public', 'private'] as const);
@@ -288,6 +382,18 @@ function applyPatch(element: WhiteboardElement, patch: WhiteboardPatch): void {
   }
   if (patch.fromId !== undefined && element.type === 'arrow') element.fromId = patch.fromId;
   if (patch.toId !== undefined && element.type === 'arrow') element.toId = patch.toId;
+  if (patch.shapeKind !== undefined && element.type === 'shape') {
+    element.shapeKind = patch.shapeKind;
+  }
+  if (patch.fillColor !== undefined && element.type === 'shape') {
+    element.fillColor = patch.fillColor;
+  }
+  if (patch.strokeWidth !== undefined && (element.type === 'shape' || element.type === 'stroke')) {
+    element.strokeWidth = patch.strokeWidth;
+  }
+  if (patch.points !== undefined && element.type === 'stroke') {
+    element.points = patch.points;
+  }
   if (patch.zIndex !== undefined) element.zIndex = patch.zIndex;
   if (patch.locked !== undefined) element.locked = patch.locked;
   if (patch.zone !== undefined) element.zone = patch.zone;
@@ -301,9 +407,10 @@ function insertElement(element: WhiteboardElement): void {
   db.prepare(
     `INSERT INTO whiteboard_elements
        (id, type, zone, owner_id, owner_name, x, y, x2, y2, width, height,
-        color, text, description, status, url, from_id, to_id, z_index, locked,
-        created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        color, text, description, status, url, from_id, to_id,
+        shape_kind, fill_color, stroke_width, points, z_index,
+        locked, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     element.id,
     element.type,
@@ -323,6 +430,10 @@ function insertElement(element: WhiteboardElement): void {
     element.url,
     element.fromId,
     element.toId,
+    element.shapeKind,
+    element.fillColor,
+    element.strokeWidth,
+    serializePoints(element.points),
     element.zIndex,
     element.locked ? 1 : 0,
     element.createdAt,
@@ -380,7 +491,9 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
   db.prepare(
     `UPDATE whiteboard_elements SET
        owner_id = ?, owner_name = ?, x = ?, y = ?, x2 = ?, y2 = ?, width = ?, height = ?, color = ?, text = ?,
-       description = ?, status = ?, url = ?, from_id = ?, to_id = ?, z_index = ?, locked = ?, updated_at = ?
+       description = ?, status = ?, url = ?, from_id = ?, to_id = ?,
+       shape_kind = ?, fill_color = ?, stroke_width = ?, points = ?, z_index = ?,
+       locked = ?, updated_at = ?
      WHERE id = ?`
   ).run(
     next.ownerId,
@@ -398,6 +511,10 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
     next.url,
     next.fromId,
     next.toId,
+    next.shapeKind,
+    next.fillColor,
+    next.strokeWidth,
+    serializePoints(next.points),
     next.zIndex,
     next.locked ? 1 : 0,
     next.updatedAt,
