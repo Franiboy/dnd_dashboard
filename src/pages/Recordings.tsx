@@ -590,17 +590,6 @@ export function Sessions({ user }: SessionsProps) {
                             : 'Jetzt transkribieren'}
                         </Button>
                       )}
-                    {session.hasWavFiles &&
-                      session.status !== 'recording' &&
-                      session.status !== 'processing' && (
-                        <Button
-                          variant="secondary"
-                          disabled={working}
-                          onClick={() => startDeleteAudio(session.id)}
-                        >
-                          Audiodateien löschen
-                        </Button>
-                      )}
                     {session.status === 'completed' && (
                       <Button
                         variant="secondary"
@@ -649,6 +638,18 @@ export function Sessions({ user }: SessionsProps) {
                       : 'Transkript anzeigen'}
                   </Button>
                 )}
+                {user.isAdmin &&
+                  session.hasWavFiles &&
+                  session.status !== 'recording' &&
+                  session.status !== 'processing' && (
+                    <Button
+                      variant="danger"
+                      disabled={working}
+                      onClick={() => startDeleteAudio(session.id)}
+                    >
+                      Audiodateien löschen
+                    </Button>
+                  )}
                 {user.isAdmin && isDeletableSession(session) && (
                   <Button
                     variant="danger"
