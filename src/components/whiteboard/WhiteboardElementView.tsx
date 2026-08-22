@@ -451,18 +451,17 @@ export function WhiteboardElementView({
           {body}
         </div>
       </div>
-      {element.locked && !editing && !cropping && (
+      {element.locked && !selected && !editing && !cropping && (
         <div
           className="pointer-events-none absolute z-10 flex items-center justify-center rounded-full bg-slate-700 text-slate-200 shadow"
           style={{
-            left: -8 * contentScale,
-            top: -8 * contentScale,
+            left: -10 * contentScale,
+            top: -10 * contentScale,
             width: 20 * contentScale,
             height: 20 * contentScale,
           }}
-          title="Fixiert – nicht verschiebbar"
         >
-          <LockIcon open={false} size={Math.max(10, 11 * contentScale)} />
+          <LockIcon open={false} size={11 * contentScale} />
         </div>
       )}
       {selected && !editing && !cropping && (
