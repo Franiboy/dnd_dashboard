@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import {
   NOTE_COLORS,
@@ -129,9 +130,12 @@ export function WhiteboardToolbar({
   onUpdateSelected,
 }: WhiteboardToolbarProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const penButtonRef = useRef<HTMLButtonElement | null>(null);
+  const flyoutRef = useRef<HTMLDivElement | null>(null);
   // The drawing tools live in a flyout attached to the pen button and are
   // not part of the always-visible toolbar column.
   const [drawingToolsOpen, setDrawingToolsOpen] = useState(false);
+  const [flyoutPosition, setFlyoutPosition] = useState<{ left: number; top: number } | null>(null);
   const drawingActive = tool === 'draw' || isShapeTool(tool);
 
   useEffect(() => {
@@ -142,10 +146,35 @@ export function WhiteboardToolbar({
   useEffect(() => {
     if (!drawingToolsOpen) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setDrawingToolsOpen(false);
+      const target = e.target as Node;
+      if (!rootRef.current?.contains(target) && !flyoutRef.current?.contains(target)) {
+        setDrawingToolsOpen(false);
+      }
     };
     window.addEventListener('pointerdown', onPointerDown);
     return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [drawingToolsOpen]);
+
+  // The flyout must escape the toolbar's scroll/clip container, so track the
+  // pen button in viewport coordinates while it is open.
+  useLayoutEffect(() => {
+    if (!drawingToolsOpen || !penButtonRef.current) {
+      setFlyoutPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      const rect = penButtonRef.current?.getBoundingClientRect();
+      if (rect) setFlyoutPosition({ left: rect.right + 6, top: rect.top });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
   }, [drawingToolsOpen]);
 
   const selectedType = selectedElement?.type ?? null;
@@ -286,6 +315,7 @@ export function WhiteboardToolbar({
 
   const renderPenButton = () => (
     <button
+      ref={penButtonRef}
       key="pen"
       type="button"
       title="Zeichnen"
@@ -339,22 +369,7 @@ export function WhiteboardToolbar({
           {/* Relative wrapper anchors the drawing flyout to the pen button,
               so it always opens to the right of the panel edge no matter how
               wide the appearance controls make the panel. */}
-          <div className="relative">
-            {renderPenButton()}
-            {drawingToolsOpen && (
-              <div className="wb-flyout-in absolute left-full top-0 z-20 ml-1.5 flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
-                <span className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  Zeichnen
-                </span>
-                {DRAWING_TOOLS.map(renderFlyoutItem)}
-                {/* Caret connecting the flyout to the pen button */}
-                <span
-                  className="absolute -left-1 top-3 h-2 w-2 rotate-45 border-b border-l border-[var(--border)] bg-[var(--panel)]"
-                  aria-hidden
-                />
-              </div>
-            )}
-          </div>
+          <div className="relative">{renderPenButton()}</div>
         </div>
         {/* Single scroll container: the outer panel already caps and scrolls
             the whole toolbar, so no nested scrollbar is needed here. */}
@@ -420,6 +435,26 @@ export function WhiteboardToolbar({
           </div>
         )}
       </div>
+      {drawingToolsOpen &&
+        flyoutPosition &&
+        createPortal(
+          <div
+            ref={flyoutRef}
+            style={{ left: flyoutPosition.left, top: flyoutPosition.top }}
+            className="wb-flyout-in fixed z-20 flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur"
+          >
+            <span className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Zeichnen
+            </span>
+            {DRAWING_TOOLS.map(renderFlyoutItem)}
+            {/* Caret connecting the flyout to the pen button */}
+            <span
+              className="absolute -left-1 top-3 h-2 w-2 rotate-45 border-b border-l border-[var(--border)] bg-[var(--panel)]"
+              aria-hidden
+            />
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
