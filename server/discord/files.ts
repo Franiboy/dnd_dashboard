@@ -14,10 +14,13 @@ export async function deleteSessionAudioFiles(sessionId: number): Promise<number
       try {
         await unlink(file.wavPath);
         deleted++;
+        updateFile(file.id, { wavPath: null });
       } catch (err) {
         log.warn(`Failed to delete audio file ${file.wavPath}:`, err);
+        if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+          updateFile(file.id, { wavPath: null });
+        }
       }
-      updateFile(file.id, { wavPath: null });
     }
   }
 
