@@ -212,7 +212,7 @@ export function WhiteboardBoard({
   // Report the primary selected recolorable element to the toolbar palette.
   useEffect(() => {
     const recolorable = (type: WhiteboardElement['type']) =>
-      type === 'note' || type === 'shape' || type === 'stroke';
+      type === 'note' || type === 'text' || type === 'shape' || type === 'stroke';
     const primary = selectedIds.find((id) => {
       const element = elementsById.get(id);
       return !!element && recolorable(element.type);
@@ -306,7 +306,7 @@ export function WhiteboardBoard({
 
   const finishCreate = useCallback(
     (gesture: Extract<Gesture, { kind: 'create' }>, wx: number, wy: number) => {
-      if (tool !== 'note' && !isShapeTool(tool)) return;
+      if (tool !== 'note' && tool !== 'text' && !isShapeTool(tool)) return;
       const now = new Date().toISOString();
       const isShape = isShapeTool(tool);
 
@@ -325,7 +325,8 @@ export function WhiteboardBoard({
       const id = crypto.randomUUID();
       createElement({
         id,
-        type: isShape ? 'shape' : 'note',
+        // The guard above ensures only note/text/shape tools reach this point.
+        type: isShape ? 'shape' : tool === 'text' ? 'text' : 'note',
         zone: zoneForWorldY(py + height / 2),
         ownerId: user.id,
         ownerName: user.displayName,
@@ -873,7 +874,7 @@ export function WhiteboardBoard({
   const openEdit = useCallback(
     (id: string) => {
       // Callers verify existence/permissions; the freshly created element
-      // from createNoteAt is intentionally not required to be in the map yet.
+      // from createTextAt is intentionally not required to be in the map yet.
       setEditingId(id);
       beginLocalEdit(id);
     },
@@ -887,9 +888,9 @@ export function WhiteboardBoard({
     });
   }, [endLocalEdit]);
 
-  // Double-click on empty canvas spawns a note in the last used color,
-  // already focused for typing.
-  const createNoteAt = useCallback(
+  // Double-click on empty canvas spawns a plain text element in the last
+  // used color, already focused for typing.
+  const createTextAt = useCallback(
     (clientX: number, clientY: number) => {
       const { wx, wy } = screenToWorld(clientX, clientY);
       const s = cameraRef.current.scale;
@@ -899,7 +900,7 @@ export function WhiteboardBoard({
       const id = crypto.randomUUID();
       createElement({
         id,
-        type: 'note',
+        type: 'text',
         zone: zoneForWorldY(wy),
         ownerId: user.id,
         ownerName: user.displayName,
@@ -1029,7 +1030,7 @@ export function WhiteboardBoard({
       onDoubleClick={(e) => {
         if (tool !== 'select' || editingId || croppingId) return;
         if ((e.target as HTMLElement).closest('[data-whiteboard-element]')) return;
-        createNoteAt(e.clientX, e.clientY);
+        createTextAt(e.clientX, e.clientY);
       }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
