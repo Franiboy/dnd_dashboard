@@ -9,17 +9,21 @@ import {
 import { WHITEBOARD_DIVIDER_Y } from '../../../shared/types';
 import type { SafeUser, WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { WhiteboardElementView } from './WhiteboardElementView';
+import { WhiteboardSelectionFrame } from './WhiteboardSelectionFrame';
 import { DockedNoteToolbar } from './NoteQuillEditor';
 import {
   NO_FILL,
   buildStrokeGeometry,
   compareStackOrder,
+  groupLayerMovePatches,
   isBoardImageUrl,
   isShapeTool,
   layerMovePatches,
   nextTopZIndex,
+  selectionBounds,
   shapeKindForTool,
   type LayerDirection,
+  type SelectionBounds,
   type WhiteboardTool,
 } from './whiteboardShared';
 import {
@@ -87,6 +91,23 @@ type Gesture =
       ratio: number | null;
       startW: number;
       startH: number;
+      lastEmit: number;
+    }
+  | {
+      kind: 'scale';
+      /** Bounding box of the whole selection at gesture start. */
+      box: SelectionBounds;
+      /** Group members with base geometry at gesture start. */
+      members: {
+        id: string;
+        isArrow: boolean;
+        bx: number;
+        by: number;
+        bw: number;
+        bh: number;
+        bx2?: number | null;
+        by2?: number | null;
+      }[];
       lastEmit: number;
     };
 
@@ -237,6 +258,86 @@ export function WhiteboardBoard({
     },
     [elements, elementsById, canEdit, updateElement]
   );
+
+  // Shared control frame for multi-selection: one bounding box around the
+  // marked area whose buttons apply to every selected element at once.
+  const selection = useMemo(() => {
+    if (selectedIds.length < 2) return null;
+    const bounds = selectionBounds(elements, selectedIds);
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
+    const editableMembers = selectedIds
+      .map((id) => elementsById.get(id))
+      .filter((el): el is WhiteboardElement => !!el && canEdit(el));
+    const movableIds = selectedIds.filter((id) => {
+      const el = elementsById.get(id);
+      return !!el && canEdit(el) && !el.locked;
+    });
+    return {
+      bounds,
+      editableMembers,
+      movableIds,
+      allLocked: editableMembers.length > 0 && editableMembers.every((el) => el.locked),
+      canBringForward: groupLayerMovePatches(elements, selectedIds, 'forward').length > 0,
+      canSendBackward: groupLayerMovePatches(elements, selectedIds, 'backward').length > 0,
+    };
+  }, [selectedIds, elements, elementsById, canEdit]);
+
+  const deleteSelectedElements = useCallback(() => {
+    for (const el of selection?.editableMembers ?? []) {
+      if (!el.locked) removeElement(el.id);
+    }
+    setSelectedIds([]);
+  }, [selection, removeElement]);
+
+  // Mixed states lock everything; an all-locked selection unlocks in full.
+  const toggleLockSelectedElements = useCallback(() => {
+    if (!selection) return;
+    const locked = !selection.allLocked;
+    for (const el of selection.editableMembers) {
+      if (el.locked !== locked) updateElement(el.id, { locked });
+    }
+  }, [selection, updateElement]);
+
+  // Moves the whole selected block one level as a unit; inner order and
+  // locked members stay untouched.
+  const moveSelectedLayer = useCallback(
+    (direction: LayerDirection) => {
+      if (selectedIds.length < 2) return;
+      for (const { id, patch } of groupLayerMovePatches(elements, selectedIds, direction)) {
+        updateElement(id, patch);
+      }
+    },
+    [elements, selectedIds, updateElement]
+  );
+
+  const startSelectionScale = (event: ReactPointerEvent) => {
+    if (event.button !== 0 || !selection || selection.movableIds.length === 0) return;
+    event.stopPropagation();
+    bindWindowGesture();
+    setCursorMode('dragging');
+    gestureRef.current = {
+      kind: 'scale',
+      box: { ...selection.bounds },
+      members: selectedIds
+        .map((id) => elementsById.get(id))
+        .filter((el): el is WhiteboardElement => !!el && canEdit(el) && !el.locked)
+        .map((el) => ({
+          id: el.id,
+          isArrow: el.type === 'arrow',
+          bx: el.x,
+          by: el.y,
+          bw: el.width,
+          bh: el.height,
+          bx2: el.type === 'arrow' ? el.x2 : null,
+          by2: el.type === 'arrow' ? el.y2 : null,
+        })),
+      lastEmit: performance.now(),
+    };
+    for (const id of selectedIds) {
+      const el = elementsById.get(id);
+      if (el && canEdit(el) && !el.locked) beginLocalEdit(id);
+    }
+  };
 
   // Center the initial view around the zone divider.
   useEffect(() => {
@@ -489,6 +590,35 @@ export function WhiteboardBoard({
         updateElement(g.id, { width: nw, height: nh });
       }
     }
+
+    if (g.kind === 'scale') {
+      // Uniform factor from the box origin: positions and sizes of every
+      // member scale proportionally, so the relative layout stays intact.
+      const fx = (wx - g.box.x) / Math.max(1, g.box.width);
+      const fy = (wy - g.box.y) / Math.max(1, g.box.height);
+      const rawFactor = Math.max(fx, fy);
+      const s = Number.isFinite(rawFactor) ? Math.max(0.05, rawFactor) : 1;
+      const shouldEmit = performance.now() - g.lastEmit > EMIT_INTERVAL_MS;
+      if (shouldEmit) g.lastEmit = performance.now();
+
+      for (const m of g.members) {
+        const patch: WhiteboardPatch = m.isArrow
+          ? {
+              x: g.box.x + (m.bx - g.box.x) * s,
+              y: g.box.y + (m.by - g.box.y) * s,
+              x2: g.box.x + ((m.bx2 ?? m.bx) - g.box.x) * s,
+              y2: g.box.y + ((m.by2 ?? m.by) - g.box.y) * s,
+            }
+          : {
+              x: g.box.x + (m.bx - g.box.x) * s,
+              y: g.box.y + (m.by - g.box.y) * s,
+              width: Math.max(60, m.bw * s),
+              height: Math.max(60, m.bh * s),
+            };
+        applyPatchLocal(m.id, patch);
+        if (shouldEmit) updateElement(m.id, patch);
+      }
+    }
   };
 
   const finishGestureCore = (clientX: number, clientY: number) => {
@@ -561,6 +691,26 @@ export function WhiteboardBoard({
       const el = elementsById.get(g.id);
       if (el) updateElement(el.id, { width: el.width, height: el.height });
       endLocalEdit(g.id);
+      return;
+    }
+    if (g.kind === 'scale') {
+      // Final reconcile per member; crossing the divider switches the zone
+      // exactly like a plain group move does.
+      for (const m of g.members) {
+        endLocalEdit(m.id);
+        const el = elementsById.get(m.id);
+        if (!el || !canEdit(el)) continue;
+        const patch: WhiteboardPatch = m.isArrow
+          ? { x: el.x, y: el.y, x2: el.x2, y2: el.y2 }
+          : {
+              x: el.x,
+              y: el.y,
+              width: el.width,
+              height: el.height,
+              zone: zoneForWorldY(el.y + el.height / 2),
+            };
+        updateElement(m.id, patch);
+      }
     }
   };
 
@@ -1162,6 +1312,7 @@ export function WhiteboardBoard({
               dragging={cursorMode === 'dragging'}
               cropping={croppingId === element.id}
               cameraScale={camera.scale}
+              hideOverlayControls={selection !== null}
               onPointerDown={startElementDrag}
               onStartResize={startElementResize}
               onRequestEdit={requestElementInteraction}
@@ -1182,6 +1333,21 @@ export function WhiteboardBoard({
             />
           );
         })}
+
+        {selection && !editingId && !croppingId && (
+          <WhiteboardSelectionFrame
+            bounds={selection.bounds}
+            cameraScale={camera.scale}
+            allLocked={selection.allLocked}
+            canBringForward={selection.canBringForward}
+            canSendBackward={selection.canSendBackward}
+            onDelete={deleteSelectedElements}
+            onToggleLock={toggleLockSelectedElements}
+            onBringForward={() => moveSelectedLayer('forward')}
+            onSendBackward={() => moveSelectedLayer('backward')}
+            onStartResize={startSelectionScale}
+          />
+        )}
       </div>
 
       <DockedNoteToolbar visible={!!editingId && elementsById.get(editingId)?.type === 'note'} />
