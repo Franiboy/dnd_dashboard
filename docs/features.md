@@ -68,6 +68,11 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
   - Aliases
 - Entities can be edited, merged, reclassified and blacklisted.
 - Knowledge distribution takes free text (e.g. from the diary) and assigns facts to entities.
+- The entity dialog has a "Wissen korrigieren" action: free text describes what is wrong and
+  the AI (`correctKnowledgeFromText`) checks the affected entities, marks contradicting
+  knowledge entries as deleted with a reason, creates corrected entries and regenerates the
+  summaries of all affected entities. The response returns created/deleted entries plus the
+  refreshed summaries so the open dialog updates immediately.
 - Knowledge entries extracted from a diary entry or a session summary store their origin
   (`origin_type` + `origin_id`). The entity dialog shows it as a read-only badge
   ("Quelle: Tagebuch …" / "Quelle: Session …") for all users; it is never clickable.

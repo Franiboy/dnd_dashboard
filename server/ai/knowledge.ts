@@ -152,6 +152,136 @@ export async function distributeKnowledgeFromText(
   return diff;
 }
 
+export interface KnowledgeCorrectionTarget {
+  entityType: EntityType;
+  entityName: string;
+}
+
+export interface CorrectedEntitySummary extends KnowledgeCorrectionTarget {
+  summary: string | null;
+  miniSummary: string | null;
+}
+
+export interface KnowledgeCorrectionResult extends DistributeResult {
+  summaries: CorrectedEntitySummary[];
+}
+
+export function collectAffectedEntities(
+  focus: KnowledgeCorrectionTarget | null,
+  result: DistributeResult
+): KnowledgeCorrectionTarget[] {
+  const targets = new Map<string, KnowledgeCorrectionTarget>();
+  if (focus) {
+    targets.set(`${focus.entityType}/${focus.entityName.toLowerCase()}`, focus);
+  }
+  for (const entry of [...result.created, ...result.deleted.map((d) => d.entry)]) {
+    const key = `${entry.entityType}/${entry.entityName.toLowerCase()}`;
+    if (!targets.has(key)) {
+      targets.set(key, { entityType: entry.entityType, entityName: entry.entityName });
+    }
+  }
+  return [...targets.values()];
+}
+
+export async function correctKnowledgeFromText(
+  correction: string,
+  focus?: KnowledgeCorrectionTarget,
+  model?: string,
+  onLog?: (line: string) => void
+): Promise<KnowledgeCorrectionResult> {
+  const plainText = stripHtml(correction).trim();
+  if (!plainText) return { created: [], deleted: [], summaries: [] };
+
+  const typeLabel = focus
+    ? focus.entityType === 'persons'
+      ? 'Person'
+      : focus.entityType === 'organizations'
+        ? 'Organisation'
+        : 'Ort'
+    : null;
+
+  const prompt = [
+    'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+    '',
+    'Aufgabe: Der Nutzer meldet einen Fehler im gespeicherten Wissen. Prüfe das betroffene Wissen gegen die Korrektur und berichtige es.',
+    ...(typeLabel && focus
+      ? [
+          `Fokus-Entität: ${typeLabel} "${focus.entityName}" – ihr Wissen ist auf jeden Fall zu prüfen.`,
+        ]
+      : []),
+    '',
+    'Verfügbare Tools:',
+    '- get_entity(type, name): Liefert Zusammenfassung, Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
+    '- list_entities(type?): Listet alle bekannten Entitäten auf.',
+    '- create_knowledge(type, name, content, title?): Erstellt einen Wissenseintrag.',
+    '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht.',
+    '',
+    'Regeln:',
+    '- DU MUSST vor dem Löschen oder Erstellen get_entity für die Fokus-Entität und jede in der Korrektur erwähnte Entität aufrufen.',
+    '- Finde alle aktiven Wissenseinträge, die der Korrektur klar widersprechen, und markiere sie mit delete_knowledge(id, reason).',
+    '- In delete_knowledge muss reason kurz erklären, warum der Eintrag falsch ist, mit Bezug zur Korrektur.',
+    '- Erstelle mit create_knowledge die korrekten Fakten, die sich aus der Korrektur ergeben.',
+    '- Extrahiere nur Fakten, die in der Korrektur tatsächlich vorkommen. Erfinke keine Details.',
+    '- Lasse Einträge unangetastet, die nicht von der Korrektur betroffen sind.',
+    '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
+    '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
+    '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
+    '- In delete_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
+    '',
+    'Korrektur:',
+    plainText,
+    '',
+    'Speichere die Berichtigungen direkt über die Tools, aber nur nachdem du das bestehende Wissen abgefragt hast. Widerspricht nichts der Korrektur, erstelle nur fehlende korrigierte Fakten oder beende die Aufgabe ohne weitere Tool-Aufrufe.',
+  ].join('\n');
+
+  log.info('Correcting knowledge from free text');
+
+  const snapshotBefore = takeKnowledgeSnapshot();
+
+  const result = await runOpenCode({
+    prompt,
+    worktreePath: process.cwd(),
+    model: model || getModel(),
+    title: `dnd-correct-knowledge-${Date.now()}`,
+    scopes: ['entity:read', 'knowledge:distribute'],
+    onLog,
+  });
+
+  const allAfter = listAllKnowledge();
+  const diff = computeDistributionDiff(snapshotBefore, allAfter);
+
+  if (!result.success) {
+    log.warn(`Knowledge correction failed: exitCode=${result.exitCode}`);
+    return { created: [], deleted: [], summaries: [] };
+  }
+
+  // Refresh summaries of every affected entity so corrections are visible immediately.
+  const summaries: CorrectedEntitySummary[] = [];
+  for (const target of collectAffectedEntities(focus ?? null, diff)) {
+    const generated = await generateEntitySummary(
+      target.entityType,
+      target.entityName,
+      model,
+      onLog
+    );
+    summaries.push({
+      entityType: target.entityType,
+      entityName: target.entityName,
+      summary: generated?.summary ?? null,
+      miniSummary: generated?.miniSummary ?? null,
+    });
+  }
+
+  if (result.sessionId) {
+    deleteOpenCodeSession(result.sessionId);
+  }
+
+  log.info(
+    `Corrected knowledge: created ${diff.created.length} entries and marked ${diff.deleted.length} entries as deleted`
+  );
+  return { created: diff.created, deleted: diff.deleted, summaries };
+}
+
 export interface GeneratedEntitySummary {
   summary: string;
   miniSummary: string | null;
