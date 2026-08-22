@@ -39,6 +39,7 @@ import { createLogger } from '../logger.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 
 const log = createLogger('recordings-routes');
+const SESSION_DELETE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 const router = Router();
 const sseClients = new SseBroadcaster();
@@ -358,6 +359,12 @@ router.post('/:id/delete-audio', requireAdmin, async (req, res) => {
     res.status(404).json({ error: 'Aufnahme nicht gefunden' });
     return;
   }
+  if (session.status === 'recording' || session.status === 'processing') {
+    res
+      .status(409)
+      .json({ error: 'Audiodateien können während der Verarbeitung nicht gelöscht werden' });
+    return;
+  }
 
   const deleted = await deleteSessionAudioFiles(id);
   res.json({ message: `${deleted} Audiodatei(en) gelöscht`, deleted });
@@ -498,6 +505,10 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   const session = getSessionById(id);
   if (!session) {
     res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+  if (Date.now() - new Date(session.startedAt).getTime() >= SESSION_DELETE_WINDOW_MS) {
+    res.status(403).json({ error: 'Aufnahmen älter als 14 Tage können nicht gelöscht werden' });
     return;
   }
 
