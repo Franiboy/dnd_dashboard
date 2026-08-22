@@ -4,7 +4,7 @@ import type { Server } from 'socket.io';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
 import { broadcastGameState } from '../socket.js';
-import { addTask, getGame } from '../game.js';
+import { addTask, canManageDmTasks, getGame } from '../game.js';
 import {
   getPendingSuggestions,
   getSuggestionById,
@@ -13,7 +13,11 @@ import {
 } from '../repositories/bingoSuggestions.js';
 import { ensureSuggestionPool } from '../ai/bingoSuggestions.js';
 import { getTargetPoolSize } from '../bingoConfig.js';
-import type { ClientToServerEvents, ServerToClientEvents } from '../../shared/types.js';
+import type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+  TaskAudience,
+} from '../../shared/types.js';
 
 const router = Router();
 
@@ -45,17 +49,38 @@ function getIo(req: AuthRequest): IoServer | undefined {
   return (req.app.get('io') as IoServer | undefined) ?? undefined;
 }
 
+// Dungeon masters default to their own pool; everyone else sees the player
+// pool. Admins may request either pool explicitly via ?audience=.
+function resolveAudience(req: AuthRequest): TaskAudience {
+  const requested = req.query.audience;
+  if (
+    (requested === 'dm' || requested === 'players') &&
+    canManageDmTasks((req as AuthRequest).user?.role, (req as AuthRequest).user?.isAdmin)
+  ) {
+    return requested;
+  }
+  return (req as AuthRequest).user?.role === 'dungeon_master' ? 'dm' : 'players';
+}
+
+function canAccessAudience(req: AuthRequest, audience: TaskAudience): boolean {
+  return (
+    audience === 'players' ||
+    canManageDmTasks((req as AuthRequest).user?.role, (req as AuthRequest).user?.isAdmin)
+  );
+}
+
 router.get('/suggestions', (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
     res.json({ suggestions: [] });
     return;
   }
 
-  ensureSuggestionPool().catch(() => {
+  const audience = resolveAudience(req);
+  ensureSuggestionPool({ audience }).catch(() => {
     // Refill runs in the background; the current request returns whatever is already available.
   });
 
-  const suggestions = getPendingSuggestions(getTargetPoolSize());
+  const suggestions = getPendingSuggestions(getTargetPoolSize(), audience);
   res.json({ suggestions });
 });
 
@@ -77,7 +102,12 @@ router.post('/suggestions/:id/accept', (req: AuthRequest, res) => {
     return;
   }
 
-  const task = addTask(suggestion.text);
+  if (!canAccessAudience(req, suggestion.audience ?? 'players')) {
+    res.status(403).json({ error: 'Nur Dungeon Master können DM-Vorschläge annehmen.' });
+    return;
+  }
+
+  const task = addTask(suggestion.text, { audience: suggestion.audience ?? 'players' });
   markSuggestionAccepted(suggestionId);
 
   const io = getIo(req);
@@ -85,7 +115,7 @@ router.post('/suggestions/:id/accept', (req: AuthRequest, res) => {
     broadcastGameState(io);
   }
 
-  ensureSuggestionPool().catch(() => {
+  ensureSuggestionPool({ audience: suggestion.audience ?? 'players' }).catch(() => {
     // Background refill after accepting a suggestion.
   });
 
@@ -110,9 +140,14 @@ router.post('/suggestions/:id/reject', (req: AuthRequest, res) => {
     return;
   }
 
+  if (!canAccessAudience(req, suggestion.audience ?? 'players')) {
+    res.status(403).json({ error: 'Nur Dungeon Master können DM-Vorschläge ablehnen.' });
+    return;
+  }
+
   markSuggestionRejected(suggestionId);
 
-  ensureSuggestionPool().catch(() => {
+  ensureSuggestionPool({ audience: suggestion.audience ?? 'players' }).catch(() => {
     // Background refill after rejecting a suggestion.
   });
 
@@ -130,9 +165,12 @@ router.post('/suggestions/refresh', bingoRefreshRateLimit, (req: AuthRequest, re
     return;
   }
 
-  // Reject the current pending suggestions so the AI can generate a fresh set,
-  // while still remembering the old texts to avoid duplicates.
-  ensureSuggestionPool({ force: true, clear: true }).catch(() => {
+  const audience = resolveAudience(req);
+
+  // Reject the current pending suggestions of this pool so the AI can
+  // generate a fresh set, while still remembering the old texts to avoid
+  // duplicates.
+  ensureSuggestionPool({ force: true, clear: true, audience }).catch(() => {
     // Refill runs in the background.
   });
 

@@ -150,10 +150,18 @@ export function BingoGrid({
       setPendingTask(null);
       return;
     }
-    if (pendingTask.action === 'confirm') {
-      socket.emit('confirmTask', pendingTask.id);
+    // DM-pool tasks are marked on the own board only; player tasks are
+    // confirmed globally.
+    if (pendingTaskData?.audience === 'dm') {
+      socket.emit(
+        pendingTask.action === 'confirm' ? 'confirmOwnTask' : 'unconfirmOwnTask',
+        pendingTask.id
+      );
     } else {
-      socket.emit('unconfirmTask', pendingTask.id);
+      socket.emit(
+        pendingTask.action === 'confirm' ? 'confirmTask' : 'unconfirmTask',
+        pendingTask.id
+      );
     }
     setPendingTask(null);
   };
@@ -285,8 +293,11 @@ export function BingoGrid({
           <p>
             Soll <span className="text-[var(--text-h)] font-medium">{pendingTaskData.text}</span>{' '}
             {pendingTask.action === 'confirm'
-              ? 'als erledigt markiert werden? Dies gilt für alle Spieler.'
-              : 'nicht mehr als erledigt gelten? Dies gilt für alle Spieler.'}
+              ? 'als erledigt markiert werden? '
+              : 'nicht mehr als erledigt gelten? '}
+            {pendingTaskData.audience === 'dm'
+              ? 'Dies markiert nur dein eigenes Feld.'
+              : 'Dies gilt für alle Spieler.'}
           </p>
         </ConfirmDialog>
       )}

@@ -10,11 +10,14 @@ interface PlayerListProps {
 
 export function PlayerList({ game, playerId, className }: PlayerListProps) {
   // All participants are shown - players and dungeon masters permanently,
-  // even before they check in. Online players first, then by join time.
-  const sortedPlayers = [...game.players].sort((a, b) => {
-    if (a.online !== b.online) return a.online ? -1 : 1;
-    return a.joinedAt.localeCompare(b.joinedAt);
-  });
+  // even before they check in. Guests are spectators and stay hidden; legacy
+  // entries without a stored role predate the role system and remain visible.
+  const sortedPlayers = [...game.players]
+    .filter((p) => p.role !== 'guest')
+    .sort((a, b) => {
+      if (a.online !== b.online) return a.online ? -1 : 1;
+      return a.joinedAt.localeCompare(b.joinedAt);
+    });
 
   return (
     <div className={`h-full flex flex-col ${className || ''}`}>

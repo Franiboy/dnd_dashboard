@@ -313,6 +313,9 @@ export const schema: Record<string, TableDef> = {
       created_at: { type: 'TEXT', notNull: true },
       accepted_at: { type: 'TEXT' },
       rejected_at: { type: 'TEXT' },
+      // Target pool of the suggestion ('players' or 'dm'); the migration adds
+      // the column with a default so existing rows stay in the player pool.
+      audience: { type: 'TEXT', notNull: true, default: "'players'" },
     },
     indexes: [
       { name: 'idx_bingo_suggestions_created_at', columns: ['created_at'] },
@@ -347,6 +350,7 @@ export const schema: Record<string, TableDef> = {
       id: { type: 'TEXT', primaryKey: true },
       status: { type: 'TEXT', notNull: true, default: "'pending'" },
       created_at: { type: 'TEXT', notNull: true },
+      audience: { type: 'TEXT', notNull: true, default: "'players'" },
     },
   },
 

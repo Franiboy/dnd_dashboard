@@ -8,6 +8,9 @@ import type {
 import { getAuthenticatedUser } from './auth.js';
 import {
   addTask,
+  canParticipate,
+  canManageDmTasks,
+  confirmOwnTask,
   confirmTask,
   confirmTaskFor,
   finishAndResetGame,
@@ -19,19 +22,30 @@ import {
   setPlayerOnline,
   startGame,
   syncPlayersFromUsers,
+  unconfirmOwnTask,
   unconfirmTask,
   unlockBoard,
   updateBoard,
   updateTask,
 } from './game.js';
+import type { TaskAudience } from '../shared/types.js';
 
 export function getGameForUser(user: User): BingoGame {
   const current = getGame();
   if (user.isAdmin) return current;
+  const seesDmPool = user.role === 'dungeon_master';
   return {
     ...current,
-    tasks: current.tasks.filter((t) => !t.isPrivate || t.assignedTo?.includes(user.id)),
+    tasks: current.tasks.filter(
+      (t) =>
+        (t.audience !== 'dm' || seesDmPool) && (!t.isPrivate || t.assignedTo?.includes(user.id))
+    ),
   };
+}
+
+function normalizeAudience(audience: unknown): TaskAudience | undefined {
+  if (audience === undefined || audience === null || audience === '') return undefined;
+  return audience === 'dm' ? 'dm' : 'players';
 }
 
 export function broadcastGameState(io: Server<ClientToServerEvents, ServerToClientEvents>): void {
@@ -66,6 +80,12 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const displayName = user?.displayName;
       if (!displayName) return socket.emit('error', 'Name fehlt.');
 
+      // Only players and dungeon masters actively play bingo; guests spectate
+      // and keep receiving state broadcasts without a player entry.
+      if (!canParticipate(user.role)) {
+        return socket.emit('error', 'Nur Spieler und Dungeon Master können am Bingo teilnehmen.');
+      }
+
       // Make sure role-based participants exist before matching.
       syncPlayersFromUsers();
       const currentGame = getGame();
@@ -95,24 +115,43 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const text = typeof raw === 'string' ? raw : raw?.text;
       const isPrivate = typeof raw === 'string' ? false : !!raw?.isPrivate;
       const assignedTo = Array.isArray(raw?.assignedTo) ? raw.assignedTo : [];
+      const audience = normalizeAudience(raw?.audience);
       if (!text?.trim()) return socket.emit('error', 'Text fehlt.');
       if (isPrivate && assignedTo.length === 0)
         return socket.emit(
           'error',
           'Private Aufgaben müssen mindestens einer Person zugewiesen werden.'
         );
-      addTask(text, { isPrivate, assignedTo });
-      broadcastState();
+      if (audience === 'dm' && !canManageDmTasks(user.role, user.isAdmin))
+        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben hinzufügen.');
+      try {
+        addTask(text, { isPrivate, assignedTo, audience });
+        broadcastState();
+      } catch (e: any) {
+        socket.emit('error', e.message);
+      }
     });
 
     socket.on('removeTask', (taskId) => {
-      removeTask(taskId);
-      broadcastState();
+      const task = getGame().tasks.find((t) => t.id === taskId);
+      if (task?.audience === 'dm' && !canManageDmTasks(user.role, user.isAdmin))
+        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben entfernen.');
+      try {
+        removeTask(taskId);
+        broadcastState();
+      } catch (e: any) {
+        socket.emit('error', e.message);
+      }
     });
 
-    socket.on('updateTask', ({ taskId, text, isPrivate, assignedTo }) => {
+    socket.on('updateTask', ({ taskId, text, isPrivate, assignedTo, audience }) => {
+      const task = getGame().tasks.find((t) => t.id === taskId);
+      const nextAudience = normalizeAudience(audience);
+      const involvesDmPool = task?.audience === 'dm' || nextAudience === 'dm';
+      if (involvesDmPool && !canManageDmTasks(user.role, user.isAdmin))
+        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben bearbeiten.');
       try {
-        updateTask(taskId, { text, isPrivate, assignedTo });
+        updateTask(taskId, { text, isPrivate, assignedTo, audience: nextAudience });
         broadcastState();
       } catch (e: any) {
         socket.emit('error', e.message);
@@ -209,6 +248,35 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       const playerId = socketPlayerMap.get(socket.id);
       if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
       unconfirmTask(taskId);
+      broadcastState();
+    });
+
+    // Dungeon masters mark dm-pool moments on their own board only.
+    socket.on('confirmOwnTask', (taskId) => {
+      if (!canManageDmTasks(user.role, user.isAdmin))
+        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben bestätigen.');
+      const playerId = socketPlayerMap.get(socket.id);
+      if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+      const beforeBingo = new Set(
+        getGame()
+          .players.filter((p) => p.status === 'bingo')
+          .map((p) => p.id)
+      );
+      confirmOwnTask(playerId, taskId);
+      getGame().players.forEach((p) => {
+        if (p.status === 'bingo' && !beforeBingo.has(p.id)) {
+          io.emit('bingo', p.name);
+        }
+      });
+      broadcastState();
+    });
+
+    socket.on('unconfirmOwnTask', (taskId) => {
+      if (!canManageDmTasks(user.role, user.isAdmin))
+        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben zurücknehmen.');
+      const playerId = socketPlayerMap.get(socket.id);
+      if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+      unconfirmOwnTask(playerId, taskId);
       broadcastState();
     });
 
