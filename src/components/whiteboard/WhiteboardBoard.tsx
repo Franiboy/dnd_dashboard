@@ -848,10 +848,15 @@ export function WhiteboardBoard({
       }}
     >
       <div
-        className="absolute left-0 top-0 h-0 w-0 will-change-transform"
+        className="absolute left-0 top-0 h-0 w-0"
         style={{
           transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`,
           transformOrigin: '0 0',
+          // Promote to its own GPU layer only during pointer gestures. While
+          // idle (e.g. right after wheel zoom) the layer must stay unpromoted,
+          // otherwise Chromium keeps scaling the stale rasterized texture and
+          // text stays blurry until some other repaint happens.
+          willChange: cursorMode === 'idle' ? 'auto' : 'transform',
         }}
       >
         <div
