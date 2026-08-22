@@ -409,7 +409,7 @@ export const schema: Record<string, TableDef> = {
       updated_at: { type: 'TEXT', notNull: true },
     },
     check:
-      "type IN ('note', 'task', 'arrow', 'link', 'shape', 'stroke') AND zone IN ('public', 'private') " +
+      "type IN ('note', 'task', 'arrow', 'link', 'shape', 'stroke', 'text') AND zone IN ('public', 'private') " +
       "AND status IN ('open', 'in_progress', 'done')",
     indexes: [
       {

@@ -43,6 +43,7 @@ const ELEMENT_TYPES: readonly WhiteboardElementType[] = [
   'link',
   'shape',
   'stroke',
+  'text',
 ];
 const SHAPE_KINDS: readonly WhiteboardShapeKind[] = ['rect', 'ellipse', 'triangle', 'diamond'];
 const TASK_STATUSES: readonly WhiteboardTaskStatus[] = ['open', 'in_progress', 'done'];
@@ -268,8 +269,14 @@ export function sanitizeElementInput(
     y: asNumber(raw.y) ?? 0,
     x2: asOptionalNumber(raw.x2) ?? null,
     y2: asOptionalNumber(raw.y2) ?? null,
-    width: type === 'arrow' ? 0 : (asSize(raw.width) ?? (type === 'note' ? 200 : 260)),
-    height: type === 'arrow' ? 0 : (asSize(raw.height) ?? (type === 'note' ? 150 : 180)),
+    width:
+      type === 'arrow'
+        ? 0
+        : (asSize(raw.width) ?? (type === 'note' || type === 'text' ? 200 : 260)),
+    height:
+      type === 'arrow'
+        ? 0
+        : (asSize(raw.height) ?? (type === 'note' || type === 'text' ? 150 : 180)),
     color: asColor(raw.color) ?? '#facc15',
     text: '',
     description: null,
