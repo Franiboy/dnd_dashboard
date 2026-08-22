@@ -9,7 +9,14 @@ import {
 import { WHITEBOARD_DIVIDER_Y } from '../../../shared/types';
 import type { SafeUser, WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { WhiteboardElementView } from './WhiteboardElementView';
-import { isBoardImageUrl, type WhiteboardTool } from './whiteboardShared';
+import {
+  compareStackOrder,
+  isBoardImageUrl,
+  layerMovePatches,
+  nextTopZIndex,
+  type LayerDirection,
+  type WhiteboardTool,
+} from './whiteboardShared';
 import {
   isUploadableImage,
   loadImageElement,
@@ -157,6 +164,16 @@ export function WhiteboardBoard({
 
   const elementsById = useMemo(() => new Map(elements.map((e) => [e.id, e])), [elements]);
 
+  // Visual stacking order (arrows render below everything and are excluded).
+  const stackElements = useMemo(
+    () => elements.filter((e) => e.type !== 'arrow').sort(compareStackOrder),
+    [elements]
+  );
+  const stackIndexById = useMemo(
+    () => new Map(stackElements.map((e, i) => [e.id, i])),
+    [stackElements]
+  );
+
   const setSelection = useCallback((ids: string | string[] | null, additive = false) => {
     setSelectedIds((prev) => {
       const incoming = ids === null ? [] : Array.isArray(ids) ? ids : [ids];
@@ -180,6 +197,19 @@ export function WhiteboardBoard({
   const canEdit = useCallback(
     (element: WhiteboardElement) => element.zone === 'public' || element.ownerId === user.id,
     [user.id]
+  );
+
+  // Layer moves swap zIndex values with the adjacent stack neighbor; the
+  // server sanitizes both patches and broadcasts them like any other update.
+  const moveLayer = useCallback(
+    (id: string, direction: LayerDirection) => {
+      const target = elementsById.get(id);
+      if (!target || !canEdit(target) || target.locked) return;
+      for (const { id: patchId, patch } of layerMovePatches(elements, id, direction)) {
+        updateElement(patchId, patch);
+      }
+    },
+    [elements, elementsById, canEdit, updateElement]
   );
 
   // Center the initial view around the zone divider.
@@ -226,10 +256,14 @@ export function WhiteboardBoard({
         }
         setSelectedIds([]);
       }
+      if (!inField && selectedIds.length === 1 && (e.key === '[' || e.key === ']')) {
+        e.preventDefault();
+        moveLayer(selectedIds[0], e.key === ']' ? 'forward' : 'backward');
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [elementsById, selectedIds, tool, onToolChange, removeElement, canEdit]);
+  }, [elementsById, selectedIds, tool, onToolChange, removeElement, canEdit, moveLayer]);
 
   const screenToWorld = useCallback((clientX: number, clientY: number) => {
     const el = containerRef.current;
@@ -279,6 +313,7 @@ export function WhiteboardBoard({
         url: null,
         fromId: null,
         toId: null,
+        zIndex: nextTopZIndex(elements),
         locked: false,
         createdAt: now,
         updatedAt: now,
@@ -286,7 +321,7 @@ export function WhiteboardBoard({
       setSelection([id]);
       onToolChange('select');
     },
-    [tool, color, user.id, user.displayName, createElement, onToolChange, setSelection]
+    [tool, color, user.id, user.displayName, elements, createElement, onToolChange, setSelection]
   );
 
   const runGestureMove = (clientX: number, clientY: number) => {
@@ -488,6 +523,7 @@ export function WhiteboardBoard({
           url,
           fromId: null,
           toId: null,
+          zIndex: nextTopZIndex(elements),
           locked: false,
           createdAt: now,
           updatedAt: now,
@@ -499,7 +535,7 @@ export function WhiteboardBoard({
         setUploadingCount((n) => n - 1);
       }
     },
-    [user.id, user.displayName, cameraRef, createElement, showError, setSelection]
+    [user.id, user.displayName, cameraRef, elements, createElement, showError, setSelection]
   );
 
   // Ctrl+V pastes screenshots/images from the clipboard onto the board.
@@ -741,6 +777,7 @@ export function WhiteboardBoard({
         url: null,
         fromId: null,
         toId: null,
+        zIndex: nextTopZIndex(elements),
         locked: false,
         createdAt: now,
         updatedAt: now,
@@ -748,7 +785,16 @@ export function WhiteboardBoard({
       setSelection([id]);
       openEdit(id);
     },
-    [screenToWorld, color, user.id, user.displayName, createElement, openEdit, setSelection]
+    [
+      screenToWorld,
+      color,
+      user.id,
+      user.displayName,
+      elements,
+      createElement,
+      openEdit,
+      setSelection,
+    ]
   );
 
   const requestElementInteraction = useCallback(
@@ -933,9 +979,9 @@ export function WhiteboardBoard({
             );
           })()}
 
-        {elements
-          .filter((e) => e.type !== 'arrow')
-          .map((element) => (
+        {stackElements.map((element) => {
+          const stackIndex = stackIndexById.get(element.id) ?? 0;
+          return (
             <WhiteboardElementView
               key={element.id}
               element={element}
@@ -956,8 +1002,13 @@ export function WhiteboardBoard({
                 removeElement(id);
                 setSelectedIds((prev) => prev.filter((x) => x !== id));
               }}
+              canBringForward={stackIndex < stackElements.length - 1}
+              canSendBackward={stackIndex > 0}
+              onBringForward={(id) => moveLayer(id, 'forward')}
+              onSendBackward={(id) => moveLayer(id, 'backward')}
             />
-          ))}
+          );
+        })}
       </div>
 
       <div
