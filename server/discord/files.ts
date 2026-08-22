@@ -6,7 +6,9 @@ import { createLogger } from '../logger.js';
 const log = createLogger('discord-files');
 
 function isEnoentError(err: unknown): boolean {
-  return err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT';
+  return (
+    typeof err === 'object' && err !== null && 'code' in err && err.code === 'ENOENT'
+  );
 }
 
 // transcribe.py preprocess_audio() writes an untracked normalized copy
