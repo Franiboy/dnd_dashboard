@@ -458,26 +458,26 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
               <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
                 Hauptname
               </label>
-              <input
-                type="text"
-                value={canonical}
-                onChange={(e) => setCanonical(e.target.value)}
-                className="w-full px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                placeholder="Name"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={canonical}
+                  onChange={(e) => setCanonical(e.target.value)}
+                  className="flex-1 min-w-0 px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                  placeholder="Name"
+                />
+                <button
+                  type="button"
+                  onClick={() => setCorrectionOpen(true)}
+                  title="Falsches Wissen per KI berichtigen"
+                  className="text-xs px-3 py-2 rounded bg-[var(--accent)]/10 border border-[var(--accent)] text-[var(--accent)] font-semibold hover:bg-[var(--accent)]/20 transition whitespace-nowrap"
+                >
+                  Wissen korrigieren
+                </button>
+              </div>
               <p className="text-xs text-slate-500 mt-1">
                 Unter diesem Namen wird die {typeLabels[type]} in den Einträgen geführt.
               </p>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setCorrectionOpen(true)}
-                className="text-xs px-3 py-1.5 rounded bg-[var(--accent)]/10 border border-[var(--accent)] text-[var(--accent)] font-semibold hover:bg-[var(--accent)]/20 transition"
-              >
-                Wissen korrigieren
-              </button>
             </div>
 
             <div className="border-b border-[var(--border)]">
