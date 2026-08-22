@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import {
   NOTE_COLORS,
+  NO_BORDER,
   NO_FILL,
   STROKE_WIDTHS,
   isShapeTool,
@@ -46,18 +47,18 @@ const TOOL_BUTTONS: {
       </>
     ),
   },
-  {
-    id: 'draw',
-    label: 'Zeichnen (Freihand)',
-    icon: <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />,
-  },
 ];
 
-const SHAPE_BUTTONS: {
+const DRAWING_TOOLS: {
   id: WhiteboardTool;
   label: string;
   icon: ReactNode;
 }[] = [
+  {
+    id: 'draw',
+    label: 'Freihand',
+    icon: <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />,
+  },
   {
     id: 'rect',
     label: 'Rechteck',
@@ -104,6 +105,26 @@ export function WhiteboardToolbar({
   selectedElement,
   onUpdateSelected,
 }: WhiteboardToolbarProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  // The drawing tools live in a flyout behind the pen button and are not
+  // part of the always-visible toolbar column.
+  const [drawingToolsOpen, setDrawingToolsOpen] = useState(false);
+  const drawingActive = tool === 'draw' || isShapeTool(tool);
+
+  useEffect(() => {
+    if (!drawingActive) setDrawingToolsOpen(false);
+  }, [drawingActive]);
+
+  // Clicks outside the toolbar close the flyout.
+  useEffect(() => {
+    if (!drawingToolsOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setDrawingToolsOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [drawingToolsOpen]);
+
   const selectedType = selectedElement?.type ?? null;
   // Which control groups are relevant: driven either by the active tool
   // (defaults for new elements) or by the selected element (recoloring).
@@ -170,97 +191,169 @@ export function WhiteboardToolbar({
           : 'border-transparent hover:scale-105'
     }`;
 
-  const widthButtonClass = (active: boolean) =>
-    `flex h-6 w-6 cursor-pointer select-none items-center justify-center rounded-md transition-colors ${
-      active ? 'bg-[var(--accent)]/30 ring-1 ring-[var(--accent)]' : 'hover:bg-slate-700/60'
-    }`;
+  const renderPenButton = () => (
+    <button
+      key="pen"
+      type="button"
+      title="Zeichnen"
+      aria-label="Zeichnen"
+      onClick={() => setDrawingToolsOpen((open) => !open)}
+      onMouseDown={(e) => e.preventDefault()}
+      className={`flex h-9 w-9 cursor-pointer select-none items-center justify-center rounded-lg transition-colors ${
+        drawingActive
+          ? 'bg-[var(--accent)] text-slate-900'
+          : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+      }`}
+    >
+      <svg {...COMMON_PROPS}>
+        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+      </svg>
+    </button>
+  );
+
+  const renderFlyoutItem = (item: { id: WhiteboardTool; label: string; icon: ReactNode }) => (
+    <button
+      key={item.id}
+      type="button"
+      title={item.label}
+      aria-label={item.label}
+      onClick={() => {
+        onToolChange(item.id);
+        setDrawingToolsOpen(false);
+      }}
+      onMouseDown={(e) => e.preventDefault()}
+      className={`flex cursor-pointer select-none items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+        tool === item.id
+          ? 'bg-[var(--accent)]/25 text-[var(--text-h)] ring-1 ring-[var(--accent)]'
+          : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+      }`}
+    >
+      <span className={tool === item.id ? 'text-[var(--accent)]' : ''}>
+        <svg {...COMMON_PROPS}>{item.icon}</svg>
+      </span>
+      {item.label}
+    </button>
+  );
 
   return (
-    <div className="absolute left-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] flex-col gap-2 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
-      <div className="flex flex-col gap-1">
-        {TOOL_BUTTONS.map(renderToolButton)}
-        <div className="my-0.5 border-t border-[var(--border)]" role="separator" />
-        <div className="grid grid-cols-2 gap-1">{SHAPE_BUTTONS.map(renderToolButton)}</div>
-      </div>
-      {showControls && (
-        <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-2">
-          {(noteContext || drawContext || shapeContext) && (
-            <div className="grid grid-cols-2 gap-1">
-              {NOTE_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={`Farbe ${c}`}
-                  title={
-                    selectedElement
-                      ? 'Farbe des ausgewählten Elements ändern'
-                      : noteContext
-                        ? 'Farbe für neue Notizen'
-                        : 'Rahmen-/Strichfarbe'
-                  }
-                  onClick={() => handleColor(c)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  style={{ backgroundColor: c }}
-                  className={swatchButtonClass(activeColor === c)}
-                />
-              ))}
-            </div>
-          )}
-          {shapeContext && (
-            <div className="grid grid-cols-2 gap-1">
-              <button
-                type="button"
-                aria-label="Keine Füllung"
-                title={selectedElement ? 'Füllung entfernen' : 'Keine Füllung'}
-                onClick={() => handleFill(null)}
-                onMouseDown={(e) => e.preventDefault()}
-                className={`relative h-6 w-6 cursor-pointer select-none overflow-hidden rounded-full border-2 transition-transform ${
-                  activeFill === NO_FILL
-                    ? 'scale-110 border-white'
-                    : 'border-slate-500 hover:scale-105'
-                }`}
-              >
-                <span className="absolute inset-x-[-25%] top-1/2 h-0.5 -translate-y-1/2 rotate-45 bg-[var(--danger)]" />
-              </button>
-              {NOTE_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={`Füllung ${c}`}
-                  title={
-                    selectedElement ? 'Füllung des Elements setzen' : 'Füllfarbe für neue Formen'
-                  }
-                  onClick={() => handleFill(c)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  style={{ backgroundColor: c }}
-                  className={swatchButtonClass(activeFill === c)}
-                />
-              ))}
-            </div>
-          )}
-          {(drawContext || shapeContext) && (
-            <div className="flex items-center justify-between gap-1 px-0.5">
-              {STROKE_WIDTHS.map((w) => (
-                <button
-                  key={w}
-                  type="button"
-                  aria-label={`Strichstärke ${w}`}
-                  title={`Strichstärke ${w}`}
-                  onClick={() => handleWidth(w)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  className={widthButtonClass(activeWidth === w)}
-                >
-                  <span
-                    className="rounded-full bg-current"
-                    style={{
-                      width: Math.min(18, w * 1.5),
-                      height: Math.max(3, w * 0.75),
-                    }}
+    <div ref={rootRef}>
+      <div className="absolute left-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] flex-col gap-2 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
+        <div className="flex flex-col gap-1">
+          {TOOL_BUTTONS.map(renderToolButton)}
+          {renderPenButton()}
+        </div>
+        {showControls && (
+          <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-2">
+            {(noteContext || drawContext || shapeContext) && (
+              <div className="grid grid-cols-2 gap-1">
+                {NOTE_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={`Farbe ${c}`}
+                    title={
+                      selectedElement
+                        ? 'Farbe des ausgewählten Elements ändern'
+                        : noteContext
+                          ? 'Farbe für neue Notizen'
+                          : 'Rahmen-/Strichfarbe'
+                    }
+                    onClick={() => handleColor(c)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    style={{ backgroundColor: c }}
+                    className={swatchButtonClass(activeColor === c)}
                   />
+                ))}
+              </div>
+            )}
+            {shapeContext && (
+              <div className="grid grid-cols-2 gap-1">
+                <button
+                  type="button"
+                  aria-label="Keine Füllung"
+                  title={selectedElement ? 'Füllung entfernen' : 'Keine Füllung'}
+                  onClick={() => handleFill(null)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  className={`relative h-6 w-6 cursor-pointer select-none overflow-hidden rounded-full border-2 transition-transform ${
+                    activeFill === NO_FILL
+                      ? 'scale-110 border-white'
+                      : 'border-slate-500 hover:scale-105'
+                  }`}
+                >
+                  <span className="absolute inset-x-[-25%] top-1/2 h-0.5 -translate-y-1/2 rotate-45 bg-[var(--danger)]" />
                 </button>
-              ))}
-            </div>
-          )}
+                {NOTE_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={`Füllung ${c}`}
+                    title={
+                      selectedElement ? 'Füllung des Elements setzen' : 'Füllfarbe für neue Formen'
+                    }
+                    onClick={() => handleFill(c)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    style={{ backgroundColor: c }}
+                    className={swatchButtonClass(activeFill === c)}
+                  />
+                ))}
+              </div>
+            )}
+            {(drawContext || shapeContext) && (
+              <div className="flex items-center justify-between gap-1 px-0.5">
+                {shapeContext && (
+                  <button
+                    type="button"
+                    aria-label="Kein Rahmen"
+                    title={
+                      selectedElement && selectedType === 'shape'
+                        ? 'Rahmen ausblenden'
+                        : 'Ohne Rahmen zeichnen'
+                    }
+                    onClick={() => handleWidth(NO_BORDER)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    className={`relative h-6 w-6 cursor-pointer select-none overflow-hidden rounded-md transition-colors ${
+                      activeWidth === NO_BORDER
+                        ? 'bg-[var(--danger)]/40 ring-1 ring-[var(--danger)]'
+                        : 'hover:bg-slate-700/60'
+                    }`}
+                  >
+                    <span className="absolute inset-x-[-25%] top-1/2 h-0.5 -translate-y-1/2 rotate-45 bg-current" />
+                  </button>
+                )}
+                {STROKE_WIDTHS.map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    aria-label={`Strichstärke ${w}`}
+                    title={`Strichstärke ${w}`}
+                    onClick={() => handleWidth(w)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    className={`flex h-6 w-6 cursor-pointer select-none items-center justify-center rounded-md transition-colors ${
+                      activeWidth === w
+                        ? 'bg-[var(--accent)]/30 ring-1 ring-[var(--accent)]'
+                        : 'hover:bg-slate-700/60'
+                    }`}
+                  >
+                    <span
+                      className="rounded-full bg-current"
+                      style={{
+                        width: Math.min(18, w * 1.5),
+                        height: Math.max(3, w * 0.75),
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {drawingToolsOpen && (
+        <div className="absolute left-16 top-24 z-20 flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
+          <span className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            Zeichnen
+          </span>
+          {DRAWING_TOOLS.map(renderFlyoutItem)}
         </div>
       )}
     </div>
