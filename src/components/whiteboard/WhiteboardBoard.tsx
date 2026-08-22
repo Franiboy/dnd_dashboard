@@ -1392,7 +1392,7 @@ export function WhiteboardBoard({
         </span>
       </div>
 
-      <div className="absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-[var(--border)] bg-[var(--panel)]/95 px-4 py-1 text-xs font-medium shadow backdrop-blur">
+      <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 select-none rounded-full border border-[var(--border)] bg-[var(--panel)]/95 px-4 py-1 text-xs font-medium shadow backdrop-blur">
         {centerZone === 'public'
           ? 'Neue Elemente hier sind Öffentlich'
           : 'Neue Elemente hier sind Privat'}
