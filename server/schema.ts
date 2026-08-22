@@ -398,13 +398,18 @@ export const schema: Record<string, TableDef> = {
       url: { type: 'TEXT' },
       from_id: { type: 'TEXT' },
       to_id: { type: 'TEXT' },
+      shape_kind: { type: 'TEXT' },
+      fill_color: { type: 'TEXT' },
+      stroke_width: { type: 'REAL', notNull: true, default: '3' },
+      // JSON-encoded normalized [x, y] pairs of freehand strokes.
+      points: { type: 'TEXT' },
       z_index: { type: 'INTEGER', notNull: true, default: '0' },
       locked: { type: 'INTEGER', notNull: true, default: '0' },
       created_at: { type: 'TEXT', notNull: true },
       updated_at: { type: 'TEXT', notNull: true },
     },
     check:
-      "type IN ('note', 'task', 'arrow', 'link') AND zone IN ('public', 'private') " +
+      "type IN ('note', 'task', 'arrow', 'link', 'shape', 'stroke') AND zone IN ('public', 'private') " +
       "AND status IN ('open', 'in_progress', 'done')",
     indexes: [
       {
