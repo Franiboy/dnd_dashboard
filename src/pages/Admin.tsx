@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import { useError } from '../hooks/useError';
@@ -30,6 +30,34 @@ interface AiModelConfig {
   modelOverridden: boolean;
 }
 
+interface JobStatus {
+  nightly: boolean;
+  transcription: boolean;
+  bingoSuggestion: boolean;
+}
+
+function JobStatusBadge({ running }: { running: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
+        running ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700/60 text-slate-400'
+      }`}
+    >
+      <span className="relative flex h-1.5 w-1.5">
+        {running && (
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+        )}
+        <span
+          className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
+            running ? 'bg-emerald-400' : 'bg-slate-500'
+          }`}
+        />
+      </span>
+      {running ? 'Läuft' : 'Bereit'}
+    </span>
+  );
+}
+
 interface AdminProps {
   currentUser: SafeUser;
 }
@@ -44,7 +72,8 @@ export function Admin({ currentUser }: AdminProps) {
   const [actionLoading, setActionLoading] = useState<{ id: string; endpoint: string } | null>(null);
   const [managingAppsFor, setManagingAppsFor] = useState<SafeUser | null>(null);
   const [aiModels, setAiModels] = useState<AiModelConfig | null>(null);
-  const [aiSaving, setAiSaving] = useState(false);
+  const [aiSaveState, setAiSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus | null>(null);
   const [recordingChannels, setRecordingChannels] = useState<RecordingChannel[]>([]);
   const [selectedRecordingChannel, setSelectedRecordingChannel] = useState('');
@@ -84,6 +113,22 @@ export function Admin({ currentUser }: AdminProps) {
     if (error) showError(error);
   }, [error, showError]);
 
+  useEffect(() => {
+    const source = new EventSource('/api/admin/jobs/events', { withCredentials: true });
+    source.addEventListener('jobs', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data && typeof data === 'object') setJobStatus(data);
+      } catch {
+        // ignore parse errors
+      }
+    });
+    source.addEventListener('error', () => {
+      // Connection errors are handled silently; the browser reconnects automatically
+    });
+    return () => source.close();
+  }, []);
+
   const loadAiModels = async () => {
     const { data } = await request<AiModelConfig>('/api/admin/ai/models', undefined, false);
     if (data) setAiModels(data);
@@ -94,28 +139,36 @@ export function Admin({ currentUser }: AdminProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const saveAiModels = async () => {
-    if (!aiModels) return;
-    setAiSaving(true);
-    const { data, error: saveError } = await request<AiModelConfig>('/api/admin/ai/models', {
+  const aiSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (aiSavedTimerRef.current) clearTimeout(aiSavedTimerRef.current);
+    },
+    []
+  );
+
+  const selectAiModel = async (model: string) => {
+    setAiModels((prev) => (prev ? { ...prev, model } : prev));
+    setAiSaveState('saving');
+    const { data, error: saveError } = await request<{
+      model: string;
+      modelOverridden: boolean;
+    }>('/api/admin/ai/models', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: aiModels.model }),
+      body: JSON.stringify({ model }),
     });
-    setAiSaving(false);
     if (data) {
-      setAiModels(data);
+      setAiModels((prev) =>
+        prev ? { ...prev, model: data.model, modelOverridden: data.modelOverridden } : prev
+      );
+      setAiSaveState('saved');
+      if (aiSavedTimerRef.current) clearTimeout(aiSavedTimerRef.current);
+      aiSavedTimerRef.current = setTimeout(() => setAiSaveState('idle'), 2000);
     } else if (saveError) {
       setError(saveError);
-    }
-  };
-
-  const refreshAiModels = async () => {
-    const { data } = await request<{ models: string[] }>('/api/admin/ai/models/refresh', {
-      method: 'POST',
-    });
-    if (data && aiModels) {
-      setAiModels({ ...aiModels, models: data.models });
+      setAiSaveState('idle');
     }
   };
 
@@ -152,48 +205,23 @@ export function Admin({ currentUser }: AdminProps) {
     setRecordingSaving(false);
   };
 
-  const triggerNightlyJob = async () => {
-    setNightlyJobLoading(true);
-    setNightlyJobMessage(null);
-    const { data } = await request<{ started: boolean; message: string }>(
-      '/api/admin/nightly-job',
-      {
-        method: 'POST',
-      }
-    );
-    setNightlyJobLoading(false);
-    if (data) {
-      setNightlyJobMessage(data.message);
-    }
-  };
-
-  const triggerTranscriptionJobs = async () => {
-    setTranscriptionJobLoading(true);
-    setTranscriptionJobMessage(null);
-    const { data } = await request<{ started: boolean; message: string }>(
-      '/api/admin/transcription-jobs',
-      {
-        method: 'POST',
-      }
-    );
-    setTranscriptionJobLoading(false);
-    if (data) {
-      setTranscriptionJobMessage(data.message);
-    }
-  };
-
-  const triggerBingoSuggestionRefill = async () => {
-    setBingoSuggestionLoading(true);
-    setBingoSuggestionMessage(null);
-    const { data } = await request<{ started: boolean; message: string }>(
-      '/api/admin/bingo-suggestion-refill',
-      {
-        method: 'POST',
-      }
-    );
-    setBingoSuggestionLoading(false);
-    if (data) {
-      setBingoSuggestionMessage(data.message);
+  const triggerJob = async (
+    endpoint: string,
+    setLoading: (loading: boolean) => void,
+    setMessage: (message: string | null) => void
+  ) => {
+    setLoading(true);
+    setMessage(null);
+    const { data, error: jobError } = await request<{
+      started: boolean;
+      message?: string;
+      error?: string;
+    }>(`/api/admin/${endpoint}`, { method: 'POST' }, false);
+    setLoading(false);
+    if (data?.message) {
+      setMessage(data.message);
+    } else if (jobError) {
+      setMessage(jobError);
     }
   };
 
@@ -362,7 +390,10 @@ export function Admin({ currentUser }: AdminProps) {
         >
           <div className="space-y-6">
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-[var(--text-h)]">Nightly-Job</h2>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold text-[var(--text-h)]">Nightly-Job</h2>
+                <JobStatusBadge running={jobStatus?.nightly === true} />
+              </div>
               <p className="text-sm text-slate-400">
                 Startet alle Schritte des nächtlichen Hintergrundjobs manuell in dieser Reihenfolge:
               </p>
@@ -374,11 +405,19 @@ export function Admin({ currentUser }: AdminProps) {
               </ol>
               <button
                 type="button"
-                onClick={triggerNightlyJob}
-                disabled={nightlyJobLoading}
+                onClick={() =>
+                  triggerJob('nightly-job', setNightlyJobLoading, setNightlyJobMessage)
+                }
+                disabled={nightlyJobLoading || jobStatus?.nightly === true}
                 className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
               >
-                {nightlyJobLoading ? <Loading text="" size="sm" /> : 'Nightly-Job starten'}
+                {nightlyJobLoading ? (
+                  <Loading text="" size="sm" />
+                ) : jobStatus?.nightly ? (
+                  'Läuft bereits...'
+                ) : (
+                  'Nightly-Job starten'
+                )}
               </button>
               {nightlyJobMessage && (
                 <p className="text-sm text-[var(--accent)]">{nightlyJobMessage}</p>
@@ -386,18 +425,33 @@ export function Admin({ currentUser }: AdminProps) {
             </div>
 
             <div className="border-t border-[var(--border)] pt-4 space-y-4">
-              <h2 className="text-lg font-semibold text-[var(--text-h)]">Transkription</h2>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold text-[var(--text-h)]">Transkription</h2>
+                <JobStatusBadge running={jobStatus?.transcription === true} />
+              </div>
               <p className="text-sm text-slate-400">
                 Verarbeitet alle Sessions im Status „pending_transcription“ manuell. Dies läuft
                 normalerweise separat und unabhängig vom Nightly-Job.
               </p>
               <button
                 type="button"
-                onClick={triggerTranscriptionJobs}
-                disabled={transcriptionJobLoading}
+                onClick={() =>
+                  triggerJob(
+                    'transcription-jobs',
+                    setTranscriptionJobLoading,
+                    setTranscriptionJobMessage
+                  )
+                }
+                disabled={transcriptionJobLoading || jobStatus?.transcription === true}
                 className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
               >
-                {transcriptionJobLoading ? <Loading text="" size="sm" /> : 'Transkription starten'}
+                {transcriptionJobLoading ? (
+                  <Loading text="" size="sm" />
+                ) : jobStatus?.transcription ? (
+                  'Läuft bereits...'
+                ) : (
+                  'Transkription starten'
+                )}
               </button>
               {transcriptionJobMessage && (
                 <p className="text-sm text-[var(--accent)]">{transcriptionJobMessage}</p>
@@ -405,7 +459,10 @@ export function Admin({ currentUser }: AdminProps) {
             </div>
 
             <div className="border-t border-[var(--border)] pt-4 space-y-4">
-              <h2 className="text-lg font-semibold text-[var(--text-h)]">Bingo-Vorschläge</h2>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold text-[var(--text-h)]">Bingo-Vorschläge</h2>
+                <JobStatusBadge running={jobStatus?.bingoSuggestion === true} />
+              </div>
               <p className="text-sm text-slate-400">
                 Füllt den Pool der ausstehenden Bingo-Vorschläge manuell auf. Normalerweise läuft
                 dies automatisch jede Minute, wenn weniger als der konfigurierte Threshold vorhanden
@@ -413,12 +470,20 @@ export function Admin({ currentUser }: AdminProps) {
               </p>
               <button
                 type="button"
-                onClick={triggerBingoSuggestionRefill}
-                disabled={bingoSuggestionLoading}
+                onClick={() =>
+                  triggerJob(
+                    'bingo-suggestion-refill',
+                    setBingoSuggestionLoading,
+                    setBingoSuggestionMessage
+                  )
+                }
+                disabled={bingoSuggestionLoading || jobStatus?.bingoSuggestion === true}
                 className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
               >
                 {bingoSuggestionLoading ? (
                   <Loading text="" size="sm" />
+                ) : jobStatus?.bingoSuggestion ? (
+                  'Läuft bereits...'
                 ) : (
                   'Bingo-Vorschläge generieren'
                 )}
@@ -459,16 +524,29 @@ export function Admin({ currentUser }: AdminProps) {
           }
         >
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h2 className="text-lg font-semibold text-[var(--text-h)]">KI-Modell</h2>
-              <button
-                type="button"
-                onClick={refreshAiModels}
-                disabled={!aiModels}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 text-[var(--text-h)] hover:bg-slate-600 transition disabled:opacity-50"
-              >
-                Aktualisieren
-              </button>
+              {aiSaveState === 'saving' && (
+                <span className="text-xs text-slate-400">Speichern...</span>
+              )}
+              {aiSaveState === 'saved' && (
+                <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                  Gespeichert
+                </span>
+              )}
             </div>
 
             {!aiModels ? (
@@ -485,9 +563,7 @@ export function Admin({ currentUser }: AdminProps) {
                   <label className="block text-sm text-slate-400 mb-1">Modell</label>
                   <select
                     value={aiModels.model}
-                    onChange={(e) =>
-                      setAiModels((prev) => (prev ? { ...prev, model: e.target.value } : prev))
-                    }
+                    onChange={(e) => selectAiModel(e.target.value)}
                     className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
                   >
                     {aiModels.models.map((m) => (
@@ -503,17 +579,9 @@ export function Admin({ currentUser }: AdminProps) {
                   )}
                 </div>
                 <p className="text-xs text-slate-500">
-                  Das Modell wird für alle KI-Funktionen verwendet (Tagebuch, Zusammenfassungen,
-                  Entitäten, Bingo-Vorschläge).
+                  Das Modell wird beim Auswählen automatisch gespeichert und für alle KI-Funktionen
+                  verwendet (Tagebuch, Zusammenfassungen, Entitäten, Bingo-Vorschläge).
                 </p>
-                <button
-                  type="button"
-                  onClick={saveAiModels}
-                  disabled={aiSaving}
-                  className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
-                >
-                  {aiSaving ? <Loading text="" size="sm" /> : 'Speichern'}
-                </button>
               </div>
             )}
           </div>
