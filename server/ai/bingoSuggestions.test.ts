@@ -22,7 +22,7 @@ const SUGGESTIONS = [
   'Jemand prahlt mit seinem neuen Würfelset',
 ];
 
-let lastBatchId: string | null = null;
+let lastBatchId = '';
 
 function extractBatchId(prompt: string): string {
   const match = prompt.match(/Deine Batch-ID ist "([^"]+)"/);
@@ -42,7 +42,7 @@ describe('generateBingoSuggestionBatch', () => {
   beforeEach(() => {
     process.env.AI_PROVIDER = 'opencode';
     process.env.AI_MODEL = 'test-model';
-    lastBatchId = null;
+    lastBatchId = '';
     runOpenCodeMock.mockReset();
     vi.mocked(deleteOpenCodeSession).mockClear();
   });
