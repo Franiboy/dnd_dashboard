@@ -17,6 +17,8 @@ import bingoRouter from './routes/bingo.js';
 import diaryRouter from './routes/diary.js';
 import entitiesRouter from './routes/entities.js';
 import recordingsRouter from './routes/recordings.js';
+import whiteboardRouter from './routes/whiteboard.js';
+import { authMiddleware, requireApproved } from './auth.js';
 import { setupSocket } from './socket.js';
 import { getVersion } from './version.js';
 import { runMigrations } from './migrations.js';
@@ -40,6 +42,7 @@ import { isDiscordOAuthConfigured } from './discord/oauth.js';
 import { isEncryptionConfigured } from './encryption.js';
 import { errorHandler, notFoundHandler } from './errors.js';
 import { db } from './database.js';
+import { ensureWhiteboardUploadDir, getWhiteboardUploadDir } from './whiteboard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -70,7 +73,8 @@ app.set('io', io);
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({ origin: corsOrigin, credentials: true }));
-app.use(express.json());
+// Large enough for base64 board image uploads (handled by their own route).
+app.use(express.json({ limit: '15mb' }));
 app.use(cookieParser());
 
 // Generic request logging
@@ -160,6 +164,19 @@ app.use('/api/bingo', bingoRouter);
 app.use('/api/diary', diaryRouter);
 app.use('/api/entities', entitiesRouter);
 app.use('/api/recordings', recordingsRouter);
+app.use('/api/whiteboard', whiteboardRouter);
+
+// Board image uploads: authenticated and served only to approved users.
+ensureWhiteboardUploadDir();
+app.use(
+  '/uploads/whiteboard',
+  authMiddleware,
+  requireApproved,
+  express.static(getWhiteboardUploadDir(), {
+    maxAge: '30d',
+    fallthrough: false,
+  })
+);
 
 // Serve static files in production and fall back to index.html for all non-API routes
 const distDir = path.join(__dirname, '..', '..', 'dist');

@@ -129,8 +129,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const data = await res.json();
         setUser(data.user);
         setError(null);
-      } else {
-        setUser(null);
+        setLoading(false);
+        return;
+      }
+    } catch {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+    // Without an existing session, local development setups may sign in as
+    // the initial admin automatically; the endpoint only exists when the
+    // server explicitly enables it.
+    try {
+      const versionRes = await fetch('/api/version');
+      if (versionRes.ok) {
+        const version = await versionRes.json();
+        if (version.devAutoLogin) {
+          const devRes = await fetch('/api/auth/dev-session', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (devRes.ok) {
+            const data = await devRes.json();
+            setUser(data.user);
+            setError(null);
+          }
+        }
       }
     } catch {
       setUser(null);

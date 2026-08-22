@@ -15,6 +15,7 @@ import {
 import { getGame } from '../game.js';
 import { createLogger } from '../logger.js';
 import { db } from '../database.js';
+import { isDevAutoLoginEnabled } from '../env.js';
 import {
   DISCORD_REDIRECT_URI,
   DiscordOAuthError,
@@ -193,6 +194,19 @@ router.post('/admin/login', authRateLimit, (req, res) => {
   resetFailedLogins(user);
   const token = createToken(user);
   setAuthCookie(res, token);
+  res.json({ ok: true, user: toSafeUser(user) });
+});
+
+router.post('/auth/dev-session', (req, res) => {
+  if (!isDevAutoLoginEnabled()) {
+    return res.status(404).json({ error: 'Nicht verfügbar' });
+  }
+  const user = findUserByUsername('admin');
+  if (!user || !user.isAdmin || !isInitialAdmin(user)) {
+    return res.status(500).json({ error: 'Admin-Konto fehlt' });
+  }
+  resetFailedLogins(user);
+  setAuthCookie(res, createToken(user));
   res.json({ ok: true, user: toSafeUser(user) });
 });
 

@@ -29,6 +29,16 @@ import {
   updateTask,
 } from './game.js';
 import type { TaskAudience } from '../shared/types.js';
+import {
+  broadcastWhiteboardRemoved,
+  broadcastWhiteboardUpsert,
+  broadcastWhiteboardZoneChange,
+  createElement,
+  getElement,
+  listElementsForUser,
+  removeElement,
+  updateElement,
+} from './whiteboard.js';
 
 export function getGameForUser(user: User): BingoGame {
   const current = getGame();
@@ -75,6 +85,7 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
   io.on('connection', (socket) => {
     const user = (socket as any).user as User;
     socket.emit('state', getGameForUser(user));
+    socket.emit('wbElements', listElementsForUser(user));
 
     socket.on('join', () => {
       const displayName = user?.displayName;
@@ -284,6 +295,36 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel zurücksetzen.');
       finishAndResetGame();
       broadcastState();
+    });
+
+    socket.on('wbCreate', (element) => {
+      try {
+        const created = createElement(element, user);
+        broadcastWhiteboardUpsert(io, created);
+      } catch (e: any) {
+        socket.emit('error', e.message);
+      }
+    });
+
+    socket.on('wbUpdate', ({ id, patch }) => {
+      try {
+        const before = getElement(id);
+        if (!before) return socket.emit('error', 'Element nicht gefunden.');
+        const updated = updateElement(id, patch, user);
+        if (before.zone === updated.zone) broadcastWhiteboardUpsert(io, updated);
+        else broadcastWhiteboardZoneChange(io, before, updated);
+      } catch (e: any) {
+        socket.emit('error', e.message);
+      }
+    });
+
+    socket.on('wbRemove', (id) => {
+      try {
+        removeElement(id, user);
+        broadcastWhiteboardRemoved(io, id);
+      } catch (e: any) {
+        socket.emit('error', e.message);
+      }
     });
 
     socket.on('disconnect', () => {
