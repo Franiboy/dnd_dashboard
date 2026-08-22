@@ -222,7 +222,23 @@ export async function generateBingoSuggestionBatch(
 
   if (!result.success) {
     log.warn(`Bingo suggestion generation failed: exitCode=${result.exitCode}`);
+
+    // The agent may have already submitted the batch successfully before the
+    // CLI exited non-zero (e.g. errors during CLI shutdown after the final
+    // answer). Keep submitted results instead of discarding them.
+    const batchStatus = getBingoSuggestionBatch(batchId)?.status;
+    const submitted =
+      batchStatus === 'completed' ? getBingoSuggestionBatchResults(batchId).map((r) => r.text) : [];
+
     await cleanupSession(result.sessionId);
+
+    if (submitted.length > 0) {
+      log.info(
+        `Keeping ${submitted.length} submitted suggestions from batch ${batchId} despite exit code ${result.exitCode}`
+      );
+      return submitted;
+    }
+
     failBingoSuggestionBatch(batchId);
     return [];
   }
