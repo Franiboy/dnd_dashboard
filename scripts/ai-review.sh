@@ -135,7 +135,11 @@ for f in "${PIPELINE_FILES[@]}"; do
 	PIPELINE_HASHES[$f]="$(sha256sum "$f" | cut -d' ' -f1)"
 done
 
-opencode run -m "$MODEL" --auto --title "AI PR review #$PR_NUMBER" "$PROMPT"
+# Pipe the prompt via stdin instead of passing it as an argument: Linux caps a
+# single argv entry at 128 KiB (MAX_ARG_STRLEN), so large PR diffs fail exec
+# with E2BIG ("Argument list too long"). opencode run reads non-TTY stdin and
+# appends it to the message.
+printf '%s' "$PROMPT" | opencode run -m "$MODEL" --auto --title "AI PR review #$PR_NUMBER"
 restore_project_config
 
 for f in "${PIPELINE_FILES[@]}"; do
