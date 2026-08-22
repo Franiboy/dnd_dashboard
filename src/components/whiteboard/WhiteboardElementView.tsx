@@ -700,6 +700,8 @@ export function WhiteboardElementView({
             <div
               title="Größe ändern"
               onPointerDown={(e) => {
+                // Right/middle presses fall through to the board pan.
+                if (e.button !== 0) return;
                 e.stopPropagation();
                 onStartResize(e, element);
               }}
