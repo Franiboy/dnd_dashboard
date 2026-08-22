@@ -3,7 +3,11 @@ import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { db } from '../database.js';
 import type { DiaryEntities } from '../ai/rewrite.js';
 import { isAiEnabled } from '../ai/config.js';
-import { distributeKnowledgeFromText, generateEntitySummary } from '../ai/knowledge.js';
+import {
+  distributeKnowledgeFromText,
+  correctKnowledgeFromText,
+  generateEntitySummary,
+} from '../ai/knowledge.js';
 import {
   addEntityAlias,
   blacklistEntity,
@@ -329,6 +333,41 @@ router.post('/knowledge/distribute', async (req: AuthRequest, res) => {
     res.json(result);
   } catch {
     res.status(500).json({ error: 'KI-Einordnung fehlgeschlagen' });
+  }
+});
+
+router.post('/knowledge/correct', async (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
+    return;
+  }
+
+  const { text, type, name } = req.body;
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    res.status(400).json({ error: 'Text ist erforderlich' });
+    return;
+  }
+
+  let focus: { entityType: (typeof ENTITY_TYPES)[number]; entityName: string } | undefined;
+  if (type !== undefined || name !== undefined) {
+    if (
+      !type ||
+      !ENTITY_TYPES.includes(type) ||
+      !name ||
+      typeof name !== 'string' ||
+      !name.trim()
+    ) {
+      res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+      return;
+    }
+    focus = { entityType: type, entityName: name.trim() };
+  }
+
+  try {
+    const result = await correctKnowledgeFromText(text.trim(), focus);
+    res.json(result);
+  } catch {
+    res.status(500).json({ error: 'KI-Berichtigung fehlgeschlagen' });
   }
 });
 
