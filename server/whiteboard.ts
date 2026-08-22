@@ -233,6 +233,8 @@ export function sanitizePatch(patch: unknown): WhiteboardPatch {
   if (fromId !== undefined) clean.fromId = fromId;
   const toId = asReference(raw.toId);
   if (toId !== undefined) clean.toId = toId;
+  const zone = asEnum(raw.zone, ['public', 'private'] as const);
+  if (zone !== undefined) clean.zone = zone;
   if (typeof raw.locked === 'boolean') clean.locked = raw.locked;
 
   return clean;
@@ -269,6 +271,7 @@ function applyPatch(element: WhiteboardElement, patch: WhiteboardPatch): void {
   if (patch.fromId !== undefined && element.type === 'arrow') element.fromId = patch.fromId;
   if (patch.toId !== undefined && element.type === 'arrow') element.toId = patch.toId;
   if (patch.locked !== undefined) element.locked = patch.locked;
+  if (patch.zone !== undefined) element.zone = patch.zone;
 }
 
 // ---------------------------------------------------------------------------
@@ -340,6 +343,11 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
 
   const next = { ...existing };
   applyPatch(next, sanitizePatch(patch));
+  // Dragging someone else's public element into the private zone claims it.
+  if (next.zone === 'private' && existing.zone === 'public' && next.ownerId !== user.id) {
+    next.ownerId = user.id;
+    next.ownerName = user.displayName;
+  }
   next.updatedAt = new Date().toISOString();
 
   // Clear anchors that point at deleted elements.
@@ -405,6 +413,25 @@ function forEachVisibleSocket(
 
 export function broadcastWhiteboardUpsert(io: IoServer, element: WhiteboardElement): void {
   forEachVisibleSocket(io, element, (socket) => socket.emit('wbUpsert', element));
+}
+
+/**
+ * Zone changes flip visibility: former viewers must drop the element while
+ * new viewers receive it, so both sides get their matching event.
+ */
+export function broadcastWhiteboardZoneChange(
+  io: IoServer,
+  before: WhiteboardElement,
+  after: WhiteboardElement
+): void {
+  for (const socket of io.sockets.sockets.values()) {
+    const socketUser = (socket as any).user as User | undefined;
+    if (!socketUser) continue;
+    const wasVisible = visibleTo(before, socketUser);
+    const isVisible = visibleTo(after, socketUser);
+    if (isVisible) socket.emit('wbUpsert', after);
+    else if (wasVisible) socket.emit('wbRemoved', after.id);
+  }
 }
 
 export function broadcastWhiteboardRemoved(io: IoServer, id: string): void {

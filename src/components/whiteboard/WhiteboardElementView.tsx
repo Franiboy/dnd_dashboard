@@ -94,10 +94,24 @@ function useFitFontSize(
 ) {
   const ref = useRef<HTMLElement | null>(null);
   const [fontSize, setFontSize] = useState(14);
+  const [padTop, setPadTop] = useState(0);
 
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el || !enabled || !text.trim()) return;
+    if (!el || !enabled) {
+      setPadTop(0);
+      return;
+    }
+
+    // Empty notes center their placeholder vertically.
+    if (!text.trim()) {
+      const base = Math.min(15, availableHeight / 5);
+      el.style.fontSize = `${base}px`;
+      setFontSize(base);
+      setPadTop(Math.max(0, (availableHeight - base * 1.15) / 2));
+      return;
+    }
+
     const fits = (px: number) => {
       el.style.fontSize = `${px}px`;
       return el.scrollHeight <= availableHeight + 0.5 && el.scrollWidth <= availableWidth + 0.5;
@@ -109,11 +123,14 @@ function useFitFontSize(
       if (fits(mid)) lo = mid;
       else hi = mid;
     }
-    el.style.fontSize = `${lo}px`;
-    setFontSize((prev) => (Math.abs(prev - lo) > 0.3 ? lo : prev));
+    // Headroom so rounding/wrap edges never spill into a scrollbar.
+    const fitted = Math.max(6, lo * 0.97);
+    el.style.fontSize = `${fitted}px`;
+    setFontSize((prev) => (Math.abs(prev - fitted) > 0.3 ? fitted : prev));
+    setPadTop(0);
   }, [text, availableWidth, availableHeight, enabled]);
 
-  return { ref, fontSize };
+  return { ref, fontSize, padTop };
 }
 
 function useBlurGuard(ref: RefObject<HTMLElement | null>) {
@@ -145,7 +162,7 @@ function NoteEditor({
   boxHeight,
 }: NoteDraftProps & { boxWidth: number; boxHeight: number }) {
   const [draft, setDraft] = useState(element.text);
-  const { ref, fontSize } = useFitFontSize(draft, boxWidth, boxHeight, true);
+  const { ref, fontSize, padTop } = useFitFontSize(draft, boxWidth, boxHeight, true);
   const shouldIgnoreBlur = useBlurGuard(ref);
   useEffect(() => {
     ref.current?.focus();
@@ -154,7 +171,7 @@ function NoteEditor({
     <textarea
       ref={ref as RefObject<HTMLTextAreaElement>}
       value={draft}
-      style={{ fontSize }}
+      style={{ fontSize, paddingTop: padTop }}
       onChange={(e) => setDraft(e.target.value)}
       onPointerDown={(e) => e.stopPropagation()}
       onBlur={() => {
@@ -170,7 +187,7 @@ function NoteEditor({
           commitField(element, { text: draft }, onUpdate, onCloseEdit);
         }
       }}
-      className="h-full w-full resize-none bg-transparent text-center leading-[1.15] text-slate-900 outline-none placeholder:text-slate-900/40"
+      className="h-full w-full resize-none overflow-hidden bg-transparent text-center leading-[1.15] text-slate-900 outline-none placeholder:text-slate-900/40"
       placeholder="Notiz schreiben…"
     />
   );

@@ -32,7 +32,9 @@ import type { TaskAudience } from '../shared/types.js';
 import {
   broadcastWhiteboardRemoved,
   broadcastWhiteboardUpsert,
+  broadcastWhiteboardZoneChange,
   createElement,
+  getElement,
   listElementsForUser,
   removeElement,
   updateElement,
@@ -306,8 +308,11 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
 
     socket.on('wbUpdate', ({ id, patch }) => {
       try {
+        const before = getElement(id);
+        if (!before) return socket.emit('error', 'Element nicht gefunden.');
         const updated = updateElement(id, patch, user);
-        broadcastWhiteboardUpsert(io, updated);
+        if (before.zone === updated.zone) broadcastWhiteboardUpsert(io, updated);
+        else broadcastWhiteboardZoneChange(io, before, updated);
       } catch (e: any) {
         socket.emit('error', e.message);
       }

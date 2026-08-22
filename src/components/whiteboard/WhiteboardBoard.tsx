@@ -21,7 +21,6 @@ import { useError } from '../../hooks/useError';
 
 const MIN_SCALE = 0.02;
 const MAX_SCALE = 20;
-const PUBLIC_BAND_HEIGHT = 1200;
 const BAND_EXTENT = 200_000;
 const EMIT_INTERVAL_MS = 80;
 
@@ -42,14 +41,24 @@ interface Camera {
 type Gesture =
   | { kind: 'pan'; lastX: number; lastY: number }
   | { kind: 'create'; startWX: number; startWY: number }
+  | { kind: 'band'; additive: boolean }
   | {
       kind: 'move';
+      /** Dragged element (primary). */
       id: string;
       isArrow: boolean;
       grabDX: number;
       grabDY: number;
       downX: number;
       downY: number;
+      /** Group members with base positions at gesture start. */
+      group: {
+        id: string;
+        bx: number;
+        by: number;
+        bx2?: number | null;
+        by2?: number | null;
+      }[];
       lastEmit: number;
     }
   | {
@@ -132,7 +141,7 @@ export function WhiteboardBoard({
   // element, so we detect two quick taps ourselves.
   const lastTapRef = useRef<{ id: string; x: number; y: number; t: number } | null>(null);
   const [rectPreview, setRectPreview] = useState<RectPreview | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [croppingId, setCroppingId] = useState<string | null>(null);
   // Drives cursor feedback: open hand on hover comes from the elements
@@ -148,11 +157,25 @@ export function WhiteboardBoard({
 
   const elementsById = useMemo(() => new Map(elements.map((e) => [e.id, e])), [elements]);
 
-  // Report the selected note to the page so the toolbar palette can recolor it.
+  const setSelection = useCallback((ids: string | string[] | null, additive = false) => {
+    setSelectedIds((prev) => {
+      const incoming = ids === null ? [] : Array.isArray(ids) ? ids : [ids];
+      if (incoming.length === 0) return additive ? prev : [];
+      if (additive) {
+        if (Array.isArray(ids)) return [...new Set([...prev, ...incoming])];
+        return prev.includes(incoming[0])
+          ? prev.filter((x) => x !== incoming[0])
+          : [...prev, incoming[0]];
+      }
+      return incoming;
+    });
+  }, []);
+
+  // Report the primary selected note to the page for the toolbar palette.
   useEffect(() => {
-    const selected = selectedId ? elementsById.get(selectedId) : undefined;
-    onSelectedNoteId(selected && selected.type === 'note' ? selected.id : null);
-  }, [selectedId, elementsById, onSelectedNoteId]);
+    const primary = selectedIds.find((id) => elementsById.get(id)?.type === 'note');
+    onSelectedNoteId(primary ?? null);
+  }, [selectedIds, elementsById, onSelectedNoteId]);
 
   const canEdit = useCallback(
     (element: WhiteboardElement) => element.zone === 'public' || element.ownerId === user.id,
@@ -192,21 +215,21 @@ export function WhiteboardBoard({
       const inField = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
       if (e.key === 'Escape') {
         setEditingId(null);
-        setSelectedId(null);
+        setSelectedIds([]);
         if (tool !== 'select') onToolChange('select');
         return;
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && selectedId) {
-        const element = elementsById.get(selectedId);
-        if (element && canEdit(element)) {
-          removeElement(selectedId);
-          setSelectedId(null);
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && selectedIds.length > 0) {
+        for (const id of selectedIds) {
+          const element = elementsById.get(id);
+          if (element && canEdit(element) && !element.locked) removeElement(id);
         }
+        setSelectedIds([]);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [elementsById, selectedId, tool, onToolChange, removeElement, canEdit]);
+  }, [elementsById, selectedIds, tool, onToolChange, removeElement, canEdit]);
 
   const screenToWorld = useCallback((clientX: number, clientY: number) => {
     const el = containerRef.current;
@@ -260,10 +283,10 @@ export function WhiteboardBoard({
         createdAt: now,
         updatedAt: now,
       });
-      setSelectedId(id);
+      setSelection([id]);
       onToolChange('select');
     },
-    [tool, color, user.id, user.displayName, createElement, onToolChange]
+    [tool, color, user.id, user.displayName, createElement, onToolChange, setSelection]
   );
 
   const runGestureMove = (clientX: number, clientY: number) => {
@@ -281,40 +304,42 @@ export function WhiteboardBoard({
 
     const { wx, wy } = screenToWorld(clientX, clientY);
 
-    if (g.kind === 'create') {
+    if (g.kind === 'create' || g.kind === 'band') {
       setRectPreview((prev) => (prev ? { ...prev, x2: wx, y2: wy } : prev));
       return;
     }
 
     if (g.kind === 'move') {
-      const nx = wx - g.grabDX;
-      const ny = wy - g.grabDY;
-      if (g.isArrow) {
-        const el = elementsById.get(g.id);
-        if (!el || el.type !== 'arrow') return;
-        const dx = nx - el.x;
-        const dy = ny - el.y;
-        applyPatchLocal(g.id, {
-          x: nx,
-          y: ny,
-          x2: (el.x2 ?? 0) + dx,
-          y2: (el.y2 ?? 0) + dy,
-        });
-        if (performance.now() - g.lastEmit > EMIT_INTERVAL_MS) {
-          g.lastEmit = performance.now();
-          updateElement(g.id, {
+      const draggedBase = g.group.find((m) => m.id === g.id);
+      const deltaX = wx - g.grabDX - (draggedBase?.bx ?? 0);
+      const deltaY = wy - g.grabDY - (draggedBase?.by ?? 0);
+      const shouldEmit = performance.now() - g.lastEmit > EMIT_INTERVAL_MS;
+      if (shouldEmit) g.lastEmit = performance.now();
+
+      for (const member of g.group) {
+        const el = elementsById.get(member.id);
+        if (!el || !canEdit(el) || el.locked) continue;
+        const nx = member.bx + deltaX;
+        const ny = member.by + deltaY;
+        if (el.type === 'arrow') {
+          applyPatchLocal(member.id, {
             x: nx,
             y: ny,
-            x2: (el.x2 ?? 0) + dx,
-            y2: (el.y2 ?? 0) + dy,
+            x2: (member.bx2 ?? el.x2 ?? 0) + deltaX,
+            y2: (member.by2 ?? el.y2 ?? 0) + deltaY,
           });
+          if (shouldEmit) {
+            updateElement(member.id, {
+              x: nx,
+              y: ny,
+              x2: (member.bx2 ?? el.x2 ?? 0) + deltaX,
+              y2: (member.by2 ?? el.y2 ?? 0) + deltaY,
+            });
+          }
+          continue;
         }
-        return;
-      }
-      applyPatchLocal(g.id, { x: nx, y: ny });
-      if (performance.now() - g.lastEmit > EMIT_INTERVAL_MS) {
-        g.lastEmit = performance.now();
-        updateElement(g.id, { x: nx, y: ny });
+        applyPatchLocal(member.id, { x: nx, y: ny });
+        if (shouldEmit) updateElement(member.id, { x: nx, y: ny });
       }
       return;
     }
@@ -345,23 +370,52 @@ export function WhiteboardBoard({
       setRectPreview(null);
       return;
     }
+    if (g.kind === 'band') {
+      // Select every non-arrow element intersecting the rubber band.
+      if (rectPreview) {
+        const rx1 = Math.min(rectPreview.x1, rectPreview.x2);
+        const ry1 = Math.min(rectPreview.y1, rectPreview.y2);
+        const rx2 = Math.max(rectPreview.x1, rectPreview.x2);
+        const ry2 = Math.max(rectPreview.y1, rectPreview.y2);
+        const hits = elements
+          .filter(
+            (e) =>
+              e.type !== 'arrow' &&
+              e.x < rx2 &&
+              e.x + e.width > rx1 &&
+              e.y < ry2 &&
+              e.y + e.height > ry1
+          )
+          .map((e) => e.id);
+        setSelectedIds((prev) => (g.additive ? [...new Set([...prev, ...hits])] : hits));
+      }
+      setRectPreview(null);
+      return;
+    }
     if (g.kind === 'move') {
-      const el = elementsById.get(g.id);
-      if (el) {
+      for (const member of g.group) {
+        const el = elementsById.get(member.id);
+        if (!el || !canEdit(el)) continue;
+        const patch: WhiteboardPatch = { x: el.x, y: el.y };
         if (el.type === 'arrow') {
-          updateElement(el.id, { x: el.x, y: el.y, x2: el.x2, y2: el.y2 });
+          patch.x2 = el.x2;
+          patch.y2 = el.y2;
         } else {
-          updateElement(el.id, { x: el.x, y: el.y });
-          // A click without movement on a link card opens its URL. Image
-          // elements (screenshots) stay on the board instead. Handled here
-          // because element drags avoid pointer capture on purpose.
-          const moved = Math.hypot(clientX - g.downX, clientY - g.downY);
-          if (!g.isArrow && el.type === 'link' && el.url && !isBoardImageUrl(el.url) && moved < 5) {
-            window.open(el.url, '_blank', 'noopener,noreferrer');
-          }
+          // Crossing the divider on drop switches the zone server-side.
+          patch.zone = zoneForWorldY(el.y + el.height / 2);
+        }
+        updateElement(el.id, patch);
+      }
+
+      // A single link card opens its URL on click (image cards stay put).
+      if (g.group.length === 1) {
+        const el = elementsById.get(g.id);
+        const moved = Math.hypot(clientX - g.downX, clientY - g.downY);
+        if (el && el.type === 'link' && el.url && !isBoardImageUrl(el.url) && moved < 5) {
+          window.open(el.url, '_blank', 'noopener,noreferrer');
         }
       }
-      endLocalEdit(g.id);
+      for (const member of g.group) endLocalEdit(member.id);
       return;
     }
     if (g.kind === 'resize') {
@@ -438,14 +492,14 @@ export function WhiteboardBoard({
           createdAt: now,
           updatedAt: now,
         });
-        setSelectedId(id);
+        setSelection([id]);
       } catch (err) {
         showError(err instanceof Error ? err.message : 'Upload fehlgeschlagen.');
       } finally {
         setUploadingCount((n) => n - 1);
       }
     },
-    [user.id, user.displayName, createElement, showError]
+    [user.id, user.displayName, cameraRef, createElement, showError, setSelection]
   );
 
   // Ctrl+V pastes screenshots/images from the clipboard onto the board.
@@ -482,8 +536,16 @@ export function WhiteboardBoard({
     const { wx, wy } = screenToWorld(e.clientX, e.clientY);
 
     if (tool === 'select') {
-      // Pressing empty canvas drops the current selection and pans.
-      setSelectedId(null);
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+      if (additive) {
+        // Shift/Ctrl + drag on empty canvas draws a rubber-band selection.
+        gestureRef.current = { kind: 'band', additive: true };
+        setRectPreview({ x1: wx, y1: wy, x2: wx, y2: wy });
+        bindWindowGesture();
+        return;
+      }
+      // Plain press drops the selection and pans.
+      setSelection(null);
       gestureRef.current = { kind: 'pan', lastX: e.clientX, lastY: e.clientY };
       bindWindowGesture();
       setCursorMode('panning');
@@ -510,7 +572,14 @@ export function WhiteboardBoard({
   const startElementDrag = (event: ReactPointerEvent, element: WhiteboardElement) => {
     event.stopPropagation();
     if (croppingId) return;
-    setSelectedId(element.id);
+
+    // Shift/Ctrl+click toggles membership in the multi-selection.
+    if (event.shiftKey || event.ctrlKey || event.metaKey) {
+      setSelection(element.id, true);
+      return;
+    }
+
+    setSelectedIds((prev) => (prev.includes(element.id) ? prev : [element.id]));
     if (!canEdit(element)) return;
 
     const now = performance.now();
@@ -533,11 +602,35 @@ export function WhiteboardBoard({
     // Locked elements stay selectable and editable but cannot be moved;
     // dragging them pans the canvas exactly like the background does.
     bindWindowGesture();
-    if (!canEdit(element) || element.locked) {
+    if (element.locked) {
       setCursorMode('panning');
       gestureRef.current = { kind: 'pan', lastX: event.clientX, lastY: event.clientY };
       return;
     }
+
+    // Assemble the moving group from the current multi-selection.
+    const groupIds =
+      selectedIds.length > 1 && selectedIds.includes(element.id) ? [...selectedIds] : [element.id];
+    const group = groupIds
+      .map((id) => ({ id, el: elementsById.get(id) }))
+      .filter(({ el }) => el && canEdit(el) && !el.locked)
+      .map(({ id, el }) => ({
+        id,
+        bx: el!.x,
+        by: el!.y,
+        bx2: el!.type === 'arrow' ? el!.x2 : null,
+        by2: el!.type === 'arrow' ? el!.y2 : null,
+      }));
+    if (!group.some((m) => m.id === element.id)) {
+      group.push({
+        id: element.id,
+        bx: element.x,
+        by: element.y,
+        bx2: element.type === 'arrow' ? element.x2 : null,
+        by2: element.type === 'arrow' ? element.y2 : null,
+      });
+    }
+
     setCursorMode('dragging');
     const { wx, wy } = screenToWorld(event.clientX, event.clientY);
     gestureRef.current = {
@@ -548,9 +641,10 @@ export function WhiteboardBoard({
       grabDY: wy - element.y,
       downX: event.clientX,
       downY: event.clientY,
+      group,
       lastEmit: performance.now(),
     };
-    beginLocalEdit(element.id);
+    for (const member of group) beginLocalEdit(member.id);
   };
 
   const startElementResize = (event: ReactPointerEvent, element: WhiteboardElement) => {
@@ -586,20 +680,29 @@ export function WhiteboardBoard({
       grabDY: wy - element.y,
       downX: event.clientX,
       downY: event.clientY,
+      group: [
+        {
+          id: element.id,
+          bx: element.x,
+          by: element.y,
+          bx2: element.x2,
+          by2: element.y2,
+        },
+      ],
       lastEmit: performance.now(),
     };
     beginLocalEdit(element.id);
-    setSelectedId(element.id);
+    setSelection([element.id]);
   };
 
   const openEdit = useCallback(
     (id: string) => {
-      const element = elementsById.get(id);
-      if (!element || !canEdit(element)) return;
+      // Callers verify existence/permissions; the freshly created element
+      // from createNoteAt is intentionally not required to be in the map yet.
       setEditingId(id);
       beginLocalEdit(id);
     },
-    [elementsById, canEdit, beginLocalEdit]
+    [beginLocalEdit]
   );
 
   const closeEdit = useCallback(() => {
@@ -642,10 +745,10 @@ export function WhiteboardBoard({
         createdAt: now,
         updatedAt: now,
       });
-      setSelectedId(id);
+      setSelection([id]);
       openEdit(id);
     },
-    [screenToWorld, color, user.id, user.displayName, createElement, openEdit]
+    [screenToWorld, color, user.id, user.displayName, createElement, openEdit, setSelection]
   );
 
   const requestElementInteraction = useCallback(
@@ -654,14 +757,14 @@ export function WhiteboardBoard({
       if (!element || !canEdit(element)) return;
       // Images get a crop tool instead of a text editor.
       if (element.type === 'link' && isBoardImageUrl(element.url ?? '')) {
-        setSelectedId(id);
+        setSelection([id]);
         setCroppingId(id);
         return;
       }
-      setSelectedId(id);
+      setSelection([id]);
       openEdit(id);
     },
-    [elementsById, canEdit, openEdit]
+    [elementsById, canEdit, openEdit, setSelection]
   );
 
   const handleCropApply = useCallback(
@@ -755,9 +858,9 @@ export function WhiteboardBoard({
           className="pointer-events-none absolute border-b-2 border-[var(--accent)]/50 bg-[var(--accent)]/5"
           style={{
             left: -BAND_EXTENT,
-            top: WHITEBOARD_DIVIDER_Y - PUBLIC_BAND_HEIGHT,
+            top: -BAND_EXTENT,
             width: BAND_EXTENT * 2,
-            height: PUBLIC_BAND_HEIGHT,
+            height: BAND_EXTENT,
           }}
         />
 
@@ -782,7 +885,7 @@ export function WhiteboardBoard({
                 end.y - headLen * Math.sin(angle + spread)
               }`,
             ].join(' ');
-            const selected = selectedId === arrow.id;
+            const selected = selectedIds.includes(arrow.id);
             return (
               <g key={arrow.id}>
                 <line
@@ -836,7 +939,7 @@ export function WhiteboardBoard({
             <WhiteboardElementView
               key={element.id}
               element={element}
-              selected={selectedId === element.id && !editingId}
+              selected={selectedIds.includes(element.id) && !editingId}
               editing={editingId === element.id}
               dragging={cursorMode === 'dragging'}
               cropping={croppingId === element.id}
@@ -851,7 +954,7 @@ export function WhiteboardBoard({
               onUpdate={(id, patch) => updateElement(id, patch)}
               onDelete={(id) => {
                 removeElement(id);
-                if (selectedId === id) setSelectedId(null);
+                setSelectedIds((prev) => prev.filter((x) => x !== id));
               }}
             />
           ))}

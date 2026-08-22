@@ -102,6 +102,8 @@ export interface WhiteboardPatch {
   fromId?: string | null;
   toId?: string | null;
   locked?: boolean;
+  /** Moving an element across the divider switches its zone. */
+  zone?: WhiteboardZone;
 }
 
 /**
