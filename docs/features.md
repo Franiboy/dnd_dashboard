@@ -138,8 +138,10 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
   - Tasks: cards with title, description and a status pill cycling open -> in progress -> done.
   - Arrows: connections between points or anchored to elements; anchored endpoints follow their target element.
   - Links: URL references with optional label; image URLs render as previews.
+  - Shapes: rectangle, ellipse, triangle and diamond outlines with border color, adjustable stroke width (3/6/12 world units) and optional interior fill (palette incl. transparent).
+  - Strokes: freehand ink drawn with the pen tool; every stroke is its own element. Points are stored normalized (0..1) to the element box, so moving/resizing only touches x/y/width/height.
 - Images: screenshots can be pasted with `Strg+V` or dropped onto the canvas. Files are uploaded to `POST /api/whiteboard/uploads`, stored in `WHITEBOARD_UPLOAD_DIR` (default `data/whiteboard/`) and served through the authenticated `/uploads/whiteboard/` route. Allowed types: PNG, JPEG, GIF, WebP, max 8 MB.
-- Creation: pick a tool in the toolbar, then drag a rectangle on the canvas. The zone (public/private) is decided by where the element center lands relative to the divider.
-- Editing: drag to move, corner handle to resize, double-click to edit text, `Entf`/`Backspace` deletes the selection, `Esc` cancels.
-- Persistence: SQLite table `whiteboard_elements` via the declarative schema engine; initial load through `GET /api/whiteboard`.
+- Creation: pick a tool in the toolbar, then drag a rectangle on the canvas (shapes show a dashed preview, pen strokes a live polyline). The zone (public/private) is decided by where the element center lands relative to the divider.
+- Editing: drag to move, corner handle to resize, double-click to edit text (shapes/strokes have no editor), `Entf`/`Backspace` deletes the selection, `Esc` cancels. Selecting a shape/stroke recolors it via the toolbar palette; shapes additionally expose fill color and stroke width there.
+- Persistence: SQLite table `whiteboard_elements` via the declarative schema engine (`shape_kind`, `fill_color`, `stroke_width`, `points` columns; legacy tables are rebuilt in place to extend the type CHECK constraint); initial load through `GET /api/whiteboard`.
 - Realtime: Socket.io events `wbCreate`/`wbUpdate`/`wbRemove` (client -> server) and `wbElements`/`wbUpsert`/`wbRemoved` (server -> client). Broadcasts are per-user filtered so private elements never leave the owner's connection.

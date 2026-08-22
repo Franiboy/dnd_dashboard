@@ -49,17 +49,25 @@ export interface BingoGame {
 // Whiteboard
 // ---------------------------------------------------------------------------
 
-export type WhiteboardElementType = 'note' | 'task' | 'arrow' | 'link';
+export type WhiteboardElementType = 'note' | 'task' | 'arrow' | 'link' | 'shape' | 'stroke';
 
 export type WhiteboardZone = 'public' | 'private';
 
 export type WhiteboardTaskStatus = 'open' | 'in_progress' | 'done';
+
+/** Kind of vector outline rendered for elements of type "shape". */
+export type WhiteboardShapeKind = 'rect' | 'ellipse' | 'triangle' | 'diamond';
 
 /**
  * One element on the shared whiteboard canvas.
  * Notes, tasks and links occupy the box (x, y, width, height); arrows run from
  * (x, y) to (x2, y2) and may be anchored to other elements via fromId/toId,
  * in which case the endpoints follow those elements on every render.
+ *
+ * Shapes (rect/ellipse/triangle/diamond) render an outline inside the box,
+ * optionally filled with fillColor. Freehand strokes store their points
+ * normalized to the box (each coordinate 0..1 relative to width/height), so
+ * moving and resizing only touches x/y/width/height.
  */
 export interface WhiteboardElement {
   id: string;
@@ -80,6 +88,14 @@ export interface WhiteboardElement {
   url: string | null;
   fromId: string | null;
   toId: string | null;
+  /** Outline variant for type "shape"; null for all other types. */
+  shapeKind: WhiteboardShapeKind | null;
+  /** Interior fill for type "shape"; null renders a transparent interior. */
+  fillColor: string | null;
+  /** Outline width in world units for types "shape" and "stroke". */
+  strokeWidth: number;
+  /** Normalized [x, y] pairs (0..1) of a freehand stroke; null otherwise. */
+  points: [number, number][] | null;
   /** Pinned elements cannot be moved or resized until unlocked. */
   locked: boolean;
   createdAt: string;
@@ -101,6 +117,10 @@ export interface WhiteboardPatch {
   url?: string | null;
   fromId?: string | null;
   toId?: string | null;
+  shapeKind?: WhiteboardShapeKind;
+  fillColor?: string | null;
+  strokeWidth?: number;
+  points?: [number, number][] | null;
   locked?: boolean;
   /** Moving an element across the divider switches its zone. */
   zone?: WhiteboardZone;

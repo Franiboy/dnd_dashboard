@@ -9,7 +9,14 @@ import {
 import { WHITEBOARD_DIVIDER_Y } from '../../../shared/types';
 import type { SafeUser, WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { WhiteboardElementView } from './WhiteboardElementView';
-import { isBoardImageUrl, type WhiteboardTool } from './whiteboardShared';
+import {
+  NO_FILL,
+  buildStrokeGeometry,
+  isBoardImageUrl,
+  isShapeTool,
+  shapeKindForTool,
+  type WhiteboardTool,
+} from './whiteboardShared';
 import {
   isUploadableImage,
   loadImageElement,
@@ -26,6 +33,8 @@ const EMIT_INTERVAL_MS = 80;
 
 const NOTE_DEFAULT_WIDTH = 220;
 const NOTE_DEFAULT_HEIGHT = 160;
+const SHAPE_DEFAULT_WIDTH = 200;
+const SHAPE_DEFAULT_HEIGHT = 150;
 
 /** Keeps created world sizes within the server-accepted range. */
 function clampWorldSize(value: number): number {
@@ -41,6 +50,11 @@ interface Camera {
 type Gesture =
   | { kind: 'pan'; lastX: number; lastY: number }
   | { kind: 'create'; startWX: number; startWY: number }
+  | {
+      kind: 'draw';
+      /** World-space points collected so far. */
+      points: { wx: number; wy: number }[];
+    }
   | { kind: 'band'; additive: boolean }
   | {
       kind: 'move';
@@ -83,8 +97,13 @@ interface WhiteboardBoardProps {
   elements: WhiteboardElement[];
   tool: WhiteboardTool;
   color: string;
+  /** Interior fill for new shapes; NO_FILL renders a transparent interior. */
+  fillColor: string;
+  /** Outline width in world units for new shapes and strokes. */
+  strokeWidth: number;
   onToolChange: (tool: WhiteboardTool) => void;
-  onSelectedNoteId: (id: string | null) => void;
+  /** Reports the primary selected recolorable element (note/shape/stroke). */
+  onSelectedElementId: (id: string | null) => void;
   createElement: (element: WhiteboardElement) => void;
   applyPatchLocal: (id: string, patch: WhiteboardPatch) => void;
   updateElement: (id: string, patch: WhiteboardPatch) => void;
@@ -121,6 +140,8 @@ export function WhiteboardBoard({
   elements,
   tool,
   color,
+  fillColor,
+  strokeWidth,
   onToolChange,
   createElement,
   applyPatchLocal,
@@ -128,7 +149,7 @@ export function WhiteboardBoard({
   removeElement,
   beginLocalEdit,
   endLocalEdit,
-  onSelectedNoteId,
+  onSelectedElementId,
 }: WhiteboardBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { showError } = useError();
@@ -141,6 +162,8 @@ export function WhiteboardBoard({
   // element, so we detect two quick taps ourselves.
   const lastTapRef = useRef<{ id: string; x: number; y: number; t: number } | null>(null);
   const [rectPreview, setRectPreview] = useState<RectPreview | null>(null);
+  // Live polyline of an in-progress freehand gesture.
+  const [strokePreview, setStrokePreview] = useState<{ wx: number; wy: number }[] | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [croppingId, setCroppingId] = useState<string | null>(null);
@@ -171,11 +194,16 @@ export function WhiteboardBoard({
     });
   }, []);
 
-  // Report the primary selected note to the page for the toolbar palette.
+  // Report the primary selected recolorable element to the toolbar palette.
   useEffect(() => {
-    const primary = selectedIds.find((id) => elementsById.get(id)?.type === 'note');
-    onSelectedNoteId(primary ?? null);
-  }, [selectedIds, elementsById, onSelectedNoteId]);
+    const recolorable = (type: WhiteboardElement['type']) =>
+      type === 'note' || type === 'shape' || type === 'stroke';
+    const primary = selectedIds.find((id) => {
+      const element = elementsById.get(id);
+      return !!element && recolorable(element.type);
+    });
+    onSelectedElementId(primary ?? null);
+  }, [selectedIds, elementsById, onSelectedElementId]);
 
   const canEdit = useCallback(
     (element: WhiteboardElement) => element.zone === 'public' || element.ownerId === user.id,
@@ -244,8 +272,9 @@ export function WhiteboardBoard({
 
   const finishCreate = useCallback(
     (gesture: Extract<Gesture, { kind: 'create' }>, wx: number, wy: number) => {
-      if (tool !== 'note') return;
+      if (tool !== 'note' && !isShapeTool(tool)) return;
       const now = new Date().toISOString();
+      const isShape = isShapeTool(tool);
 
       let width = Math.abs(wx - gesture.startWX);
       let height = Math.abs(wy - gesture.startWY);
@@ -254,15 +283,15 @@ export function WhiteboardBoard({
       if (width < 40 || height < 40) {
         // Respect the current zoom: keep a constant on-screen footprint.
         const s = cameraRef.current.scale;
-        width = clampWorldSize(NOTE_DEFAULT_WIDTH / s);
-        height = clampWorldSize(NOTE_DEFAULT_HEIGHT / s);
+        width = clampWorldSize((isShape ? SHAPE_DEFAULT_WIDTH : NOTE_DEFAULT_WIDTH) / s);
+        height = clampWorldSize((isShape ? SHAPE_DEFAULT_HEIGHT : NOTE_DEFAULT_HEIGHT) / s);
         px = gesture.startWX - width / 2;
         py = gesture.startWY - height / 2;
       }
       const id = crypto.randomUUID();
       createElement({
         id,
-        type: 'note',
+        type: isShape ? 'shape' : 'note',
         zone: zoneForWorldY(py + height / 2),
         ownerId: user.id,
         ownerName: user.displayName,
@@ -279,6 +308,10 @@ export function WhiteboardBoard({
         url: null,
         fromId: null,
         toId: null,
+        shapeKind: isShape ? shapeKindForTool(tool) : null,
+        fillColor: isShape && fillColor !== NO_FILL ? fillColor : null,
+        strokeWidth,
+        points: null,
         locked: false,
         createdAt: now,
         updatedAt: now,
@@ -286,7 +319,57 @@ export function WhiteboardBoard({
       setSelection([id]);
       onToolChange('select');
     },
-    [tool, color, user.id, user.displayName, createElement, onToolChange, setSelection]
+    [
+      tool,
+      color,
+      fillColor,
+      strokeWidth,
+      user.id,
+      user.displayName,
+      createElement,
+      onToolChange,
+      setSelection,
+    ]
+  );
+
+  const finishDraw = useCallback(
+    (points: { wx: number; wy: number }[]) => {
+      // A single tap still leaves a round ink dot.
+      const pts =
+        points.length === 1 ? [points[0], { wx: points[0].wx + 0.01, wy: points[0].wy }] : points;
+      const geometry = buildStrokeGeometry(pts);
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+      createElement({
+        id,
+        type: 'stroke',
+        zone: zoneForWorldY(geometry.y + geometry.height / 2),
+        ownerId: user.id,
+        ownerName: user.displayName,
+        x: geometry.x,
+        y: geometry.y,
+        x2: null,
+        y2: null,
+        width: geometry.width,
+        height: geometry.height,
+        color,
+        text: '',
+        description: null,
+        status: null,
+        url: null,
+        fromId: null,
+        toId: null,
+        shapeKind: null,
+        fillColor: null,
+        strokeWidth,
+        points: geometry.points,
+        locked: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+      setSelection([id]);
+    },
+    [color, strokeWidth, user.id, user.displayName, createElement, setSelection]
   );
 
   const runGestureMove = (clientX: number, clientY: number) => {
@@ -303,6 +386,16 @@ export function WhiteboardBoard({
     }
 
     const { wx, wy } = screenToWorld(clientX, clientY);
+
+    if (g.kind === 'draw') {
+      // Skip micro-movements to keep the stored point list small.
+      const last = g.points[g.points.length - 1];
+      if (Math.hypot(wx - last.wx, wy - last.wy) < 2 / cameraRef.current.scale) return;
+      if (g.points.length >= 4000) return;
+      g.points.push({ wx, wy });
+      setStrokePreview(g.points);
+      return;
+    }
 
     if (g.kind === 'create' || g.kind === 'band') {
       setRectPreview((prev) => (prev ? { ...prev, x2: wx, y2: wy } : prev));
@@ -368,6 +461,11 @@ export function WhiteboardBoard({
       const { wx, wy } = screenToWorld(clientX, clientY);
       finishCreate(g, wx, wy);
       setRectPreview(null);
+      return;
+    }
+    if (g.kind === 'draw') {
+      finishDraw(g.points);
+      setStrokePreview(null);
       return;
     }
     if (g.kind === 'band') {
@@ -488,6 +586,10 @@ export function WhiteboardBoard({
           url,
           fromId: null,
           toId: null,
+          shapeKind: null,
+          fillColor: null,
+          strokeWidth: 3,
+          points: null,
           locked: false,
           createdAt: now,
           updatedAt: now,
@@ -549,6 +651,13 @@ export function WhiteboardBoard({
       gestureRef.current = { kind: 'pan', lastX: e.clientX, lastY: e.clientY };
       bindWindowGesture();
       setCursorMode('panning');
+      return;
+    }
+    if (tool === 'draw') {
+      // Freehand: collect world points until the gesture ends.
+      gestureRef.current = { kind: 'draw', points: [{ wx, wy }] };
+      setStrokePreview([{ wx, wy }]);
+      bindWindowGesture();
       return;
     }
     gestureRef.current = {
@@ -741,6 +850,10 @@ export function WhiteboardBoard({
         url: null,
         fromId: null,
         toId: null,
+        shapeKind: null,
+        fillColor: null,
+        strokeWidth: 3,
+        points: null,
         locked: false,
         createdAt: now,
         updatedAt: now,
@@ -755,6 +868,11 @@ export function WhiteboardBoard({
     (id: string) => {
       const element = elementsById.get(id);
       if (!element || !canEdit(element)) return;
+      // Shapes and strokes have no editor: selecting is all the interaction.
+      if (element.type === 'shape' || element.type === 'stroke') {
+        setSelection([id]);
+        return;
+      }
       // Images get a crop tool instead of a text editor.
       if (element.type === 'link' && isBoardImageUrl(element.url ?? '')) {
         setSelection([id]);
@@ -932,6 +1050,24 @@ export function WhiteboardBoard({
               />
             );
           })()}
+
+        {strokePreview && (
+          <svg
+            className="pointer-events-none absolute overflow-visible"
+            style={{ left: 0, top: 0 }}
+            width={1}
+            height={1}
+          >
+            <polyline
+              points={strokePreview.map((p) => `${p.wx},${p.wy}`).join(' ')}
+              fill="none"
+              stroke={color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
 
         {elements
           .filter((e) => e.type !== 'arrow')

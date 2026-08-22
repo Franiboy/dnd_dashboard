@@ -295,6 +295,95 @@ function LinkEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
   );
 }
 
+/**
+ * Vector outline for type "shape". The SVG stretches with the element box
+ * (preserveAspectRatio="none"), so resizing distorts the outline just like
+ * an image card would.
+ */
+function ShapeSvg({ element }: { element: WhiteboardElement }) {
+  const w = element.width;
+  const h = element.height;
+  const s = element.strokeWidth;
+  const half = s / 2;
+  let outline: ReactNode;
+  switch (element.shapeKind) {
+    case 'ellipse':
+      outline = (
+        <ellipse
+          cx={w / 2}
+          cy={h / 2}
+          rx={Math.max(0.5, w / 2 - half)}
+          ry={Math.max(0.5, h / 2 - half)}
+        />
+      );
+      break;
+    case 'triangle':
+      outline = <polygon points={`${w / 2},${half} ${w - half},${h - half} ${half},${h - half}`} />;
+      break;
+    case 'diamond':
+      outline = (
+        <polygon
+          points={`${w / 2},${half} ${w - half},${h / 2} ${w / 2},${h - half} ${half},${h / 2}`}
+        />
+      );
+      break;
+    default:
+      outline = (
+        <rect
+          x={half}
+          y={half}
+          width={Math.max(0.5, w - s)}
+          height={Math.max(0.5, h - s)}
+          rx={10}
+        />
+      );
+  }
+  return (
+    <svg
+      className="absolute inset-0 h-full w-full"
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      aria-hidden
+    >
+      <g
+        fill={element.fillColor ?? 'none'}
+        stroke={element.color}
+        strokeWidth={s}
+        strokeLinejoin="round"
+      >
+        {outline}
+      </g>
+    </svg>
+  );
+}
+
+/** Freehand polyline for type "stroke", stretched across the element box. */
+function StrokeSvg({ element }: { element: WhiteboardElement }) {
+  const d = (element.points ?? [])
+    .map(
+      ([nx, ny], i) =>
+        `${i === 0 ? 'M' : 'L'}${(nx * element.width).toFixed(2)},${(ny * element.height).toFixed(2)}`
+    )
+    .join(' ');
+  return (
+    <svg
+      className="absolute inset-0 h-full w-full"
+      viewBox={`0 0 ${element.width} ${element.height}`}
+      preserveAspectRatio="none"
+      aria-hidden
+    >
+      <path
+        d={d || undefined}
+        fill="none"
+        stroke={element.color}
+        strokeWidth={element.strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function WhiteboardElementView({
   element,
   selected,
@@ -415,6 +504,10 @@ export function WhiteboardElementView({
         )}
       </div>
     );
+  } else if (element.type === 'shape') {
+    body = <ShapeSvg element={element} />;
+  } else if (element.type === 'stroke') {
+    body = <StrokeSvg element={element} />;
   }
 
   return (
