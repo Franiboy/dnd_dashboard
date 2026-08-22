@@ -50,13 +50,7 @@ export interface BingoGame {
 // ---------------------------------------------------------------------------
 
 export type WhiteboardElementType =
-  | 'note'
-  | 'task'
-  | 'arrow'
-  | 'link'
-  | 'shape'
-  | 'stroke'
-  | 'text';
+  'note' | 'task' | 'arrow' | 'link' | 'shape' | 'stroke' | 'text';
 
 export type WhiteboardZone = 'public' | 'private';
 
