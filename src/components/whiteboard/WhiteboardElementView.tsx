@@ -1,5 +1,6 @@
-﻿import {
+import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -80,6 +81,41 @@ function useFocusOnMount<T extends HTMLElement & { select: () => void }>() {
  */
 const BLUR_GRACE_MS = 150;
 
+/**
+ * Finds the largest font size at which `text` still fits into the measured
+ * node (binary search on scrollHeight/scrollWidth). Runs on every text or
+ * box change so typing live-adapts the size to fill the note.
+ */
+function useFitFontSize(
+  text: string,
+  availableWidth: number,
+  availableHeight: number,
+  enabled: boolean
+) {
+  const ref = useRef<HTMLElement | null>(null);
+  const [fontSize, setFontSize] = useState(14);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled || !text.trim()) return;
+    const fits = (px: number) => {
+      el.style.fontSize = `${px}px`;
+      return el.scrollHeight <= availableHeight + 0.5 && el.scrollWidth <= availableWidth + 0.5;
+    };
+    let lo = 6;
+    let hi = 600;
+    for (let i = 0; i < 50; i += 1) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) lo = mid;
+      else hi = mid;
+    }
+    el.style.fontSize = `${lo}px`;
+    setFontSize((prev) => (Math.abs(prev - lo) > 0.3 ? lo : prev));
+  }, [text, availableWidth, availableHeight, enabled]);
+
+  return { ref, fontSize };
+}
+
 function useBlurGuard(ref: RefObject<HTMLElement | null>) {
   const mountedAt = useRef(performance.now());
   return () => {
@@ -101,14 +137,24 @@ function commitField(
   onCloseEdit();
 }
 
-function NoteEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
+function NoteEditor({
+  element,
+  onUpdate,
+  onCloseEdit,
+  boxWidth,
+  boxHeight,
+}: NoteDraftProps & { boxWidth: number; boxHeight: number }) {
   const [draft, setDraft] = useState(element.text);
-  const ref = useFocusOnMount<HTMLTextAreaElement>();
+  const { ref, fontSize } = useFitFontSize(draft, boxWidth, boxHeight, true);
   const shouldIgnoreBlur = useBlurGuard(ref);
+  useEffect(() => {
+    ref.current?.focus();
+  }, [ref]);
   return (
     <textarea
-      ref={ref}
+      ref={ref as RefObject<HTMLTextAreaElement>}
       value={draft}
+      style={{ fontSize }}
       onChange={(e) => setDraft(e.target.value)}
       onPointerDown={(e) => e.stopPropagation()}
       onBlur={() => {
@@ -124,8 +170,8 @@ function NoteEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           commitField(element, { text: draft }, onUpdate, onCloseEdit);
         }
       }}
-      className="h-full w-full resize-none rounded-md border border-slate-900/20 bg-white/40 p-1 text-slate-900 outline-none"
-      placeholder="Notiz schreibenâ€¦"
+      className="h-full w-full resize-none bg-transparent text-center leading-[1.15] text-slate-900 outline-none placeholder:text-slate-900/40"
+      placeholder="Notiz schreiben…"
     />
   );
 }
@@ -160,7 +206,7 @@ function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           }
         }}
         className="w-full rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-sm font-semibold text-[var(--text-h)] outline-none"
-        placeholder="Aufgabeâ€¦"
+        placeholder="Aufgabe…"
       />
       <textarea
         value={description}
@@ -176,7 +222,7 @@ function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           }
         }}
         className="min-h-0 flex-1 resize-none rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-xs text-[var(--text)] outline-none"
-        placeholder="Beschreibung (optional)â€¦"
+        placeholder="Beschreibung (optional)…"
       />
     </div>
   );
@@ -210,7 +256,7 @@ function LinkEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           }
         }}
         className="w-full rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-xs text-[var(--text-h)] outline-none"
-        placeholder="https://â€¦"
+        placeholder="https://…"
       />
       <input
         value={label}
@@ -253,19 +299,38 @@ export function WhiteboardElementView({
     MAX_CONTENT_SCALE,
     Math.max(MIN_CONTENT_SCALE, element.width / designWidth)
   );
+  // Notes auto-fit their text into this box (design units minus padding).
+  const noteFit = useFitFontSize(
+    element.text,
+    designWidth - 16,
+    element.height / contentScale - 16,
+    element.type === 'note' && !editing && !!element.text.trim()
+  );
   let body: ReactNode = null;
 
   if (element.type === 'note') {
     body = (
       <div
-        className="flex h-full w-full items-start overflow-hidden rounded-lg p-2 text-sm leading-snug text-slate-900 shadow"
+        className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg p-2 shadow"
         style={{ backgroundColor: element.color }}
       >
         {editing ? (
-          <NoteEditor element={element} onUpdate={onUpdate} onCloseEdit={onCloseEdit} />
+          <NoteEditor
+            element={element}
+            onUpdate={onUpdate}
+            onCloseEdit={onCloseEdit}
+            boxWidth={designWidth - 16}
+            boxHeight={element.height / contentScale - 16}
+          />
         ) : (
-          <div className="whitespace-pre-wrap break-words">
-            {element.text || <span className="italic opacity-50">Doppelklick zum Schreiben</span>}
+          <div
+            ref={noteFit.ref as RefObject<HTMLDivElement>}
+            className="w-full whitespace-pre-wrap break-words text-center leading-[1.15] text-slate-900"
+            style={{ fontSize: noteFit.fontSize }}
+          >
+            {element.text || (
+              <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
+            )}
           </div>
         )}
       </div>
@@ -283,7 +348,7 @@ export function WhiteboardElementView({
         ) : (
           <>
             <div className="break-words text-sm font-semibold leading-tight text-[var(--text-h)]">
-              {element.text || <span className="italic opacity-50">Doppelklick fÃ¼r Aufgabe</span>}
+              {element.text || <span className="italic opacity-50">Doppelklick für Aufgabe</span>}
             </div>
             {element.description && (
               <div className="line-clamp-3 whitespace-pre-wrap break-words text-xs text-[var(--text)]">
@@ -298,7 +363,7 @@ export function WhiteboardElementView({
                 onUpdate(element.id, { status: nextTaskStatus(status) });
               }}
               className={`mt-auto self-start rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.className}`}
-              title="Status Ã¤ndern"
+              title="Status ändern"
             >
               {meta.label}
             </button>
@@ -378,7 +443,7 @@ export function WhiteboardElementView({
             width: 20 * contentScale,
             height: 20 * contentScale,
           }}
-          title="Fixiert â€“ nicht verschiebbar"
+          title="Fixiert – nicht verschiebbar"
         >
           <LockIcon open={false} size={Math.max(10, 11 * contentScale)} />
         </div>
@@ -387,7 +452,7 @@ export function WhiteboardElementView({
         <>
           <button
             type="button"
-            title="LÃ¶schen"
+            title="Löschen"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -464,9 +529,7 @@ export function WhiteboardElementView({
           </button>
           <button
             type="button"
-            title={
-              element.locked ? 'LÃ¶sen (wieder verschiebbar)' : 'Fixieren (nicht verschiebbar)'
-            }
+            title={element.locked ? 'Lösen (wieder verschiebbar)' : 'Fixieren (nicht verschiebbar)'}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -486,7 +549,7 @@ export function WhiteboardElementView({
           </button>
           {!element.locked && (
             <div
-              title="GrÃ¶ÃŸe Ã¤ndern"
+              title="Größe ändern"
               onPointerDown={(e) => {
                 e.stopPropagation();
                 onStartResize(e, element);
@@ -659,7 +722,7 @@ function CropOverlay({
         <div className="absolute flex gap-2" style={{ left: 8, top: 'calc(100% + 10px)' }}>
           <button
             type="button"
-            title="Zuschneiden Ã¼bernehmen"
+            title="Zuschneiden übernehmen"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();

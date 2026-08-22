@@ -9,7 +9,7 @@ import {
 import { WHITEBOARD_DIVIDER_Y } from '../../../shared/types';
 import type { SafeUser, WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { WhiteboardElementView } from './WhiteboardElementView';
-import { ARROW_COLOR, isBoardImageUrl, type WhiteboardTool } from './whiteboardShared';
+import { isBoardImageUrl, type WhiteboardTool } from './whiteboardShared';
 import {
   isUploadableImage,
   loadImageElement,
@@ -25,11 +25,13 @@ const PUBLIC_BAND_HEIGHT = 1200;
 const BAND_EXTENT = 200_000;
 const EMIT_INTERVAL_MS = 80;
 
-const DEFAULT_SIZES = {
-  note: { width: 220, height: 160 },
-  task: { width: 280, height: 190 },
-  link: { width: 260, height: 130 },
-} as const;
+const NOTE_DEFAULT_WIDTH = 220;
+const NOTE_DEFAULT_HEIGHT = 160;
+
+/** Keeps created world sizes within the server-accepted range. */
+function clampWorldSize(value: number): number {
+  return Math.min(4000, Math.max(60, value));
+}
 
 interface Camera {
   x: number;
@@ -39,12 +41,7 @@ interface Camera {
 
 type Gesture =
   | { kind: 'pan'; lastX: number; lastY: number }
-  | {
-      kind: 'create';
-      startWX: number;
-      startWY: number;
-      anchorFromId: string | null;
-    }
+  | { kind: 'create'; startWX: number; startWY: number }
   | {
       kind: 'move';
       id: string;
@@ -78,6 +75,7 @@ interface WhiteboardBoardProps {
   tool: WhiteboardTool;
   color: string;
   onToolChange: (tool: WhiteboardTool) => void;
+  onSelectedNoteId: (id: string | null) => void;
   createElement: (element: WhiteboardElement) => void;
   applyPatchLocal: (id: string, patch: WhiteboardPatch) => void;
   updateElement: (id: string, patch: WhiteboardPatch) => void;
@@ -121,6 +119,7 @@ export function WhiteboardBoard({
   removeElement,
   beginLocalEdit,
   endLocalEdit,
+  onSelectedNoteId,
 }: WhiteboardBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { showError } = useError();
@@ -148,6 +147,12 @@ export function WhiteboardBoard({
   const windowUpRef = useRef<((e: PointerEvent) => void) | null>(null);
 
   const elementsById = useMemo(() => new Map(elements.map((e) => [e.id, e])), [elements]);
+
+  // Report the selected note to the page so the toolbar palette can recolor it.
+  useEffect(() => {
+    const selected = selectedId ? elementsById.get(selectedId) : undefined;
+    onSelectedNoteId(selected && selected.type === 'note' ? selected.id : null);
+  }, [selectedId, elementsById, onSelectedNoteId]);
 
   const canEdit = useCallback(
     (element: WhiteboardElement) => element.zone === 'public' || element.ownerId === user.id,
@@ -214,78 +219,27 @@ export function WhiteboardBoard({
     };
   }, []);
 
-  const findElementAt = useCallback(
-    (wx: number, wy: number): WhiteboardElement | undefined => {
-      for (let i = elements.length - 1; i >= 0; i -= 1) {
-        const el = elements[i];
-        if (el.type === 'arrow') continue;
-        if (wx >= el.x && wx <= el.x + el.width && wy >= el.y && wy <= el.y + el.height) {
-          return el;
-        }
-      }
-      return undefined;
-    },
-    [elements]
-  );
-
   const finishCreate = useCallback(
     (gesture: Extract<Gesture, { kind: 'create' }>, wx: number, wy: number) => {
+      if (tool !== 'note') return;
       const now = new Date().toISOString();
 
-      if (tool === 'arrow') {
-        const toHit = findElementAt(wx, wy);
-        const fromHit = gesture.anchorFromId ? elementsById.get(gesture.anchorFromId) : undefined;
-        const start = fromHit ? centerOf(fromHit) : { x: gesture.startWX, y: gesture.startWY };
-        const end = toHit ? centerOf(toHit) : { x: wx, y: wy };
-        if (Math.hypot(end.x - start.x, end.y - start.y) < 12) {
-          onToolChange('select');
-          return;
-        }
-        const id = crypto.randomUUID();
-        createElement({
-          id,
-          type: 'arrow',
-          zone: zoneForWorldY((start.y + end.y) / 2),
-          ownerId: user.id,
-          ownerName: user.displayName,
-          x: start.x,
-          y: start.y,
-          x2: end.x,
-          y2: end.y,
-          width: 0,
-          height: 0,
-          color: ARROW_COLOR,
-          text: '',
-          description: null,
-          status: null,
-          url: null,
-          fromId: fromHit?.id ?? null,
-          toId: toHit?.id ?? null,
-          locked: false,
-          createdAt: now,
-          updatedAt: now,
-        });
-        setSelectedId(id);
-        onToolChange('select');
-        return;
-      }
-
-      if (tool !== 'note' && tool !== 'task' && tool !== 'link') return;
       let width = Math.abs(wx - gesture.startWX);
       let height = Math.abs(wy - gesture.startWY);
       let px = Math.min(gesture.startWX, wx);
       let py = Math.min(gesture.startWY, wy);
-      const def = DEFAULT_SIZES[tool];
       if (width < 40 || height < 40) {
-        width = def.width;
-        height = def.height;
+        // Respect the current zoom: keep a constant on-screen footprint.
+        const s = cameraRef.current.scale;
+        width = clampWorldSize(NOTE_DEFAULT_WIDTH / s);
+        height = clampWorldSize(NOTE_DEFAULT_HEIGHT / s);
         px = gesture.startWX - width / 2;
         py = gesture.startWY - height / 2;
       }
       const id = crypto.randomUUID();
       createElement({
         id,
-        type: tool,
+        type: 'note',
         zone: zoneForWorldY(py + height / 2),
         ownerId: user.id,
         ownerName: user.displayName,
@@ -297,8 +251,8 @@ export function WhiteboardBoard({
         height,
         color,
         text: '',
-        description: tool === 'task' ? '' : null,
-        status: tool === 'task' ? 'open' : null,
+        description: null,
+        status: null,
         url: null,
         fromId: null,
         toId: null,
@@ -309,16 +263,7 @@ export function WhiteboardBoard({
       setSelectedId(id);
       onToolChange('select');
     },
-    [
-      tool,
-      color,
-      user.id,
-      user.displayName,
-      elementsById,
-      findElementAt,
-      createElement,
-      onToolChange,
-    ]
+    [tool, color, user.id, user.displayName, createElement, onToolChange]
   );
 
   const runGestureMove = (clientX: number, clientY: number) => {
@@ -464,11 +409,10 @@ export function WhiteboardBoard({
       try {
         const url = await uploadWhiteboardImage(file);
         const dims = await probeImageSize(url);
-        const targetWidth = 360;
-        const width = dims ? Math.round(targetWidth) : DEFAULT_SIZES.link.width;
-        const height = dims
-          ? Math.round((dims.h / dims.w) * targetWidth)
-          : DEFAULT_SIZES.link.height;
+        // Keep a constant on-screen footprint regardless of zoom.
+        const s = cameraRef.current.scale;
+        const width = clampWorldSize((dims ? 360 : 260) / s);
+        const height = clampWorldSize(dims ? (dims.h / dims.w) * width : 130 / s);
         const now = new Date().toISOString();
         const id = crypto.randomUUID();
         createElement({
@@ -545,12 +489,10 @@ export function WhiteboardBoard({
       setCursorMode('panning');
       return;
     }
-    const hit = findElementAt(wx, wy);
     gestureRef.current = {
       kind: 'create',
       startWX: wx,
       startWY: wy,
-      anchorFromId: tool === 'arrow' ? (hit?.id ?? null) : null,
     };
     setRectPreview({ x1: wx, y1: wy, x2: wx, y2: wy });
     bindWindowGesture();
@@ -667,6 +609,45 @@ export function WhiteboardBoard({
     });
   }, [endLocalEdit]);
 
+  // Double-click on empty canvas spawns a note in the last used color,
+  // already focused for typing.
+  const createNoteAt = useCallback(
+    (clientX: number, clientY: number) => {
+      const { wx, wy } = screenToWorld(clientX, clientY);
+      const s = cameraRef.current.scale;
+      const width = clampWorldSize(NOTE_DEFAULT_WIDTH / s);
+      const height = clampWorldSize(NOTE_DEFAULT_HEIGHT / s);
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+      createElement({
+        id,
+        type: 'note',
+        zone: zoneForWorldY(wy),
+        ownerId: user.id,
+        ownerName: user.displayName,
+        x: wx - width / 2,
+        y: wy - height / 2,
+        x2: null,
+        y2: null,
+        width,
+        height,
+        color,
+        text: '',
+        description: null,
+        status: null,
+        url: null,
+        fromId: null,
+        toId: null,
+        locked: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+      setSelectedId(id);
+      openEdit(id);
+    },
+    [screenToWorld, color, user.id, user.displayName, createElement, openEdit]
+  );
+
   const requestElementInteraction = useCallback(
     (id: string) => {
       const element = elementsById.get(id);
@@ -699,7 +680,7 @@ export function WhiteboardBoard({
         canvas.width = sw;
         canvas.height = sh;
         const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Zuschneiden nicht unterstÃ¼tzt.');
+        if (!ctx) throw new Error('Zuschneiden nicht unterstützt.');
         ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
         const blob = await new Promise<Blob | null>((resolve) =>
           canvas.toBlob(resolve, 'image/png')
@@ -748,6 +729,11 @@ export function WhiteboardBoard({
       onPointerUp={finishGesture}
       onPointerCancel={finishGesture}
       onContextMenu={(e) => e.preventDefault()}
+      onDoubleClick={(e) => {
+        if (tool !== 'select' || editingId || croppingId) return;
+        if ((e.target as HTMLElement).closest('[data-whiteboard-element]')) return;
+        createNoteAt(e.clientX, e.clientY);
+      }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
@@ -828,7 +814,6 @@ export function WhiteboardBoard({
         </svg>
 
         {rectPreview &&
-          tool !== 'arrow' &&
           (() => {
             const x = Math.min(rectPreview.x1, rectPreview.x2);
             const y = Math.min(rectPreview.y1, rectPreview.y2);
@@ -844,26 +829,6 @@ export function WhiteboardBoard({
               />
             );
           })()}
-
-        {rectPreview && tool === 'arrow' && (
-          <svg
-            className="pointer-events-none absolute overflow-visible"
-            style={{ left: 0, top: 0 }}
-            width={1}
-            height={1}
-          >
-            <line
-              x1={rectPreview.x1}
-              y1={rectPreview.y1}
-              x2={rectPreview.x2}
-              y2={rectPreview.y2}
-              stroke={ARROW_COLOR}
-              strokeWidth={3}
-              strokeDasharray="8 6"
-              strokeLinecap="round"
-            />
-          </svg>
-        )}
 
         {elements
           .filter((e) => e.type !== 'arrow')
@@ -900,19 +865,19 @@ export function WhiteboardBoard({
           className="absolute right-3 -translate-y-full rounded-md bg-[var(--panel)]/90 px-2 py-0.5 text-xs font-semibold text-[var(--accent)] shadow"
           style={{ top: '-2px' }}
         >
-          Ã–ffentlich â€“ alle sehen & bearbeiten
+          Öffentlich – alle sehen & bearbeiten
         </span>
         <span
           className="absolute right-3 rounded-md bg-[var(--panel)]/90 px-2 py-0.5 text-xs font-medium text-slate-300 shadow"
           style={{ top: '6px' }}
         >
-          Privat â€“ nur deine Elemente ({user.displayName})
+          Privat – nur deine Elemente ({user.displayName})
         </span>
       </div>
 
       <div className="absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-[var(--border)] bg-[var(--panel)]/95 px-4 py-1 text-xs font-medium shadow backdrop-blur">
         {centerZone === 'public'
-          ? 'Neue Elemente hier sind Ã–ffentlich'
+          ? 'Neue Elemente hier sind Öffentlich'
           : 'Neue Elemente hier sind Privat'}
       </div>
 
@@ -937,11 +902,11 @@ export function WhiteboardBoard({
           }
           className="h-8 w-8 rounded-md text-slate-200 hover:bg-slate-700"
         >
-          âˆ’
+          −
         </button>
         <button
           type="button"
-          title="Ansicht zurÃ¼cksetzen"
+          title="Ansicht zurücksetzen"
           onClick={() => {
             const el = containerRef.current;
             if (!el) return;
@@ -972,25 +937,7 @@ export function WhiteboardBoard({
 
       {uploadingCount > 0 && (
         <div className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--panel)]/95 px-4 py-1.5 text-sm text-[var(--text-h)] shadow backdrop-blur">
-          Bild wird hochgeladenâ€¦
-        </div>
-      )}
-
-      {selectedId && !editingId && (
-        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
-          <button
-            type="button"
-            onClick={() => {
-              const element = elementsById.get(selectedId);
-              if (element && canEdit(element)) {
-                removeElement(selectedId);
-                setSelectedId(null);
-              }
-            }}
-            className="rounded-lg bg-[var(--danger)]/90 px-3 py-1.5 text-sm font-medium text-white shadow hover:brightness-110"
-          >
-            Auswahl lÃ¶schen (Entf)
-          </button>
+          Bild wird hochgeladen…
         </div>
       )}
     </div>

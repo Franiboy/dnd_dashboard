@@ -7,9 +7,15 @@ export function isBoardImageUrl(url: string): boolean {
   return BOARD_IMAGE_URL_RE.test(url);
 }
 
-export type WhiteboardTool = 'select' | 'note' | 'task' | 'arrow' | 'link';
+/**
+ * Tools offered by the MVP toolbar. Tasks, arrows and plain links are hidden
+ * for now (legacy elements still render); pasted screenshots become image
+ * cards internally without a dedicated tool.
+ */
+export type WhiteboardTool = 'select' | 'note';
 
 export const NOTE_COLORS: readonly string[] = [
+  '#ffffff',
   '#facc15',
   '#fb923c',
   '#f87171',
