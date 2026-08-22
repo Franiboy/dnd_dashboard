@@ -19,7 +19,7 @@ import {
 } from './imageUpload';
 import { useError } from '../../hooks/useError';
 
-const MIN_SCALE = 0.02;
+const MIN_SCALE = 0.33;
 const MAX_SCALE = 20;
 const BAND_EXTENT = 200_000;
 const EMIT_INTERVAL_MS = 80;
