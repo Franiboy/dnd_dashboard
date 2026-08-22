@@ -72,7 +72,8 @@ export function WhiteboardToolbar({
             title={button.label}
             aria-label={button.label}
             onClick={() => onToolChange(button.id)}
-            className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+            onMouseDown={(e) => e.preventDefault()}
+            className={`flex h-9 w-9 cursor-pointer select-none items-center justify-center rounded-lg transition-colors ${
               tool === button.id
                 ? 'bg-[var(--accent)] text-slate-900'
                 : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
@@ -93,8 +94,9 @@ export function WhiteboardToolbar({
                 selectedNote ? 'Farbe der ausgewählten Notiz ändern' : 'Farbe für neue Notizen'
               }
               onClick={() => handleColor(c)}
+              onMouseDown={(e) => e.preventDefault()}
               style={{ backgroundColor: c }}
-              className={`h-6 w-6 rounded-full border-2 transition-transform ${
+              className={`h-6 w-6 cursor-pointer select-none rounded-full border-2 transition-transform ${
                 activeColor === c ? 'scale-110 border-white' : 'border-transparent hover:scale-105'
               }`}
             />
