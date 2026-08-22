@@ -63,4 +63,61 @@ describe('schema migrations', () => {
     };
     expect(row.model).toBe('opencode/legacy-normal');
   });
+
+  it('rebuilds whiteboard_elements so shape/stroke rows pass the type check', () => {
+    // Simulate a pre-shape database: old CHECK constraint, no drawing columns.
+    db.exec('DROP INDEX IF EXISTS idx_whiteboard_elements_owner_zone');
+    db.exec(`
+      CREATE TABLE whiteboard_elements_legacy (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        zone TEXT NOT NULL DEFAULT 'private',
+        owner_id TEXT NOT NULL,
+        owner_name TEXT NOT NULL DEFAULT '',
+        x REAL NOT NULL DEFAULT 0,
+        y REAL NOT NULL DEFAULT 0,
+        x2 REAL,
+        y2 REAL,
+        width REAL NOT NULL DEFAULT 200,
+        height REAL NOT NULL DEFAULT 160,
+        color TEXT NOT NULL DEFAULT '#facc15',
+        text TEXT NOT NULL DEFAULT '',
+        description TEXT,
+        status TEXT,
+        url TEXT,
+        from_id TEXT,
+        to_id TEXT,
+        locked INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK (type IN ('note', 'task', 'arrow', 'link') AND zone IN ('public', 'private'))
+      );
+    `);
+    const now = new Date().toISOString();
+    db.exec('DROP TABLE whiteboard_elements;');
+    db.exec('ALTER TABLE whiteboard_elements_legacy RENAME TO whiteboard_elements;');
+    db.prepare(
+      `INSERT INTO whiteboard_elements
+         (id, type, zone, owner_id, owner_name, x, y, width, height, color, created_at, updated_at)
+       VALUES ('wb-legacy-note-1', 'note', 'public', 'user-1', 'User', 1, 2, 200, 150, '#ffffff', ?, ?)`
+    ).run(now, now);
+
+    runMigrations();
+
+    // Existing rows survive the rebuild...
+    const kept = db
+      .prepare("SELECT id FROM whiteboard_elements WHERE id = 'wb-legacy-note-1'")
+      .get();
+    expect(kept).toBeDefined();
+    // ...and the rebuilt table accepts the new element types.
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO whiteboard_elements
+           (id, type, zone, owner_id, owner_name, x, y, width, height, stroke_width, points, created_at, updated_at)
+         VALUES ('wb-mig-shape-1', 'shape', 'public', 'user-1', 'User', 0, 0, 100, 100, 4, '[[0,0],[1,1]]', ?, ?)`
+        )
+        .run(now, now)
+    ).not.toThrow();
+  });
 });
