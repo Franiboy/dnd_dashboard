@@ -328,3 +328,35 @@ button {
   min-height: auto;
   overflow-y: auto;
 }
+
+.note-quill-editor .ql-toolbar {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.note-quill-editor .ql-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+}
+
+.note-quill-editor .ql-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.whiteboard-note-content .ql-editor {
+  background: transparent;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  color: inherit;
+  font-family: inherit;
+}

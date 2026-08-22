@@ -1,4 +1,5 @@
 import {
+  useMemo,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -7,8 +8,10 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import DOMPurify from 'dompurify';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { TASK_STATUS_META, isBoardImageUrl, nextTaskStatus } from './whiteboardShared';
+import { ensureHtml } from '../quillConfig';
 
 /**
  * Content is laid out in this fixed design width per element type and then
@@ -159,45 +162,6 @@ function commitField(
   onCloseEdit();
 }
 
-function NoteEditor({
-  element,
-  onUpdate,
-  onCloseEdit,
-  boxWidth,
-  boxHeight,
-}: NoteDraftProps & { boxWidth: number; boxHeight: number }) {
-  const [draft, setDraft] = useState(element.text);
-  const { ref, fontSize, padTop } = useFitFontSize(draft, boxWidth, boxHeight, true);
-  const shouldIgnoreBlur = useBlurGuard(ref);
-  useEffect(() => {
-    ref.current?.focus();
-  }, [ref]);
-  return (
-    <textarea
-      ref={ref as RefObject<HTMLTextAreaElement>}
-      value={draft}
-      style={{ fontSize, paddingTop: padTop }}
-      onChange={(e) => setDraft(e.target.value)}
-      onPointerDown={(e) => e.stopPropagation()}
-      onBlur={() => {
-        if (shouldIgnoreBlur()) return;
-        commitField(element, { text: draft }, onUpdate, onCloseEdit);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.stopPropagation();
-          onCloseEdit();
-        }
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-          commitField(element, { text: draft }, onUpdate, onCloseEdit);
-        }
-      }}
-      className="h-full w-full resize-none overflow-hidden bg-transparent text-center leading-[1.15] text-slate-900 outline-none placeholder:text-slate-900/40"
-      placeholder="Notiz schreiben…"
-    />
-  );
-}
-
 function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
   const [title, setTitle] = useState(element.text);
   const [description, setDescription] = useState(element.description ?? '');
@@ -320,6 +284,14 @@ export function WhiteboardElementView({
   onSendBackward,
 }: WhiteboardElementViewProps) {
   const isImageLink = element.type === 'link' && isBoardImageUrl(element.url ?? '');
+  const isNote = element.type === 'note';
+  const sanitizedNoteHtml = useMemo(() => {
+    if (!isNote) return '';
+    return DOMPurify.sanitize(ensureHtml(element.text), {
+      USE_PROFILES: { html: true },
+      ADD_ATTR: ['style'],
+    });
+  }, [isNote, element.text]);
   const designWidth = DESIGN_WIDTHS[element.type] ?? element.width;
   const contentScale = Math.min(
     MAX_CONTENT_SCALE,
@@ -330,7 +302,7 @@ export function WhiteboardElementView({
     element.text,
     designWidth - 16,
     element.height / contentScale - 16,
-    element.type === 'note' && !editing && !!element.text.trim()
+    isNote && !!element.text.trim()
   );
   let body: ReactNode = null;
 
@@ -340,23 +312,17 @@ export function WhiteboardElementView({
         className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg p-2 shadow"
         style={{ backgroundColor: element.color }}
       >
-        {editing ? (
-          <NoteEditor
-            element={element}
-            onUpdate={onUpdate}
-            onCloseEdit={onCloseEdit}
-            boxWidth={designWidth - 16}
-            boxHeight={element.height / contentScale - 16}
-          />
+        {editing ? null : !element.text ? (
+          <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
         ) : (
           <div
             ref={noteFit.ref as RefObject<HTMLDivElement>}
-            className="w-full whitespace-pre-wrap break-words text-center leading-[1.15] text-slate-900"
+            className="w-full break-words leading-[1.15] text-slate-900"
             style={{ fontSize: noteFit.fontSize }}
           >
-            {element.text || (
-              <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
-            )}
+            <div className="whiteboard-note-content">
+              <div className="ql-editor" dangerouslySetInnerHTML={{ __html: sanitizedNoteHtml }} />
+            </div>
           </div>
         )}
       </div>
