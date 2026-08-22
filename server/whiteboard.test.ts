@@ -203,3 +203,147 @@ describe('whiteboard element lifecycle', () => {
     expect(stored.zIndex).toBe(-3);
   });
 });
+
+describe('whiteboard shapes and strokes', () => {
+  it('creates shapes with sanitized kind, fill and stroke width', () => {
+    const alice = testUser('alice-shape-1');
+    const shape = createElement(
+      {
+        type: 'shape',
+        zone: 'private',
+        x: 5,
+        y: -5,
+        width: 300,
+        height: 200,
+        color: '#f87171',
+        fillColor: '#60a5fa',
+        strokeWidth: 6,
+      },
+      alice
+    );
+    expect(shape.shapeKind).toBe('rect');
+    expect(shape.fillColor).toBe('#60a5fa');
+    expect(shape.strokeWidth).toBe(6);
+    expect(shape.points).toBeNull();
+    expect(shape.text).toBe('');
+
+    // Unknown kinds fall back to rect, invalid colors are dropped.
+    const fallback = createElement(
+      { type: 'shape', zone: 'private', x: 0, y: 0, width: 100, height: 100, shapeKind: 'star' },
+      alice
+    );
+    expect(fallback.shapeKind).toBe('rect');
+    expect(fallback.fillColor).toBeNull();
+    // Stroke width is clamped into the allowed range.
+    const thick = createElement(
+      { type: 'shape', zone: 'private', x: 0, y: 0, width: 100, height: 100, strokeWidth: 999 },
+      alice
+    );
+    expect(thick.strokeWidth).toBe(64);
+
+    // A shape border can be hidden entirely (width 0 = invisible outline).
+    const borderless = createElement(
+      { type: 'shape', zone: 'private', x: 0, y: 0, width: 100, height: 100, strokeWidth: 0 },
+      alice
+    );
+    expect(borderless.strokeWidth).toBe(0);
+    const shown = updateElement(borderless.id, sanitizePatch({ strokeWidth: 6 }), alice);
+    expect(shown.strokeWidth).toBe(6);
+  });
+
+  it('keeps freehand strokes visible even when a zero stroke width is sent', () => {
+    const alice = testUser('alice-inkvis1');
+    const stroke = createElement(
+      {
+        type: 'stroke',
+        zone: 'private',
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+        strokeWidth: 0,
+        points: [
+          [0, 0],
+          [1, 1],
+        ],
+      },
+      alice
+    );
+    expect(stroke.strokeWidth).toBe(1);
+    const patched = updateElement(stroke.id, sanitizePatch({ strokeWidth: 0 }), alice);
+    expect(patched.strokeWidth).toBe(1);
+  });
+
+  it('stores freehand strokes with normalized points and round-trips them', () => {
+    const alice = testUser('alice-stroke-1');
+    const stroke = createElement(
+      {
+        type: 'stroke',
+        zone: 'private',
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+        color: '#34d399',
+        strokeWidth: 4,
+        points: [
+          [0, 0],
+          [0.5, 2],
+          [-3, 0.25],
+          ['nope', 1],
+          [1, 1],
+        ],
+      },
+      alice
+    );
+    // Invalid entries are dropped; out-of-range coordinates clamp to 0..1.
+    expect(stroke.points).toEqual([
+      [0, 0],
+      [0.5, 1],
+      [0, 0.25],
+      [1, 1],
+    ]);
+
+    // The JSON round-trip through SQLite keeps the point list intact.
+    const stored = listElementsForUser(alice).find((e) => e.id === stroke.id)!;
+    expect(stored.points).toEqual(stroke.points);
+    expect(stored.strokeWidth).toBe(4);
+
+    // Empty/invalid lists clear the points instead of storing garbage.
+    const cleared = updateElement(stroke.id, sanitizePatch({ points: [['x']] }), alice);
+    expect(cleared.points).toBeNull();
+  });
+
+  it('applies type-specific patches only to matching element types', () => {
+    const alice = testUser('alice-guard-1');
+    const note = createElement(noteInput({ zone: 'private' }), alice);
+    const shape = createElement(
+      { type: 'shape', zone: 'private', x: 0, y: 0, width: 100, height: 100 },
+      alice
+    );
+
+    // Points never stick to notes, fill colors never stick to strokes.
+    const patchedNote = updateElement(
+      note.id,
+      sanitizePatch({ points: [[0.1, 0.2]], fillColor: '#112233' }),
+      alice
+    );
+    expect(patchedNote.points).toBeNull();
+    expect(patchedNote.fillColor).toBeNull();
+
+    const patchedShape = updateElement(
+      shape.id,
+      sanitizePatch({
+        shapeKind: 'ellipse',
+        fillColor: null,
+        strokeWidth: 8,
+        points: [[0.5, 0.5]],
+      }),
+      alice
+    );
+    expect(patchedShape.shapeKind).toBe('ellipse');
+    expect(patchedShape.fillColor).toBeNull();
+    expect(patchedShape.strokeWidth).toBe(8);
+    expect(patchedShape.points).toBeNull();
+  });
+});
