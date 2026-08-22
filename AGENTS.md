@@ -14,6 +14,7 @@ These rules take precedence before every code change.
 - **No push without explicit user approval.**
 - **No force-push, branch deletions or history rewrites without approval.**
 - Check `git diff` before every approved commit.
+- **Check for changes on `main` before every commit.** Run `git fetch origin` and rebase/merge the latest `origin/main` into the feature branch before each commit (not just at the start of a task), resolve conflicts locally, and re-run guardrails if new commits came in.
 - Never commit `.env`, databases (`*.db`), secrets or build artifacts (`dist/`, `dist-server/`).
 - Do not push changes to `main` on production environments without approval.
 - Ask the user before committing/pushing if anything is unclear.
