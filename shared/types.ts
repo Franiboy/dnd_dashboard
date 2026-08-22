@@ -4,7 +4,15 @@ export interface Task {
   createdAt: string;
   isPrivate?: boolean;
   assignedTo?: string[];
+  /**
+   * Pool this task belongs to. Absent means the regular player pool.
+   * Dungeon masters fill their boards exclusively from the 'dm' pool;
+   * those tasks describe moments the DM observes at the table.
+   */
+  audience?: TaskAudience;
 }
+
+export type TaskAudience = 'players' | 'dm';
 
 export interface Cell {
   taskId: string | null;
@@ -104,13 +112,19 @@ export interface LogEntry {
 
 export interface ClientToServerEvents {
   join: () => void;
-  addTask: (payload: { text: string; isPrivate?: boolean; assignedTo?: string[] }) => void;
+  addTask: (payload: {
+    text: string;
+    isPrivate?: boolean;
+    assignedTo?: string[];
+    audience?: TaskAudience;
+  }) => void;
   removeTask: (taskId: string) => void;
   updateTask: (payload: {
     taskId: string;
     text?: string;
     isPrivate?: boolean;
     assignedTo?: string[];
+    audience?: TaskAudience;
   }) => void;
   setGridSize: (gridSize: number) => void;
   startGame: () => void;
@@ -120,6 +134,9 @@ export interface ClientToServerEvents {
   confirmTask: (taskId: string) => void;
   confirmTaskFor: (payload: { playerId: string; taskId: string }) => void;
   unconfirmTask: (taskId: string) => void;
+  /** DM-only: mark a dm-pool task on the own board without affecting others. */
+  confirmOwnTask: (taskId: string) => void;
+  unconfirmOwnTask: (taskId: string) => void;
   resetGame: () => void;
 }
 
@@ -270,4 +287,5 @@ export interface BingoSuggestion {
   text: string;
   source: string;
   createdAt: string;
+  audience?: TaskAudience;
 }

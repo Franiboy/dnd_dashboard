@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { BingoSuggestion, VersionInfo } from '../../shared/types';
+import type { BingoSuggestion, TaskAudience, VersionInfo } from '../../shared/types';
 import { useApi } from '../hooks/useApi';
 import { Loading } from './Loading';
 
 interface BingoAiSuggestionsProps {
   isSetup: boolean;
+  /** Which suggestion pool to show; the server enforces permissions. */
+  audience?: TaskAudience;
 }
 
-export function BingoAiSuggestions({ isSetup }: BingoAiSuggestionsProps) {
+export function BingoAiSuggestions({ isSetup, audience }: BingoAiSuggestionsProps) {
   const { request } = useApi();
   const [suggestions, setSuggestions] = useState<BingoSuggestion[]>([]);
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
@@ -23,14 +25,14 @@ export function BingoAiSuggestions({ isSetup }: BingoAiSuggestionsProps) {
   const fetchSuggestions = useCallback(async () => {
     setLoading(true);
     const { data, error: reqError } = await request<{ suggestions: BingoSuggestion[] }>(
-      '/api/bingo/suggestions',
+      audience ? `/api/bingo/suggestions?audience=${audience}` : '/api/bingo/suggestions',
       undefined,
       false
     );
     setSuggestions(data?.suggestions ?? []);
     setError(reqError);
     setLoading(false);
-  }, [request]);
+  }, [request, audience]);
 
   useEffect(() => {
     fetchVersion();
@@ -44,7 +46,7 @@ export function BingoAiSuggestions({ isSetup }: BingoAiSuggestionsProps) {
     fetchSuggestions();
     const id = setInterval(fetchSuggestions, 5000);
     return () => clearInterval(id);
-  }, [isSetup, aiEnabled, fetchSuggestions]);
+  }, [isSetup, aiEnabled, fetchSuggestions, audience]);
 
   const accept = async (id: number) => {
     if (processingId !== null) return;

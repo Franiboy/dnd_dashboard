@@ -12,6 +12,15 @@
 8. **Bingo:** Once a row, column or diagonal is fully confirmed the player wins. A `bingo` event is emitted with the player name. Each player earns at most one win per round: unconfirming and re-confirming tasks does not inflate the tally, and several simultaneous bingo lines count as a single win.
 9. **New round:** Admin can end and reset the game (`resetGame`); tasks are kept, boards are cleared, win counting restarts.
 
+### Dungeon Master Pool
+
+Dungeon masters play the same round in parallel, but with their own task pool:
+
+- Tasks carry an `audience` (`players` or `dm`). Regular players only see and place `players`-pool tasks; dungeon masters fill their boards exclusively from the `dm` pool. Admins manage both pools via a switcher in the task panel.
+- DM-pool tasks are never confirmed globally. Each dungeon master marks them on their own board while observing the table (`confirmOwnTask` / `unconfirmOwnTask`), e.g. moments triggered by players like dice luck or recurring discussions.
+- The AI keeps two suggestion pools: the regular one and a DM-perspective pool whose prompt looks for player-triggered moments from recent session transcripts. Dungeon masters (and admins via the pool switcher) get DM suggestions in the suggestions tab; accepting adds them to the dm task pool.
+- Guests are spectators: they cannot join and are hidden from the player list.
+
 ## Bingo AI Suggestions
 
 When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps a pre-generated pool of bingo task suggestions.

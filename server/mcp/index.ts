@@ -672,29 +672,49 @@ if (requireScope('recording:summarize')) {
 if (requireScope('bingo:read')) {
   loggedTool(
     'get_bingo_state',
-    'Liefert den aktuellen Bingo-Zustand: Spielfeldgröße, Status, öffentliche Aufgaben, ausstehende Vorschläge und kürzlich abgelehnte Vorschläge.',
+    'Liefert den aktuellen Bingo-Zustand: Spielfeldgröße, Status, Aufgaben getrennt nach Spieler- und DM-Pool, ausstehende Vorschläge und kürzlich abgelehnte Vorschläge.',
     {},
     async () => {
       try {
         const game = getGame();
-        const pendingSuggestions = getAllPendingSuggestionTexts();
-        const rejectedSuggestions = getRejectedSuggestionTexts().slice(-50);
+        const playerTasks = game.tasks.filter((t) => !t.isPrivate && t.audience !== 'dm');
+        const dmTasks = game.tasks.filter((t) => t.audience === 'dm');
+        const pendingPlayerSuggestions = getAllPendingSuggestionTexts('players');
+        const pendingDmSuggestions = getAllPendingSuggestionTexts('dm');
+        const rejectedPlayerSuggestions = getRejectedSuggestionTexts('players').slice(-50);
+        const rejectedDmSuggestions = getRejectedSuggestionTexts('dm').slice(-50);
+
+        const taskLines = (tasks: typeof game.tasks) =>
+          tasks.length > 0 ? tasks.map((t) => `- ${t.text}`) : ['Keine'];
 
         const lines = [
           `Spielfeldgröße: ${game.gridSize}x${game.gridSize}`,
           `Status: ${game.status}`,
           '',
-          'Bereits vorhandene öffentliche Bingo-Aufgaben:',
-          ...(game.tasks.some((t) => !t.isPrivate)
-            ? game.tasks.filter((t) => !t.isPrivate).map((t) => `- ${t.text}`)
+          'Bereits vorhandene Bingo-Aufgaben im SPIELER-POOL:',
+          ...taskLines(playerTasks),
+          '',
+          'Bereits vorhandene Bingo-Aufgaben im DM-POOL (perspektive Dungeon Master):',
+          ...taskLines(dmTasks),
+          '',
+          'Ausstehende Vorschläge im Spieler-Pool (nicht erneut vorschlagen):',
+          ...(pendingPlayerSuggestions.length > 0
+            ? pendingPlayerSuggestions.map((t) => `- ${t}`)
             : ['Keine']),
           '',
-          'Ausstehende Vorschläge im Pool (nicht erneut vorschlagen):',
-          ...(pendingSuggestions.length > 0 ? pendingSuggestions.map((t) => `- ${t}`) : ['Keine']),
+          'Ausstehende Vorschläge im DM-Pool (nicht erneut vorschlagen):',
+          ...(pendingDmSuggestions.length > 0
+            ? pendingDmSuggestions.map((t) => `- ${t}`)
+            : ['Keine']),
           '',
-          'Zuletzt abgelehnte Vorschläge (nicht erneut vorschlagen):',
-          ...(rejectedSuggestions.length > 0
-            ? rejectedSuggestions.map((t) => `- ${t}`)
+          'Zuletzt abgelehnte Vorschläge im Spieler-Pool (nicht erneut vorschlagen):',
+          ...(rejectedPlayerSuggestions.length > 0
+            ? rejectedPlayerSuggestions.map((t) => `- ${t}`)
+            : ['Keine']),
+          '',
+          'Zuletzt abgelehnte Vorschläge im DM-Pool (nicht erneut vorschlagen):',
+          ...(rejectedDmSuggestions.length > 0
+            ? rejectedDmSuggestions.map((t) => `- ${t}`)
             : ['Keine']),
         ];
 
