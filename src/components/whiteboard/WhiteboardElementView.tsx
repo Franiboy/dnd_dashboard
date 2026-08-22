@@ -451,7 +451,9 @@ export function WhiteboardElementView({
             )}
             <button
               type="button"
-              onPointerDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                if (e.button === 0) e.stopPropagation();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 onUpdate(element.id, { status: nextTaskStatus(status) });
@@ -550,7 +552,9 @@ export function WhiteboardElementView({
           <button
             type="button"
             title="Löschen"
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              if (e.button === 0) e.stopPropagation();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               onDelete(element.id);
@@ -580,7 +584,9 @@ export function WhiteboardElementView({
           <button
             type="button"
             title={isImageLink ? 'Zuschneiden' : 'Bearbeiten'}
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              if (e.button === 0) e.stopPropagation();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               onRequestEdit(element.id);
@@ -627,7 +633,9 @@ export function WhiteboardElementView({
           <button
             type="button"
             title={element.locked ? 'Lösen (wieder verschiebbar)' : 'Fixieren (nicht verschiebbar)'}
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              if (e.button === 0) e.stopPropagation();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               onUpdate(element.id, { locked: !element.locked });
@@ -666,7 +674,9 @@ export function WhiteboardElementView({
               title={control.enabled ? control.title : `${control.title} (nicht möglich)`}
               aria-label={control.title}
               disabled={!control.enabled}
-              onPointerDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                if (e.button === 0) e.stopPropagation();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 control.onClick();

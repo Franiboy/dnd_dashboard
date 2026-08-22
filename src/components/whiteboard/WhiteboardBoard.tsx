@@ -740,6 +740,8 @@ export function WhiteboardBoard({
     // Right/middle presses fall through to the board background, which turns
     // them into a pan gesture regardless of the active tool.
     if (event.button !== 0) return;
+    // Touch/pen pointers pan the board instead of moving an element.
+    if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
     event.stopPropagation();
     if (croppingId) return;
 
