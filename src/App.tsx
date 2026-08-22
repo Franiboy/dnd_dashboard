@@ -20,6 +20,9 @@ const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin
 const Diary = lazy(() => import('./pages/Diary').then((m) => ({ default: m.Diary })));
 const Sessions = lazy(() => import('./pages/Recordings').then((m) => ({ default: m.Sessions })));
 const World = lazy(() => import('./pages/World').then((m) => ({ default: m.World })));
+const Whiteboard = lazy(() =>
+  import('./pages/Whiteboard').then((m) => ({ default: m.Whiteboard }))
+);
 
 const PUBLIC_PATHS = ['/', '/admin-login', '/auth/discord'];
 
@@ -182,6 +185,14 @@ function App() {
                   element={
                     <ProtectedRoute user={effectiveUser} appId="bingo" version={version}>
                       <Bingo user={effectiveUser} />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/whiteboard"
+                  element={
+                    <ProtectedRoute user={effectiveUser} appId="whiteboard" version={version}>
+                      <Whiteboard user={effectiveUser} />
                     </ProtectedRoute>
                   }
                 />

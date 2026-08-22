@@ -377,4 +377,39 @@ export const schema: Record<string, TableDef> = {
       },
     ],
   },
+
+  whiteboard_elements: {
+    columns: {
+      id: { type: 'TEXT', primaryKey: true },
+      type: { type: 'TEXT', notNull: true },
+      zone: { type: 'TEXT', notNull: true, default: "'private'" },
+      owner_id: { type: 'TEXT', notNull: true },
+      owner_name: { type: 'TEXT', notNull: true, default: "''" },
+      x: { type: 'REAL', notNull: true, default: '0' },
+      y: { type: 'REAL', notNull: true, default: '0' },
+      x2: { type: 'REAL' },
+      y2: { type: 'REAL' },
+      width: { type: 'REAL', notNull: true, default: '200' },
+      height: { type: 'REAL', notNull: true, default: '160' },
+      color: { type: 'TEXT', notNull: true, default: "'#facc15'" },
+      text: { type: 'TEXT', notNull: true, default: "''" },
+      description: { type: 'TEXT' },
+      status: { type: 'TEXT' },
+      url: { type: 'TEXT' },
+      from_id: { type: 'TEXT' },
+      to_id: { type: 'TEXT' },
+      locked: { type: 'INTEGER', notNull: true, default: '0' },
+      created_at: { type: 'TEXT', notNull: true },
+      updated_at: { type: 'TEXT', notNull: true },
+    },
+    check:
+      "type IN ('note', 'task', 'arrow', 'link') AND zone IN ('public', 'private') " +
+      "AND status IN ('open', 'in_progress', 'done')",
+    indexes: [
+      {
+        name: 'idx_whiteboard_elements_owner_zone',
+        columns: ['owner_id', 'zone'],
+      },
+    ],
+  },
 };

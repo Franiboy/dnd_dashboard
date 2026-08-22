@@ -45,11 +45,82 @@ export interface BingoGame {
   finishedAt: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Whiteboard
+// ---------------------------------------------------------------------------
+
+export type WhiteboardElementType = 'note' | 'task' | 'arrow' | 'link';
+
+export type WhiteboardZone = 'public' | 'private';
+
+export type WhiteboardTaskStatus = 'open' | 'in_progress' | 'done';
+
+/**
+ * One element on the shared whiteboard canvas.
+ * Notes, tasks and links occupy the box (x, y, width, height); arrows run from
+ * (x, y) to (x2, y2) and may be anchored to other elements via fromId/toId,
+ * in which case the endpoints follow those elements on every render.
+ */
+export interface WhiteboardElement {
+  id: string;
+  type: WhiteboardElementType;
+  zone: WhiteboardZone;
+  ownerId: string;
+  ownerName: string;
+  x: number;
+  y: number;
+  x2: number | null;
+  y2: number | null;
+  width: number;
+  height: number;
+  color: string;
+  text: string;
+  description: string | null;
+  status: WhiteboardTaskStatus | null;
+  url: string | null;
+  fromId: string | null;
+  toId: string | null;
+  /** Pinned elements cannot be moved or resized until unlocked. */
+  locked: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Editable subset of a whiteboard element used by update operations. */
+export interface WhiteboardPatch {
+  x?: number;
+  y?: number;
+  x2?: number | null;
+  y2?: number | null;
+  width?: number;
+  height?: number;
+  color?: string;
+  text?: string;
+  description?: string | null;
+  status?: WhiteboardTaskStatus | null;
+  url?: string | null;
+  fromId?: string | null;
+  toId?: string | null;
+  locked?: boolean;
+  /** Moving an element across the divider switches its zone. */
+  zone?: WhiteboardZone;
+}
+
+/**
+ * World y coordinate of the divider between the public band (above) and the
+ * private area (below). Shared so client visuals and server-side zone
+ * defaults stay consistent.
+ */
+export const WHITEBOARD_DIVIDER_Y = 0;
+
 export interface ServerToClientEvents {
   state: (game: BingoGame) => void;
   error: (message: string) => void;
   bingo: (playerName: string) => void;
   joined: (playerId: string) => void;
+  wbElements: (elements: WhiteboardElement[]) => void;
+  wbUpsert: (element: WhiteboardElement) => void;
+  wbRemoved: (id: string) => void;
 }
 
 // Role of a user within the campaign. Every user starts as a guest;
@@ -97,6 +168,8 @@ export interface SafeUser {
 export interface VersionInfo {
   aiEnabled: boolean;
   recordingEnabled: boolean;
+  /** Local development only: the backend offers an automatic admin login. */
+  devAutoLogin?: boolean;
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -138,6 +211,9 @@ export interface ClientToServerEvents {
   confirmOwnTask: (taskId: string) => void;
   unconfirmOwnTask: (taskId: string) => void;
   resetGame: () => void;
+  wbCreate: (element: WhiteboardElement) => void;
+  wbUpdate: (payload: { id: string; patch: WhiteboardPatch }) => void;
+  wbRemove: (id: string) => void;
 }
 
 export type RecordingStatus =

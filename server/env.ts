@@ -20,6 +20,7 @@ const envSchema = z.object({
   LISTEN_FDS: z.coerce.number().int().nonnegative().default(0),
   DB_PATH: z.string().default('dnd.db'),
   RECORDINGS_DIR: z.string().default('recordings'),
+  WHITEBOARD_UPLOAD_DIR: z.string().default('data/whiteboard'),
   TRUST_PROXY: booleanFromEnv,
   CORS_ORIGIN: z.string().optional(),
 
@@ -29,6 +30,7 @@ const envSchema = z.object({
   ADMIN_PASSWORD: z.string().optional(),
   MCP_TOKEN_SECRET: z.string().optional(),
   MCP_SESSION_TOKEN: z.string().optional(),
+  DEV_AUTO_LOGIN: booleanFromEnv,
 
   DISCORD_CLIENT_ID: z.string().optional(),
   DISCORD_CLIENT_SECRET: z.string().optional(),
@@ -94,4 +96,12 @@ export function getEnv(): z.infer<typeof envSchema> {
   const result = parseEnv(process.env);
   if (result.success && result.data) return result.data;
   throw new Error('Invalid environment configuration');
+}
+
+/**
+ * Local development convenience switch. The automatic admin login is only
+ * offered when explicitly enabled and never in production.
+ */
+export function isDevAutoLoginEnabled(): boolean {
+  return getEnv().NODE_ENV !== 'production' && getEnv().DEV_AUTO_LOGIN;
 }
