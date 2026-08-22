@@ -329,26 +329,46 @@ button {
   overflow-y: auto;
 }
 
-.note-quill-editor .ql-toolbar {
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
+.whiteboard-note-toolbar .ql-formats {
+  margin-right: 8px;
 }
 
-.note-quill-editor .ql-container {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
+.whiteboard-note-toolbar .ql-formats:last-child {
+  margin-right: 0;
+}
+
+.whiteboard-note-editor .ql-container {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: inherit;
   min-height: 0;
   height: auto;
-  border: 0;
-  border-radius: 0;
 }
 
-.note-quill-editor .ql-editor {
-  flex: 1 1 auto;
+.whiteboard-note-editor .ql-editor {
+  background: transparent;
   min-height: 0;
   max-height: none;
+  overflow: visible;
+  padding: 0;
+  line-height: 1.15;
+  color: inherit;
+  font-family: inherit;
+}
+
+.whiteboard-note-editor .ql-editor p,
+.whiteboard-note-editor .ql-editor h1,
+.whiteboard-note-editor .ql-editor h2,
+.whiteboard-note-editor .ql-editor h3 {
+  margin: 0;
+}
+
+.whiteboard-note-editor .ql-editor.ql-blank::before {
+  left: 0;
+  right: 0;
+  color: rgb(15 23 42 / 0.4);
+  font-style: italic;
 }
 
 .whiteboard-note-content .ql-editor {
