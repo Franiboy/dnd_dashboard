@@ -6,9 +6,7 @@ import { createLogger } from '../logger.js';
 const log = createLogger('discord-files');
 
 function isEnoentError(err: unknown): boolean {
-  return (
-    typeof err === 'object' && err !== null && 'code' in err && err.code === 'ENOENT'
-  );
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === 'ENOENT';
 }
 
 // transcribe.py preprocess_audio() writes an untracked normalized copy
@@ -20,7 +18,9 @@ function getNormalizedWavPaths(file: { wavPath: string | null; pcmPath: string }
   if (file.wavPath) {
     paths.add(file.wavPath.replace(/\.wav$/, '_norm.wav'));
   }
-  paths.add(file.pcmPath.replace(/\.pcm$/, '_norm.wav'));
+  if (/\.pcm$/.test(file.pcmPath)) {
+    paths.add(file.pcmPath.replace(/\.pcm$/, '_norm.wav'));
+  }
   return [...paths];
 }
 

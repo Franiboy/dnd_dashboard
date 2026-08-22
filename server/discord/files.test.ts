@@ -112,4 +112,29 @@ describe('deleteSessionAudioFiles', () => {
     expect(deleted).toBe(0);
     expect(getFilesBySessionId(session.id).find((f) => f.id === file.id)?.wavPath).toBeNull();
   });
+
+  it('does not delete a PCM path with an unexpected extension', async () => {
+    const dir = await makeTempDir();
+    const session = createSession({
+      name: 'cleanup-test-extension',
+      guildId: 'guild',
+      channelId: 'channel',
+      createdBy: 'tester',
+      directory: dir,
+    });
+    createdSessionIds.push(session.id);
+
+    const pcmPath = join(dir, 'user-d.pcm.partial');
+    createFile({
+      sessionId: session.id,
+      userId: 'user-d',
+      displayName: 'User D',
+      pcmPath,
+    });
+    await createTestFile(pcmPath);
+
+    await deleteSessionAudioFiles(session.id);
+
+    expect(await fileExists(pcmPath)).toBe(true);
+  });
 });
