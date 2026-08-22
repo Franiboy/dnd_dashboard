@@ -93,6 +93,18 @@ const COMMON_PROPS = {
   height: 18,
 };
 
+/** Labeled cluster for appearance controls ("Rand", "Füllung", …). */
+function ControlGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
 export function WhiteboardToolbar({
   tool,
   onToolChange,
@@ -106,8 +118,8 @@ export function WhiteboardToolbar({
   onUpdateSelected,
 }: WhiteboardToolbarProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  // The drawing tools live in a flyout behind the pen button and are not
-  // part of the always-visible toolbar column.
+  // The drawing tools live in a flyout attached to the pen button and are
+  // not part of the always-visible toolbar column.
   const [drawingToolsOpen, setDrawingToolsOpen] = useState(false);
   const drawingActive = tool === 'draw' || isShapeTool(tool);
 
@@ -126,7 +138,7 @@ export function WhiteboardToolbar({
   }, [drawingToolsOpen]);
 
   const selectedType = selectedElement?.type ?? null;
-  // Which control groups are relevant: driven either by the active tool
+  // Which control clusters are relevant: driven either by the active tool
   // (defaults for new elements) or by the selected element (recoloring).
   const noteContext = tool === 'note' || selectedType === 'note';
   const drawContext = tool === 'draw' || selectedType === 'stroke';
@@ -191,6 +203,75 @@ export function WhiteboardToolbar({
           : 'border-transparent hover:scale-105'
     }`;
 
+  /** Color swatch grid; `titleFor` explains what the color applies to. */
+  const renderColorGrid = (activeValue: string, onPick: (c: string) => void, titleFor: string) => (
+    <div className="grid grid-cols-2 gap-1">
+      {NOTE_COLORS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          aria-label={`${titleFor} ${c}`}
+          title={
+            selectedElement ? `${titleFor} des Elements ändern` : `${titleFor} für neue Elemente`
+          }
+          onClick={() => onPick(c)}
+          onMouseDown={(e) => e.preventDefault()}
+          style={{ backgroundColor: c }}
+          className={swatchButtonClass(activeValue === c)}
+        />
+      ))}
+    </div>
+  );
+
+  /** Width pills; shapes additionally get the "no border" toggle. */
+  const renderWidthRow = (withNoBorder: boolean) => (
+    <div className="flex items-center justify-between gap-1 px-0.5 pt-0.5">
+      {withNoBorder && (
+        <button
+          type="button"
+          aria-label="Kein Rahmen"
+          title={
+            selectedElement && selectedType === 'shape'
+              ? 'Rahmen ausblenden'
+              : 'Ohne Rahmen zeichnen'
+          }
+          onClick={() => handleWidth(NO_BORDER)}
+          onMouseDown={(e) => e.preventDefault()}
+          className={`relative h-6 w-6 cursor-pointer select-none overflow-hidden rounded-md transition-colors ${
+            activeWidth === NO_BORDER
+              ? 'bg-[var(--danger)]/40 ring-1 ring-[var(--danger)]'
+              : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+          }`}
+        >
+          <span className="absolute inset-x-[-25%] top-1/2 h-0.5 -translate-y-1/2 rotate-45 bg-current" />
+        </button>
+      )}
+      {STROKE_WIDTHS.map((w) => (
+        <button
+          key={w}
+          type="button"
+          aria-label={`Strichstärke ${w}`}
+          title={`Strichstärke ${w}`}
+          onClick={() => handleWidth(w)}
+          onMouseDown={(e) => e.preventDefault()}
+          className={`flex h-6 w-6 cursor-pointer select-none items-center justify-center rounded-md text-slate-300 transition-colors ${
+            activeWidth === w
+              ? 'bg-[var(--accent)]/30 ring-1 ring-[var(--accent)]'
+              : 'hover:bg-slate-700/60 hover:text-white'
+          }`}
+        >
+          <span
+            className="rounded-full bg-current"
+            style={{
+              width: Math.min(18, w * 1.5),
+              height: Math.max(3, w * 0.75),
+            }}
+          />
+        </button>
+      ))}
+    </div>
+  );
+
   const renderPenButton = () => (
     <button
       key="pen"
@@ -222,7 +303,7 @@ export function WhiteboardToolbar({
         setDrawingToolsOpen(false);
       }}
       onMouseDown={(e) => e.preventDefault()}
-      className={`flex cursor-pointer select-none items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+      className={`flex cursor-pointer select-none items-center gap-2 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
         tool === item.id
           ? 'bg-[var(--accent)]/25 text-[var(--text-h)] ring-1 ring-[var(--accent)]'
           : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
@@ -237,123 +318,85 @@ export function WhiteboardToolbar({
 
   return (
     <div ref={rootRef}>
-      <div className="absolute left-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] flex-col gap-2 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
+      {/* Main toolbar column */}
+      <div className="absolute left-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
         <div className="flex flex-col gap-1">
           {TOOL_BUTTONS.map(renderToolButton)}
           {renderPenButton()}
         </div>
         {showControls && (
-          <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-2">
-            {(noteContext || drawContext || shapeContext) && (
-              <div className="grid grid-cols-2 gap-1">
-                {NOTE_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    aria-label={`Farbe ${c}`}
-                    title={
-                      selectedElement
-                        ? 'Farbe des ausgewählten Elements ändern'
-                        : noteContext
-                          ? 'Farbe für neue Notizen'
-                          : 'Rahmen-/Strichfarbe'
-                    }
-                    onClick={() => handleColor(c)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    style={{ backgroundColor: c }}
-                    className={swatchButtonClass(activeColor === c)}
-                  />
-                ))}
-              </div>
-            )}
-            {shapeContext && (
-              <div className="grid grid-cols-2 gap-1">
-                <button
-                  type="button"
-                  aria-label="Keine Füllung"
-                  title={selectedElement ? 'Füllung entfernen' : 'Keine Füllung'}
-                  onClick={() => handleFill(null)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  className={`relative h-6 w-6 cursor-pointer select-none overflow-hidden rounded-full border-2 transition-transform ${
-                    activeFill === NO_FILL
-                      ? 'scale-110 border-white'
-                      : 'border-slate-500 hover:scale-105'
-                  }`}
-                >
-                  <span className="absolute inset-x-[-25%] top-1/2 h-0.5 -translate-y-1/2 rotate-45 bg-[var(--danger)]" />
-                </button>
-                {NOTE_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    aria-label={`Füllung ${c}`}
-                    title={
-                      selectedElement ? 'Füllung des Elements setzen' : 'Füllfarbe für neue Formen'
-                    }
-                    onClick={() => handleFill(c)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    style={{ backgroundColor: c }}
-                    className={swatchButtonClass(activeFill === c)}
-                  />
-                ))}
-              </div>
-            )}
-            {(drawContext || shapeContext) && (
-              <div className="flex items-center justify-between gap-1 px-0.5">
-                {shapeContext && (
-                  <button
-                    type="button"
-                    aria-label="Kein Rahmen"
-                    title={
-                      selectedElement && selectedType === 'shape'
-                        ? 'Rahmen ausblenden'
-                        : 'Ohne Rahmen zeichnen'
-                    }
-                    onClick={() => handleWidth(NO_BORDER)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    className={`relative h-6 w-6 cursor-pointer select-none overflow-hidden rounded-md transition-colors ${
-                      activeWidth === NO_BORDER
-                        ? 'bg-[var(--danger)]/40 ring-1 ring-[var(--danger)]'
-                        : 'hover:bg-slate-700/60'
-                    }`}
-                  >
-                    <span className="absolute inset-x-[-25%] top-1/2 h-0.5 -translate-y-1/2 rotate-45 bg-current" />
-                  </button>
-                )}
-                {STROKE_WIDTHS.map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    aria-label={`Strichstärke ${w}`}
-                    title={`Strichstärke ${w}`}
-                    onClick={() => handleWidth(w)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    className={`flex h-6 w-6 cursor-pointer select-none items-center justify-center rounded-md transition-colors ${
-                      activeWidth === w
-                        ? 'bg-[var(--accent)]/30 ring-1 ring-[var(--accent)]'
-                        : 'hover:bg-slate-700/60'
-                    }`}
-                  >
-                    <span
-                      className="rounded-full bg-current"
-                      style={{
-                        width: Math.min(18, w * 1.5),
-                        height: Math.max(3, w * 0.75),
-                      }}
-                    />
-                  </button>
-                ))}
-              </div>
+          <div className="mt-1 flex max-h-[26rem] flex-col gap-3 overflow-y-auto border-t border-[var(--border)] pt-2">
+            {shapeContext ? (
+              <>
+                <ControlGroup label="Füllung">
+                  <div className="grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      aria-label="Keine Füllung"
+                      title={selectedElement ? 'Füllung entfernen' : 'Keine Füllung'}
+                      onClick={() => handleFill(null)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      className={`relative h-6 w-6 cursor-pointer select-none overflow-hidden rounded-full border-2 transition-transform ${
+                        activeFill === NO_FILL
+                          ? 'scale-110 border-white'
+                          : 'border-slate-500 hover:scale-105'
+                      }`}
+                    >
+                      <span className="absolute inset-x-[-25%] top-1/2 h-0.5 -translate-y-1/2 rotate-45 bg-[var(--danger)]" />
+                    </button>
+                    {NOTE_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        aria-label={`Füllung ${c}`}
+                        title={
+                          selectedElement
+                            ? 'Füllfarbe des Elements setzen'
+                            : 'Füllfarbe für neue Formen'
+                        }
+                        onClick={() => handleFill(c)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        style={{ backgroundColor: c }}
+                        className={swatchButtonClass(activeFill === c)}
+                      />
+                    ))}
+                  </div>
+                </ControlGroup>
+                <ControlGroup label="Rand">
+                  {renderColorGrid(activeColor, handleColor, 'Rahmenfarbe')}
+                  {renderWidthRow(true)}
+                </ControlGroup>
+              </>
+            ) : drawContext ? (
+              <ControlGroup label="Strich">
+                {renderColorGrid(activeColor, handleColor, 'Strichfarbe')}
+                {renderWidthRow(false)}
+              </ControlGroup>
+            ) : (
+              noteContext && (
+                <ControlGroup label="Hintergrund">
+                  {renderColorGrid(activeColor, handleColor, 'Hintergrundfarbe')}
+                </ControlGroup>
+              )
             )}
           </div>
         )}
       </div>
+
+      {/* Drawing flyout: flush with the toolbar edge and vertically aligned
+          with the pen button (panel border/padding + two buttons + gaps),
+          so it opens like a native submenu. */}
       {drawingToolsOpen && (
-        <div className="absolute left-16 top-24 z-20 flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
-          <span className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        <div className="wb-flyout-in absolute left-16 top-[99px] z-20 flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
+          <span className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             Zeichnen
           </span>
           {DRAWING_TOOLS.map(renderFlyoutItem)}
+          {/* Caret connecting the flyout to the pen button */}
+          <span
+            className="absolute -left-1 top-3 h-2 w-2 rotate-45 border-b border-l border-[var(--border)] bg-[var(--panel)]"
+            aria-hidden
+          />
         </div>
       )}
     </div>
