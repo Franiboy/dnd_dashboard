@@ -1,11 +1,12 @@
 # AGENTS.md – D&D Dashboard
 
-This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-08-21.
+This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-08-22.
 
 ## Critical Working Rules for Assistants
 
 These rules take precedence before every code change.
 
+- **Clarify before implementing.** Question every requirement for understanding and completeness and ask follow-up questions until the full context is clear (see "Requirements & Clarification Before Implementation" below).
 - **Always work in a dedicated Git worktree on a separate feature branch – never directly on `main`.** Create one before starting any change, even small ones (e.g. `git worktree add /tmp/opencode/<project>-<topic> -b <type>/<topic> origin/main`). If you are already inside a worktree, use it instead of creating another one (check with `git worktree list`).
 - **Finish every task with commit, push and pull request after coordinating with the user.** Commits and pushes each require explicit user approval; then open a PR against `main` so CI and the AI review pipeline can validate the change. Never push directly to `main`.
 - **Clean up after a successful merge.** Delete the merged feature branch (local and remote) and remove the worktree used for development.
@@ -18,6 +19,15 @@ These rules take precedence before every code change.
 - Ask the user before committing/pushing if anything is unclear.
 - Give a short summary of changes after completing a task.
 - **All commit messages and code comments must be in English.**
+
+## Requirements & Clarification Before Implementation
+
+Every requirement or proposed implementation must first be questioned for understanding and completeness. Never start coding on assumptions.
+
+- **Understand before acting:** Analyze what the user actually wants, why it is needed, and which modules, data flows or edge cases are affected.
+- **Ask clarifying questions:** Whenever goal, scope, acceptance criteria, expected behavior or constraints are unclear, ask targeted follow-up questions instead of guessing. Asking is always preferred over assuming.
+- **Grasp the full context:** Collect missing information (affected features, UI behavior, API contracts, security implications) before proposing a solution.
+- **Confirm understanding:** For non-trivial tasks, briefly summarize your understanding of the requirement back to the user and let them confirm before implementing.
 
 ## Project Overview
 
