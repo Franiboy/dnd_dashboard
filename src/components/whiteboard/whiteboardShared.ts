@@ -19,7 +19,7 @@ export function isBoardImageUrl(url: string): boolean {
  * the board can create the element directly from the active tool.
  */
 export type WhiteboardTool =
-  'select' | 'note' | 'draw' | 'rect' | 'ellipse' | 'triangle' | 'diamond';
+  'select' | 'note' | 'text' | 'draw' | 'rect' | 'ellipse' | 'triangle' | 'diamond';
 
 const SHAPE_TOOLS: readonly WhiteboardTool[] = ['rect', 'ellipse', 'triangle', 'diamond'];
 

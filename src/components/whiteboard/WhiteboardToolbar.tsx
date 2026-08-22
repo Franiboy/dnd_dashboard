@@ -13,7 +13,7 @@ interface WhiteboardToolbarProps {
   tool: WhiteboardTool;
   onToolChange: (tool: WhiteboardTool) => void;
   color: string;
-  /** Default outline/note color for newly created elements. */
+  /** Default outline/note/text color for newly created elements. */
   onColorChange: (color: string) => void;
   /** Default interior fill for new shapes; NO_FILL means transparent. */
   fillColor: string;
@@ -44,6 +44,17 @@ const TOOL_BUTTONS: {
       <>
         <rect x="4" y="4" width="16" height="16" rx="2" />
         <path d="M15 20v-5h5" />
+      </>
+    ),
+  },
+  {
+    id: 'text',
+    label: 'Text',
+    icon: (
+      <>
+        <polyline points="4 7 4 4 20 4 20 7" />
+        <line x1="12" y1="4" x2="12" y2="20" />
+        <line x1="9" y1="20" x2="15" y2="20" />
       </>
     ),
   },
@@ -141,9 +152,10 @@ export function WhiteboardToolbar({
   // Which control clusters are relevant: driven either by the active tool
   // (defaults for new elements) or by the selected element (recoloring).
   const noteContext = tool === 'note' || selectedType === 'note';
+  const textContext = tool === 'text' || selectedType === 'text';
   const drawContext = tool === 'draw' || selectedType === 'stroke';
   const shapeContext = isShapeTool(tool) || selectedType === 'shape';
-  const showControls = noteContext || drawContext || shapeContext;
+  const showControls = noteContext || textContext || drawContext || shapeContext;
 
   const activeColor = selectedElement ? selectedElement.color : color;
   const activeWidth =
@@ -371,6 +383,10 @@ export function WhiteboardToolbar({
               <ControlGroup label="Strich">
                 {renderColorGrid(activeColor, handleColor, 'Strichfarbe')}
                 {renderWidthRow(false)}
+              </ControlGroup>
+            ) : textContext ? (
+              <ControlGroup label="Text">
+                {renderColorGrid(activeColor, handleColor, 'Textfarbe')}
               </ControlGroup>
             ) : (
               noteContext && (

@@ -166,6 +166,30 @@ describe('whiteboard element lifecycle', () => {
     expect(after.fromId).toBe(noteA.id);
   });
 
+  it('creates plain text elements with sanitized values', () => {
+    const alice = testUser('alice-text-01');
+    const created = createElement(
+      {
+        type: 'text',
+        zone: 'public',
+        x: 10,
+        y: -30,
+        width: 220,
+        height: 120,
+        color: '#ffffff',
+        text: 'Hallo Text',
+      },
+      alice
+    );
+    expect(created.type).toBe('text');
+    expect(created.text).toBe('Hallo Text');
+    // Plain text elements carry no type-specific extras.
+    expect(created.url).toBeNull();
+    expect(created.status).toBeNull();
+    const stored = listElementsForUser(alice).find((e) => e.id === created.id)!;
+    expect(stored.type).toBe('text');
+  });
+
   it('rejects non-http link urls and clamps oversized input', () => {
     const alice = testUser('alice-link-01');
     const link = createElement({ type: 'link', zone: 'public', x: 0, y: 0 }, alice);

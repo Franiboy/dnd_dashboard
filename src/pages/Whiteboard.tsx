@@ -46,7 +46,9 @@ export function Whiteboard({ user }: WhiteboardProps) {
 
   const selectedElement =
     elements.find(
-      (e) => e.id === selectedId && (e.type === 'note' || e.type === 'shape' || e.type === 'stroke')
+      (e) =>
+        e.id === selectedId &&
+        (e.type === 'note' || e.type === 'text' || e.type === 'shape' || e.type === 'stroke')
     ) ?? null;
 
   return (
