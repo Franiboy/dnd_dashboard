@@ -9,6 +9,7 @@ import {
 import { WHITEBOARD_DIVIDER_Y } from '../../../shared/types';
 import type { SafeUser, WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { WhiteboardElementView } from './WhiteboardElementView';
+import { NoteQuillEditor } from './NoteQuillEditor';
 import {
   compareStackOrder,
   isBoardImageUrl,
@@ -242,7 +243,9 @@ export function WhiteboardBoard({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const inField = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+      const inField =
+        !!target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
       if (e.key === 'Escape') {
         setEditingId(null);
         setSelectedIds([]);
@@ -1015,6 +1018,29 @@ export function WhiteboardBoard({
           );
         })}
       </div>
+
+      {(() => {
+        if (!editingId) return null;
+        const editing = elementsById.get(editingId);
+        if (!editing || editing.type !== 'note') return null;
+        return (
+          <NoteQuillEditor
+            key={editing.id}
+            element={editing}
+            anchor={{
+              left: camera.x + editing.x * camera.scale,
+              top: camera.y + editing.y * camera.scale,
+              width: editing.width * camera.scale,
+              height: editing.height * camera.scale,
+            }}
+            onCommit={(html) => {
+              updateElement(editing.id, { text: html });
+              closeEdit();
+            }}
+            onCancel={closeEdit}
+          />
+        );
+      })()}
 
       <div
         className="pointer-events-none absolute inset-x-0 select-none border-t-2 border-dashed border-[var(--accent)]/60"
