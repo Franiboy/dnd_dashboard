@@ -189,9 +189,12 @@ export function WhiteboardBoard({
     });
   }, []);
 
-  // Report the primary selected note to the page for the toolbar palette.
+  // Report the primary selected note/text to the page for the toolbar palette.
   useEffect(() => {
-    const primary = selectedIds.find((id) => elementsById.get(id)?.type === 'note');
+    const primary = selectedIds.find((id) => {
+      const type = elementsById.get(id)?.type;
+      return type === 'note' || type === 'text';
+    });
     onSelectedNoteId(primary ?? null);
   }, [selectedIds, elementsById, onSelectedNoteId]);
 
@@ -281,7 +284,7 @@ export function WhiteboardBoard({
 
   const finishCreate = useCallback(
     (gesture: Extract<Gesture, { kind: 'create' }>, wx: number, wy: number) => {
-      if (tool !== 'note') return;
+      if (tool !== 'note' && tool !== 'text') return;
       const now = new Date().toISOString();
 
       let width = Math.abs(wx - gesture.startWX);
@@ -299,7 +302,7 @@ export function WhiteboardBoard({
       const id = crypto.randomUUID();
       createElement({
         id,
-        type: 'note',
+        type: tool,
         zone: zoneForWorldY(py + height / 2),
         ownerId: user.id,
         ownerName: user.displayName,
@@ -751,9 +754,9 @@ export function WhiteboardBoard({
     });
   }, [endLocalEdit]);
 
-  // Double-click on empty canvas spawns a note in the last used color,
-  // already focused for typing.
-  const createNoteAt = useCallback(
+  // Double-click on empty canvas spawns a plain text element in the last
+  // used color, already focused for typing.
+  const createTextAt = useCallback(
     (clientX: number, clientY: number) => {
       const { wx, wy } = screenToWorld(clientX, clientY);
       const s = cameraRef.current.scale;
@@ -763,7 +766,7 @@ export function WhiteboardBoard({
       const id = crypto.randomUUID();
       createElement({
         id,
-        type: 'note',
+        type: 'text',
         zone: zoneForWorldY(wy),
         ownerId: user.id,
         ownerName: user.displayName,
@@ -884,7 +887,7 @@ export function WhiteboardBoard({
       onDoubleClick={(e) => {
         if (tool !== 'select' || editingId || croppingId) return;
         if ((e.target as HTMLElement).closest('[data-whiteboard-element]')) return;
-        createNoteAt(e.clientX, e.clientY);
+        createTextAt(e.clientX, e.clientY);
       }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {

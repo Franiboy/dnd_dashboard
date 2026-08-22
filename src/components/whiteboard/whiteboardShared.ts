@@ -16,7 +16,7 @@ export function isBoardImageUrl(url: string): boolean {
  * for now (legacy elements still render); pasted screenshots become image
  * cards internally without a dedicated tool.
  */
-export type WhiteboardTool = 'select' | 'note';
+export type WhiteboardTool = 'select' | 'note' | 'text';
 
 export const NOTE_COLORS: readonly string[] = [
   '#ffffff',

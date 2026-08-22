@@ -7,7 +7,7 @@ interface WhiteboardToolbarProps {
   onToolChange: (tool: WhiteboardTool) => void;
   color: string;
   onColorChange: (color: string) => void;
-  /** Selected note enables the palette for recoloring existing elements. */
+  /** Selected note or text element enables the palette for recoloring. */
   selectedNote: WhiteboardElement | null;
   onNoteColorChange: (color: string) => void;
 }
@@ -29,6 +29,17 @@ const TOOL_BUTTONS: {
       <>
         <rect x="4" y="4" width="16" height="16" rx="2" />
         <path d="M15 20v-5h5" />
+      </>
+    ),
+  },
+  {
+    id: 'text',
+    label: 'Text',
+    icon: (
+      <>
+        <polyline points="4 7 4 4 20 4 20 7" />
+        <line x1="12" y1="4" x2="12" y2="20" />
+        <line x1="9" y1="20" x2="15" y2="20" />
       </>
     ),
   },
@@ -54,13 +65,19 @@ export function WhiteboardToolbar({
   selectedNote,
   onNoteColorChange,
 }: WhiteboardToolbarProps) {
-  const showPalette = tool === 'note' || !!selectedNote;
+  const showPalette = tool === 'note' || tool === 'text' || !!selectedNote;
   const activeColor = selectedNote ? selectedNote.color : color;
 
   const handleColor = (c: string) => {
     if (selectedNote) onNoteColorChange(c);
     else onColorChange(c);
   };
+
+  const paletteTitle = selectedNote
+    ? 'Farbe des ausgewählten Elements ändern'
+    : tool === 'text'
+      ? 'Textfarbe für neue Texte'
+      : 'Farbe für neue Notizen';
 
   return (
     <div className="absolute left-3 top-3 z-10 flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
@@ -89,9 +106,7 @@ export function WhiteboardToolbar({
               key={c}
               type="button"
               aria-label={`Farbe ${c}`}
-              title={
-                selectedNote ? 'Farbe der ausgewählten Notiz ändern' : 'Farbe für neue Notizen'
-              }
+              title={paletteTitle}
               onClick={() => handleColor(c)}
               style={{ backgroundColor: c }}
               className={`h-6 w-6 rounded-full border-2 transition-transform ${

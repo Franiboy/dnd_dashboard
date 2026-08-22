@@ -35,7 +35,7 @@ export function ensureWhiteboardUploadDir(): string {
   return dir;
 }
 
-const ELEMENT_TYPES: readonly WhiteboardElementType[] = ['note', 'task', 'arrow', 'link'];
+const ELEMENT_TYPES: readonly WhiteboardElementType[] = ['note', 'task', 'arrow', 'link', 'text'];
 const TASK_STATUSES: readonly WhiteboardTaskStatus[] = ['open', 'in_progress', 'done'];
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 const HTTP_URL_RE = /^https?:\/\/\S+$/i;
@@ -190,8 +190,14 @@ export function sanitizeElementInput(
     y: asNumber(raw.y) ?? 0,
     x2: asOptionalNumber(raw.x2) ?? null,
     y2: asOptionalNumber(raw.y2) ?? null,
-    width: type === 'arrow' ? 0 : (asSize(raw.width) ?? (type === 'note' ? 200 : 260)),
-    height: type === 'arrow' ? 0 : (asSize(raw.height) ?? (type === 'note' ? 150 : 180)),
+    width:
+      type === 'arrow'
+        ? 0
+        : (asSize(raw.width) ?? (type === 'note' || type === 'text' ? 200 : 260)),
+    height:
+      type === 'arrow'
+        ? 0
+        : (asSize(raw.height) ?? (type === 'note' || type === 'text' ? 150 : 180)),
     color: asColor(raw.color) ?? '#facc15',
     text: '',
     description: null,

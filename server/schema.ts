@@ -404,7 +404,7 @@ export const schema: Record<string, TableDef> = {
       updated_at: { type: 'TEXT', notNull: true },
     },
     check:
-      "type IN ('note', 'task', 'arrow', 'link') AND zone IN ('public', 'private') " +
+      "type IN ('note', 'task', 'arrow', 'link', 'text') AND zone IN ('public', 'private') " +
       "AND status IN ('open', 'in_progress', 'done')",
     indexes: [
       {

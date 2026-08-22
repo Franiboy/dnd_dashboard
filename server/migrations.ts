@@ -149,6 +149,26 @@ function migrateEntityBlacklistTypes(): void {
   log.info('Migrated entity_blacklist types to plural form');
 }
 
+// Existing whiteboard_elements tables carry a CHECK constraint without the
+// 'text' element type. SQLite cannot alter a CHECK in place, so the table is
+// rebuilt once its DDL still matches the old type list.
+function migrateWhiteboardElementTypes(): void {
+  if (!tableExists('whiteboard_elements')) return;
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'whiteboard_elements'")
+    .get() as { sql: string } | undefined;
+  if (!row || !row.sql.includes("'note', 'task', 'arrow', 'link')")) return;
+  const columns = Object.keys(schema.whiteboard_elements.columns).map(quote);
+  db.exec('ALTER TABLE whiteboard_elements RENAME TO whiteboard_elements_old;');
+  db.exec(createTableSql('whiteboard_elements', schema.whiteboard_elements));
+  db.exec(
+    `INSERT INTO whiteboard_elements (${columns.join(', ')})
+     SELECT ${columns.join(', ')} FROM whiteboard_elements_old;`
+  );
+  db.exec('DROP TABLE whiteboard_elements_old;');
+  log.info('Migrated whiteboard_elements CHECK to include text elements');
+}
+
 // Backfill recording_sessions.updated_at from the most recent timestamp column.
 function fillRecordingSessionUpdatedAt(): void {
   if (!tableExists('recording_sessions')) return;
@@ -195,6 +215,7 @@ export function runMigrations(): void {
   db.transaction(() => {
     // Apply non-generative data migrations that reshape schema first.
     migrateEntityBlacklistTypes();
+    migrateWhiteboardElementTypes();
     dropLegacyDiaryEntryDate();
     // Apply the declarative schema diff (tables, columns, indexes).
     applySchema();

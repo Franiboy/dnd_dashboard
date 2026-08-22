@@ -22,6 +22,7 @@ const DESIGN_WIDTHS: Record<string, number> = {
   note: 220,
   task: 280,
   link: 260,
+  text: 220,
 };
 
 const MIN_CONTENT_SCALE = 0.15;
@@ -173,6 +174,49 @@ function commitField(
   onCloseEdit();
 }
 
+/**
+ * Plain-text editor for transparent text elements. The font auto-fits the
+ * element box while typing, mirroring how the saved text is displayed.
+ */
+function TextElementEditor({
+  element,
+  onUpdate,
+  onCloseEdit,
+  boxWidth,
+  boxHeight,
+}: NoteDraftProps & { boxWidth: number; boxHeight: number }) {
+  const [draft, setDraft] = useState(element.text);
+  const { ref, fontSize } = useFitFontSize(draft, boxWidth, boxHeight, true);
+  const shouldIgnoreBlur = useBlurGuard(ref);
+  useEffect(() => {
+    ref.current?.focus();
+  }, [ref]);
+  return (
+    <textarea
+      ref={ref as RefObject<HTMLTextAreaElement>}
+      value={draft}
+      style={{ fontSize, color: element.color }}
+      onChange={(e) => setDraft(e.target.value)}
+      onPointerDown={(e) => e.stopPropagation()}
+      onBlur={() => {
+        if (shouldIgnoreBlur()) return;
+        commitField(element, { text: draft }, onUpdate, onCloseEdit);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          onCloseEdit();
+        }
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          commitField(element, { text: draft }, onUpdate, onCloseEdit);
+        }
+      }}
+      className="h-full w-full resize-none overflow-hidden bg-transparent text-center leading-[1.15] outline-none"
+      placeholder="Text schreiben…"
+    />
+  );
+}
+
 function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
   const [title, setTitle] = useState(element.text);
   const [description, setDescription] = useState(element.description ?? '');
@@ -317,6 +361,13 @@ export function WhiteboardElementView({
     element.height / contentScale - 16,
     isNote && !!element.text.trim()
   );
+  // Plain text elements auto-fit the same way while staying transparent.
+  const textFit = useFitFontSize(
+    element.text,
+    designWidth - 16,
+    element.height / contentScale - 16,
+    element.type === 'text' && !editing && !!element.text.trim()
+  );
   let body: ReactNode = null;
 
   if (element.type === 'note') {
@@ -336,6 +387,30 @@ export function WhiteboardElementView({
             <div className="whiteboard-note-content">
               <div className="ql-editor" dangerouslySetInnerHTML={{ __html: sanitizedNoteHtml }} />
             </div>
+          </div>
+        )}
+      </div>
+    );
+  } else if (element.type === 'text') {
+    body = (
+      <div className="flex h-full w-full items-center justify-center overflow-hidden p-2">
+        {editing ? (
+          <TextElementEditor
+            element={element}
+            onUpdate={onUpdate}
+            onCloseEdit={onCloseEdit}
+            boxWidth={designWidth - 16}
+            boxHeight={element.height / contentScale - 16}
+          />
+        ) : !element.text ? (
+          <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
+        ) : (
+          <div
+            ref={textFit.ref as RefObject<HTMLDivElement>}
+            className="w-full whitespace-pre-wrap break-words text-center leading-[1.15]"
+            style={{ fontSize: textFit.fontSize, color: element.color }}
+          >
+            {element.text}
           </div>
         )}
       </div>

@@ -38,7 +38,9 @@ export function Whiteboard({ user }: WhiteboardProps) {
     [selectedNoteId, updateElement]
   );
 
-  const selectedNote = elements.find((e) => e.id === selectedNoteId && e.type === 'note') ?? null;
+  const selectedNote =
+    elements.find((e) => e.id === selectedNoteId && (e.type === 'note' || e.type === 'text')) ??
+    null;
 
   return (
     <div className="relative h-full w-full overflow-hidden">

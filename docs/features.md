@@ -134,7 +134,8 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 - Miro-style shared board with free pan (drag) and zoom (mouse wheel, 2%-2000%). Elements render as vector DOM/SVG, so text stays sharp at every zoom level.
 - Zones: a public band at the top of the canvas is visible and editable by all approved users. Everything below the dashed divider is private per user; private elements are filtered server-side (`zone = 'public' OR owner_id = ?`), so other users never receive them.
 - Element types:
-  - Notes: colored sticky notes with short text.
+  - Notes: colored sticky notes with rich text (Quill editor).
+  - Texts: plain transparent text whose font size auto-fits the element box; the palette recolors the text. Double-clicking empty canvas creates a text element by default.
   - Tasks: cards with title, description and a status pill cycling open -> in progress -> done.
   - Arrows: connections between points or anchored to elements; anchored endpoints follow their target element.
   - Links: URL references with optional label; image URLs render as previews.
