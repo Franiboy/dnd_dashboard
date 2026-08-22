@@ -403,6 +403,7 @@ export const schema: Record<string, TableDef> = {
       stroke_width: { type: 'REAL', notNull: true, default: '3' },
       // JSON-encoded normalized [x, y] pairs of freehand strokes.
       points: { type: 'TEXT' },
+      z_index: { type: 'INTEGER', notNull: true, default: '0' },
       locked: { type: 'INTEGER', notNull: true, default: '0' },
       created_at: { type: 'TEXT', notNull: true },
       updated_at: { type: 'TEXT', notNull: true },

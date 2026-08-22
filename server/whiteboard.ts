@@ -55,6 +55,7 @@ const MAX_TEXT = 500;
 const MAX_DESCRIPTION = 2000;
 const MAX_URL = 2048;
 const MAX_COORD = 1_000_000;
+const MAX_Z_INDEX = 100_000;
 const MIN_SIZE = 60;
 const MAX_SIZE = 4000;
 const MIN_STROKE_WIDTH = 1;
@@ -85,6 +86,7 @@ interface ElementRow {
   fill_color: string | null;
   stroke_width: number;
   points: string | null;
+  z_index: number;
   locked: number;
   created_at: string;
   updated_at: string;
@@ -133,6 +135,7 @@ function rowToElement(row: ElementRow): WhiteboardElement {
     fillColor: row.fill_color,
     strokeWidth: row.stroke_width,
     points: parsePoints(row.points),
+    zIndex: row.z_index ?? 0,
     locked: !!row.locked,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -167,6 +170,12 @@ function asOptionalNumber(value: unknown): number | null | undefined {
 function asSize(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
   return Math.max(MIN_SIZE, Math.min(MAX_SIZE, Math.round(value)));
+}
+
+/** Layer order is a clamped integer so payloads cannot carry NaN or extremes. */
+function asZIndex(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  return Math.max(-MAX_Z_INDEX, Math.min(MAX_Z_INDEX, Math.round(value)));
 }
 
 function asText(value: unknown, max: number): string | undefined {
@@ -271,6 +280,7 @@ export function sanitizeElementInput(
     fillColor: null,
     strokeWidth: 3,
     points: null,
+    zIndex: 0,
     locked: false,
     createdAt: now,
     updatedAt: now,
@@ -326,6 +336,8 @@ export function sanitizePatch(patch: unknown): WhiteboardPatch {
   if (strokeWidth !== undefined) clean.strokeWidth = strokeWidth;
   const points = asPoints(raw.points);
   if (points !== undefined) clean.points = points;
+  const zIndex = asZIndex(raw.zIndex);
+  if (zIndex !== undefined) clean.zIndex = zIndex;
   const zone = asEnum(raw.zone, ['public', 'private'] as const);
   if (zone !== undefined) clean.zone = zone;
   if (typeof raw.locked === 'boolean') clean.locked = raw.locked;
@@ -375,6 +387,7 @@ function applyPatch(element: WhiteboardElement, patch: WhiteboardPatch): void {
   if (patch.points !== undefined && element.type === 'stroke') {
     element.points = patch.points;
   }
+  if (patch.zIndex !== undefined) element.zIndex = patch.zIndex;
   if (patch.locked !== undefined) element.locked = patch.locked;
   if (patch.zone !== undefined) element.zone = patch.zone;
 }
@@ -388,8 +401,9 @@ function insertElement(element: WhiteboardElement): void {
     `INSERT INTO whiteboard_elements
        (id, type, zone, owner_id, owner_name, x, y, x2, y2, width, height,
         color, text, description, status, url, from_id, to_id,
-        shape_kind, fill_color, stroke_width, points, locked, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        shape_kind, fill_color, stroke_width, points, z_index,
+        locked, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     element.id,
     element.type,
@@ -413,6 +427,7 @@ function insertElement(element: WhiteboardElement): void {
     element.fillColor,
     element.strokeWidth,
     serializePoints(element.points),
+    element.zIndex,
     element.locked ? 1 : 0,
     element.createdAt,
     element.updatedAt
@@ -470,7 +485,8 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
     `UPDATE whiteboard_elements SET
        owner_id = ?, owner_name = ?, x = ?, y = ?, x2 = ?, y2 = ?, width = ?, height = ?, color = ?, text = ?,
        description = ?, status = ?, url = ?, from_id = ?, to_id = ?,
-       shape_kind = ?, fill_color = ?, stroke_width = ?, points = ?, locked = ?, updated_at = ?
+       shape_kind = ?, fill_color = ?, stroke_width = ?, points = ?, z_index = ?,
+       locked = ?, updated_at = ?
      WHERE id = ?`
   ).run(
     next.ownerId,
@@ -492,6 +508,7 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
     next.fillColor,
     next.strokeWidth,
     serializePoints(next.points),
+    next.zIndex,
     next.locked ? 1 : 0,
     next.updatedAt,
     id

@@ -182,6 +182,26 @@ describe('whiteboard element lifecycle', () => {
     const long = updateElement(link.id, sanitizePatch({ text: 'x'.repeat(501) }), alice);
     expect(long.text).toHaveLength(500);
   });
+
+  it('sanitizes and persists the layer zIndex', () => {
+    const alice = testUser('alice-z-00001');
+    const created = createElement(noteInput({ zIndex: 7 }), alice);
+    expect(created.zIndex).toBe(7);
+    // Legacy payloads without a zIndex default to 0.
+    expect(createElement(noteInput(), alice).zIndex).toBe(0);
+
+    // Floats round, extremes clamp, invalid types are dropped entirely.
+    expect(sanitizePatch({ zIndex: 3.6 })).toEqual({ zIndex: 4 });
+    expect(sanitizePatch({ zIndex: 1e9 })).toEqual({ zIndex: 100_000 });
+    expect(sanitizePatch({ zIndex: -1e9 })).toEqual({ zIndex: -100_000 });
+    expect(sanitizePatch({ zIndex: '5' })).toEqual({});
+    expect(sanitizePatch({ zIndex: Number.NaN })).toEqual({});
+
+    const updated = updateElement(created.id, sanitizePatch({ zIndex: -3 }), alice);
+    expect(updated.zIndex).toBe(-3);
+    const stored = listElementsForUser(alice).find((e) => e.id === created.id)!;
+    expect(stored.zIndex).toBe(-3);
+  });
 });
 
 describe('whiteboard shapes and strokes', () => {

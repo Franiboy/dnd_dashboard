@@ -57,6 +57,11 @@ interface WhiteboardElementViewProps {
   onDelete: (id: string) => void;
   onCropApply: (crop: { x: number; y: number; w: number; h: number }) => void;
   onCropCancel: () => void;
+  /** False when the element already sits at the top/bottom of the stack. */
+  canBringForward: boolean;
+  canSendBackward: boolean;
+  onBringForward: (id: string) => void;
+  onSendBackward: (id: string) => void;
 }
 
 interface NoteDraftProps {
@@ -398,6 +403,10 @@ export function WhiteboardElementView({
   onDelete,
   onCropApply,
   onCropCancel,
+  canBringForward,
+  canSendBackward,
+  onBringForward,
+  onSendBackward,
 }: WhiteboardElementViewProps) {
   const isImageLink = element.type === 'link' && isBoardImageUrl(element.url ?? '');
   const designWidth = DESIGN_WIDTHS[element.type] ?? element.width;
@@ -544,18 +553,17 @@ export function WhiteboardElementView({
           {body}
         </div>
       </div>
-      {element.locked && !editing && !cropping && (
+      {element.locked && !selected && !editing && !cropping && (
         <div
           className="pointer-events-none absolute z-10 flex items-center justify-center rounded-full bg-slate-700 text-slate-200 shadow"
           style={{
-            left: -8 * contentScale,
-            top: -8 * contentScale,
+            left: -10 * contentScale,
+            top: -10 * contentScale,
             width: 20 * contentScale,
             height: 20 * contentScale,
           }}
-          title="Fixiert – nicht verschiebbar"
         >
-          <LockIcon open={false} size={Math.max(10, 11 * contentScale)} />
+          <LockIcon open={false} size={11 * contentScale} />
         </div>
       )}
       {selected && !editing && !cropping && (
@@ -657,6 +665,58 @@ export function WhiteboardElementView({
           >
             <LockIcon open={!element.locked} size={12 * contentScale} />
           </button>
+          {(
+            [
+              {
+                title: 'Ebene nach vorn',
+                enabled: canBringForward && !element.locked,
+                onClick: () => onBringForward(element.id),
+                icon: <path d="M12 19V5m0 0-6 6m6-6 6 6" />,
+              },
+              {
+                title: 'Ebene nach hinten',
+                enabled: canSendBackward && !element.locked,
+                onClick: () => onSendBackward(element.id),
+                icon: <path d="M12 5v14m0 0 6-6m-6 6-6-6" />,
+              },
+            ] as const
+          ).map((control) => (
+            <button
+              key={control.title}
+              type="button"
+              title={control.enabled ? control.title : `${control.title} (nicht möglich)`}
+              aria-label={control.title}
+              disabled={!control.enabled}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                control.onClick();
+              }}
+              className={`absolute z-10 flex items-center justify-center rounded-full bg-slate-600 p-0 text-white shadow ${
+                control.enabled ? 'hover:brightness-110' : 'opacity-40'
+              }`}
+              style={{
+                width: 24 * contentScale,
+                height: 24 * contentScale,
+                left: -12 * contentScale,
+                top: (control.title === 'Ebene nach vorn' ? 28 : 56) * contentScale,
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width={14 * contentScale}
+                height={14 * contentScale}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {control.icon}
+              </svg>
+            </button>
+          ))}
           {!element.locked && (
             <div
               title="Größe ändern"
