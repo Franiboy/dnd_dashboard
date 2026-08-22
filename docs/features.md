@@ -131,7 +131,7 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 
 ## Whiteboard Module (`/whiteboard`)
 
-- Miro-style shared board with free pan (drag) and zoom (mouse wheel, 2%-2000%). Elements render as vector DOM/SVG, so text stays sharp at every zoom level.
+- Miro-style shared board: pan by holding the right (or middle) mouse button in any tool; zoom via mouse wheel (2%-2000%). Left-drag on empty canvas draws a rubber-band selection (Shift/Ctrl keeps the current selection); plain clicks select elements, touch/pen keeps one-finger panning. Elements render as vector DOM/SVG, so text stays sharp at every zoom level.
 - Zones: a public band at the top of the canvas is visible and editable by all approved users. Everything below the dashed divider is private per user; private elements are filtered server-side (`zone = 'public' OR owner_id = ?`), so other users never receive them.
 - Element types:
   - Notes: colored sticky notes with short text.

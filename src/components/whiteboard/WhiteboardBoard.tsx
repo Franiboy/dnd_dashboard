@@ -675,23 +675,37 @@ export function WhiteboardBoard({
       setCroppingId(null);
       return;
     }
-    if (e.button !== 0 && e.button !== 1) return;
-    const { wx, wy } = screenToWorld(e.clientX, e.clientY);
-
-    if (tool === 'select') {
-      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-      if (additive) {
-        // Shift/Ctrl + drag on empty canvas draws a rubber-band selection.
-        gestureRef.current = { kind: 'band', additive: true };
-        setRectPreview({ x1: wx, y1: wy, x2: wx, y2: wy });
-        bindWindowGesture();
-        return;
-      }
-      // Plain press drops the selection and pans.
-      setSelection(null);
+    // Right/middle button always pans the canvas, no matter which tool is
+    // active; left stays reserved for selecting, drawing and creating.
+    if (e.button === 1 || e.button === 2) {
+      e.preventDefault();
       gestureRef.current = { kind: 'pan', lastX: e.clientX, lastY: e.clientY };
       bindWindowGesture();
       setCursorMode('panning');
+      return;
+    }
+    if (e.button !== 0) return;
+    const { wx, wy } = screenToWorld(e.clientX, e.clientY);
+
+    // Touch/pen pointers have no right button, so they keep one-finger
+    // panning in every tool instead of accidentally creating or drawing.
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      if (tool === 'select') setSelection(null);
+      gestureRef.current = { kind: 'pan', lastX: e.clientX, lastY: e.clientY };
+      bindWindowGesture();
+      setCursorMode('panning');
+      return;
+    }
+
+    if (tool === 'select') {
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+      // Any empty-canvas drag draws a rubber-band selection; Shift/Ctrl keeps
+      // the current selection while banding. A plain click still drops the
+      // selection immediately and via the empty band on release.
+      if (!additive) setSelection(null);
+      gestureRef.current = { kind: 'band', additive };
+      setRectPreview({ x1: wx, y1: wy, x2: wx, y2: wy });
+      bindWindowGesture();
       return;
     }
     if (tool === 'draw') {
@@ -723,6 +737,11 @@ export function WhiteboardBoard({
   };
 
   const startElementDrag = (event: ReactPointerEvent, element: WhiteboardElement) => {
+    // Right/middle presses fall through to the board background, which turns
+    // them into a pan gesture regardless of the active tool.
+    if (event.button !== 0) return;
+    // Touch/pen pointers pan the board instead of moving an element.
+    if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
     event.stopPropagation();
     if (croppingId) return;
 
@@ -801,6 +820,7 @@ export function WhiteboardBoard({
   };
 
   const startElementResize = (event: ReactPointerEvent, element: WhiteboardElement) => {
+    if (event.button !== 0) return;
     event.stopPropagation();
     if (!canEdit(element) || element.locked) return;
     bindWindowGesture();
@@ -820,6 +840,8 @@ export function WhiteboardBoard({
   };
 
   const startArrowDrag = (event: ReactPointerEvent, element: WhiteboardElement) => {
+    // Right/middle presses fall through to the board background pan.
+    if (event.button !== 0) return;
     event.stopPropagation();
     if (!canEdit(element)) return;
     bindWindowGesture();
