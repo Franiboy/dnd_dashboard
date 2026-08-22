@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { BingoGame, SafeUser, Task } from '../../shared/types';
+import type { BingoGame, SafeUser, Task, TaskAudience } from '../../shared/types';
 import type { Socket } from '../types';
 import { useApi } from '../hooks/useApi';
 import { BingoAiSuggestions } from './BingoAiSuggestions';
@@ -44,6 +44,16 @@ export function TaskPool({
   const [editingAssignedTo, setEditingAssignedTo] = useState<string[]>([]);
   const [showHidden, setShowHidden] = useState(false);
   const [activeTab, setActiveTab] = useState<'tasks' | 'suggestions'>('tasks');
+  // Admins manage both pools and can switch; dungeon masters always see
+  // their own pool, everyone else the player pool.
+  const [preferredAudience, setPreferredAudience] = useState<TaskAudience>('players');
+  const isAdminUser = !!currentUser?.isAdmin;
+  const isDmUser = currentUser?.role === 'dungeon_master';
+  const activeAudience: TaskAudience = isAdminUser
+    ? preferredAudience
+    : isDmUser
+      ? 'dm'
+      : 'players';
   const ownerId = currentUser?.id;
   const assignableUsers = users.filter((u) => !u.isInitialAdmin);
 
@@ -56,7 +66,9 @@ export function TaskPool({
   );
 
   const visibleTasks = game.tasks.filter(
-    (task) => !task.isPrivate || (ownerId && task.assignedTo?.includes(ownerId)) || showHidden
+    (task) =>
+      (task.audience ?? 'players') === activeAudience &&
+      (!task.isPrivate || (ownerId && task.assignedTo?.includes(ownerId)) || showHidden)
   );
 
   useEffect(() => {
@@ -69,11 +81,13 @@ export function TaskPool({
 
   const add = () => {
     if (!text.trim() || !socket) return;
-    if (isPrivate && (!ownerId || assignedTo.length === 0)) return;
+    const dmPool = activeAudience === 'dm';
+    if (!dmPool && isPrivate && (!ownerId || assignedTo.length === 0)) return;
     socket.emit('addTask', {
       text: text.trim(),
-      isPrivate,
-      assignedTo: isPrivate ? assignedTo : [],
+      isPrivate: dmPool ? false : isPrivate,
+      assignedTo: !dmPool && isPrivate ? assignedTo : [],
+      audience: activeAudience,
     });
     setText('');
     setIsPrivate(false);
@@ -103,8 +117,9 @@ export function TaskPool({
     socket.emit('updateTask', {
       taskId: editingTask.id,
       text: editingText.trim(),
-      isPrivate: editingIsPrivate,
-      assignedTo: editingIsPrivate ? editingAssignedTo : [],
+      isPrivate: editingTask.audience === 'dm' ? false : editingIsPrivate,
+      assignedTo: editingTask.audience !== 'dm' && editingIsPrivate ? editingAssignedTo : [],
+      audience: editingTask.audience,
     });
     setEditingTask(null);
     setEditingText('');
@@ -139,8 +154,29 @@ export function TaskPool({
     </div>
   );
 
+  const poolSwitcher = isAdminUser && isSetup && (
+    <div className="flex items-center gap-2 shrink-0 mb-2">
+      <span className="text-slate-400 text-xs">Pool:</span>
+      {(['players', 'dm'] as TaskAudience[]).map((aud) => (
+        <button
+          key={aud}
+          type="button"
+          onClick={() => setPreferredAudience(aud)}
+          className={`px-2 py-1 rounded text-xs font-medium transition ${
+            activeAudience === aud
+              ? 'bg-[var(--accent)] text-slate-900'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-[var(--text-h)]'
+          }`}
+        >
+          {aud === 'dm' ? 'Dungeon Master' : 'Spieler'}
+        </button>
+      ))}
+    </div>
+  );
+
   const taskList = (
     <>
+      {poolSwitcher}
       {isSetup && (
         <div className="flex flex-col gap-3 mb-2">
           <div className="flex gap-2">
@@ -148,41 +184,47 @@ export function TaskPool({
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && add()}
-              placeholder="Neue Aufgabe..."
+              placeholder={activeAudience === 'dm' ? 'Neue DM-Aufgabe...' : 'Neue Aufgabe...'}
               className="min-w-0 flex-1 px-3 py-2 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
             <button
               onClick={add}
-              disabled={!text.trim() || (isPrivate && assignedTo.length === 0)}
+              disabled={
+                !text.trim() || (activeAudience !== 'dm' && isPrivate && assignedTo.length === 0)
+              }
               className="shrink-0 whitespace-nowrap px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
             >
               Hinzufügen
             </button>
           </div>
-          <div className="flex flex-col gap-2 p-3 rounded bg-slate-900/30 border border-[var(--border)]">
-            <Toggle
-              checked={isPrivate}
-              onChange={(checked) => {
-                setIsPrivate(checked);
-                setAssignedTo(checked && ownerId && !currentUser?.isInitialAdmin ? [ownerId] : []);
-              }}
-              label="Private Aufgabe"
-            />
-            {isPrivate &&
-              ownerId &&
-              (usersLoading ? (
-                <Loading text="Benutzer laden..." size="sm" />
-              ) : (
-                <UserCheckboxList
-                  users={assignableUsers}
-                  selected={assignedTo}
-                  onChange={setAssignedTo}
-                  disabledIds={!currentUser?.isInitialAdmin && ownerId ? [ownerId] : []}
-                  title="Zugewiesen an (mehrere möglich):"
-                  emptyMessage="Keine Benutzer verfügbar."
-                />
-              ))}
-          </div>
+          {activeAudience === 'players' && (
+            <div className="flex flex-col gap-2 p-3 rounded bg-slate-900/30 border border-[var(--border)]">
+              <Toggle
+                checked={isPrivate}
+                onChange={(checked) => {
+                  setIsPrivate(checked);
+                  setAssignedTo(
+                    checked && ownerId && !currentUser?.isInitialAdmin ? [ownerId] : []
+                  );
+                }}
+                label="Private Aufgabe"
+              />
+              {isPrivate &&
+                ownerId &&
+                (usersLoading ? (
+                  <Loading text="Benutzer laden..." size="sm" />
+                ) : (
+                  <UserCheckboxList
+                    users={assignableUsers}
+                    selected={assignedTo}
+                    onChange={setAssignedTo}
+                    disabledIds={!currentUser?.isInitialAdmin && ownerId ? [ownerId] : []}
+                    title="Zugewiesen an (mehrere möglich):"
+                    emptyMessage="Keine Benutzer verfügbar."
+                  />
+                ))}
+            </div>
+          )}
         </div>
       )}
       <ul className={`flex-1 min-h-0 space-y-2 overflow-auto ${listClassName || ''}`}>
@@ -223,7 +265,7 @@ export function TaskPool({
       {activeTab === 'tasks' && taskList}
       {activeTab === 'suggestions' && (
         <div className="flex-1 min-h-0 overflow-hidden">
-          <BingoAiSuggestions isSetup={isSetup} />
+          <BingoAiSuggestions isSetup={isSetup} audience={activeAudience} />
         </div>
       )}
 
@@ -268,6 +310,7 @@ export function TaskPool({
               label="Private Aufgabe"
             />
             {editingIsPrivate &&
+              editingTask.audience !== 'dm' &&
               (usersLoading ? (
                 <Loading text="Benutzer laden..." size="sm" />
               ) : (
@@ -380,6 +423,14 @@ function TaskListItem({
           : 'bg-slate-900/50 border-[var(--border)]'
       } ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
+      {task.audience === 'dm' && (
+        <span
+          className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-900/60 text-purple-200"
+          title="DM-Aufgabe"
+        >
+          DM
+        </span>
+      )}
       <span ref={textRef} className="min-w-0 flex-1 break-words text-[var(--text-h)]">
         {task.text}
       </span>

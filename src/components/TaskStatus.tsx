@@ -32,6 +32,8 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
   }, [request]);
 
   const taskStatus = game.tasks
+    // DM-pool tasks are marked by the dungeon masters themselves.
+    .filter((task) => (task.audience ?? 'players') !== 'dm')
     .filter((task) => showHidden || !task.isPrivate)
     .map((task) => {
       const confirmedCell = game.players

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { BingoGame, Player, SafeUser } from '../../shared/types';
+import type { BingoGame, Player, SafeUser, TaskAudience } from '../../shared/types';
 import type { Socket } from '../types';
 import { BingoGrid } from './BingoGrid';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -22,20 +22,31 @@ interface BingoDashboardProps {
 
 type MobileTab = 'field' | 'tasks';
 
-function getAvailableTaskCount(game: BingoGame, userId?: string): number {
-  return game.tasks.filter((t) => !t.isPrivate || (userId && t.assignedTo?.includes(userId)))
-    .length;
+// Each participant fills their board exclusively from their own pool:
+// dungeon masters from the dm pool, everyone else from the player pool.
+function poolFor(role: SafeUser['role'] | Player['role']): TaskAudience {
+  return role === 'dungeon_master' ? 'dm' : 'players';
+}
+
+function getAvailableTaskCount(game: BingoGame, player: Player): number {
+  const audience = poolFor(player.role);
+  return game.tasks.filter(
+    (t) =>
+      (t.audience ?? 'players') === audience &&
+      (!t.isPrivate || (player.userId && t.assignedTo?.includes(player.userId)))
+  ).length;
 }
 
 function SetupControls({ game, socket }: { game: BingoGame; socket: Socket | null }) {
   const needed = game.gridSize * game.gridSize;
   const totalEnough = game.tasks.length >= needed;
   // Soft warning only: the game can be started at any time; players who cannot
-  // fill their board (e.g. due to private tasks) simply join later.
+  // fill their board (e.g. due to private tasks or an empty dm pool) simply
+  // join later.
   const bottleneck = [...game.players]
     .map((p) => ({
       name: p.name,
-      count: getAvailableTaskCount(game, p.userId ?? undefined),
+      count: getAvailableTaskCount(game, p),
     }))
     .sort((a, b) => a.count - b.count)[0];
   const warning =
@@ -178,13 +189,14 @@ export function BingoDashboard({
   const fieldPanelActions =
     isAdmin && isSetup ? <SetupControls game={game} socket={socket} /> : undefined;
 
-  // Tasks the current user may place on their board: all tasks for admins, otherwise
-  // public tasks plus private tasks assigned to the user.
-  const availableTasks = isAdmin
-    ? game.tasks
-    : game.tasks.filter(
-        (task) => !task.isPrivate || (user.id && task.assignedTo?.includes(user.id))
-      );
+  // Tasks the current user may place on their board: exclusively from their
+  // own pool (dm pool for dungeon masters, player pool for everyone else).
+  const audience = poolFor(user.role);
+  const availableTasks = game.tasks.filter(
+    (task) =>
+      (task.audience ?? 'players') === audience &&
+      (!task.isPrivate || (user.id && task.assignedTo?.includes(user.id)))
+  );
 
   const boardControls = (
     <BoardControls

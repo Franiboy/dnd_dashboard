@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'crypto';
-import type { BingoGame, Cell, Player, Task, UserRole } from '../shared/types.js';
+import type { BingoGame, Cell, Player, Task, TaskAudience, UserRole } from '../shared/types.js';
 import { loadGame, saveGame } from './repositories/games.js';
 import { getAllUsers } from './users.js';
 import { runMigrations } from './migrations.js';
@@ -86,7 +86,25 @@ function createEmptyBoard(size: number): Cell[][] {
   return board;
 }
 
-function isValidBoard(board: Cell[][], size: number, userId?: string): boolean {
+// Only permanent participants may actively play bingo; guests are spectators.
+export function canParticipate(role?: UserRole): boolean {
+  return role === 'player' || role === 'dungeon_master';
+}
+
+// Dungeon masters manage and play their own task pool.
+export function canManageDmTasks(role?: UserRole, isAdmin?: boolean): boolean {
+  return role === 'dungeon_master' || isAdmin === true;
+}
+
+function normalizeAudience(audience?: TaskAudience): TaskAudience {
+  return audience === 'dm' ? 'dm' : 'players';
+}
+
+function isValidBoard(
+  board: Cell[][],
+  size: number,
+  user?: { userId?: string; role?: UserRole }
+): boolean {
   if (!Array.isArray(board) || board.length !== size) return false;
   for (let r = 0; r < size; r++) {
     const row = board[r];
@@ -96,7 +114,9 @@ function isValidBoard(board: Cell[][], size: number, userId?: string): boolean {
       if (cell.taskId === null) continue;
       const task = game.tasks.find((t) => t.id === cell.taskId);
       if (!task) return false;
-      if (task.isPrivate && (!userId || !task.assignedTo?.includes(userId))) return false;
+      if (task.audience === 'dm' && user?.role !== 'dungeon_master') return false;
+      if (task.isPrivate && (!user?.userId || !task.assignedTo?.includes(user.userId)))
+        return false;
     }
   }
   return true;
@@ -104,14 +124,24 @@ function isValidBoard(board: Cell[][], size: number, userId?: string): boolean {
 
 export function addTask(
   text: string,
-  { isPrivate = false, assignedTo = [] }: { isPrivate?: boolean; assignedTo?: string[] } = {}
+  {
+    isPrivate = false,
+    assignedTo = [],
+    audience = 'players',
+  }: { isPrivate?: boolean; assignedTo?: string[]; audience?: TaskAudience } = {}
 ): Task {
+  if (game.status !== 'setup')
+    throw new Error('Aufgaben können nur vor Spielstart hinzugefügt werden.');
+  const taskAudience = normalizeAudience(audience);
+  // The dm pool is already restricted to dungeon masters, so private
+  // assignment would be redundant there.
   const task: Task = {
     id: createId(),
     text: text.trim(),
     createdAt: new Date().toISOString(),
-    isPrivate,
-    assignedTo,
+    isPrivate: taskAudience === 'dm' ? false : isPrivate,
+    assignedTo: taskAudience === 'dm' ? [] : assignedTo,
+    audience: taskAudience,
   };
   game.tasks.push(task);
   persist();
@@ -120,7 +150,7 @@ export function addTask(
 
 export function updateTask(
   taskId: string,
-  updates: { text?: string; isPrivate?: boolean; assignedTo?: string[] }
+  updates: { text?: string; isPrivate?: boolean; assignedTo?: string[]; audience?: TaskAudience }
 ): BingoGame {
   const task = game.tasks.find((t) => t.id === taskId);
   if (!task) throw new Error('Aufgabe nicht gefunden.');
@@ -133,11 +163,24 @@ export function updateTask(
     task.text = text;
   }
 
-  if (updates.isPrivate !== undefined) {
+  const nextAudience = normalizeAudience(updates.audience ?? task.audience);
+
+  if (updates.isPrivate !== undefined && nextAudience !== 'dm') {
     task.isPrivate = updates.isPrivate;
   }
 
-  if (task.isPrivate) {
+  // Moving a task into the dm pool clears private assignment: the pool itself
+  // is already restricted to dungeon masters.
+  if (nextAudience === 'dm') {
+    task.isPrivate = false;
+    task.assignedTo = [];
+  } else if (task.audience === 'dm') {
+    task.assignedTo = [];
+  }
+
+  task.audience = nextAudience;
+
+  if (task.audience !== 'dm' && task.isPrivate) {
     const assignedTo = updates.assignedTo ?? task.assignedTo ?? [];
     if (assignedTo.length === 0)
       throw new Error('Private Aufgaben müssen mindestens einer Person zugewiesen werden.');
@@ -151,6 +194,8 @@ export function updateTask(
 }
 
 export function removeTask(taskId: string): BingoGame {
+  if (game.status !== 'setup')
+    throw new Error('Aufgaben können nur vor Spielstart entfernt werden.');
   game.tasks = game.tasks.filter((t) => t.id !== taskId);
   game.players.forEach((p) => {
     if (!p.board) return;
@@ -177,6 +222,9 @@ export function joinPlayer(
   avatarUrl?: string | null,
   role?: UserRole
 ): { game: BingoGame; playerId: string } {
+  if (!canParticipate(role)) {
+    throw new Error('Nur Spieler und Dungeon Master können am Bingo teilnehmen.');
+  }
   const id = createId();
   const player: Player = {
     id,
@@ -245,10 +293,12 @@ export function startGame(): BingoGame {
     const ready = !!(
       p.locked &&
       board &&
-      isValidBoard(board, game.gridSize, p.userId) &&
+      isValidBoard(board, game.gridSize, { userId: p.userId, role: p.role }) &&
       isFull(board)
     );
     p.status = ready ? 'playing' : 'lobby';
+    // A new round starts fresh win counting.
+    p.winCounted = false;
   });
   persist();
   return game;
@@ -264,7 +314,8 @@ export function updateBoard(playerId: string, board: Cell[][]): BingoGame {
   if (game.status !== 'setup' && game.status !== 'playing') {
     throw new Error('Board kann nur vor oder während des Spiels bearbeitet werden.');
   }
-  if (!isValidBoard(board, game.gridSize, player.userId)) throw new Error('Ungültiges Board.');
+  if (!isValidBoard(board, game.gridSize, { userId: player.userId, role: player.role }))
+    throw new Error('Ungültiges Board.');
   player.board = board;
   persist();
   return game;
@@ -276,7 +327,10 @@ export function lockBoard(playerId: string): BingoGame {
   if (game.status !== 'setup' && game.status !== 'playing') {
     throw new Error('Board kann nur vor oder während des Spiels eingelockt werden.');
   }
-  if (!player.board || !isValidBoard(player.board, game.gridSize, player.userId)) {
+  if (
+    !player.board ||
+    !isValidBoard(player.board, game.gridSize, { userId: player.userId, role: player.role })
+  ) {
     throw new Error('Board ist ungültig.');
   }
   if (player.board.some((row) => row.some((cell) => !cell.taskId))) {
@@ -297,12 +351,38 @@ export function unlockBoard(playerId: string): BingoGame {
   return game;
 }
 
+// Count at most one win per player per round: re-entering bingo after an
+// unconfirm or holding several bingo lines at once must not inflate the
+// tally. The flag resets when the next round starts.
+function markBingoIfReached(player: Player): void {
+  if (!player.board || !hasBingo(player.board)) return;
+  if (player.status === 'bingo') return;
+  player.status = 'bingo';
+  if (!player.winCounted) {
+    player.winCounted = true;
+    player.wins = (player.wins ?? 0) + 1;
+  }
+}
+
+function revokeBingoIfLost(player: Player): void {
+  if (!player.board) return;
+  if (hasBingo(player.board)) {
+    if (player.status !== 'bingo') player.status = 'bingo';
+  } else if (player.status === 'bingo') {
+    player.status = 'playing';
+  }
+}
+
 export function confirmTask(
   sourcePlayerId: string,
   taskId: string,
   confirmedByName?: string
 ): BingoGame {
   if (game.status !== 'playing') return game;
+  // DM-pool tasks are never confirmed globally; each dungeon master marks
+  // them on their own board via confirmOwnTask.
+  const task = game.tasks.find((t) => t.id === taskId);
+  if (task?.audience === 'dm') return game;
   const source = game.players.find((p) => p.id === sourcePlayerId);
   const confirmedBy = confirmedByName || source?.name || 'Unbekannt';
 
@@ -320,10 +400,7 @@ export function confirmTask(
         }
       }
     }
-    if (playerChanged && hasBingo(player.board) && player.status !== 'bingo') {
-      player.status = 'bingo';
-      player.wins = (player.wins ?? 0) + 1;
-    }
+    if (playerChanged) markBingoIfReached(player);
   }
 
   if (anyChanged) {
@@ -345,6 +422,9 @@ export function confirmTaskFor(
 
 export function unconfirmTask(taskId: string): BingoGame {
   if (game.status !== 'playing') return game;
+  // DM-pool tasks are managed per dungeon master via unconfirmOwnTask.
+  const task = game.tasks.find((t) => t.id === taskId);
+  if (task?.audience === 'dm') return game;
   let changed = false;
   for (const player of game.players) {
     if (!player.board) continue;
@@ -357,13 +437,61 @@ export function unconfirmTask(taskId: string): BingoGame {
         }
       }
     }
-    if (hasBingo(player.board)) {
-      if (player.status !== 'bingo') player.status = 'bingo';
-    } else {
-      if (player.status === 'bingo') player.status = 'playing';
-    }
+    revokeBingoIfLost(player);
   }
   if (changed) persist();
+  return game;
+}
+
+// Dungeon masters mark dm-pool moments themselves on their own board while
+// they observe them at the table; other boards are never touched.
+export function confirmOwnTask(sourcePlayerId: string, taskId: string): BingoGame {
+  if (game.status !== 'playing') return game;
+  const task = game.tasks.find((t) => t.id === taskId);
+  if (!task || task.audience !== 'dm') return game;
+  const player = game.players.find((p) => p.id === sourcePlayerId);
+  if (!player || !player.board) return game;
+
+  let changed = false;
+  for (let r = 0; r < player.board.length; r++) {
+    for (let c = 0; c < player.board[r].length; c++) {
+      const cell = player.board[r][c];
+      if (cell.taskId === taskId && !cell.confirmedBy) {
+        cell.confirmedBy = player.name;
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    markBingoIfReached(player);
+    persist();
+  }
+  return game;
+}
+
+export function unconfirmOwnTask(sourcePlayerId: string, taskId: string): BingoGame {
+  if (game.status !== 'playing') return game;
+  const task = game.tasks.find((t) => t.id === taskId);
+  if (!task || task.audience !== 'dm') return game;
+  const player = game.players.find((p) => p.id === sourcePlayerId);
+  if (!player || !player.board) return game;
+
+  let changed = false;
+  for (let r = 0; r < player.board.length; r++) {
+    for (let c = 0; c < player.board[r].length; c++) {
+      const cell = player.board[r][c];
+      if (cell.taskId === taskId && cell.confirmedBy) {
+        cell.confirmedBy = null;
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    revokeBingoIfLost(player);
+    persist();
+  }
   return game;
 }
 
@@ -387,6 +515,7 @@ export function finishAndResetGame(): BingoGame {
     p.status = 'lobby';
     p.board = createEmptyBoard(game.gridSize);
     p.locked = false;
+    p.winCounted = false;
   });
   // Pick up role changes that happened during the round.
   syncPlayersFromUsers();
