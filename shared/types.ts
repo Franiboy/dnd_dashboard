@@ -80,6 +80,11 @@ export interface WhiteboardElement {
   url: string | null;
   fromId: string | null;
   toId: string | null;
+  /**
+   * Stacking order among non-arrow elements; higher values render on top.
+   * Ties fall back to creation order, so legacy rows (0) keep their order.
+   */
+  zIndex: number;
   /** Pinned elements cannot be moved or resized until unlocked. */
   locked: boolean;
   createdAt: string;
@@ -101,6 +106,8 @@ export interface WhiteboardPatch {
   url?: string | null;
   fromId?: string | null;
   toId?: string | null;
+  /** Layer ordering: higher renders on top of other non-arrow elements. */
+  zIndex?: number;
   locked?: boolean;
   /** Moving an element across the divider switches its zone. */
   zone?: WhiteboardZone;
