@@ -1,61 +1,69 @@
-import type { BingoSuggestion } from '../../shared/types.js';
+import type { BingoSuggestion, TaskAudience } from '../../shared/types.js';
 import { db } from '../database.js';
 
 export interface CreateBingoSuggestionInput {
   text: string;
   source: string;
+  audience?: TaskAudience;
 }
 
-export function getPendingSuggestions(limit = 20): BingoSuggestion[] {
+function normalizeAudience(audience?: TaskAudience): 'players' | 'dm' {
+  return audience === 'dm' ? 'dm' : 'players';
+}
+
+export function getPendingSuggestions(
+  limit = 20,
+  audience: TaskAudience = 'players'
+): BingoSuggestion[] {
   const rows = db
     .prepare(
-      `SELECT id, text, source, created_at AS createdAt
+      `SELECT id, text, source, created_at AS createdAt, audience
        FROM bingo_suggestions
-       WHERE accepted_at IS NULL AND rejected_at IS NULL
+       WHERE accepted_at IS NULL AND rejected_at IS NULL AND audience = ?
        ORDER BY created_at ASC
        LIMIT ?`
     )
-    .all(limit) as BingoSuggestion[];
+    .all(normalizeAudience(audience), limit) as BingoSuggestion[];
   return rows;
 }
 
-export function countPendingSuggestions(): number {
+export function countPendingSuggestions(audience: TaskAudience = 'players'): number {
   const row = db
     .prepare(
       `SELECT COUNT(*) AS count
        FROM bingo_suggestions
-       WHERE accepted_at IS NULL AND rejected_at IS NULL`
+       WHERE accepted_at IS NULL AND rejected_at IS NULL AND audience = ?`
     )
-    .get() as { count: number } | undefined;
+    .get(normalizeAudience(audience)) as { count: number } | undefined;
   return row?.count ?? 0;
 }
 
-export function getAllPendingSuggestionTexts(): string[] {
+export function getAllPendingSuggestionTexts(audience: TaskAudience = 'players'): string[] {
   const rows = db
     .prepare(
       `SELECT text
        FROM bingo_suggestions
-       WHERE accepted_at IS NULL AND rejected_at IS NULL`
+       WHERE accepted_at IS NULL AND rejected_at IS NULL AND audience = ?`
     )
-    .all() as { text: string }[];
+    .all(normalizeAudience(audience)) as { text: string }[];
   return rows.map((row) => row.text);
 }
 
-export function getRejectedSuggestionTexts(): string[] {
+export function getRejectedSuggestionTexts(audience: TaskAudience = 'players'): string[] {
   const rows = db
     .prepare(
       `SELECT text
        FROM bingo_suggestions
-       WHERE rejected_at IS NOT NULL`
+       WHERE rejected_at IS NOT NULL AND audience = ?`
     )
-    .all() as { text: string }[];
+    .all(normalizeAudience(audience)) as { text: string }[];
   return rows.map((row) => row.text);
 }
 
 export function getSuggestionById(id: number): BingoSuggestion | null {
   const row = db
     .prepare(
-      `SELECT id, text, source, created_at AS createdAt
+      `SELECT id, text, source, created_at AS createdAt, audience
        FROM bingo_suggestions
        WHERE id = ? AND accepted_at IS NULL AND rejected_at IS NULL`
     )
@@ -67,15 +75,20 @@ export function createBingoSuggestions(suggestions: CreateBingoSuggestionInput[]
   if (suggestions.length === 0) return [];
 
   const insert = db.prepare(
-    `INSERT INTO bingo_suggestions (text, source, created_at)
-     VALUES (?, ?, ?)`
+    `INSERT INTO bingo_suggestions (text, source, created_at, audience)
+     VALUES (?, ?, ?, ?)`
   );
   const now = new Date().toISOString();
   const ids: number[] = [];
 
   const tx = db.transaction((items: CreateBingoSuggestionInput[]) => {
     for (const item of items) {
-      const result = insert.run(item.text.trim(), item.source, now);
+      const result = insert.run(
+        item.text.trim(),
+        item.source,
+        now,
+        normalizeAudience(item.audience)
+      );
       ids.push(Number(result.lastInsertRowid));
     }
   });
@@ -100,30 +113,34 @@ export function markSuggestionRejected(id: number): void {
   ).run(new Date().toISOString(), id);
 }
 
-export function rejectAllPendingSuggestions(): void {
+export function rejectAllPendingSuggestions(audience: TaskAudience = 'players'): void {
   db.prepare(
     `UPDATE bingo_suggestions
      SET rejected_at = ?
-     WHERE accepted_at IS NULL AND rejected_at IS NULL`
-  ).run(new Date().toISOString());
+     WHERE accepted_at IS NULL AND rejected_at IS NULL AND audience = ?`
+  ).run(new Date().toISOString(), normalizeAudience(audience));
 }
 
 export interface BingoSuggestionBatch {
   id: string;
   status: 'pending' | 'completed' | 'failed';
   createdAt: string;
+  audience: 'players' | 'dm';
 }
 
-export function createBingoSuggestionBatch(batchId: string): void {
+export function createBingoSuggestionBatch(
+  batchId: string,
+  audience: TaskAudience = 'players'
+): void {
   db.prepare(
-    `INSERT OR IGNORE INTO bingo_suggestion_batches (id, status, created_at) VALUES (?, ?, ?)`
-  ).run(batchId, 'pending', new Date().toISOString());
+    `INSERT OR IGNORE INTO bingo_suggestion_batches (id, status, created_at, audience) VALUES (?, ?, ?, ?)`
+  ).run(batchId, 'pending', new Date().toISOString(), normalizeAudience(audience));
 }
 
 export function getBingoSuggestionBatch(batchId: string): BingoSuggestionBatch | null {
   const row = db
     .prepare(
-      `SELECT id, status, created_at AS createdAt FROM bingo_suggestion_batches WHERE id = ?`
+      `SELECT id, status, created_at AS createdAt, audience FROM bingo_suggestion_batches WHERE id = ?`
     )
     .get(batchId) as BingoSuggestionBatch | undefined;
   return row ?? null;

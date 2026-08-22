@@ -3,13 +3,23 @@
 ## Bingo Game Flow
 
 1. **Setup phase:** Admins add tasks and choose the grid size (3–5). Private tasks can be assigned to multiple players; they are hidden from other players and from admins without the "Show Hidden" toggle.
-2. **Join:** Players join via `join` with their Discord display name.
+2. **Join:** Users join via `join` with their display name. Only users with the role `player` or `dungeon_master` actively play bingo; guests stay spectators and receive state broadcasts without a player entry.
 3. **Fill board:** Each player draws tasks from the pool onto their board.
 4. **Lock board:** Once the board is complete the player locks it.
-5. **Start:** Admin starts the game once all online players have locked their boards and enough tasks exist (`gridSize * gridSize`).
-6. **Play:** Tasks are confirmed globally (`confirmTask` / `confirmTaskFor`); completed tasks are marked on all boards.
-7. **Bingo:** Once a row, column or diagonal is fully confirmed the player wins. A `bingo` event is emitted with the player name.
-8. **New round:** Admin can end and reset the game (`resetGame`); tasks are kept, boards are cleared.
+5. **Start:** Admin starts the game at any time once enough tasks exist (`gridSize * gridSize`). Players with a complete locked board play immediately; everyone else may fill and lock their board during the running game (late join).
+6. **Task lock:** While a round is running, tasks cannot be added, edited or removed. The admin must end the round (`resetGame`) first.
+7. **Play:** Tasks are confirmed globally (`confirmTask` / `confirmTaskFor`); completed tasks are marked on all boards.
+8. **Bingo:** Once a row, column or diagonal is fully confirmed the player wins. A `bingo` event is emitted with the player name. Each player earns at most one win per round: unconfirming and re-confirming tasks does not inflate the tally, and several simultaneous bingo lines count as a single win.
+9. **New round:** Admin can end and reset the game (`resetGame`); tasks are kept, boards are cleared, win counting restarts.
+
+### Dungeon Master Pool
+
+Dungeon masters play the same round in parallel, but with their own task pool:
+
+- Tasks carry an `audience` (`players` or `dm`). Regular players only see and place `players`-pool tasks; dungeon masters fill their boards exclusively from the `dm` pool. Admins manage both pools via a switcher in the task panel.
+- DM-pool tasks are never confirmed globally. Each dungeon master marks them on their own board while observing the table (`confirmOwnTask` / `unconfirmOwnTask`), e.g. moments triggered by players like dice luck or recurring discussions.
+- The AI keeps two suggestion pools: the regular one and a DM-perspective pool whose prompt looks for player-triggered moments from recent session transcripts. Dungeon masters (and admins via the pool switcher) get DM suggestions in the suggestions tab; accepting adds them to the dm task pool.
+- Guests are spectators: they cannot join and are hidden from the player list.
 
 ## Bingo AI Suggestions
 
