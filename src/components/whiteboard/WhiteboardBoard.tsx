@@ -994,6 +994,7 @@ export function WhiteboardBoard({
               editing={editingId === element.id}
               dragging={cursorMode === 'dragging'}
               cropping={croppingId === element.id}
+              cameraScale={camera.scale}
               onPointerDown={startElementDrag}
               onStartResize={startElementResize}
               onRequestEdit={requestElementInteraction}
