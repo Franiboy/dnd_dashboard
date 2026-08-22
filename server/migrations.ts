@@ -149,6 +149,31 @@ function migrateEntityBlacklistTypes(): void {
   log.info('Migrated entity_blacklist types to plural form');
 }
 
+// Legacy whiteboard_elements tables only allow the original four element types
+// in their CHECK constraint. Rebuild the table so 'shape' and 'stroke' rows
+// are accepted; all existing columns are copied 1:1.
+function migrateWhiteboardElementTypes(): void {
+  if (!tableExists('whiteboard_elements')) return;
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'whiteboard_elements'")
+    .get() as { sql: string } | undefined;
+  // Already rebuilt when the CHECK constraint knows the stroke type.
+  if (!row || /'stroke'/.test(row.sql)) return;
+  db.exec('ALTER TABLE whiteboard_elements RENAME TO whiteboard_elements_old;');
+  db.exec(createTableSql('whiteboard_elements', schema.whiteboard_elements));
+  const oldCols = new Set([...getExistingColumns('whiteboard_elements_old').keys()]);
+  const shared = Object.keys(schema.whiteboard_elements.columns)
+    .filter((col) => oldCols.has(col))
+    .map((col) => `"${col}"`)
+    .join(', ');
+  db.exec(`
+    INSERT INTO whiteboard_elements (${shared})
+    SELECT ${shared} FROM whiteboard_elements_old;
+  `);
+  db.exec('DROP TABLE whiteboard_elements_old;');
+  log.info('Migrated whiteboard_elements to shape/stroke schema');
+}
+
 // Backfill recording_sessions.updated_at from the most recent timestamp column.
 function fillRecordingSessionUpdatedAt(): void {
   if (!tableExists('recording_sessions')) return;
@@ -196,6 +221,7 @@ export function runMigrations(): void {
     // Apply non-generative data migrations that reshape schema first.
     migrateEntityBlacklistTypes();
     dropLegacyDiaryEntryDate();
+    migrateWhiteboardElementTypes();
     // Apply the declarative schema diff (tables, columns, indexes).
     applySchema();
     // Backfills that depend on the schema being present.
