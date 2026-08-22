@@ -1,4 +1,5 @@
 import {
+  useMemo,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -7,8 +8,10 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import DOMPurify from 'dompurify';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { TASK_STATUS_META, isBoardImageUrl, nextTaskStatus } from './whiteboardShared';
+import { ensureHtml } from '../quillConfig';
 
 /**
  * Content is laid out in this fixed design width per element type and then
@@ -23,6 +26,15 @@ const DESIGN_WIDTHS: Record<string, number> = {
 
 const MIN_CONTENT_SCALE = 0.15;
 const MAX_CONTENT_SCALE = 12;
+
+/**
+ * Overlay controls (lock badge, delete/edit/layer buttons, resize grip) scale
+ * with contentScale but never render smaller than MIN_UI_SCREEN_PX on screen:
+ * below that size circles rasterize as oval blobs and hit targets become
+ * unusable, so uiScale compensates for camera zoom-out.
+ */
+const BASE_CONTROL_SIZE = 24;
+const MIN_UI_SCREEN_PX = 16;
 
 function LockIcon({ open, size = 12 }: { open: boolean; size?: number }) {
   return (
@@ -49,6 +61,8 @@ interface WhiteboardElementViewProps {
   editing: boolean;
   dragging: boolean;
   cropping: boolean;
+  /** Current whiteboard camera zoom, used to keep overlay controls legible. */
+  cameraScale: number;
   onPointerDown: (event: ReactPointerEvent, element: WhiteboardElement) => void;
   onStartResize: (event: ReactPointerEvent, element: WhiteboardElement) => void;
   onRequestEdit: (id: string) => void;
@@ -157,45 +171,6 @@ function commitField(
 ) {
   onUpdate(element.id, patch);
   onCloseEdit();
-}
-
-function NoteEditor({
-  element,
-  onUpdate,
-  onCloseEdit,
-  boxWidth,
-  boxHeight,
-}: NoteDraftProps & { boxWidth: number; boxHeight: number }) {
-  const [draft, setDraft] = useState(element.text);
-  const { ref, fontSize, padTop } = useFitFontSize(draft, boxWidth, boxHeight, true);
-  const shouldIgnoreBlur = useBlurGuard(ref);
-  useEffect(() => {
-    ref.current?.focus();
-  }, [ref]);
-  return (
-    <textarea
-      ref={ref as RefObject<HTMLTextAreaElement>}
-      value={draft}
-      style={{ fontSize, paddingTop: padTop }}
-      onChange={(e) => setDraft(e.target.value)}
-      onPointerDown={(e) => e.stopPropagation()}
-      onBlur={() => {
-        if (shouldIgnoreBlur()) return;
-        commitField(element, { text: draft }, onUpdate, onCloseEdit);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.stopPropagation();
-          onCloseEdit();
-        }
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-          commitField(element, { text: draft }, onUpdate, onCloseEdit);
-        }
-      }}
-      className="h-full w-full resize-none overflow-hidden bg-transparent text-center leading-[1.15] text-slate-900 outline-none placeholder:text-slate-900/40"
-      placeholder="Notiz schreiben…"
-    />
-  );
 }
 
 function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
@@ -395,6 +370,7 @@ export function WhiteboardElementView({
   editing,
   dragging,
   cropping,
+  cameraScale,
   onPointerDown,
   onStartResize,
   onRequestEdit,
@@ -409,17 +385,26 @@ export function WhiteboardElementView({
   onSendBackward,
 }: WhiteboardElementViewProps) {
   const isImageLink = element.type === 'link' && isBoardImageUrl(element.url ?? '');
+  const isNote = element.type === 'note';
+  const sanitizedNoteHtml = useMemo(() => {
+    if (!isNote) return '';
+    return DOMPurify.sanitize(ensureHtml(element.text), {
+      USE_PROFILES: { html: true },
+      ADD_ATTR: ['style'],
+    });
+  }, [isNote, element.text]);
   const designWidth = DESIGN_WIDTHS[element.type] ?? element.width;
   const contentScale = Math.min(
     MAX_CONTENT_SCALE,
     Math.max(MIN_CONTENT_SCALE, element.width / designWidth)
   );
+  const uiScale = Math.max(contentScale, MIN_UI_SCREEN_PX / (BASE_CONTROL_SIZE * cameraScale));
   // Notes auto-fit their text into this box (design units minus padding).
   const noteFit = useFitFontSize(
     element.text,
     designWidth - 16,
     element.height / contentScale - 16,
-    element.type === 'note' && !editing && !!element.text.trim()
+    isNote && !!element.text.trim()
   );
   let body: ReactNode = null;
 
@@ -429,23 +414,17 @@ export function WhiteboardElementView({
         className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg p-2 shadow"
         style={{ backgroundColor: element.color }}
       >
-        {editing ? (
-          <NoteEditor
-            element={element}
-            onUpdate={onUpdate}
-            onCloseEdit={onCloseEdit}
-            boxWidth={designWidth - 16}
-            boxHeight={element.height / contentScale - 16}
-          />
+        {editing ? null : !element.text ? (
+          <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
         ) : (
           <div
             ref={noteFit.ref as RefObject<HTMLDivElement>}
-            className="w-full whitespace-pre-wrap break-words text-center leading-[1.15] text-slate-900"
+            className="w-full break-words leading-[1.15] text-slate-900"
             style={{ fontSize: noteFit.fontSize }}
           >
-            {element.text || (
-              <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
-            )}
+            <div className="whiteboard-note-content">
+              <div className="ql-editor" dangerouslySetInnerHTML={{ __html: sanitizedNoteHtml }} />
+            </div>
           </div>
         )}
       </div>
@@ -557,13 +536,13 @@ export function WhiteboardElementView({
         <div
           className="pointer-events-none absolute z-10 flex items-center justify-center rounded-full bg-slate-700 text-slate-200 shadow"
           style={{
-            left: -10 * contentScale,
-            top: -10 * contentScale,
-            width: 20 * contentScale,
-            height: 20 * contentScale,
+            left: -10 * uiScale,
+            top: -10 * uiScale,
+            width: 20 * uiScale,
+            height: 20 * uiScale,
           }}
         >
-          <LockIcon open={false} size={11 * contentScale} />
+          <LockIcon open={false} size={11 * uiScale} />
         </div>
       )}
       {selected && !editing && !cropping && (
@@ -578,16 +557,16 @@ export function WhiteboardElementView({
             }}
             className="absolute z-10 flex items-center justify-center rounded-full bg-[var(--danger)] p-0 text-white shadow hover:brightness-110"
             style={{
-              width: 24 * contentScale,
-              height: 24 * contentScale,
-              right: -12 * contentScale,
-              top: -12 * contentScale,
+              width: 24 * uiScale,
+              height: 24 * uiScale,
+              right: -12 * uiScale,
+              top: -12 * uiScale,
             }}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width={12 * contentScale}
-              height={12 * contentScale}
+              width={12 * uiScale}
+              height={12 * uiScale}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -608,17 +587,17 @@ export function WhiteboardElementView({
             }}
             className="absolute z-10 flex items-center justify-center rounded-full bg-[var(--accent)] text-slate-900 shadow hover:brightness-110"
             style={{
-              width: 24 * contentScale,
-              height: 24 * contentScale,
-              right: -12 * contentScale,
-              top: 28 * contentScale,
+              width: 24 * uiScale,
+              height: 24 * uiScale,
+              right: -12 * uiScale,
+              top: 28 * uiScale,
             }}
           >
             {isImageLink ? (
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                width={12 * contentScale}
-                height={12 * contentScale}
+                width={12 * uiScale}
+                height={12 * uiScale}
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -632,8 +611,8 @@ export function WhiteboardElementView({
             ) : (
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                width={12 * contentScale}
-                height={12 * contentScale}
+                width={12 * uiScale}
+                height={12 * uiScale}
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -657,13 +636,13 @@ export function WhiteboardElementView({
               element.locked ? 'bg-[var(--warning)]' : 'bg-slate-600'
             }`}
             style={{
-              width: 24 * contentScale,
-              height: 24 * contentScale,
-              left: -12 * contentScale,
-              top: -12 * contentScale,
+              width: 24 * uiScale,
+              height: 24 * uiScale,
+              left: -12 * uiScale,
+              top: -12 * uiScale,
             }}
           >
-            <LockIcon open={!element.locked} size={12 * contentScale} />
+            <LockIcon open={!element.locked} size={12 * uiScale} />
           </button>
           {(
             [
@@ -696,16 +675,16 @@ export function WhiteboardElementView({
                 control.enabled ? 'hover:brightness-110' : 'opacity-40'
               }`}
               style={{
-                width: 24 * contentScale,
-                height: 24 * contentScale,
-                left: -12 * contentScale,
-                top: (control.title === 'Ebene nach vorn' ? 28 : 56) * contentScale,
+                width: 24 * uiScale,
+                height: 24 * uiScale,
+                left: -12 * uiScale,
+                top: (control.title === 'Ebene nach vorn' ? 28 : 56) * uiScale,
               }}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                width={14 * contentScale}
-                height={14 * contentScale}
+                width={14 * uiScale}
+                height={14 * uiScale}
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -726,11 +705,11 @@ export function WhiteboardElementView({
               }}
               className="absolute cursor-nwse-resize rounded-sm border-[var(--accent)] bg-[var(--panel)]"
               style={{
-                width: 16 * contentScale,
-                height: 16 * contentScale,
-                right: -8 * contentScale,
-                bottom: -8 * contentScale,
-                borderWidth: Math.max(1.5, 2 * contentScale),
+                width: 16 * uiScale,
+                height: 16 * uiScale,
+                right: -8 * uiScale,
+                bottom: -8 * uiScale,
+                borderWidth: Math.max(1.5, 2 * uiScale),
               }}
             />
           )}
@@ -820,10 +799,16 @@ function CropOverlay({
     window.addEventListener('pointerup', up);
   };
 
-  const handleStyle = (mode: string) => ({
+  const HANDLE_SIZE = 14;
+  const halfHandle = -HANDLE_SIZE / 2;
+  const handleStyle = (mode: 'nw' | 'ne' | 'sw' | 'se') => ({
     position: 'absolute' as const,
-    width: 14,
-    height: 14,
+    width: HANDLE_SIZE,
+    height: HANDLE_SIZE,
+    left: mode === 'nw' || mode === 'sw' ? halfHandle : undefined,
+    right: mode === 'ne' || mode === 'se' ? halfHandle : undefined,
+    top: mode === 'nw' || mode === 'ne' ? halfHandle : undefined,
+    bottom: mode === 'sw' || mode === 'se' ? halfHandle : undefined,
     cursor: `${mode}-resize`,
   });
 
@@ -869,22 +854,22 @@ function CropOverlay({
           onPointerDown={(e) => beginDrag('move', e)}
         >
           <div
-            className="absolute -left-1.5 -top-1.5 h-3.5 w-3.5 rounded-full border-2 border-[var(--panel)] bg-[var(--accent)] cursor-nwse-resize"
+            className="rounded-full border-2 border-[var(--panel)] bg-[var(--accent)]"
             style={handleStyle('nw')}
             onPointerDown={(e) => beginDrag('nw', e)}
           />
           <div
-            className="absolute -right-1.5 -top-1.5 h-3.5 w-3.5 rounded-full border-2 border-[var(--panel)] bg-[var(--accent)] cursor-nesw-resize"
+            className="rounded-full border-2 border-[var(--panel)] bg-[var(--accent)]"
             style={handleStyle('ne')}
             onPointerDown={(e) => beginDrag('ne', e)}
           />
           <div
-            className="absolute -bottom-1.5 -left-1.5 h-3.5 w-3.5 rounded-full border-2 border-[var(--panel)] bg-[var(--accent)] cursor-nesw-resize"
+            className="rounded-full border-2 border-[var(--panel)] bg-[var(--accent)]"
             style={handleStyle('sw')}
             onPointerDown={(e) => beginDrag('sw', e)}
           />
           <div
-            className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-full border-2 border-[var(--panel)] bg-[var(--accent)] cursor-nwse-resize"
+            className="rounded-full border-2 border-[var(--panel)] bg-[var(--accent)]"
             style={handleStyle('se')}
             onPointerDown={(e) => beginDrag('se', e)}
           />

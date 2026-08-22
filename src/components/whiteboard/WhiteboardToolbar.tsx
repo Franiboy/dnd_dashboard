@@ -150,7 +150,8 @@ export function WhiteboardToolbar({
       title={button.label}
       aria-label={button.label}
       onClick={() => onToolChange(button.id)}
-      className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+      onMouseDown={(e) => e.preventDefault()}
+      className={`flex h-9 w-9 cursor-pointer select-none items-center justify-center rounded-lg transition-colors ${
         tool === button.id
           ? 'bg-[var(--accent)] text-slate-900'
           : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
@@ -159,6 +160,20 @@ export function WhiteboardToolbar({
       <svg {...COMMON_PROPS}>{button.icon}</svg>
     </button>
   );
+
+  const swatchButtonClass = (active: boolean, outlined = false) =>
+    `h-6 w-6 cursor-pointer select-none rounded-full border-2 transition-transform ${
+      active
+        ? 'scale-110 border-white'
+        : outlined
+          ? 'border-slate-500 hover:scale-105'
+          : 'border-transparent hover:scale-105'
+    }`;
+
+  const widthButtonClass = (active: boolean) =>
+    `flex h-6 w-6 cursor-pointer select-none items-center justify-center rounded-md transition-colors ${
+      active ? 'bg-[var(--accent)]/30 ring-1 ring-[var(--accent)]' : 'hover:bg-slate-700/60'
+    }`;
 
   return (
     <div className="absolute left-3 top-3 z-10 flex max-h-[calc(100%-1.5rem)] flex-col gap-2 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur">
@@ -184,12 +199,9 @@ export function WhiteboardToolbar({
                         : 'Rahmen-/Strichfarbe'
                   }
                   onClick={() => handleColor(c)}
+                  onMouseDown={(e) => e.preventDefault()}
                   style={{ backgroundColor: c }}
-                  className={`h-6 w-6 rounded-full border-2 transition-transform ${
-                    activeColor === c
-                      ? 'scale-110 border-white'
-                      : 'border-transparent hover:scale-105'
-                  }`}
+                  className={swatchButtonClass(activeColor === c)}
                 />
               ))}
             </div>
@@ -201,7 +213,8 @@ export function WhiteboardToolbar({
                 aria-label="Keine Füllung"
                 title={selectedElement ? 'Füllung entfernen' : 'Keine Füllung'}
                 onClick={() => handleFill(null)}
-                className={`relative h-6 w-6 overflow-hidden rounded-full border-2 transition-transform ${
+                onMouseDown={(e) => e.preventDefault()}
+                className={`relative h-6 w-6 cursor-pointer select-none overflow-hidden rounded-full border-2 transition-transform ${
                   activeFill === NO_FILL
                     ? 'scale-110 border-white'
                     : 'border-slate-500 hover:scale-105'
@@ -218,12 +231,9 @@ export function WhiteboardToolbar({
                     selectedElement ? 'Füllung des Elements setzen' : 'Füllfarbe für neue Formen'
                   }
                   onClick={() => handleFill(c)}
+                  onMouseDown={(e) => e.preventDefault()}
                   style={{ backgroundColor: c }}
-                  className={`h-6 w-6 rounded-full border-2 transition-transform ${
-                    activeFill === c
-                      ? 'scale-110 border-white'
-                      : 'border-transparent hover:scale-105'
-                  }`}
+                  className={swatchButtonClass(activeFill === c)}
                 />
               ))}
             </div>
@@ -237,11 +247,8 @@ export function WhiteboardToolbar({
                   aria-label={`Strichstärke ${w}`}
                   title={`Strichstärke ${w}`}
                   onClick={() => handleWidth(w)}
-                  className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
-                    activeWidth === w
-                      ? 'bg-[var(--accent)]/30 ring-1 ring-[var(--accent)]'
-                      : 'hover:bg-slate-700/60'
-                  }`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  className={widthButtonClass(activeWidth === w)}
                 >
                   <span
                     className="rounded-full bg-current"
