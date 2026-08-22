@@ -35,6 +35,12 @@ export function shapeKindForTool(tool: WhiteboardTool): WhiteboardShapeKind {
 /** Selectable outline widths in world units for shapes and strokes. */
 export const STROKE_WIDTHS: readonly number[] = [3, 6, 12];
 
+/**
+ * Outline width that hides a shape's border completely. Only valid for
+ * shapes; freehand strokes are always kept visible by the server.
+ */
+export const NO_BORDER = 0;
+
 /** Sentinel for "no interior fill" on shape elements. */
 export const NO_FILL = 'none';
 
