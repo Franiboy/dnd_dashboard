@@ -128,3 +128,18 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 - Recordings are only visible to admins.
 - On startup, interrupted recordings and transcriptions are recovered and resumed automatically. Segment metadata is persisted alongside each PCM file so recovered WAVs keep their original timing/gaps.
 - On shutdown, active recordings are finalized and active transcription processes are stopped cleanly.
+
+## Whiteboard Module (`/whiteboard`)
+
+- Miro-style shared board with free pan (drag) and zoom (mouse wheel, 2%-2000%). Elements render as vector DOM/SVG, so text stays sharp at every zoom level.
+- Zones: a public band at the top of the canvas is visible and editable by all approved users. Everything below the dashed divider is private per user; private elements are filtered server-side (`zone = 'public' OR owner_id = ?`), so other users never receive them.
+- Element types:
+  - Notes: colored sticky notes with short text.
+  - Tasks: cards with title, description and a status pill cycling open -> in progress -> done.
+  - Arrows: connections between points or anchored to elements; anchored endpoints follow their target element.
+  - Links: URL references with optional label; image URLs render as previews.
+- Images: screenshots can be pasted with `Strg+V` or dropped onto the canvas. Files are uploaded to `POST /api/whiteboard/uploads`, stored in `WHITEBOARD_UPLOAD_DIR` (default `data/whiteboard/`) and served through the authenticated `/uploads/whiteboard/` route. Allowed types: PNG, JPEG, GIF, WebP, max 8 MB.
+- Creation: pick a tool in the toolbar, then drag a rectangle on the canvas. The zone (public/private) is decided by where the element center lands relative to the divider.
+- Editing: drag to move, corner handle to resize, double-click to edit text, `Entf`/`Backspace` deletes the selection, `Esc` cancels.
+- Persistence: SQLite table `whiteboard_elements` via the declarative schema engine; initial load through `GET /api/whiteboard`.
+- Realtime: Socket.io events `wbCreate`/`wbUpdate`/`wbRemove` (client -> server) and `wbElements`/`wbUpsert`/`wbRemoved` (server -> client). Broadcasts are per-user filtered so private elements never leave the owner's connection.
