@@ -59,7 +59,8 @@ const MAX_COORD = 1_000_000;
 const MAX_Z_INDEX = 100_000;
 const MIN_SIZE = 60;
 const MAX_SIZE = 4000;
-const MIN_STROKE_WIDTH = 1;
+/** Strokes stay visible; shapes may hide their border entirely (width 0). */
+const STROKE_WIDTH_FLOOR = 0;
 const MAX_STROKE_WIDTH = 64;
 /** Upper bound of stored freehand points; extra input points are dropped. */
 const MAX_POINTS = 4000;
@@ -209,7 +210,7 @@ function asEnum<T extends string>(value: unknown, allowed: readonly T[]): T | un
 
 function asStrokeWidth(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-  return Math.max(MIN_STROKE_WIDTH, Math.min(MAX_STROKE_WIDTH, value));
+  return Math.max(STROKE_WIDTH_FLOOR, Math.min(MAX_STROKE_WIDTH, Math.round(value)));
 }
 
 function asFillColor(value: unknown): string | null | undefined {
@@ -389,7 +390,9 @@ function applyPatch(element: WhiteboardElement, patch: WhiteboardPatch): void {
     element.fillColor = patch.fillColor;
   }
   if (patch.strokeWidth !== undefined && (element.type === 'shape' || element.type === 'stroke')) {
-    element.strokeWidth = patch.strokeWidth;
+    // A hidden border only makes sense for shapes; strokes stay visible.
+    element.strokeWidth =
+      element.type === 'stroke' ? Math.max(1, patch.strokeWidth) : patch.strokeWidth;
   }
   if (patch.points !== undefined && element.type === 'stroke') {
     element.points = patch.points;

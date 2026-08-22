@@ -9,7 +9,7 @@ import {
 import { WHITEBOARD_DIVIDER_Y } from '../../../shared/types';
 import type { SafeUser, WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { WhiteboardElementView } from './WhiteboardElementView';
-import { NoteQuillEditor } from './NoteQuillEditor';
+import { DockedNoteToolbar } from './NoteQuillEditor';
 import {
   NO_FILL,
   buildStrokeGeometry,
@@ -398,16 +398,19 @@ export function WhiteboardBoard({
         toId: null,
         shapeKind: null,
         fillColor: null,
-        strokeWidth,
+        // Freehand ink is never invisible, even if "no border" (0) is still
+        // selected as the shape default.
+        strokeWidth: Math.max(1, strokeWidth),
         points: geometry.points,
         zIndex: nextTopZIndex(elements),
         locked: false,
         createdAt: now,
         updatedAt: now,
       });
-      setSelection([id]);
+      // Deliberately no auto-selection: the pen stays active so further
+      // strokes can be drawn straight over the fresh one.
     },
-    [color, strokeWidth, elements, user.id, user.displayName, createElement, setSelection]
+    [color, strokeWidth, elements, user.id, user.displayName, createElement]
   );
 
   const runGestureMove = (clientX: number, clientY: number) => {
@@ -673,26 +676,43 @@ export function WhiteboardBoard({
       setCroppingId(null);
       return;
     }
-    if (e.button !== 0 && e.button !== 1) return;
-    const { wx, wy } = screenToWorld(e.clientX, e.clientY);
-
-    if (tool === 'select') {
-      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-      if (additive) {
-        // Shift/Ctrl + drag on empty canvas draws a rubber-band selection.
-        gestureRef.current = { kind: 'band', additive: true };
-        setRectPreview({ x1: wx, y1: wy, x2: wx, y2: wy });
-        bindWindowGesture();
-        return;
-      }
-      // Plain press drops the selection and pans.
-      setSelection(null);
+    // Right/middle button always pans the canvas, no matter which tool is
+    // active; left stays reserved for selecting, drawing and creating.
+    if (e.button === 1 || e.button === 2) {
+      e.preventDefault();
       gestureRef.current = { kind: 'pan', lastX: e.clientX, lastY: e.clientY };
       bindWindowGesture();
       setCursorMode('panning');
       return;
     }
+    if (e.button !== 0) return;
+    const { wx, wy } = screenToWorld(e.clientX, e.clientY);
+
+    // Touch/pen pointers have no right button, so they keep one-finger
+    // panning in every tool instead of accidentally creating or drawing.
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      if (tool === 'select') setSelection(null);
+      gestureRef.current = { kind: 'pan', lastX: e.clientX, lastY: e.clientY };
+      bindWindowGesture();
+      setCursorMode('panning');
+      return;
+    }
+
+    if (tool === 'select') {
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+      // Any empty-canvas drag draws a rubber-band selection; Shift/Ctrl keeps
+      // the current selection while banding. A plain click still drops the
+      // selection immediately and via the empty band on release.
+      if (!additive) setSelection(null);
+      gestureRef.current = { kind: 'band', additive };
+      setRectPreview({ x1: wx, y1: wy, x2: wx, y2: wy });
+      bindWindowGesture();
+      return;
+    }
     if (tool === 'draw') {
+      // A finished stroke remains unselected; clear any previous selection so
+      // follow-up delete or appearance actions cannot target an old element.
+      setSelection(null);
       // Freehand: collect world points until the gesture ends.
       gestureRef.current = { kind: 'draw', points: [{ wx, wy }] };
       setStrokePreview([{ wx, wy }]);
@@ -718,6 +738,11 @@ export function WhiteboardBoard({
   };
 
   const startElementDrag = (event: ReactPointerEvent, element: WhiteboardElement) => {
+    // Right/middle presses fall through to the board background, which turns
+    // them into a pan gesture regardless of the active tool.
+    if (event.button !== 0) return;
+    // Touch/pen pointers pan the board instead of moving an element.
+    if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
     event.stopPropagation();
     if (croppingId) return;
 
@@ -796,6 +821,7 @@ export function WhiteboardBoard({
   };
 
   const startElementResize = (event: ReactPointerEvent, element: WhiteboardElement) => {
+    if (event.button !== 0) return;
     event.stopPropagation();
     if (!canEdit(element) || element.locked) return;
     bindWindowGesture();
@@ -815,6 +841,8 @@ export function WhiteboardBoard({
   };
 
   const startArrowDrag = (event: ReactPointerEvent, element: WhiteboardElement) => {
+    // Right/middle presses fall through to the board background pan.
+    if (event.button !== 0) return;
     event.stopPropagation();
     if (!canEdit(element)) return;
     bindWindowGesture();
@@ -1156,28 +1184,7 @@ export function WhiteboardBoard({
         })}
       </div>
 
-      {(() => {
-        if (!editingId) return null;
-        const editing = elementsById.get(editingId);
-        if (!editing || editing.type !== 'note') return null;
-        return (
-          <NoteQuillEditor
-            key={editing.id}
-            element={editing}
-            anchor={{
-              left: camera.x + editing.x * camera.scale,
-              top: camera.y + editing.y * camera.scale,
-              width: editing.width * camera.scale,
-              height: editing.height * camera.scale,
-            }}
-            onCommit={(html) => {
-              updateElement(editing.id, { text: html });
-              closeEdit();
-            }}
-            onCancel={closeEdit}
-          />
-        );
-      })()}
+      <DockedNoteToolbar visible={!!editingId && elementsById.get(editingId)?.type === 'note'} />
 
       <div
         className="pointer-events-none absolute inset-x-0 select-none border-t-2 border-dashed border-[var(--accent)]/60"

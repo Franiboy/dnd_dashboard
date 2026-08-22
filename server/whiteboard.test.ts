@@ -264,6 +264,38 @@ describe('whiteboard shapes and strokes', () => {
       alice
     );
     expect(thick.strokeWidth).toBe(64);
+
+    // A shape border can be hidden entirely (width 0 = invisible outline).
+    const borderless = createElement(
+      { type: 'shape', zone: 'private', x: 0, y: 0, width: 100, height: 100, strokeWidth: 0 },
+      alice
+    );
+    expect(borderless.strokeWidth).toBe(0);
+    const shown = updateElement(borderless.id, sanitizePatch({ strokeWidth: 6 }), alice);
+    expect(shown.strokeWidth).toBe(6);
+  });
+
+  it('keeps freehand strokes visible even when a zero stroke width is sent', () => {
+    const alice = testUser('alice-inkvis1');
+    const stroke = createElement(
+      {
+        type: 'stroke',
+        zone: 'private',
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+        strokeWidth: 0,
+        points: [
+          [0, 0],
+          [1, 1],
+        ],
+      },
+      alice
+    );
+    expect(stroke.strokeWidth).toBe(1);
+    const patched = updateElement(stroke.id, sanitizePatch({ strokeWidth: 0 }), alice);
+    expect(patched.strokeWidth).toBe(1);
   });
 
   it('stores freehand strokes with normalized points and round-trips them', () => {

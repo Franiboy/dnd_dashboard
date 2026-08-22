@@ -131,7 +131,7 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 
 ## Whiteboard Module (`/whiteboard`)
 
-- Miro-style shared board with free pan (drag) and zoom (mouse wheel, 2%-2000%). Elements render as vector DOM/SVG, so text stays sharp at every zoom level.
+- Miro-style shared board: pan by holding the right (or middle) mouse button in any tool; zoom via mouse wheel (2%-2000%). Left-drag on empty canvas draws a rubber-band selection (Shift/Ctrl keeps the current selection); plain clicks select elements, touch/pen keeps one-finger panning. Elements render as vector DOM/SVG, so text stays sharp at every zoom level.
 - Zones: a public band at the top of the canvas is visible and editable by all approved users. Everything below the dashed divider is private per user; private elements are filtered server-side (`zone = 'public' OR owner_id = ?`), so other users never receive them.
 - Element types:
   - Notes: colored sticky notes with rich text (Quill editor).
@@ -139,10 +139,10 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
   - Tasks: cards with title, description and a status pill cycling open -> in progress -> done.
   - Arrows: connections between points or anchored to elements; anchored endpoints follow their target element.
   - Links: URL references with optional label; image URLs render as previews.
-  - Shapes: rectangle, ellipse, triangle and diamond outlines with border color, adjustable stroke width (3/6/12 world units) and optional interior fill (palette incl. transparent).
+  - Shapes: rectangle, ellipse, triangle and diamond outlines with border color, adjustable stroke width (3/6/12 world units or hidden entirely) and optional interior fill (palette incl. transparent).
   - Strokes: freehand ink drawn with the pen tool; every stroke is its own element. Points are stored normalized (0..1) to the element box, so moving/resizing only touches x/y/width/height.
 - Images: screenshots can be pasted with `Strg+V` or dropped onto the canvas. Files are uploaded to `POST /api/whiteboard/uploads`, stored in `WHITEBOARD_UPLOAD_DIR` (default `data/whiteboard/`) and served through the authenticated `/uploads/whiteboard/` route. Allowed types: PNG, JPEG, GIF, WebP, max 8 MB.
-- Creation: pick a tool in the toolbar, then drag a rectangle on the canvas (shapes show a dashed preview, pen strokes a live polyline). The zone (public/private) is decided by where the element center lands relative to the divider.
+- Creation: the toolbar keeps select/note plus a pen button; clicking the pen opens a flyout with the freehand pen and the four shapes. Drag a rectangle on the canvas to place (shapes show a dashed preview, pen strokes a live polyline). The zone (public/private) is decided by where the element center lands relative to the divider. Finished strokes stay unselected so drawing can continue immediately.
 - Editing: drag to move, corner handle to resize, double-click to edit text (shapes/strokes have no editor), `Entf`/`Backspace` deletes the selection, `Esc` cancels. Selecting a shape/stroke recolors it via the toolbar palette; shapes additionally expose fill color and stroke width there.
 - Layering: non-arrow elements stack by their `zIndex` (ties keep creation order; new elements start on top). Selected elements expose "Ebene nach vorn/nach hinten" buttons (also `[`/`]`) that swap values with the adjacent element, so items can be stacked exactly one level at a time. Locked elements and stack edges are no-ops.
 - Persistence: SQLite table `whiteboard_elements` via the declarative schema engine (`shape_kind`, `fill_color`, `stroke_width`, `points`, `z_index` columns; legacy tables are rebuilt in place to extend the type CHECK constraint); initial load through `GET /api/whiteboard`.

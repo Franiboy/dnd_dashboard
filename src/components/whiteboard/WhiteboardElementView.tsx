@@ -1,7 +1,6 @@
 import {
   useMemo,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -12,6 +11,8 @@ import DOMPurify from 'dompurify';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { TASK_STATUS_META, isBoardImageUrl, nextTaskStatus } from './whiteboardShared';
 import { ensureHtml } from '../quillConfig';
+import { useFitFontSize } from './useFitFontSize';
+import { NoteQuillEditor } from './NoteQuillEditor';
 
 /**
  * Content is laid out in this fixed design width per element type and then
@@ -100,58 +101,6 @@ function useFocusOnMount<T extends HTMLElement & { select: () => void }>() {
  * real user commits. They are ignored and focus is restored instead.
  */
 const BLUR_GRACE_MS = 150;
-
-/**
- * Finds the largest font size at which `text` still fits into the measured
- * node (binary search on scrollHeight/scrollWidth). Runs on every text or
- * box change so typing live-adapts the size to fill the note.
- */
-function useFitFontSize(
-  text: string,
-  availableWidth: number,
-  availableHeight: number,
-  enabled: boolean
-) {
-  const ref = useRef<HTMLElement | null>(null);
-  const [fontSize, setFontSize] = useState(14);
-  const [padTop, setPadTop] = useState(0);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || !enabled) {
-      setPadTop(0);
-      return;
-    }
-
-    // Empty notes center their placeholder vertically.
-    if (!text.trim()) {
-      const base = Math.min(15, availableHeight / 5);
-      el.style.fontSize = `${base}px`;
-      setFontSize(base);
-      setPadTop(Math.max(0, (availableHeight - base * 1.15) / 2));
-      return;
-    }
-
-    const fits = (px: number) => {
-      el.style.fontSize = `${px}px`;
-      return el.scrollHeight <= availableHeight + 0.5 && el.scrollWidth <= availableWidth + 0.5;
-    };
-    let lo = 6;
-    let hi = 600;
-    for (let i = 0; i < 50; i += 1) {
-      const mid = (lo + hi) / 2;
-      if (fits(mid)) lo = mid;
-      else hi = mid;
-    }
-    // Headroom so rounding/wrap edges never spill into a scrollbar.
-    const fitted = Math.max(6, lo * 0.97);
-    el.style.fontSize = `${fitted}px`;
-    setFontSize((prev) => (Math.abs(prev - fitted) > 0.3 ? fitted : prev));
-    setPadTop(0);
-  }, [text, availableWidth, availableHeight, enabled]);
-
-  return { ref, fontSize, padTop };
-}
 
 function useBlurGuard(ref: RefObject<HTMLElement | null>) {
   const mountedAt = useRef(performance.now());
@@ -465,7 +414,15 @@ export function WhiteboardElementView({
         className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg p-2 shadow"
         style={{ backgroundColor: element.color }}
       >
-        {editing ? null : !element.text ? (
+        {editing ? (
+          <NoteQuillEditor
+            element={element}
+            onUpdate={onUpdate}
+            onCloseEdit={onCloseEdit}
+            boxWidth={designWidth - 16}
+            boxHeight={element.height / contentScale - 16}
+          />
+        ) : !element.text ? (
           <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
         ) : (
           <div
@@ -526,7 +483,9 @@ export function WhiteboardElementView({
             )}
             <button
               type="button"
-              onPointerDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                if (e.button === 0) e.stopPropagation();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 onUpdate(element.id, { status: nextTaskStatus(status) });
@@ -625,7 +584,9 @@ export function WhiteboardElementView({
           <button
             type="button"
             title="Löschen"
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              if (e.button === 0) e.stopPropagation();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               onDelete(element.id);
@@ -655,7 +616,9 @@ export function WhiteboardElementView({
           <button
             type="button"
             title={isImageLink ? 'Zuschneiden' : 'Bearbeiten'}
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              if (e.button === 0) e.stopPropagation();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               onRequestEdit(element.id);
@@ -702,7 +665,9 @@ export function WhiteboardElementView({
           <button
             type="button"
             title={element.locked ? 'Lösen (wieder verschiebbar)' : 'Fixieren (nicht verschiebbar)'}
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              if (e.button === 0) e.stopPropagation();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               onUpdate(element.id, { locked: !element.locked });
@@ -741,7 +706,9 @@ export function WhiteboardElementView({
               title={control.enabled ? control.title : `${control.title} (nicht möglich)`}
               aria-label={control.title}
               disabled={!control.enabled}
-              onPointerDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                if (e.button === 0) e.stopPropagation();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 control.onClick();
@@ -775,6 +742,8 @@ export function WhiteboardElementView({
             <div
               title="Größe ändern"
               onPointerDown={(e) => {
+                // Right/middle presses fall through to the board pan.
+                if (e.button !== 0) return;
                 e.stopPropagation();
                 onStartResize(e, element);
               }}
