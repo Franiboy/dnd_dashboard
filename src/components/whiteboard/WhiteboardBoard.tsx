@@ -961,7 +961,7 @@ export function WhiteboardBoard({
       </div>
 
       <div
-        className="pointer-events-none absolute inset-x-0 border-t-2 border-dashed border-[var(--accent)]/60"
+        className="pointer-events-none absolute inset-x-0 select-none border-t-2 border-dashed border-[var(--accent)]/60"
         style={{ top: dividerScreenY }}
       >
         <span
