@@ -695,6 +695,9 @@ export function WhiteboardBoard({
       return;
     }
     if (tool === 'draw') {
+      // A finished stroke remains unselected; clear any previous selection so
+      // follow-up delete or appearance actions cannot target an old element.
+      setSelection(null);
       // Freehand: collect world points until the gesture ends.
       gestureRef.current = { kind: 'draw', points: [{ wx, wy }] };
       setStrokePreview([{ wx, wy }]);
