@@ -547,7 +547,13 @@ export function WhiteboardElementView({
     <div
       data-whiteboard-element={element.id}
       className={`absolute select-none ${
-        selected ? 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-transparent' : ''
+        selected
+          ? hideOverlayControls
+            ? // Multi-selection members: inset outline in a contrasting color so
+              // the green shared frame stays the visually dominant boundary.
+              'inset-ring-2 inset-ring-sky-400'
+            : 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-transparent'
+          : ''
       }`}
       style={{
         left: element.x,
