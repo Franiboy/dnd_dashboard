@@ -260,6 +260,7 @@ export function NoteQuillEditor({
   };
 
   useEffect(() => {
+    quillRef.current?.focus();
     return () => {
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current);
