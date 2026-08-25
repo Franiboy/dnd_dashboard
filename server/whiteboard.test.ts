@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { User, WhiteboardElement } from '../shared/types.js';
 import {
   WhiteboardError,
   canEditElement,
   createElement,
+  ensureWhiteboardUploadDir,
   listElementsForUser,
   removeElement,
   sanitizePatch,
@@ -369,5 +372,62 @@ describe('whiteboard shapes and strokes', () => {
     expect(patchedShape.fillColor).toBeNull();
     expect(patchedShape.strokeWidth).toBe(8);
     expect(patchedShape.points).toBeNull();
+  });
+});
+
+describe('whiteboard upload cleanup', () => {
+  function linkInput(overrides: Record<string, unknown> = {}) {
+    return { type: 'link', zone: 'public', x: 0, y: 0, ...overrides };
+  }
+
+  function fakeUploadFile(url: string): string {
+    const filePath = join(ensureWhiteboardUploadDir(), url.split('/').pop()!);
+    writeFileSync(filePath, 'fake-image-bytes');
+    return filePath;
+  }
+
+  it('deletes the uploaded file together with the last referencing element', () => {
+    const alice = testUser('alice-clean-1');
+    const url = `/uploads/whiteboard/${RUN_PREFIX}-single.png`;
+    const card = createElement(linkInput({ url, text: 'screenshot' }), alice);
+    const filePath = fakeUploadFile(url);
+    expect(existsSync(filePath)).toBe(true);
+
+    removeElement(card.id, alice);
+    expect(existsSync(filePath)).toBe(false);
+  });
+
+  it('keeps the shared file until the last element referencing it is gone', () => {
+    const alice = testUser('alice-share1');
+    const url = `/uploads/whiteboard/${RUN_PREFIX}-shared.png`;
+    const first = createElement(linkInput({ url, text: 'first' }), alice);
+    const second = createElement(linkInput({ url, text: 'second' }), alice);
+    const filePath = fakeUploadFile(url);
+
+    removeElement(first.id, alice);
+    expect(existsSync(filePath)).toBe(true);
+
+    removeElement(second.id, alice);
+    expect(existsSync(filePath)).toBe(false);
+  });
+
+  it('collects a replaced url after an update once nothing references it anymore', () => {
+    const alice = testUser('alice-crop-1');
+    const oldUrl = `/uploads/whiteboard/${RUN_PREFIX}-pre-crop.png`;
+    const newUrl = `/uploads/whiteboard/${RUN_PREFIX}-post-crop.png`;
+    const cropped = createElement(linkInput({ url: oldUrl, text: 'crop me' }), alice);
+    const sibling = createElement(linkInput({ url: oldUrl, text: 'same image' }), alice);
+    const oldPath = fakeUploadFile(oldUrl);
+
+    // Simulates the crop flow: the element now points at a fresh upload.
+    updateElement(cropped.id, sanitizePatch({ url: newUrl }), alice);
+    // The sibling still uses the old file, so it must survive.
+    expect(existsSync(oldPath)).toBe(true);
+
+    updateElement(sibling.id, sanitizePatch({ url: 'https://example.com/other.png' }), alice);
+    expect(existsSync(oldPath)).toBe(false);
+
+    // External URLs never touch the filesystem; removal stays a no-op.
+    removeElement(sibling.id, alice);
   });
 });
