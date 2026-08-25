@@ -210,13 +210,13 @@ export function executeAction(action: AiAction): AiActionResult {
   try {
     switch (action.action) {
       case 'createEntity': {
-        const canonical = ensureEntityExists(action.type, action.name);
+        const ref = ensureEntityExists(action.type, action.name);
         if (action.aliases && action.aliases.length > 0) {
           for (const alias of action.aliases) {
-            addEntityAlias(action.type, alias, canonical);
+            addEntityAlias(action.type, alias, ref.name, ref.qualifier);
           }
         }
-        return { action, success: true, data: { canonical } };
+        return { action, success: true, data: { canonical: ref.name } };
       }
       case 'renameEntity': {
         if (action.oldName.toLowerCase() === action.newName.toLowerCase()) {
@@ -242,13 +242,14 @@ export function executeAction(action: AiAction): AiActionResult {
         return { action, success: true };
       }
       case 'createKnowledge': {
-        const canonical = ensureEntityExists(action.type, action.name);
+        const ref = ensureEntityExists(action.type, action.name);
         const entry = createEntityKnowledge(
           action.type,
-          canonical,
+          ref.name,
           action.title ?? null,
           action.content,
-          'ai_extracted'
+          'ai_extracted',
+          ref.qualifier
         );
         return { action, success: true, data: entry };
       }
@@ -268,8 +269,8 @@ export function executeAction(action: AiAction): AiActionResult {
         return { action, success: true, data: entry };
       }
       case 'setSummary': {
-        const canonical = ensureEntityExists(action.type, action.name);
-        setEntitySummary(action.type, canonical, action.summary, false);
+        const ref = ensureEntityExists(action.type, action.name);
+        setEntitySummary(action.type, ref.name, action.summary, false, undefined, ref.qualifier);
         return { action, success: true };
       }
       default:
