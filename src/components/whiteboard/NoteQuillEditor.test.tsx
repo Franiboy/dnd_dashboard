@@ -27,16 +27,30 @@ beforeAll(() => {
 const noteWithText = (text: string): WhiteboardElement => ({
   id: 'note-1',
   type: 'note',
+  zone: 'public',
+  ownerId: 'user-1',
+  ownerName: 'Alice',
   x: 0,
   y: 0,
+  x2: null,
+  y2: null,
   width: 200,
   height: 150,
-  zIndex: 0,
   color: '#facc15',
-  ownerId: 'user-1',
-  zone: 'public',
-  locked: false,
   text,
+  description: null,
+  status: null,
+  url: null,
+  fromId: null,
+  toId: null,
+  shapeKind: null,
+  fillColor: null,
+  strokeWidth: 2,
+  points: null,
+  zIndex: 0,
+  locked: false,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
 /** Renders the docked toolbar host Quill needs plus the editor under test. */
@@ -113,6 +127,7 @@ describe('WhiteboardElementView note display parity', () => {
         onUpdate={noop}
         onDelete={noop}
         onCropApply={noop}
+        onCropCancel={noop}
         canBringForward
         canSendBackward
         onBringForward={noop}
