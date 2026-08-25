@@ -499,17 +499,12 @@ export function WhiteboardBoard({
         if (tool !== 'select') onToolChange('select');
         return;
       }
-      // Internal board clipboard shortcuts; text fields keep native behavior.
+      // Ctrl+C only; pasting goes through the native `paste` event so fresh
+      // screenshots in the system clipboard always win over board copies.
       if (!inField && !e.shiftKey && !e.altKey && (e.ctrlKey || e.metaKey)) {
         if (e.key.toLowerCase() === 'c' && selectedIds.length > 0) {
           e.preventDefault();
           copySelectedElements();
-          return;
-        }
-        if (e.key.toLowerCase() === 'v' && clipboardRef.current.length > 0) {
-          e.preventDefault();
-          void pasteClipboardElements();
-          return;
         }
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && selectedIds.length > 0) {
@@ -535,7 +530,6 @@ export function WhiteboardBoard({
     canEdit,
     moveLayer,
     copySelectedElements,
-    pasteClipboardElements,
   ]);
 
   const finishCreate = useCallback(
@@ -929,28 +923,34 @@ export function WhiteboardBoard({
     [user.id, user.displayName, cameraRef, elements, createElement, showError, setSelection]
   );
 
-  // Ctrl+V pastes screenshots/images from the clipboard onto the board.
+  // Ctrl+V pastes onto the board. Image files from the system clipboard
+  // (e.g. fresh screenshots) always win; without them the internal board
+  // clipboard from Ctrl+C is pasted instead.
   useEffect(() => {
     const onPaste = async (e: ClipboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
       const files = Array.from(e.clipboardData?.files ?? []).filter(isUploadableImage);
-      if (files.length === 0) return;
+      if (files.length === 0 && clipboardRef.current.length === 0) return;
       e.preventDefault();
-      const el = containerRef.current;
-      const fallback = el
-        ? { x: el.clientWidth / 2, y: el.clientHeight / 3 }
-        : { x: 0, y: WHITEBOARD_DIVIDER_Y - 200 };
-      for (const file of files) {
-        const at = lastMouseRef.current
-          ? screenToWorld(lastMouseRef.current.x, lastMouseRef.current.y)
-          : screenToWorld(fallback.x, fallback.y);
-        await addImageFile(file, { x: at.wx, y: at.wy });
+      if (files.length > 0) {
+        const el = containerRef.current;
+        const fallback = el
+          ? { x: el.clientWidth / 2, y: el.clientHeight / 3 }
+          : { x: 0, y: WHITEBOARD_DIVIDER_Y - 200 };
+        for (const file of files) {
+          const at = lastMouseRef.current
+            ? screenToWorld(lastMouseRef.current.x, lastMouseRef.current.y)
+            : screenToWorld(fallback.x, fallback.y);
+          await addImageFile(file, { x: at.wx, y: at.wy });
+        }
+        return;
       }
+      await pasteClipboardElements();
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [addImageFile, screenToWorld]);
+  }, [addImageFile, screenToWorld, pasteClipboardElements]);
 
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (editingId) return;
