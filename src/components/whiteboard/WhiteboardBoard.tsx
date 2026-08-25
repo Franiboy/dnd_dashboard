@@ -13,6 +13,7 @@ import { WhiteboardSelectionFrame } from './WhiteboardSelectionFrame';
 import { DockedNoteToolbar } from './NoteQuillEditor';
 import {
   NO_FILL,
+  WB_CLIPBOARD_PREFIX,
   buildStrokeGeometry,
   compareStackOrder,
   groupLayerMovePatches,
@@ -20,6 +21,7 @@ import {
   isShapeTool,
   layerMovePatches,
   nextTopZIndex,
+  parseBoardClipboard,
   selectionBounds,
   shapeKindForTool,
   type LayerDirection,
@@ -393,14 +395,36 @@ export function WhiteboardBoard({
     };
   }, []);
 
-  // Ctrl+C snapshots the selected elements into the internal clipboard.
-  const copySelectedElements = useCallback(() => {
-    if (selectedIds.length === 0) return;
-    clipboardRef.current = selectedIds
-      .map((id) => elementsById.get(id))
-      .filter((el): el is WhiteboardElement => !!el)
-      .map((el) => JSON.parse(JSON.stringify(el)) as WhiteboardElement);
-    pasteOffsetRef.current = 0;
+  // Ctrl+C writes the selected elements into the system clipboard as a
+  // marked plain-text payload, giving natural "last copy wins" semantics:
+  // a fresh screenshot replaces board copies and vice versa. The internal
+  // ref is the fallback when clipboard access fails.
+  useEffect(() => {
+    const onCopy = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+      if (selectedIds.length === 0) return;
+      const snapshot = selectedIds
+        .map((id) => elementsById.get(id))
+        .filter((el): el is WhiteboardElement => !!el)
+        .map((el) => JSON.parse(JSON.stringify(el)) as WhiteboardElement);
+      if (snapshot.length === 0) return;
+      e.preventDefault();
+      clipboardRef.current = snapshot;
+      pasteOffsetRef.current = 0;
+      try {
+        e.clipboardData?.setData('text/plain', WB_CLIPBOARD_PREFIX + JSON.stringify(snapshot));
+      } catch {
+        // Internal clipboard still allows pasting in this session.
+      }
+    };
+    window.addEventListener('copy', onCopy);
+    return () => window.removeEventListener('copy', onCopy);
   }, [elementsById, selectedIds]);
 
   /** World anchor for pasted copies: mouse position or viewport center. */
@@ -415,77 +439,87 @@ export function WhiteboardBoard({
     );
   }, [screenToWorld]);
 
-  // Ctrl+V recreates the clipboard snapshot at the paste anchor. Image cards
-  // re-upload their file so every copy owns its image and deletions stay clean.
-  const pasteClipboardElements = useCallback(async () => {
-    const snapshot = clipboardRef.current;
-    if (snapshot.length === 0) return;
+  // Recreates the given snapshot at the paste anchor. Image cards re-upload
+  // their file so every copy owns its image and deletions stay clean.
+  const pasteClipboardElements = useCallback(
+    async (snapshot: WhiteboardElement[]) => {
+      if (snapshot.length === 0) return;
 
-    let minX = Infinity;
-    let minY = Infinity;
-    for (const source of snapshot) {
-      minX = Math.min(minX, source.x, source.type === 'arrow' ? (source.x2 ?? source.x) : source.x);
-      minY = Math.min(minY, source.y, source.type === 'arrow' ? (source.y2 ?? source.y) : source.y);
-    }
-    if (!Number.isFinite(minX)) return;
-
-    const anchor = pasteAnchor();
-    const offset = pasteOffsetRef.current * PASTE_STEP;
-    pasteOffsetRef.current += 1;
-    const dx = Math.round(anchor.wx - minX) + offset;
-    const dy = Math.round(anchor.wy - minY) + offset;
-    const idMap = new Map(snapshot.map((source) => [source.id, crypto.randomUUID()]));
-    const now = new Date().toISOString();
-    let zIndex = nextTopZIndex(elements);
-    const createdIds: string[] = [];
-
-    const baseCopy = (source: WhiteboardElement, id: string): WhiteboardElement => ({
-      ...source,
-      id,
-      x: source.x + dx,
-      y: source.y + dy,
-      zone: zoneForWorldY(source.y + dy + source.height / 2),
-      ownerId: user.id,
-      ownerName: user.displayName,
-      locked: false,
-      fromId: null,
-      toId: null,
-      zIndex: zIndex++,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    for (const source of snapshot.filter((s) => s.type !== 'arrow')) {
-      const id = idMap.get(source.id)!;
-      let url = source.url;
-      if (url && isInternalBoardImageUrl(url)) {
-        try {
-          url = await cloneBoardImage(url);
-        } catch (err) {
-          // Fall back to sharing the original file rather than dropping the copy.
-          showError(err instanceof Error ? err.message : 'Bild konnte nicht kopiert werden.');
-        }
+      let minX = Infinity;
+      let minY = Infinity;
+      for (const source of snapshot) {
+        minX = Math.min(
+          minX,
+          source.x,
+          source.type === 'arrow' ? (source.x2 ?? source.x) : source.x
+        );
+        minY = Math.min(
+          minY,
+          source.y,
+          source.type === 'arrow' ? (source.y2 ?? source.y) : source.y
+        );
       }
-      createElement({ ...baseCopy(source, id), url });
-      createdIds.push(id);
-    }
+      if (!Number.isFinite(minX)) return;
 
-    for (const arrow of snapshot.filter((s) => s.type === 'arrow')) {
-      const id = idMap.get(arrow.id)!;
-      const remap = (anchorId: string | null) =>
-        anchorId && idMap.has(anchorId) ? idMap.get(anchorId)! : null;
-      createElement({
-        ...baseCopy(arrow, id),
-        x2: arrow.x2 === null ? null : arrow.x2 + dx,
-        y2: arrow.y2 === null ? null : arrow.y2 + dy,
-        fromId: remap(arrow.fromId),
-        toId: remap(arrow.toId),
+      const anchor = pasteAnchor();
+      const offset = pasteOffsetRef.current * PASTE_STEP;
+      pasteOffsetRef.current += 1;
+      const dx = Math.round(anchor.wx - minX) + offset;
+      const dy = Math.round(anchor.wy - minY) + offset;
+      const idMap = new Map(snapshot.map((source) => [source.id, crypto.randomUUID()]));
+      const now = new Date().toISOString();
+      let zIndex = nextTopZIndex(elements);
+      const createdIds: string[] = [];
+
+      const baseCopy = (source: WhiteboardElement, id: string): WhiteboardElement => ({
+        ...source,
+        id,
+        x: source.x + dx,
+        y: source.y + dy,
+        zone: zoneForWorldY(source.y + dy + source.height / 2),
+        ownerId: user.id,
+        ownerName: user.displayName,
+        locked: false,
+        fromId: null,
+        toId: null,
+        zIndex: zIndex++,
+        createdAt: now,
+        updatedAt: now,
       });
-      createdIds.push(id);
-    }
 
-    if (createdIds.length > 0) setSelection(createdIds);
-  }, [pasteAnchor, elements, createElement, user.id, user.displayName, showError, setSelection]);
+      for (const source of snapshot.filter((s) => s.type !== 'arrow')) {
+        const id = idMap.get(source.id)!;
+        let url = source.url;
+        if (url && isInternalBoardImageUrl(url)) {
+          try {
+            url = await cloneBoardImage(url);
+          } catch (err) {
+            // Fall back to sharing the original file rather than dropping the copy.
+            showError(err instanceof Error ? err.message : 'Bild konnte nicht kopiert werden.');
+          }
+        }
+        createElement({ ...baseCopy(source, id), url });
+        createdIds.push(id);
+      }
+
+      for (const arrow of snapshot.filter((s) => s.type === 'arrow')) {
+        const id = idMap.get(arrow.id)!;
+        const remap = (anchorId: string | null) =>
+          anchorId && idMap.has(anchorId) ? idMap.get(anchorId)! : null;
+        createElement({
+          ...baseCopy(arrow, id),
+          x2: arrow.x2 === null ? null : arrow.x2 + dx,
+          y2: arrow.y2 === null ? null : arrow.y2 + dy,
+          fromId: remap(arrow.fromId),
+          toId: remap(arrow.toId),
+        });
+        createdIds.push(id);
+      }
+
+      if (createdIds.length > 0) setSelection(createdIds);
+    },
+    [pasteAnchor, elements, createElement, user.id, user.displayName, showError, setSelection]
+  );
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -499,14 +533,9 @@ export function WhiteboardBoard({
         if (tool !== 'select') onToolChange('select');
         return;
       }
-      // Ctrl+C only; pasting goes through the native `paste` event so fresh
-      // screenshots in the system clipboard always win over board copies.
-      if (!inField && !e.shiftKey && !e.altKey && (e.ctrlKey || e.metaKey)) {
-        if (e.key.toLowerCase() === 'c' && selectedIds.length > 0) {
-          e.preventDefault();
-          copySelectedElements();
-        }
-      }
+      // Copy/paste run through the native `copy`/`paste` events so the system
+      // clipboard decides what is inserted ("last copy wins"); text fields
+      // keep their native behavior.
       if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && selectedIds.length > 0) {
         for (const id of selectedIds) {
           const element = elementsById.get(id);
@@ -521,16 +550,7 @@ export function WhiteboardBoard({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [
-    elementsById,
-    selectedIds,
-    tool,
-    onToolChange,
-    removeElement,
-    canEdit,
-    moveLayer,
-    copySelectedElements,
-  ]);
+  }, [elementsById, selectedIds, tool, onToolChange, removeElement, canEdit, moveLayer]);
 
   const finishCreate = useCallback(
     (gesture: Extract<Gesture, { kind: 'create' }>, wx: number, wy: number) => {
@@ -923,30 +943,37 @@ export function WhiteboardBoard({
     [user.id, user.displayName, cameraRef, elements, createElement, showError, setSelection]
   );
 
-  // Ctrl+V pastes onto the board. Image files from the system clipboard
-  // (e.g. fresh screenshots) always win; without them the internal board
-  // clipboard from Ctrl+C is pasted instead.
+  // Ctrl+V pastes onto the board with "last copy wins" semantics: a marked
+  // board payload from Ctrl+C beats everything else; otherwise image files
+  // from the system clipboard (fresh screenshots) are inserted.
   useEffect(() => {
     const onPaste = async (e: ClipboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      )
+        return;
+      const boardElements = parseBoardClipboard(e.clipboardData?.getData('text/plain') ?? '');
       const files = Array.from(e.clipboardData?.files ?? []).filter(isUploadableImage);
-      if (files.length === 0 && clipboardRef.current.length === 0) return;
+      // Fallback for sessions where writing to the system clipboard failed.
+      const internal = boardElements || files.length > 0 ? null : clipboardRef.current;
+      if (!boardElements && files.length === 0 && (!internal || internal.length === 0)) return;
       e.preventDefault();
-      if (files.length > 0) {
-        const el = containerRef.current;
-        const fallback = el
-          ? { x: el.clientWidth / 2, y: el.clientHeight / 3 }
-          : { x: 0, y: WHITEBOARD_DIVIDER_Y - 200 };
-        for (const file of files) {
-          const at = lastMouseRef.current
-            ? screenToWorld(lastMouseRef.current.x, lastMouseRef.current.y)
-            : screenToWorld(fallback.x, fallback.y);
-          await addImageFile(file, { x: at.wx, y: at.wy });
-        }
+      if (boardElements || internal) {
+        await pasteClipboardElements(boardElements ?? internal!);
         return;
       }
-      await pasteClipboardElements();
+      const el = containerRef.current;
+      const fallback = el
+        ? { x: el.clientWidth / 2, y: el.clientHeight / 3 }
+        : { x: 0, y: WHITEBOARD_DIVIDER_Y - 200 };
+      for (const file of files) {
+        const at = lastMouseRef.current
+          ? screenToWorld(lastMouseRef.current.x, lastMouseRef.current.y)
+          : screenToWorld(fallback.x, fallback.y);
+        await addImageFile(file, { x: at.wx, y: at.wy });
+      }
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);

@@ -183,6 +183,40 @@ export function nextTopZIndex(elements: WhiteboardElement[]): number {
 }
 
 // ---------------------------------------------------------------------------
+// Board clipboard (system clipboard integration)
+// ---------------------------------------------------------------------------
+
+/**
+ * Marker prefix for board element payloads written to the system clipboard.
+ * Plain-text based so copy/paste also works across tabs and browsers that
+ * restrict custom MIME types.
+ */
+export const WB_CLIPBOARD_PREFIX = 'dnd-dashboard:whiteboard:';
+
+/**
+ * Parses a system-clipboard text payload into board elements. Returns null
+ * for anything that is not a marked, non-empty list of plausible element
+ * objects; deeper validation happens server-side on create.
+ */
+export function parseBoardClipboard(payload: string): WhiteboardElement[] | null {
+  if (!payload.startsWith(WB_CLIPBOARD_PREFIX)) return null;
+  try {
+    const parsed: unknown = JSON.parse(payload.slice(WB_CLIPBOARD_PREFIX.length));
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    const elements = parsed.filter(
+      (el): el is WhiteboardElement =>
+        typeof el === 'object' &&
+        el !== null &&
+        typeof (el as WhiteboardElement).id === 'string' &&
+        typeof (el as WhiteboardElement).type === 'string'
+    );
+    return elements.length > 0 ? elements : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Multi-selection
 // ---------------------------------------------------------------------------
 
