@@ -328,6 +328,9 @@ export function NoteQuillEditor({
         <ReactQuill
           ref={quillRef}
           theme="snow"
+          // Save the real editor DOM (data-list + ql-ui markers) instead of
+          // the semantic approximation, so lists survive into display view.
+          useSemanticHTML={false}
           defaultValue={ensureHtml(element.text)}
           onChange={(value) => {
             setDraft(value);
