@@ -936,18 +936,19 @@ export function reclassifyEntity(
     db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?').run(fromType, normalized);
 
     const aliases = db
-      .prepare('SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE')
-      .all(fromType, normalized) as { alias: string }[];
+      .prepare(
+        'SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
+      )
+      .all(fromType, normalized, source.qualifier ?? '') as { alias: string }[];
     const insertAlias = db.prepare(
       'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical, canonical_qualifier) VALUES (?, ?, ?, ?)'
     );
     for (const { alias } of aliases) {
       insertAlias.run(toType, alias, normalized, source.qualifier ?? '');
     }
-    db.prepare('DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE').run(
-      fromType,
-      normalized
-    );
+    db.prepare(
+      'DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
+    ).run(fromType, normalized, source.qualifier ?? '');
 
     mergeEntityKnowledge(fromType, normalized, toType, normalized, qualifier, qualifier);
     mergeEntitySummary(fromType, normalized, toType, normalized, qualifier, qualifier);
@@ -1094,13 +1095,13 @@ export function updateEntity(
         oldRow.id
       );
       db.prepare(
-        'UPDATE entity_aliases SET canonical = ?, canonical_qualifier = ? WHERE type = ? AND canonical = ? COLLATE NOCASE'
-      ).run(newNormalized, newQualifier, type, oldRow.name);
+        'UPDATE entity_aliases SET canonical = ?, canonical_qualifier = ? WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
+      ).run(newNormalized, newQualifier, type, oldRow.name, oldRow.qualifier ?? '');
       renameEntityKnowledge(type, oldRow.name, newNormalized, oldRow.qualifier ?? '', newQualifier);
     } else {
       db.prepare(
-        'UPDATE entity_aliases SET canonical_qualifier = ? WHERE type = ? AND canonical = ? COLLATE NOCASE'
-      ).run(newQualifier, type, oldRow.name);
+        'UPDATE entity_aliases SET canonical_qualifier = ? WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
+      ).run(newQualifier, type, oldRow.name, oldRow.qualifier ?? '');
     }
 
     db.prepare(
