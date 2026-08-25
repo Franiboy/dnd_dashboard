@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { WhiteboardElement } from '../../../shared/types';
 import {
+  WB_CLIPBOARD_PREFIX,
   buildStrokeGeometry,
   compareStackOrder,
   groupLayerMovePatches,
   isShapeTool,
   layerMovePatches,
   nextTopZIndex,
+  parseBoardClipboard,
   selectionBounds,
   shapeKindForTool,
 } from './whiteboardShared';
@@ -257,5 +259,25 @@ describe('groupLayerMovePatches', () => {
       { id: 'b', patch: { zIndex: 1 } },
       { id: 'a', patch: { zIndex: 1 } },
     ]);
+  });
+});
+
+describe('parseBoardClipboard', () => {
+  it('parses a marked payload back into elements', () => {
+    const snapshot = [element({ id: 'copy-me-1' })];
+    const payload = WB_CLIPBOARD_PREFIX + JSON.stringify(snapshot);
+    expect(parseBoardClipboard(payload)).toEqual(snapshot);
+  });
+
+  it('rejects unmarked text, broken JSON and empty lists', () => {
+    expect(parseBoardClipboard('just some text')).toBeNull();
+    expect(parseBoardClipboard(WB_CLIPBOARD_PREFIX + '{broken')).toBeNull();
+    expect(parseBoardClipboard(WB_CLIPBOARD_PREFIX + '[]')).toBeNull();
+    expect(parseBoardClipboard(WB_CLIPBOARD_PREFIX + '{"id":"x"}')).toBeNull();
+  });
+
+  it('drops implausible entries and yields null when nothing remains', () => {
+    const payload = WB_CLIPBOARD_PREFIX + JSON.stringify([{ nope: true }, { id: 'x' }]);
+    expect(parseBoardClipboard(payload)).toBeNull();
   });
 });
