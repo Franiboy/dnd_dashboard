@@ -949,7 +949,11 @@ export function WhiteboardBoard({
   useEffect(() => {
     const onPaste = async (e: ClipboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      )
+        return;
       const boardElements = parseBoardClipboard(e.clipboardData?.getData('text/plain') ?? '');
       const files = Array.from(e.clipboardData?.files ?? []).filter(isUploadableImage);
       // Fallback for sessions where writing to the system clipboard failed.
