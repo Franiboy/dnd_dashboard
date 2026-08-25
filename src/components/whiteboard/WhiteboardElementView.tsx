@@ -441,7 +441,9 @@ export function WhiteboardElementView({
             className="w-full break-words leading-[1.15] text-slate-900"
             style={{ fontSize: noteFit.fontSize }}
           >
-            <div className="whiteboard-note-content">
+            {/* ql-snow mirrors the editor's theme context so saved notes
+                render with identical heading, quote, code and list styles. */}
+            <div className="whiteboard-note-content ql-snow">
               <div className="ql-editor" dangerouslySetInnerHTML={{ __html: sanitizedNoteHtml }} />
             </div>
           </div>
