@@ -5,7 +5,7 @@ import { useError } from '../hooks/useError';
 import { EntityRichText } from './EntityRichText';
 import { Loading } from './Loading';
 import { Modal } from './Modal';
-import { typeLabels } from '../lib/entityLabels';
+import { formatEntityLabel, typeLabels } from '../lib/entityLabels';
 import type {
   EntityDetail,
   EntityType,
@@ -16,6 +16,8 @@ import type {
 interface EntityEditDialogProps {
   type: EntityType;
   name: string;
+  /** Disambiguator of the entity to open; '' targets the plain name. */
+  qualifier?: string;
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -26,6 +28,7 @@ interface KnowledgeCorrectionResponse {
   summaries: {
     entityType: EntityType;
     entityName: string;
+    entityQualifier?: string;
     summary: string | null;
     miniSummary: string | null;
   }[];
@@ -34,11 +37,18 @@ interface KnowledgeCorrectionResponse {
 interface CorrectKnowledgeDialogProps {
   type: EntityType;
   name: string;
+  qualifier: string;
   onClose: () => void;
   onCorrected: (result: KnowledgeCorrectionResponse) => void;
 }
 
-function CorrectKnowledgeDialog({ type, name, onClose, onCorrected }: CorrectKnowledgeDialogProps) {
+function CorrectKnowledgeDialog({
+  type,
+  name,
+  qualifier,
+  onClose,
+  onCorrected,
+}: CorrectKnowledgeDialogProps) {
   const { request } = useApi();
   const { showSuccess, showError } = useError();
   const [text, setText] = useState('');
@@ -52,7 +62,7 @@ function CorrectKnowledgeDialog({ type, name, onClose, onCorrected }: CorrectKno
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text.trim(), type, name }),
+        body: JSON.stringify({ text: text.trim(), type, name, qualifier }),
       }
     );
     setWorking(false);
@@ -116,12 +126,19 @@ function CorrectKnowledgeDialog({ type, name, onClose, onCorrected }: CorrectKno
   );
 }
 
-export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDialogProps) {
+export function EntityEditDialog({
+  type,
+  name,
+  qualifier = '',
+  onClose,
+  onSaved,
+}: EntityEditDialogProps) {
   const { request } = useApi();
   const { mappings, refresh } = useEntityMappings();
   const { showSuccess, showError } = useError();
   const [detail, setDetail] = useState<EntityDetail | null>(null);
   const [canonical, setCanonical] = useState('');
+  const [qualifierValue, setQualifierValue] = useState(qualifier);
   const [aliases, setAliases] = useState<string[]>([]);
   const [newAlias, setNewAlias] = useState('');
   const [knowledge, setKnowledge] = useState<EntityKnowledgeEntry[]>([]);
@@ -142,29 +159,34 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const staleRef = useRef(false);
 
+  // Canonical identity of the entity this dialog works on. After loading it
+  // reflects the server-resolved row; before that it mirrors the props.
+  const identityQualifier = detail?.qualifier ?? qualifier;
+
   useEffect(() => {
     staleRef.current = false;
     return () => {
       staleRef.current = true;
     };
-  }, [name, type]);
+  }, [name, type, qualifier]);
 
   useEffect(() => {
     setDetail(null);
     setCanonical(name);
+    setQualifierValue(qualifier);
     setAliases([]);
     setKnowledge([]);
     setSummary(null);
     setMiniSummary(null);
     setSummaryDirty(true);
     setLoading(true);
-  }, [name, type]);
+  }, [name, type, qualifier]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       const { data: detailData } = await request<EntityDetail>(
-        `/api/entities/detail?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`
+        `/api/entities/detail?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}&qualifier=${encodeURIComponent(qualifier)}`
       );
       if (cancelled) return;
       if (!detailData) {
@@ -173,18 +195,20 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       }
 
       const canonicalName = detailData.canonical;
+      const canonicalQualifier = detailData.qualifier ?? '';
       const [{ data: knowledgeData }, { data: summaryData }] = await Promise.all([
         request<{ entries: EntityKnowledgeEntry[] }>(
-          `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`
+          `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}&qualifier=${encodeURIComponent(canonicalQualifier)}`
         ),
         request<{ summary: string | null; miniSummary: string | null; isDirty: boolean }>(
-          `/api/entities/summary?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`
+          `/api/entities/summary?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}&qualifier=${encodeURIComponent(canonicalQualifier)}`
         ),
       ]);
       if (cancelled) return;
 
       setDetail(detailData);
       setCanonical(canonicalName);
+      setQualifierValue(canonicalQualifier);
       setAliases(detailData.aliases);
       setKnowledge(knowledgeData?.entries || []);
       setSummary(summaryData?.summary ?? null);
@@ -196,7 +220,7 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
     return () => {
       cancelled = true;
     };
-  }, [request, type, name]);
+  }, [request, type, name, qualifier]);
 
   function addAlias() {
     const normalized = newAlias.trim();
@@ -288,6 +312,7 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
         body: JSON.stringify({
           type,
           name: detail?.canonical ?? name,
+          qualifier: identityQualifier,
           title: newKnowledgeTitle.trim() || null,
           content: newKnowledgeContent.trim(),
         }),
@@ -310,7 +335,11 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, name: detail?.canonical ?? name }),
+        body: JSON.stringify({
+          type,
+          name: detail?.canonical ?? name,
+          qualifier: identityQualifier,
+        }),
       }
     );
     if (staleRef.current) return;
@@ -326,14 +355,17 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
   async function handleCorrected(result: KnowledgeCorrectionResponse) {
     const canonicalName = detail?.canonical ?? name;
     const { data } = await request<{ entries: EntityKnowledgeEntry[] }>(
-      `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}`
+      `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}&qualifier=${encodeURIComponent(identityQualifier)}`
     );
     if (staleRef.current) return;
     if (data) {
       setKnowledge(data.entries);
     }
     const updated = result.summaries.find(
-      (s) => s.entityType === type && s.entityName.toLowerCase() === canonicalName.toLowerCase()
+      (s) =>
+        s.entityType === type &&
+        s.entityName.toLowerCase() === canonicalName.toLowerCase() &&
+        (s.entityQualifier ?? '') === identityQualifier
     );
     if (updated && updated.summary) {
       setSummary(updated.summary);
@@ -366,7 +398,12 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, name: detail?.canonical ?? name, miniSummary: text || null }),
+        body: JSON.stringify({
+          type,
+          name: detail?.canonical ?? name,
+          qualifier: identityQualifier,
+          miniSummary: text || null,
+        }),
       }
     );
     if (staleRef.current) return;
@@ -383,12 +420,17 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       showError('Hauptname ist erforderlich.');
       return;
     }
+    const normalizedQualifier = qualifierValue.trim();
 
     const normalizedAliases = [
       ...new Set(
         aliases
           .map((a) => a.trim())
-          .filter((a) => a.length > 0 && a.toLowerCase() !== normalizedCanonical.toLowerCase())
+          .filter(
+            (a) =>
+              a.length > 0 &&
+              !(a.toLowerCase() === normalizedCanonical.toLowerCase() && !normalizedQualifier)
+          )
       ),
     ];
 
@@ -399,7 +441,9 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
       body: JSON.stringify({
         type,
         oldName: detail?.canonical ?? name,
+        oldQualifier: identityQualifier,
         newName: normalizedCanonical,
+        newQualifier: normalizedQualifier,
         aliases: normalizedAliases,
       } as EntityUpdatePayload),
     });
@@ -422,7 +466,7 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
     <>
       <Modal
         isOpen
-        title={`${typeLabels[type]}: ${detail?.canonical ?? name}`}
+        title={`${typeLabels[type]}: ${formatEntityLabel(detail?.canonical ?? name, detail?.qualifier ?? qualifier)}`}
         className="max-w-xl"
         onClose={onClose}
         actions={
@@ -477,6 +521,25 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
               </div>
               <p className="text-xs text-slate-500 mt-1">
                 Unter diesem Namen wird die {typeLabels[type]} in den Einträgen geführt.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
+                Qualifier <span className="font-normal text-slate-500">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={qualifierValue}
+                onChange={(e) => setQualifierValue(e.target.value)}
+                className="w-full px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                placeholder="z. B. Begleiter von Calzone"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Unterscheidet Entitäten mit gleichem Namen. Anzeige:{' '}
+                <span className="text-slate-400">
+                  {formatEntityLabel(canonical.trim() || 'Name', qualifierValue.trim())}
+                </span>
               </p>
             </div>
 
@@ -836,6 +899,7 @@ export function EntityEditDialog({ type, name, onClose, onSaved }: EntityEditDia
         <CorrectKnowledgeDialog
           type={type}
           name={detail?.canonical ?? name}
+          qualifier={identityQualifier}
           onClose={() => setCorrectionOpen(false)}
           onCorrected={handleCorrected}
         />

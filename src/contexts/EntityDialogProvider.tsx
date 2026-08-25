@@ -15,21 +15,30 @@ interface EntityDialogProviderProps {
 interface EntityDialogState {
   name: string;
   type: EntityType;
+  qualifier: string;
   onSaved?: () => void;
 }
 
 export function EntityDialogProvider({ children }: EntityDialogProviderProps) {
   const [entity, setEntity] = useState<EntityDialogState | null>(null);
 
-  const openEntity = useCallback((name: string, type: EntityType, onSaved?: () => void) => {
-    setEntity((prev) => {
-      if (prev && prev.name === name && prev.type === type) {
-        if (onSaved === undefined || prev.onSaved === onSaved) return prev;
-        return { ...prev, onSaved };
-      }
-      return { name, type, onSaved: onSaved ?? prev?.onSaved };
-    });
-  }, []);
+  const openEntity = useCallback(
+    (name: string, type: EntityType, onSaved?: () => void, qualifier = '') => {
+      setEntity((prev) => {
+        if (
+          prev &&
+          prev.name === name &&
+          prev.type === type &&
+          prev.qualifier === (qualifier ?? '')
+        ) {
+          if (onSaved === undefined || prev.onSaved === onSaved) return prev;
+          return { ...prev, onSaved };
+        }
+        return { name, type, qualifier: qualifier ?? '', onSaved: onSaved ?? prev?.onSaved };
+      });
+    },
+    []
+  );
 
   const closeEntity = useCallback(() => {
     setEntity(null);
@@ -51,9 +60,10 @@ export function EntityDialogProvider({ children }: EntityDialogProviderProps) {
           }
         >
           <EntityEditDialog
-            key={`${entity.type}-${entity.name}`}
+            key={`${entity.type}-${entity.name}-${entity.qualifier}`}
             type={entity.type}
             name={entity.name}
+            qualifier={entity.qualifier}
             onClose={closeEntity}
             onSaved={entity.onSaved}
           />

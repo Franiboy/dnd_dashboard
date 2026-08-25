@@ -7,31 +7,50 @@ import { DashboardHeader } from '../components/DashboardHeader';
 import { Loading } from '../components/Loading';
 import { Panel } from '../components/Panel';
 import { Modal } from '../components/Modal';
-import { typeLabels, typeAccusative } from '../lib/entityLabels';
-import type { EntitiesResponse, EntityKnowledgeEntry, EntityType } from '../../shared/types';
+import { typeLabels, typeAccusative, formatEntityLabel } from '../lib/entityLabels';
+import type {
+  EntitiesResponse,
+  EntityKnowledgeEntry,
+  EntityListItem,
+  EntityType,
+} from '../../shared/types';
 
 type PanelView = 'entities' | 'blacklist';
 
 interface DragPayload {
   name: string;
+  qualifier: string;
   type: EntityType;
 }
 
 type PendingAction =
   | { kind: 'blacklist'; name: string; type: EntityType }
   | { kind: 'unblacklist'; name: string; type: EntityType }
-  | { kind: 'reclassify'; name: string; fromType: EntityType; toType: EntityType }
-  | { kind: 'synonym'; name: string; targetName: string; type: EntityType };
+  | {
+      kind: 'reclassify';
+      name: string;
+      qualifier: string;
+      fromType: EntityType;
+      toType: EntityType;
+    }
+  | {
+      kind: 'synonym';
+      name: string;
+      qualifier: string;
+      targetName: string;
+      targetQualifier: string;
+      type: EntityType;
+    };
 
 interface EntityListProps {
-  items: string[];
+  items: EntityListItem[];
   type: EntityType;
   emptyText: string;
   dragPayload: DragPayload | null;
-  onDragStart: (name: string, type: EntityType) => void;
+  onDragStart: (name: string, qualifier: string, type: EntityType) => void;
   onDragEnd: () => void;
   onRequestAction: (action: PendingAction) => void;
-  onClickItem: (name: string, type: EntityType) => void;
+  onClickItem: (name: string, qualifier: string, type: EntityType) => void;
 }
 
 function parseDragPayload(e: React.DragEvent): DragPayload | null {
@@ -41,6 +60,10 @@ function parseDragPayload(e: React.DragEvent): DragPayload | null {
   } catch {
     return null;
   }
+}
+
+function entityKey(item: EntityListItem): string {
+  return `${item.name}\n${item.qualifier}`;
 }
 
 function EntityList({
@@ -56,19 +79,34 @@ function EntityList({
   const isReclassifyTarget = dragPayload && dragPayload.type !== type;
   const isOwnDrag = dragPayload && dragPayload.type === type;
 
-  function handleRowDragStart(e: React.DragEvent<HTMLDivElement>, name: string) {
-    e.dataTransfer.setData('application/json', JSON.stringify({ name, type }));
+  function handleRowDragStart(e: React.DragEvent<HTMLDivElement>, item: EntityListItem) {
+    e.dataTransfer.setData(
+      'application/json',
+      JSON.stringify({ name: item.name, qualifier: item.qualifier, type })
+    );
     e.dataTransfer.effectAllowed = 'move';
-    onDragStart(name, type);
+    onDragStart(item.name, item.qualifier, type);
   }
 
-  function handleRowDrop(e: React.DragEvent<HTMLDivElement>, targetName: string) {
+  function handleRowDrop(e: React.DragEvent<HTMLDivElement>, target: EntityListItem) {
     e.preventDefault();
     const payload = parseDragPayload(e) ?? dragPayload;
     if (!payload) return;
-    if (payload.type !== type || payload.name === targetName) return;
+    if (
+      payload.type !== type ||
+      (payload.name === target.name && payload.qualifier === target.qualifier)
+    ) {
+      return;
+    }
     e.stopPropagation();
-    onRequestAction({ kind: 'synonym', name: payload.name, targetName, type });
+    onRequestAction({
+      kind: 'synonym',
+      name: payload.name,
+      qualifier: payload.qualifier,
+      targetName: target.name,
+      targetQualifier: target.qualifier,
+      type,
+    });
   }
 
   function handleListDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -79,6 +117,7 @@ function EntityList({
     onRequestAction({
       kind: 'reclassify',
       name: payload.name,
+      qualifier: payload.qualifier,
       fromType: payload.type,
       toType: type,
     });
@@ -107,7 +146,7 @@ function EntityList({
         ) : (
           items.map((item) => (
             <div
-              key={item}
+              key={entityKey(item)}
               draggable
               onDragStart={(e) => handleRowDragStart(e, item)}
               onDragEnd={onDragEnd}
@@ -116,7 +155,7 @@ function EntityList({
                 e.stopPropagation();
               }}
               onDrop={(e) => handleRowDrop(e, item)}
-              onClick={() => onClickItem(item, type)}
+              onClick={() => onClickItem(item.name, item.qualifier, type)}
               title="Klicken zum Öffnen. Ziehen: auf andere Liste = umwandeln, auf anderes Element = Synonym, unten = Blacklist"
               className={`
                 flex items-center gap-2 px-3 py-2 rounded border text-[var(--text-h)] text-sm
@@ -144,7 +183,9 @@ function EntityList({
                 <circle cx="15" cy="5" r="1" />
                 <circle cx="15" cy="19" r="1" />
               </svg>
-              <span className="flex-1 min-w-0 truncate">{item}</span>
+              <span className="flex-1 min-w-0 truncate">
+                {formatEntityLabel(item.name, item.qualifier)}
+              </span>
             </div>
           ))
         )}
@@ -349,7 +390,11 @@ export function World() {
   const { openEntity } = useEntityDialog();
   const { showSuccess } = useError();
   const [entities, setEntities] = useState<EntitiesResponse | null>(null);
-  const [blacklists, setBlacklists] = useState<EntitiesResponse | null>(null);
+  const [blacklists, setBlacklists] = useState<{
+    persons: string[];
+    organizations: string[];
+    locations: string[];
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [dragPayload, setDragPayload] = useState<DragPayload | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -373,7 +418,11 @@ export function World() {
   }, [request]);
 
   const loadBlacklists = useCallback(async () => {
-    const { data } = await request<EntitiesResponse>('/api/entities/blacklist');
+    const { data } = await request<{
+      persons: string[];
+      organizations: string[];
+      locations: string[];
+    }>('/api/entities/blacklist');
     if (data) {
       setBlacklists(data);
     }
@@ -400,11 +449,21 @@ export function World() {
         break;
       case 'reclassify':
         endpoint = '/api/entities/reclassify';
-        body = { name: action.name, fromType: action.fromType, toType: action.toType };
+        body = {
+          name: action.name,
+          qualifier: action.qualifier,
+          fromType: action.fromType,
+          toType: action.toType,
+        };
         break;
       case 'synonym':
         endpoint = '/api/entities/alias';
-        body = { type: action.type, alias: action.name, canonical: action.targetName };
+        body = {
+          type: action.type,
+          alias: action.name,
+          canonical: action.targetName,
+          canonicalQualifier: action.targetQualifier,
+        };
         break;
     }
 
@@ -423,10 +482,10 @@ export function World() {
     }
   }
 
-  function handleDragStart(name: string, type: EntityType) {
+  function handleDragStart(name: string, qualifier: string, type: EntityType) {
     if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
     canClickRef.current = false;
-    setDragPayload({ name, type });
+    setDragPayload({ name, qualifier, type });
   }
 
   function handleDragEnd() {
@@ -437,12 +496,17 @@ export function World() {
     setDragPayload(null);
   }
 
-  function handleEntityClick(name: string, type: EntityType) {
+  function handleEntityClick(name: string, qualifier: string, type: EntityType) {
     if (!canClickRef.current) return;
-    openEntity(name, type, () => {
-      load();
-      loadBlacklists();
-    });
+    openEntity(
+      name,
+      type,
+      () => {
+        load();
+        loadBlacklists();
+      },
+      qualifier
+    );
   }
 
   function handleRequestAction(action: PendingAction) {
@@ -496,17 +560,18 @@ export function World() {
       case 'reclassify':
         return (
           <>
-            Soll <strong>{action.name}</strong> von {typeAccusative[action.fromType]} zu{' '}
-            {typeAccusative[action.toType]} umgewandelt werden?
+            Soll <strong>{formatEntityLabel(action.name, action.qualifier)}</strong> von{' '}
+            {typeAccusative[action.fromType]} zu {typeAccusative[action.toType]} umgewandelt werden?
           </>
         );
       case 'synonym':
         return (
           <>
-            Soll <strong>{action.name}</strong> als Synonym (Alias) für{' '}
-            <strong>{action.targetName}</strong> gespeichert werden? Beide Namen werden
-            zusammengeführt; zukünftige Erwähnungen von {action.name} werden als {action.targetName}{' '}
-            erkannt.
+            Soll <strong>{formatEntityLabel(action.name, action.qualifier)}</strong> als Synonym
+            (Alias) für{' '}
+            <strong>{formatEntityLabel(action.targetName, action.targetQualifier)}</strong>{' '}
+            gespeichert werden? Beide Entitäten werden zusammengeführt; zukünftige Erwähnungen von{' '}
+            {action.name} werden als {action.targetName} erkannt.
           </>
         );
     }

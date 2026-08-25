@@ -14,6 +14,7 @@ import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
 import { ensureHtml, quillFormats, quillModules, stripHtml } from '../components/quillConfig';
+import { splitEntityLabel } from '../lib/entityLabels';
 import type { DiaryEntry, EntityType, VersionInfo } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -72,16 +73,21 @@ function BadgeList({ items, variant }: BadgeListProps) {
   if (items.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-2 mb-3">
-      {items.map((item) => (
-        <span
-          key={item}
-          onClick={() => openEntity(item, badgeTypeMap[variant])}
-          title="Öffnen"
-          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium cursor-pointer hover:brightness-110 transition ${badgeStyles[variant]}`}
-        >
-          {item}
-        </span>
-      ))}
+      {items.map((item) => {
+        // Items are qualified labels ("Name (Qualifier)") - parse before
+        // opening so homonyms resolve to the exact entity.
+        const { name, qualifier } = splitEntityLabel(item);
+        return (
+          <span
+            key={item}
+            onClick={() => openEntity(name, badgeTypeMap[variant], undefined, qualifier)}
+            title="Öffnen"
+            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium cursor-pointer hover:brightness-110 transition ${badgeStyles[variant]}`}
+          >
+            {item}
+          </span>
+        );
+      })}
     </div>
   );
 }

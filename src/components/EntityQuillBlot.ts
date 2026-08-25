@@ -7,6 +7,9 @@ import { typeLabels } from '../lib/entityLabels';
 interface EntityValue {
   type: EntityType;
   canonical: string;
+  qualifier?: string;
+  /** Set when several homonyms share this mention; the UI must ask. */
+  ambiguous?: boolean;
   miniSummary?: string | null;
 }
 
@@ -19,13 +22,19 @@ class EntityBlot extends Inline {
     const node = super.create(value) as HTMLElement;
     node.setAttribute('data-type', value.type);
     node.setAttribute('data-canonical', value.canonical);
+    if (value.qualifier) {
+      node.setAttribute('data-qualifier', value.qualifier);
+    }
+    if (value.ambiguous) {
+      node.setAttribute('data-ambiguous', '1');
+    }
     if (value.miniSummary) {
       node.setAttribute('data-mini-summary', value.miniSummary);
     }
     node.classList.add('ql-entity', `ql-entity-${value.type}`);
     node.setAttribute('contenteditable', 'false');
     node.style.cursor = 'pointer';
-    const label = `${typeLabels[value.type]}: ${value.canonical}`;
+    const label = `${typeLabels[value.type]}: ${value.qualifier ? `${value.canonical} (${value.qualifier})` : value.canonical}`;
     node.setAttribute('title', value.miniSummary ? `${label} — ${value.miniSummary}` : label);
     return node;
   }
@@ -34,9 +43,17 @@ class EntityBlot extends Inline {
     if (!domNode.classList.contains('ql-entity')) return undefined;
     const type = domNode.getAttribute('data-type') as EntityType | null;
     const canonical = domNode.getAttribute('data-canonical');
+    const qualifier = domNode.getAttribute('data-qualifier');
+    const ambiguous = domNode.getAttribute('data-ambiguous');
     const miniSummary = domNode.getAttribute('data-mini-summary');
     if (!type || !canonical) return undefined;
-    return { type, canonical, miniSummary };
+    return {
+      type,
+      canonical,
+      qualifier: qualifier ?? undefined,
+      ambiguous: ambiguous ? true : undefined,
+      miniSummary,
+    };
   }
 
   static value(domNode: HTMLElement): EntityValue | undefined {
@@ -68,11 +85,18 @@ export function applyEntityHighlights(quill: Quill, mappings: EntityMapping[]) {
   for (const match of matches) {
     const length = match.end - match.start;
     if (length <= 0) continue;
+    const first = match.candidates[0];
     quill.formatText(
       match.start,
       length,
       'entity',
-      { type: match.type, canonical: match.canonical, miniSummary: match.miniSummary },
+      {
+        type: first.type,
+        canonical: first.canonical,
+        qualifier: first.qualifier || undefined,
+        ambiguous: match.candidates.length > 1 ? true : undefined,
+        miniSummary: first.miniSummary,
+      },
       'silent'
     );
   }

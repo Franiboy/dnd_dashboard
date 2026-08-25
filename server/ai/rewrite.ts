@@ -7,6 +7,7 @@ import {
   getDiaryEntryById,
   getEntryEntities,
 } from '../repositories/diary.js';
+import { splitEntityLabel } from '../repositories/entityRefs.js';
 import { markEntitySummaryDirty } from '../repositories/entitySummaries.js';
 import { createLogger } from '../logger.js';
 
@@ -309,9 +310,9 @@ export async function extractEntitiesFromDiary(
     'Aufgabe: Extrahiere alle eindeutigen Personen/Charaktere, Organisationen/Fraktionen und Orte aus dem folgenden deutschen Tagebucheintrag.',
     '',
     'Verfügbare Tools:',
-    `- link_diary_entity(entryId=${entryId}, type, name): Verknüpft eine Entität mit diesem Tagebucheintrag. MUSST du für jede gefundene Entität aufrufen.`,
-    '- list_entities(type?): Listet alle bereits bekannten Entitäten auf.',
-    '- get_entity(type, name): Liefert Wissen und Zusammenfassungen zu einer Entität.',
+    `- link_diary_entity(entryId=${entryId}, type, name, qualifier?): Verknüpft eine Entität mit diesem Tagebucheintrag. MUSST du für jede gefundene Entität aufrufen.`,
+    '- list_entities(type?): Listet alle bereits bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) und Mini-Zusammenfassung auf.',
+    '- get_entity(type, name, qualifier?): Liefert Wissen und Zusammenfassungen zu einer Entität.',
     '',
     'Regeln:',
     '- persons: Lebende Wesen, Charaktere, Tiere mit eigenem Namen oder eindeutiger Bezeichnung. Keine allgemeinen Begriffe wie "Wachen", "Aufständische" oder "Leute".',
@@ -322,6 +323,8 @@ export async function extractEntitiesFromDiary(
     '- Rufe list_entities auf, um alle bereits bekannten Entitäten zu sehen.',
     '- Wenn du unsicher bei einer Schreibweise bist, rufe get_entity(type, name) auf, um den korrekten Namen zu ermitteln.',
     '- Verwende die exakte Schreibweise, die bereits in der Datenbank existiert, um Dubletten zu vermeiden.',
+    '- Gibt es mehrere Entitäten mit demselben Namen (list_entities zeigt sie mit unterschiedlichem Qualifier), lies den Kontext sorgfältig, entscheide, welche gemeint ist, und übergib bei link_diary_entity deren Qualifier.',
+    '- Existiert eine Entität noch nicht, übernimm den Namen so, wie er im Text genannt wird.',
     '- Extrahiere nur Entitäten, die im Text tatsächlich vorkommen. Erfinke keine Details.',
     '- Wenn keine Entitäten im Text vorkommen, beende die Aufgabe ohne weitere Tool-Aufrufe.',
     '',
@@ -368,9 +371,17 @@ export async function processDiaryEntryAi(
     extractEntitiesFromDiary(entryId, entry.content, user, model, onLog),
   ]);
 
-  for (const name of entities.persons) markEntitySummaryDirty('persons', name);
-  for (const name of entities.organizations) markEntitySummaryDirty('organizations', name);
-  for (const name of entities.locations) markEntitySummaryDirty('locations', name);
+  // Linked entities are qualified labels ("Name (Qualifier)") - parse them
+  // back so the dirty flag lands on the exact homonym.
+  const markDirty = (type: 'persons' | 'organizations' | 'locations', labels: string[]) => {
+    for (const label of labels) {
+      const { name, qualifier } = splitEntityLabel(label);
+      markEntitySummaryDirty(type, name, qualifier);
+    }
+  };
+  markDirty('persons', entities.persons);
+  markDirty('organizations', entities.organizations);
+  markDirty('locations', entities.locations);
 
   if (entities.persons.length + entities.organizations.length + entities.locations.length > 0) {
     log.info(

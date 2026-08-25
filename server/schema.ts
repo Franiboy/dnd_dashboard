@@ -154,7 +154,18 @@ export const schema: Record<string, TableDef> = {
     columns: {
       id: { type: 'INTEGER', primaryKey: true, autoIncrement: true },
       name: { type: 'TEXT', notNull: true },
+      // Disambiguator for homonyms ("Kerigan" the gnome vs "Kerigan" the
+      // paladin). Empty string means the plain name. Legacy tables carry a
+      // UNIQUE(name) constraint instead; migrations.ts rebuilds them.
+      qualifier: { type: 'TEXT', notNull: true, default: "''" },
     },
+    indexes: [
+      {
+        name: 'idx_persons_name_qualifier',
+        columns: ['name', 'qualifier'],
+        unique: true,
+      },
+    ],
   },
 
   diary_entry_persons: {
@@ -182,7 +193,15 @@ export const schema: Record<string, TableDef> = {
     columns: {
       id: { type: 'INTEGER', primaryKey: true, autoIncrement: true },
       name: { type: 'TEXT', notNull: true },
+      qualifier: { type: 'TEXT', notNull: true, default: "''" },
     },
+    indexes: [
+      {
+        name: 'idx_organizations_name_qualifier',
+        columns: ['name', 'qualifier'],
+        unique: true,
+      },
+    ],
   },
 
   diary_entry_organizations: {
@@ -210,7 +229,15 @@ export const schema: Record<string, TableDef> = {
     columns: {
       id: { type: 'INTEGER', primaryKey: true, autoIncrement: true },
       name: { type: 'TEXT', notNull: true },
+      qualifier: { type: 'TEXT', notNull: true, default: "''" },
     },
+    indexes: [
+      {
+        name: 'idx_locations_name_qualifier',
+        columns: ['name', 'qualifier'],
+        unique: true,
+      },
+    ],
   },
 
   diary_entry_locations: {
@@ -247,6 +274,9 @@ export const schema: Record<string, TableDef> = {
       type: { type: 'TEXT', notNull: true, primaryKey: true },
       alias: { type: 'TEXT', notNull: true, primaryKey: true },
       canonical: { type: 'TEXT', notNull: true },
+      // Qualifier of the targeted entity so aliases can point at a specific
+      // homonym. Empty string targets the plain name.
+      canonical_qualifier: { type: 'TEXT', notNull: true, default: "''" },
     },
     check: "type IN ('persons', 'organizations', 'locations')",
   },
@@ -256,6 +286,8 @@ export const schema: Record<string, TableDef> = {
       id: { type: 'INTEGER', primaryKey: true, autoIncrement: true },
       entity_type: { type: 'TEXT', notNull: true },
       entity_name: { type: 'TEXT', notNull: true },
+      // Part of the entity identity; see persons.qualifier.
+      entity_qualifier: { type: 'TEXT', notNull: true, default: "''" },
       title: { type: 'TEXT' },
       content: { type: 'TEXT', notNull: true },
       source: { type: 'TEXT', notNull: true, default: "'manual'" },
@@ -282,6 +314,9 @@ export const schema: Record<string, TableDef> = {
     columns: {
       entity_type: { type: 'TEXT', notNull: true, primaryKey: true },
       entity_name: { type: 'TEXT', notNull: true, primaryKey: true },
+      // Part of the entity identity; see persons.qualifier. Legacy tables
+      // lack this PK member; migrations.ts rebuilds the table.
+      entity_qualifier: { type: 'TEXT', notNull: true, primaryKey: true, default: "''" },
       summary: { type: 'TEXT' },
       is_dirty: { type: 'INTEGER', notNull: true, default: '1' },
       updated_at: { type: 'TEXT' },

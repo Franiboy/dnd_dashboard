@@ -10,10 +10,10 @@ import {
   applySessionDiaryDraftToEntry,
   createSessionDiaryDraft,
   ensureEntityExists,
-  findEntityCanonicalName,
+  findEntityCanonical,
   getDiaryEntryById,
   getEntryEntities,
-  listAllEntityNames,
+  listAllEntityRefs,
   listDiaryEntryContentsByEntity,
   listDiaryEntryHeadlinesByUser,
   listPreviousDiaryEntriesByUser,
@@ -23,6 +23,7 @@ import {
   setDiaryEntryPersons,
   updateDiaryEntry,
 } from '../repositories/diary.js';
+import { entityLabel } from '../repositories/entityRefs.js';
 import {
   createEntityKnowledge,
   getEntityKnowledgeEntry,
@@ -232,24 +233,29 @@ if (requireScope('diary:draft')) {
 if (requireScope('entity:extract')) {
   loggedTool(
     'link_diary_entity',
-    'Verknüpft eine Entität mit einem Tagebucheintrag.',
+    'Verknüpft eine Entität mit einem Tagebucheintrag. Bei Namensgleichheit muss der Qualifier der gemeinten Entität angegeben werden (siehe list_entities).',
     {
       entryId: z.number().int().positive(),
       type: z.enum(['persons', 'organizations', 'locations']),
       name: z.string().min(1),
+      qualifier: z
+        .string()
+        .optional()
+        .describe('Unterscheidungs-Qualifier, falls es mehrere Entitäten mit diesem Namen gibt.'),
     },
-    async ({ entryId, type, name }) => {
+    async ({ entryId, type, name, qualifier }) => {
       try {
         const entry = getDiaryEntryWithAccess(entryId);
         if (!entry) return diaryAccessError();
-        const canonical = ensureEntityExists(type, name);
+        const ref = ensureEntityExists(type, name, qualifier?.trim() ?? '');
         const current = getEntryEntities(entryId);
+        const label = entityLabel(ref);
         const existing = new Set<string>(current[type]);
-        existing.add(canonical);
+        existing.add(label);
         if (type === 'persons') setDiaryEntryPersons(entryId, [...existing]);
         else if (type === 'organizations') setDiaryEntryOrganizations(entryId, [...existing]);
         else setDiaryEntryLocations(entryId, [...existing]);
-        return success(`Entität ${canonical} mit Eintrag ${entryId} verknüpft.`);
+        return success(`Entität ${label} mit Eintrag ${entryId} verknüpft.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Verknüpfen der Entität');
       }
@@ -260,18 +266,19 @@ if (requireScope('entity:extract')) {
 if (requireScope('entity:summary')) {
   loggedTool(
     'set_entity_summary',
-    'Setzt die Zusammenfassung und optionale Mini-Zusammenfassung einer Entität.',
+    'Setzt die Zusammenfassung und optionale Mini-Zusammenfassung einer Entität. Bei Namensgleichheit muss der Qualifier der Ziel-Entität angegeben werden.',
     {
       type: z.enum(['persons', 'organizations', 'locations']),
       name: z.string().min(1),
       summary: z.string().min(1),
       miniSummary: z.string().max(200).optional(),
+      qualifier: z.string().optional(),
     },
-    async ({ type, name, summary, miniSummary }) => {
+    async ({ type, name, summary, miniSummary, qualifier }) => {
       try {
-        const canonical = ensureEntityExists(type, name);
-        setEntitySummary(type, canonical, summary.trim(), false, miniSummary);
-        return success(`Zusammenfassung für ${type}/${canonical} gesetzt.`);
+        const ref = ensureEntityExists(type, name, qualifier?.trim() ?? '');
+        setEntitySummary(type, ref.name, summary.trim(), false, miniSummary, ref.qualifier);
+        return success(`Zusammenfassung für ${type}/${entityLabel(ref)} gesetzt.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Setzen der Zusammenfassung');
       }
@@ -282,24 +289,26 @@ if (requireScope('entity:summary')) {
 if (requireScope('knowledge:distribute')) {
   loggedTool(
     'create_knowledge',
-    'Erstellt einen Wissenseintrag für eine Entität.',
+    'Erstellt einen Wissenseintrag für eine Entität. Bei Namensgleichheit muss der Qualifier der Ziel-Entität angegeben werden.',
     {
       type: z.enum(['persons', 'organizations', 'locations']),
       name: z.string().min(1),
       content: z.string().min(1),
       title: z.string().optional(),
+      qualifier: z.string().optional(),
     },
-    async ({ type, name, content, title }) => {
+    async ({ type, name, content, title, qualifier }) => {
       try {
-        const canonical = ensureEntityExists(type, name);
+        const ref = ensureEntityExists(type, name, qualifier?.trim() ?? '');
         const entry = createEntityKnowledge(
           type,
-          canonical,
+          ref.name,
           title?.trim() || null,
           content.trim(),
-          'ai_extracted'
+          'ai_extracted',
+          ref.qualifier
         );
-        return success(`Wissenseintrag ${entry.id} für ${type}/${canonical} erstellt.`);
+        return success(`Wissenseintrag ${entry.id} für ${type}/${entityLabel(ref)} erstellt.`);
       } catch (err) {
         return error(
           err instanceof Error ? err.message : 'Fehler beim Erstellen des Wissenseintrags'
@@ -439,23 +448,29 @@ if (requireScope('diary:read')) {
 if (requireScope('entity:read')) {
   loggedTool(
     'list_entities',
-    'Listet alle bekannten Entitäten (Personen, Organisationen, Orte) auf. Optional gefiltert nach Typ.',
+    'Listet alle bekannten Entitäten (Personen, Organisationen, Orte) mit Qualifier und Mini-Zusammenfassung auf. Optional gefiltert nach Typ.',
     {
       type: z.enum(['persons', 'organizations', 'locations']).optional(),
       limit: z.number().int().positive().max(200).optional(),
     },
     async ({ type, limit }) => {
       try {
-        const names = listAllEntityNames();
+        const refs = listAllEntityRefs();
         const all = [
-          ...names.persons.map((name) => ({ type: 'persons', name })),
-          ...names.organizations.map((name) => ({ type: 'organizations', name })),
-          ...names.locations.map((name) => ({ type: 'locations', name })),
+          ...refs.persons.map((ref) => ({ type: 'persons' as const, ref })),
+          ...refs.organizations.map((ref) => ({ type: 'organizations' as const, ref })),
+          ...refs.locations.map((ref) => ({ type: 'locations' as const, ref })),
         ];
         const filtered = type ? all.filter((e) => e.type === type) : all;
         const limited = filtered.slice(0, limit ?? 100);
         if (limited.length === 0) return success('Keine Entitäten gefunden.');
-        return success(limited.map((e) => `- ${e.type}: ${e.name}`).join('\n'));
+        const lines = limited.map(({ type: entityType, ref }) => {
+          const summary = getEntitySummary(entityType, ref.name, ref.qualifier);
+          const mini = summary?.miniSummary ?? summary?.summary ?? null;
+          const suffix = mini ? ` – ${truncateText(mini.replace(/\s+/g, ' ').trim(), 120)}` : '';
+          return `- ${entityType}: ${entityLabel(ref)}${suffix}`;
+        });
+        return success(lines.join('\n'));
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Laden der Entitäten');
       }
@@ -464,32 +479,39 @@ if (requireScope('entity:read')) {
 
   loggedTool(
     'get_entity',
-    'Liefert Zusammenfassung, aktives Wissen und verknüpfte Tagebucheinträge zu einer bestimmten Entität.',
+    'Liefert Zusammenfassung, aktives Wissen und verknüpfte Tagebucheinträge zu einer bestimmten Entität. Bei Namensgleichheit muss der Qualifier angegeben werden.',
     {
       type: z.enum(['persons', 'organizations', 'locations']),
       name: z.string().min(1),
+      qualifier: z.string().optional(),
       includeDiaryEntries: z.boolean().optional(),
     },
-    async ({ type, name, includeDiaryEntries }) => {
+    async ({ type, name, qualifier, includeDiaryEntries }) => {
       try {
-        const canonical = findEntityCanonicalName(type, name);
-        if (!canonical) {
+        const canonicalRef = findEntityCanonical(type, name, qualifier?.trim() ?? '');
+        if (!canonicalRef) {
           return error(
-            `Entität ${type}/${name} nicht gefunden. Verwende list_entities, um passende Namen zu finden.`
+            `Entität ${type}/${name} nicht gefunden. Verwende list_entities, um passende Namen (und Qualifier) zu finden.`
           );
         }
-        const summary = getEntitySummary(type, canonical);
-        const knowledge = listActiveEntityKnowledge(type, canonical);
+        const label = entityLabel(canonicalRef);
+        const summary = getEntitySummary(type, canonicalRef.name, canonicalRef.qualifier);
+        const knowledge = listActiveEntityKnowledge(
+          type,
+          canonicalRef.name,
+          canonicalRef.qualifier
+        );
         const diaryEntries =
           includeDiaryEntries !== false
             ? listDiaryEntryContentsByEntity(
                 type,
-                canonical,
-                sessionIsAdmin ? undefined : (sessionUserId ?? undefined)
+                canonicalRef.name,
+                sessionIsAdmin ? undefined : (sessionUserId ?? undefined),
+                canonicalRef.qualifier
               )
             : [];
 
-        const lines: string[] = [`Entität: ${canonical} (${type})`];
+        const lines: string[] = [`Entität: ${label} (${type})`];
         lines.push(`Zusammenfassung: ${summary?.summary ?? '-'}`);
         lines.push(`Mini-Zusammenfassung: ${summary?.miniSummary ?? '-'}`);
 
