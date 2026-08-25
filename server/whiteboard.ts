@@ -7,7 +7,8 @@
 // never inject unexpected fields or values.
 
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
+import path from 'node:path';
 import type { Server, Socket } from 'socket.io';
 import type {
   ClientToServerEvents,
@@ -34,6 +35,34 @@ export function ensureWhiteboardUploadDir(): string {
   const dir = getWhiteboardUploadDir();
   mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/** Matches internal board image URLs served by the authenticated static route. */
+const INTERNAL_UPLOAD_URL_RE = /^\/uploads\/whiteboard\/([A-Za-z0-9._-]+)$/;
+
+/**
+ * Deletes the uploaded board image behind `url` once no element references it
+ * anymore. Called after the triggering mutation has been persisted, so the
+ * reference count already excludes the removed/replaced row. Best-effort:
+ * missing files or IO errors are logged and never break the element mutation.
+ */
+export function deleteUnreferencedUpload(url: string | null | undefined): void {
+  if (!url) return;
+  const match = INTERNAL_UPLOAD_URL_RE.exec(url);
+  if (!match) return;
+  const referenced = db
+    .prepare('SELECT COUNT(*) AS n FROM whiteboard_elements WHERE url = ?')
+    .get(url) as { n: number };
+  if (referenced.n > 0) return;
+  const dir = path.resolve(getWhiteboardUploadDir());
+  const target = path.resolve(dir, match[1]);
+  // Defense in depth: never resolve outside the upload directory.
+  if (!target.startsWith(dir + path.sep)) return;
+  try {
+    rmSync(target, { force: true });
+  } catch (err) {
+    console.warn(`whiteboard: could not remove upload ${match[1]}:`, err);
+  }
 }
 
 const ELEMENT_TYPES: readonly WhiteboardElementType[] = [
@@ -476,6 +505,7 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
   if (!existing) throw new WhiteboardError('Element nicht gefunden.');
   if (!canEditElement(existing, user)) throw new WhiteboardError('Keine Berechtigung.');
 
+  const previousUrl = existing.url;
   const next = { ...existing };
   applyPatch(next, sanitizePatch(patch));
   // Dragging someone else's public element into the private zone claims it.
@@ -523,6 +553,9 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
     next.updatedAt,
     id
   );
+  // Replaced uploads (e.g. after a crop) are garbage-collected when the old
+  // URL is no longer referenced anywhere.
+  if (previousUrl && previousUrl !== next.url) deleteUnreferencedUpload(previousUrl);
   return next;
 }
 
@@ -536,6 +569,8 @@ export function removeElement(id: string, user: User): void {
     db.prepare('UPDATE whiteboard_elements SET from_id = NULL WHERE from_id = ?').run(id);
     db.prepare('UPDATE whiteboard_elements SET to_id = NULL WHERE to_id = ?').run(id);
   })();
+  // The uploaded image behind this element disappears with its last reference.
+  deleteUnreferencedUpload(existing.url);
 }
 
 // ---------------------------------------------------------------------------

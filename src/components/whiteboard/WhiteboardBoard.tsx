@@ -27,6 +27,8 @@ import {
   type WhiteboardTool,
 } from './whiteboardShared';
 import {
+  cloneBoardImage,
+  isInternalBoardImageUrl,
   isUploadableImage,
   loadImageElement,
   probeImageSize,
@@ -39,6 +41,8 @@ const MIN_SCALE = 0.33;
 const MAX_SCALE = 20;
 const BAND_EXTENT = 200_000;
 const EMIT_INTERVAL_MS = 80;
+/** World-unit nudge between repeated pastes of the same clipboard content. */
+const PASTE_STEP = 24;
 
 const NOTE_DEFAULT_WIDTH = 220;
 const NOTE_DEFAULT_HEIGHT = 160;
@@ -198,6 +202,10 @@ export function WhiteboardBoard({
   const [cursorMode, setCursorMode] = useState<'idle' | 'panning' | 'dragging'>('idle');
   const [uploadingCount, setUploadingCount] = useState(0);
   const lastMouseRef = useRef<{ x: number; y: number } | null>(null);
+  // Internal copy/paste clipboard holding full element snapshots. Repeated
+  // pastes nudge by PASTE_STEP so copies stay visible instead of stacking.
+  const clipboardRef = useRef<WhiteboardElement[]>([]);
+  const pasteOffsetRef = useRef(0);
 
   // Window-level listeners keep drags alive outside the canvas bounds. They
   // delegate to the freshest closures via refs to avoid stale state.
@@ -374,6 +382,111 @@ export function WhiteboardBoard({
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
+  const screenToWorld = useCallback((clientX: number, clientY: number) => {
+    const el = containerRef.current;
+    if (!el) return { wx: 0, wy: 0 };
+    const bounds = el.getBoundingClientRect();
+    const cam = cameraRef.current;
+    return {
+      wx: (clientX - bounds.left - cam.x) / cam.scale,
+      wy: (clientY - bounds.top - cam.y) / cam.scale,
+    };
+  }, []);
+
+  // Ctrl+C snapshots the selected elements into the internal clipboard.
+  const copySelectedElements = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    clipboardRef.current = selectedIds
+      .map((id) => elementsById.get(id))
+      .filter((el): el is WhiteboardElement => !!el)
+      .map((el) => JSON.parse(JSON.stringify(el)) as WhiteboardElement);
+    pasteOffsetRef.current = 0;
+  }, [elementsById, selectedIds]);
+
+  /** World anchor for pasted copies: mouse position or viewport center. */
+  const pasteAnchor = useCallback(() => {
+    if (lastMouseRef.current) {
+      return screenToWorld(lastMouseRef.current.x, lastMouseRef.current.y);
+    }
+    const el = containerRef.current;
+    return screenToWorld(
+      el ? el.clientWidth / 2 : 0,
+      el ? el.clientHeight / 3 : WHITEBOARD_DIVIDER_Y - 200
+    );
+  }, [screenToWorld]);
+
+  // Ctrl+V recreates the clipboard snapshot at the paste anchor. Image cards
+  // re-upload their file so every copy owns its image and deletions stay clean.
+  const pasteClipboardElements = useCallback(async () => {
+    const snapshot = clipboardRef.current;
+    if (snapshot.length === 0) return;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    for (const source of snapshot) {
+      minX = Math.min(minX, source.x, source.type === 'arrow' ? (source.x2 ?? source.x) : source.x);
+      minY = Math.min(minY, source.y, source.type === 'arrow' ? (source.y2 ?? source.y) : source.y);
+    }
+    if (!Number.isFinite(minX)) return;
+
+    const anchor = pasteAnchor();
+    const offset = pasteOffsetRef.current * PASTE_STEP;
+    pasteOffsetRef.current += 1;
+    const dx = Math.round(anchor.wx - minX) + offset;
+    const dy = Math.round(anchor.wy - minY) + offset;
+    const idMap = new Map(snapshot.map((source) => [source.id, crypto.randomUUID()]));
+    const now = new Date().toISOString();
+    let zIndex = nextTopZIndex(elements);
+    const createdIds: string[] = [];
+
+    const baseCopy = (source: WhiteboardElement, id: string): WhiteboardElement => ({
+      ...source,
+      id,
+      x: source.x + dx,
+      y: source.y + dy,
+      zone: zoneForWorldY(source.y + dy + source.height / 2),
+      ownerId: user.id,
+      ownerName: user.displayName,
+      locked: false,
+      fromId: null,
+      toId: null,
+      zIndex: zIndex++,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    for (const source of snapshot.filter((s) => s.type !== 'arrow')) {
+      const id = idMap.get(source.id)!;
+      let url = source.url;
+      if (url && isInternalBoardImageUrl(url)) {
+        try {
+          url = await cloneBoardImage(url);
+        } catch (err) {
+          // Fall back to sharing the original file rather than dropping the copy.
+          showError(err instanceof Error ? err.message : 'Bild konnte nicht kopiert werden.');
+        }
+      }
+      createElement({ ...baseCopy(source, id), url });
+      createdIds.push(id);
+    }
+
+    for (const arrow of snapshot.filter((s) => s.type === 'arrow')) {
+      const id = idMap.get(arrow.id)!;
+      const remap = (anchorId: string | null) =>
+        anchorId && idMap.has(anchorId) ? idMap.get(anchorId)! : null;
+      createElement({
+        ...baseCopy(arrow, id),
+        x2: arrow.x2 === null ? null : arrow.x2 + dx,
+        y2: arrow.y2 === null ? null : arrow.y2 + dy,
+        fromId: remap(arrow.fromId),
+        toId: remap(arrow.toId),
+      });
+      createdIds.push(id);
+    }
+
+    if (createdIds.length > 0) setSelection(createdIds);
+  }, [pasteAnchor, elements, createElement, user.id, user.displayName, showError, setSelection]);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -385,6 +498,19 @@ export function WhiteboardBoard({
         setSelectedIds([]);
         if (tool !== 'select') onToolChange('select');
         return;
+      }
+      // Internal board clipboard shortcuts; text fields keep native behavior.
+      if (!inField && !e.shiftKey && !e.altKey && (e.ctrlKey || e.metaKey)) {
+        if (e.key.toLowerCase() === 'c' && selectedIds.length > 0) {
+          e.preventDefault();
+          copySelectedElements();
+          return;
+        }
+        if (e.key.toLowerCase() === 'v' && clipboardRef.current.length > 0) {
+          e.preventDefault();
+          void pasteClipboardElements();
+          return;
+        }
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && selectedIds.length > 0) {
         for (const id of selectedIds) {
@@ -400,18 +526,17 @@ export function WhiteboardBoard({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [elementsById, selectedIds, tool, onToolChange, removeElement, canEdit, moveLayer]);
-
-  const screenToWorld = useCallback((clientX: number, clientY: number) => {
-    const el = containerRef.current;
-    if (!el) return { wx: 0, wy: 0 };
-    const bounds = el.getBoundingClientRect();
-    const cam = cameraRef.current;
-    return {
-      wx: (clientX - bounds.left - cam.x) / cam.scale,
-      wy: (clientY - bounds.top - cam.y) / cam.scale,
-    };
-  }, []);
+  }, [
+    elementsById,
+    selectedIds,
+    tool,
+    onToolChange,
+    removeElement,
+    canEdit,
+    moveLayer,
+    copySelectedElements,
+    pasteClipboardElements,
+  ]);
 
   const finishCreate = useCallback(
     (gesture: Extract<Gesture, { kind: 'create' }>, wx: number, wy: number) => {
