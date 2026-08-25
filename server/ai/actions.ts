@@ -19,28 +19,55 @@ import { createLogger } from '../logger.js';
 const log = createLogger('ai-actions');
 
 export type AiAction =
-  | { action: 'createEntity'; type: EntityType; name: string; aliases?: string[] }
+  | {
+      action: 'createEntity';
+      type: EntityType;
+      name: string;
+      qualifier?: string;
+      aliases?: string[];
+    }
   | {
       action: 'renameEntity';
       type: EntityType;
       oldName: string;
+      oldQualifier?: string;
       newName: string;
+      newQualifier?: string;
       aliases?: string[];
     }
-  | { action: 'addAlias'; type: EntityType; alias: string; canonical: string }
-  | { action: 'reclassifyEntity'; name: string; fromType: EntityType; toType: EntityType }
+  | {
+      action: 'addAlias';
+      type: EntityType;
+      alias: string;
+      canonical: string;
+      canonicalQualifier?: string;
+    }
+  | {
+      action: 'reclassifyEntity';
+      name: string;
+      qualifier?: string;
+      fromType: EntityType;
+      toType: EntityType;
+    }
   | { action: 'blacklistEntity'; type: EntityType; name: string }
   | { action: 'unblacklistEntity'; type: EntityType; name: string }
   | {
       action: 'createKnowledge';
       type: EntityType;
       name: string;
+      qualifier?: string;
       title?: string | null;
       content: string;
     }
   | { action: 'updateKnowledge'; id: number; title?: string | null; content?: string }
   | { action: 'deleteKnowledge'; id: number; reason?: string | null }
-  | { action: 'setSummary'; type: EntityType; name: string; summary: string | null };
+  | {
+      action: 'setSummary';
+      type: EntityType;
+      name: string;
+      qualifier?: string;
+      summary: string | null;
+    };
 
 export interface AiActionResult {
   action: AiAction;
@@ -86,7 +113,7 @@ function validateAction(raw: unknown): AiAction | null {
 
   switch (actionRaw) {
     case 'createEntity': {
-      const { type, name, aliases } = raw as Record<string, unknown>;
+      const { type, name, qualifier, aliases } = raw as Record<string, unknown>;
       if (!isValidEntityType(type)) return null;
       const normalizedName = normalizeName(name);
       if (!normalizedName) return null;
@@ -94,11 +121,15 @@ function validateAction(raw: unknown): AiAction | null {
         action: 'createEntity',
         type,
         name: normalizedName,
+        qualifier: normalizeOptionalString(qualifier) ?? '',
         aliases: normalizeStringArray(aliases),
       };
     }
     case 'renameEntity': {
-      const { type, oldName, newName, aliases } = raw as Record<string, unknown>;
+      const { type, oldName, oldQualifier, newName, newQualifier, aliases } = raw as Record<
+        string,
+        unknown
+      >;
       if (!isValidEntityType(type)) return null;
       const normalizedOld = normalizeName(oldName);
       const normalizedNew = normalizeName(newName);
@@ -107,24 +138,38 @@ function validateAction(raw: unknown): AiAction | null {
         action: 'renameEntity',
         type,
         oldName: normalizedOld,
+        oldQualifier: normalizeOptionalString(oldQualifier) ?? '',
         newName: normalizedNew,
+        newQualifier: normalizeOptionalString(newQualifier) ?? '',
         aliases: normalizeStringArray(aliases),
       };
     }
     case 'addAlias': {
-      const { type, alias, canonical } = raw as Record<string, unknown>;
+      const { type, alias, canonical, canonicalQualifier } = raw as Record<string, unknown>;
       if (!isValidEntityType(type)) return null;
       const normalizedAlias = normalizeName(alias);
       const normalizedCanonical = normalizeName(canonical);
       if (!normalizedAlias || !normalizedCanonical) return null;
-      return { action: 'addAlias', type, alias: normalizedAlias, canonical: normalizedCanonical };
+      return {
+        action: 'addAlias',
+        type,
+        alias: normalizedAlias,
+        canonical: normalizedCanonical,
+        canonicalQualifier: normalizeOptionalString(canonicalQualifier) ?? '',
+      };
     }
     case 'reclassifyEntity': {
-      const { name, fromType, toType } = raw as Record<string, unknown>;
+      const { name, qualifier, fromType, toType } = raw as Record<string, unknown>;
       if (!isValidEntityType(fromType) || !isValidEntityType(toType)) return null;
       const normalizedName = normalizeName(name);
       if (!normalizedName) return null;
-      return { action: 'reclassifyEntity', name: normalizedName, fromType, toType };
+      return {
+        action: 'reclassifyEntity',
+        name: normalizedName,
+        qualifier: normalizeOptionalString(qualifier) ?? '',
+        fromType,
+        toType,
+      };
     }
     case 'blacklistEntity': {
       const { type, name } = raw as Record<string, unknown>;
@@ -141,7 +186,7 @@ function validateAction(raw: unknown): AiAction | null {
       return { action: 'unblacklistEntity', type, name: normalizedName };
     }
     case 'createKnowledge': {
-      const { type, name, title, content } = raw as Record<string, unknown>;
+      const { type, name, qualifier, title, content } = raw as Record<string, unknown>;
       if (!isValidEntityType(type)) return null;
       const normalizedName = normalizeName(name);
       const normalizedContent = normalizeString(content);
@@ -150,6 +195,7 @@ function validateAction(raw: unknown): AiAction | null {
         action: 'createKnowledge',
         type,
         name: normalizedName,
+        qualifier: normalizeOptionalString(qualifier) ?? '',
         title: normalizeOptionalString(title),
         content: normalizedContent,
       };
@@ -179,7 +225,7 @@ function validateAction(raw: unknown): AiAction | null {
       };
     }
     case 'setSummary': {
-      const { type, name, summary } = raw as Record<string, unknown>;
+      const { type, name, qualifier, summary } = raw as Record<string, unknown>;
       if (!isValidEntityType(type)) return null;
       const normalizedName = normalizeName(name);
       if (!normalizedName) return null;
@@ -187,6 +233,7 @@ function validateAction(raw: unknown): AiAction | null {
         action: 'setSummary',
         type,
         name: normalizedName,
+        qualifier: normalizeOptionalString(qualifier) ?? '',
         summary: normalizeOptionalString(summary),
       };
     }
@@ -210,7 +257,7 @@ export function executeAction(action: AiAction): AiActionResult {
   try {
     switch (action.action) {
       case 'createEntity': {
-        const ref = ensureEntityExists(action.type, action.name);
+        const ref = ensureEntityExists(action.type, action.name, action.qualifier ?? '');
         if (action.aliases && action.aliases.length > 0) {
           for (const alias of action.aliases) {
             addEntityAlias(action.type, alias, ref.name, ref.qualifier);
@@ -219,18 +266,33 @@ export function executeAction(action: AiAction): AiActionResult {
         return { action, success: true, data: { canonical: ref.name } };
       }
       case 'renameEntity': {
-        if (action.oldName.toLowerCase() === action.newName.toLowerCase()) {
+        if (
+          action.oldName.toLowerCase() === action.newName.toLowerCase() &&
+          (action.oldQualifier ?? '') === (action.newQualifier ?? '')
+        ) {
           return { action, success: true };
         }
-        updateEntity(action.type, action.oldName, action.newName, action.aliases ?? []);
+        updateEntity(
+          action.type,
+          action.oldName,
+          action.newName,
+          action.aliases ?? [],
+          action.oldQualifier ?? '',
+          action.newQualifier ?? ''
+        );
         return { action, success: true };
       }
       case 'addAlias': {
-        addEntityAlias(action.type, action.alias, action.canonical);
+        addEntityAlias(
+          action.type,
+          action.alias,
+          action.canonical,
+          action.canonicalQualifier ?? ''
+        );
         return { action, success: true };
       }
       case 'reclassifyEntity': {
-        reclassifyEntity(action.name, action.fromType, action.toType);
+        reclassifyEntity(action.name, action.fromType, action.toType, action.qualifier ?? '');
         return { action, success: true };
       }
       case 'blacklistEntity': {
@@ -242,7 +304,7 @@ export function executeAction(action: AiAction): AiActionResult {
         return { action, success: true };
       }
       case 'createKnowledge': {
-        const ref = ensureEntityExists(action.type, action.name);
+        const ref = ensureEntityExists(action.type, action.name, action.qualifier ?? '');
         const entry = createEntityKnowledge(
           action.type,
           ref.name,
@@ -269,7 +331,7 @@ export function executeAction(action: AiAction): AiActionResult {
         return { action, success: true, data: entry };
       }
       case 'setSummary': {
-        const ref = ensureEntityExists(action.type, action.name);
+        const ref = ensureEntityExists(action.type, action.name, action.qualifier ?? '');
         setEntitySummary(action.type, ref.name, action.summary, false, undefined, ref.qualifier);
         return { action, success: true };
       }
