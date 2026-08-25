@@ -266,7 +266,10 @@ export function executeAction(action: AiAction): AiActionResult {
         return { action, success: true, data: { canonical: ref.name } };
       }
       case 'renameEntity': {
-        if (action.oldName.toLowerCase() === action.newName.toLowerCase()) {
+        if (
+          action.oldName.toLowerCase() === action.newName.toLowerCase() &&
+          (action.oldQualifier ?? '') === (action.newQualifier ?? '')
+        ) {
           return { action, success: true };
         }
         updateEntity(
