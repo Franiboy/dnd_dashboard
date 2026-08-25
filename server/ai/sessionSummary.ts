@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { createLogger } from '../logger.js';
 import { getSessionById, getSessionSummaryById } from '../repositories/recordings.js';
 import { findExistingEntitiesInText } from '../repositories/diary.js';
+import { splitEntityLabel } from '../repositories/entityRefs.js';
 import { markEntitySummaryDirty } from '../repositories/entitySummaries.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
 import { getModel } from './modelConfig.js';
@@ -205,9 +206,17 @@ export async function processSessionSummaryEntities(
     ),
     locations: Array.from(new Set([...longEntities.locations, ...shortEntities.locations])),
   };
-  for (const name of allEntities.persons) markEntitySummaryDirty('persons', name);
-  for (const name of allEntities.organizations) markEntitySummaryDirty('organizations', name);
-  for (const name of allEntities.locations) markEntitySummaryDirty('locations', name);
+  // Detected entities are qualified labels ("Name (Qualifier)") - parse them
+  // back so the dirty flag lands on the exact homonym.
+  const markDirty = (type: 'persons' | 'organizations' | 'locations', labels: string[]) => {
+    for (const label of labels) {
+      const { name, qualifier } = splitEntityLabel(label);
+      markEntitySummaryDirty(type, name, qualifier);
+    }
+  };
+  markDirty('persons', allEntities.persons);
+  markDirty('organizations', allEntities.organizations);
+  markDirty('locations', allEntities.locations);
 
   try {
     await distributeKnowledgeFromText(result.longSummary, model, onLog, {

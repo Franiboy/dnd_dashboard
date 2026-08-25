@@ -13,6 +13,15 @@ interface EntityConfig {
   column: string;
 }
 
+/**
+ * Full identity of one world entity. Names alone are ambiguous in a campaign
+ * ("Kerigan" the gnome vs "Kerigan" the paladin); the qualifier disambiguates.
+ * An empty qualifier means the plain, unqualified name.
+ */
+export type { EntityRef } from './entityRefs.js';
+export { entityLabel, splitEntityLabel } from './entityRefs.js';
+import { entityLabel, splitEntityLabel, type EntityRef } from './entityRefs.js';
+
 const entityConfig: Record<keyof DiaryEntities, EntityConfig> = {
   persons: { table: 'persons', linkTable: 'diary_entry_persons', column: 'person_id' },
   organizations: {
@@ -22,6 +31,19 @@ const entityConfig: Record<keyof DiaryEntities, EntityConfig> = {
   },
   locations: { table: 'locations', linkTable: 'diary_entry_locations', column: 'location_id' },
 };
+
+/** Finds the exact row for an entity identity (case-insensitive name). */
+function findEntityRow(
+  type: keyof DiaryEntities,
+  ref: EntityRef
+): { id: number; name: string; qualifier: string } | undefined {
+  const { table } = entityConfig[type];
+  return db
+    .prepare(
+      `SELECT id, name, qualifier FROM ${table} WHERE name = ? COLLATE NOCASE AND qualifier = ?`
+    )
+    .get(ref.name, ref.qualifier) as { id: number; name: string; qualifier: string } | undefined;
+}
 
 function rowToDiaryEntry(
   row: Record<string, unknown>,
@@ -71,6 +93,8 @@ function buildEntryEntitiesMap(entryIds: number[]): Map<number, DiaryEntities> {
     map.set(id, emptyEntities());
   }
 
+  // Linked entities are exposed as qualified labels ("Name (Qualifier)") so
+  // homonyms stay distinguishable; writing them back parses tolerantly.
   const load = (
     entityTable: string,
     linkTable: string,
@@ -79,18 +103,18 @@ function buildEntryEntitiesMap(entryIds: number[]): Map<number, DiaryEntities> {
   ) => {
     const rows = db
       .prepare(
-        `SELECT l.diary_entry_id AS entry_id, e.name
+        `SELECT l.diary_entry_id AS entry_id, e.name, e.qualifier
          FROM ${entityTable} e
          JOIN ${linkTable} l ON l.${column} = e.id
          WHERE l.diary_entry_id IN (${entryIds.map(() => '?').join(',')})
          ORDER BY e.name`
       )
-      .all(...entryIds) as { entry_id: number; name: string }[];
+      .all(...entryIds) as { entry_id: number; name: string; qualifier: string }[];
 
-    for (const { entry_id, name } of rows) {
+    for (const { entry_id, name, qualifier } of rows) {
       const entities = map.get(entry_id);
       if (entities) {
-        entities[key].push(name);
+        entities[key].push(entityLabel({ name, qualifier }));
       }
     }
   };
@@ -116,67 +140,121 @@ function entityNameRegex(name: string): RegExp {
   return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'iu');
 }
 
-function getEntityNames(table: string): string[] {
-  const rows = db.prepare(`SELECT name FROM ${table}`).all() as { name: string }[];
-  return rows.map((r) => r.name);
+function getEntityRefs(table: string): EntityRef[] {
+  const rows = db.prepare(`SELECT name, qualifier FROM ${table}`).all() as {
+    name: string;
+    qualifier: string;
+  }[];
+  return rows.map((r) => ({ name: r.name, qualifier: r.qualifier ?? '' }));
 }
 
-export function listAllEntityNames(): DiaryEntities {
+export function listAllEntityRefs(): Record<keyof DiaryEntities, EntityRef[]> {
   return {
-    persons: getEntityNames('persons'),
-    organizations: getEntityNames('organizations'),
-    locations: getEntityNames('locations'),
+    persons: getEntityRefs('persons'),
+    organizations: getEntityRefs('organizations'),
+    locations: getEntityRefs('locations'),
   };
 }
 
-export function findEntityCanonicalName(type: keyof DiaryEntities, name: string): string | null {
-  const { table } = entityConfig[type];
-  const canonical = resolveEntityName(name.trim(), type);
-  const existing = db
-    .prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`)
-    .get(canonical) as { name: string } | undefined;
-  return existing ? existing.name : null;
+/** Resolves an entity identity through the alias chain to an existing row. */
+export function findEntityCanonical(
+  type: keyof DiaryEntities,
+  name: string,
+  qualifier = ''
+): EntityRef | null {
+  const resolved = resolveEntityRef({ name: name.trim(), qualifier }, type);
+  const row = findEntityRow(type, resolved);
+  return row ? { name: row.name, qualifier: row.qualifier ?? '' } : null;
 }
 
-export function ensureEntityExists(type: keyof DiaryEntities, name: string): string {
-  const canonical = findEntityCanonicalName(type, name);
+export function ensureEntityExists(
+  type: keyof DiaryEntities,
+  name: string,
+  qualifier = ''
+): EntityRef {
+  const canonical = findEntityCanonical(type, name, qualifier);
   if (canonical) return canonical;
   const { table } = entityConfig[type];
-  const resolved = resolveEntityName(name.trim(), type);
-  db.prepare(`INSERT OR IGNORE INTO ${table} (name) VALUES (?)`).run(resolved);
+  // The name may arrive as a qualified label ("Name (Qualifier)"); an
+  // explicitly given qualifier parameter takes precedence over a parsed one.
+  const parsed = splitEntityLabel(name.trim());
+  const resolved = resolveEntityRef(
+    { name: parsed.name, qualifier: qualifier || parsed.qualifier },
+    type
+  );
+  const existingByLabel = findEntityRow(type, resolved);
+  if (existingByLabel) {
+    return { name: existingByLabel.name, qualifier: existingByLabel.qualifier ?? '' };
+  }
+  db.prepare(`INSERT INTO ${table} (name, qualifier) VALUES (?, ?)`).run(
+    resolved.name,
+    resolved.qualifier
+  );
   return resolved;
 }
 
-function getAliasEntries(
-  type: keyof DiaryEntities
-): Map<string, { alias: string; canonical: string }> {
-  const rows = db
-    .prepare('SELECT alias, canonical FROM entity_aliases WHERE type = ?')
-    .all(type) as { alias: string; canonical: string }[];
+interface AliasEntry {
+  alias: string;
+  canonical: string;
+  canonicalQualifier: string;
+}
 
-  const map = new Map<string, { alias: string; canonical: string }>();
-  for (const { alias, canonical } of rows) {
-    map.set(alias.toLowerCase(), { alias, canonical });
+function getAliasEntries(type: keyof DiaryEntities): Map<string, AliasEntry> {
+  const rows = db
+    .prepare('SELECT alias, canonical, canonical_qualifier FROM entity_aliases WHERE type = ?')
+    .all(type) as { alias: string; canonical: string; canonical_qualifier?: string }[];
+
+  const map = new Map<string, AliasEntry>();
+  for (const { alias, canonical, canonical_qualifier } of rows) {
+    map.set(alias.toLowerCase(), {
+      alias,
+      canonical,
+      canonicalQualifier: canonical_qualifier ?? '',
+    });
   }
   return map;
 }
 
-export function resolveEntityName(name: string, type: keyof DiaryEntities): string {
+/**
+ * Follows the alias chain for a raw name and returns the targeted entity.
+ * Without a matching alias the input passes through unchanged. Aliases fully
+ * identify their target including its qualifier; an explicitly given
+ * qualifier only applies when no alias redirects the name.
+ */
+export function resolveEntityRef(ref: EntityRef, type: keyof DiaryEntities): EntityRef {
   const aliases = getAliasEntries(type);
-  let current = name.trim();
+  let current = ref;
   const seen = new Set<string>();
 
-  while (aliases.has(current.toLowerCase()) && !seen.has(current.toLowerCase())) {
-    seen.add(current.toLowerCase());
-    current = aliases.get(current.toLowerCase())!.canonical;
+  while (!seen.has(current.name.toLowerCase())) {
+    seen.add(current.name.toLowerCase());
+    const entry = aliases.get(current.name.toLowerCase());
+    if (!entry) break;
+    current = { name: entry.canonical, qualifier: entry.canonicalQualifier };
   }
 
+  // A caller-provided qualifier survives when the name was not redirected.
+  if (
+    ref.qualifier &&
+    seen.size === 1 &&
+    current.name.toLowerCase() === ref.name.toLowerCase() &&
+    !current.qualifier
+  ) {
+    return { name: current.name, qualifier: ref.qualifier };
+  }
   return current;
+}
+
+/** Legacy helper: resolves only the canonical name part of an alias chain. */
+export function resolveEntityName(name: string, type: keyof DiaryEntities): string {
+  return resolveEntityRef({ name: name.trim(), qualifier: '' }, type).name;
 }
 
 interface EntityMapping {
   type: keyof DiaryEntities;
   canonical: string;
+  qualifier: string;
+  label: string;
   aliases: string[];
   miniSummary: string | null;
 }
@@ -187,34 +265,44 @@ export function getEntityMappings(): EntityMapping[] {
 
   for (const type of ['persons', 'organizations', 'locations'] as const) {
     const { table } = entityConfig[type];
-    const names = getEntityNames(table);
-    const aliasesByCanonical = new Map<string, string[]>();
+    const refs = getEntityRefs(table);
+    const aliasesByTarget = new Map<string, string[]>();
 
     const aliasRows = db
-      .prepare('SELECT alias, canonical FROM entity_aliases WHERE type = ?')
-      .all(type) as { alias: string; canonical: string }[];
-    for (const { alias, canonical } of aliasRows) {
-      const list = aliasesByCanonical.get(canonical) ?? [];
+      .prepare('SELECT alias, canonical, canonical_qualifier FROM entity_aliases WHERE type = ?')
+      .all(type) as { alias: string; canonical: string; canonical_qualifier?: string }[];
+    for (const { alias, canonical, canonical_qualifier } of aliasRows) {
+      const key = `${canonical.toLowerCase()}\n${canonical_qualifier ?? ''}`;
+      const list = aliasesByTarget.get(key) ?? [];
       list.push(alias);
-      aliasesByCanonical.set(canonical, list);
+      aliasesByTarget.set(key, list);
     }
 
     const summaryRows = db
-      .prepare('SELECT entity_name, mini_summary FROM entity_summaries WHERE entity_type = ?')
-      .all(type) as { entity_name: string; mini_summary: string | null }[];
+      .prepare(
+        'SELECT entity_name, entity_qualifier, mini_summary FROM entity_summaries WHERE entity_type = ?'
+      )
+      .all(type) as {
+      entity_name: string;
+      entity_qualifier?: string;
+      mini_summary: string | null;
+    }[];
     const miniSummaries = new Map<string, string | null>();
-    for (const { entity_name, mini_summary } of summaryRows) {
-      miniSummaries.set(entity_name, mini_summary);
+    for (const { entity_name, entity_qualifier, mini_summary } of summaryRows) {
+      miniSummaries.set(`${entity_name.toLowerCase()}\n${entity_qualifier ?? ''}`, mini_summary);
     }
 
-    for (const name of names) {
-      const lower = name.toLowerCase();
+    for (const ref of refs) {
+      const lower = ref.name.toLowerCase();
       if (blacklists[type].has(lower)) continue;
+      const key = `${lower}\n${ref.qualifier}`;
       result.push({
         type,
-        canonical: name,
-        aliases: aliasesByCanonical.get(name) ?? [],
-        miniSummary: miniSummaries.get(name) ?? null,
+        canonical: ref.name,
+        qualifier: ref.qualifier,
+        label: entityLabel(ref),
+        aliases: aliasesByTarget.get(key) ?? [],
+        miniSummary: miniSummaries.get(key) ?? null,
       });
     }
   }
@@ -229,37 +317,60 @@ export function findExistingEntitiesInText(text: string): DiaryEntities {
 
   const detect = (type: keyof DiaryEntities) => {
     const { table } = entityConfig[type];
+    const refs = getEntityRefs(table);
     const aliases = getAliasEntries(type);
-    const entityNames = new Set<string>(getEntityNames(table).map((name) => name.toLowerCase()));
-    const triggers = new Map<string, { name: string; canonical: string }>();
 
-    for (const name of getEntityNames(table)) {
-      const lower = name.toLowerCase();
-      if (!triggers.has(lower)) {
-        triggers.set(lower, { name, canonical: name });
-      }
+    // How many entities share a raw name? Plain-name mentions of homonyms
+    // are ambiguous and must be resolved by the AI extraction instead of
+    // being auto-linked to an arbitrary match.
+    const rowCountByName = new Map<string, number>();
+    for (const ref of refs) {
+      const lower = ref.name.toLowerCase();
+      rowCountByName.set(lower, (rowCountByName.get(lower) ?? 0) + 1);
     }
 
-    for (const { alias, canonical } of aliases.values()) {
-      const lower = alias.toLowerCase();
+    interface Trigger {
+      text: string;
+      target: EntityRef;
+      isAlias: boolean;
+    }
+    const triggers = new Map<string, Trigger>();
+    for (const ref of refs) {
+      const lower = ref.name.toLowerCase();
       if (!triggers.has(lower)) {
-        triggers.set(lower, { name: alias, canonical });
+        triggers.set(lower, { text: ref.name, target: ref, isAlias: false });
+      }
+    }
+    for (const entry of aliases.values()) {
+      const lower = entry.alias.toLowerCase();
+      if (!triggers.has(lower)) {
+        triggers.set(lower, {
+          text: entry.alias,
+          target: { name: entry.canonical, qualifier: entry.canonicalQualifier },
+          isAlias: true,
+        });
       }
     }
 
     const seen = new Set<string>();
-    for (const { name, canonical } of triggers.values()) {
-      const canonicalResolved = resolveEntityName(canonical, type);
-      const canonicalLower = canonicalResolved.toLowerCase();
-      if (!entityNames.has(canonicalLower)) continue;
-      if (seen.has(canonicalLower)) continue;
+    for (const trigger of triggers.values()) {
+      const row = findEntityRow(type, resolveEntityRef(trigger.target, type));
+      if (!row) continue;
+      const ref: EntityRef = { name: row.name, qualifier: row.qualifier ?? '' };
+      const key = `${ref.name.toLowerCase()}\n${ref.qualifier}`;
+      if (seen.has(key)) continue;
 
-      const triggerLower = name.toLowerCase();
-      if (blacklists[type].has(triggerLower) || blacklists[type].has(canonicalLower)) continue;
+      // An alias pinpoints exactly one homonym; a bare name does not.
+      if (!trigger.isAlias && (rowCountByName.get(ref.name.toLowerCase()) ?? 0) > 1) continue;
 
-      if (entityNameRegex(name).test(plainText)) {
-        result[type].push(canonicalResolved);
-        seen.add(canonicalLower);
+      const triggerLower = trigger.text.toLowerCase();
+      if (blacklists[type].has(triggerLower) || blacklists[type].has(ref.name.toLowerCase())) {
+        continue;
+      }
+
+      if (entityNameRegex(trigger.text).test(plainText)) {
+        result[type].push(entityLabel(ref));
+        seen.add(key);
       }
     }
   };
@@ -331,6 +442,11 @@ export function filterBlacklisted(entities: DiaryEntities): DiaryEntities {
   };
 }
 
+/**
+ * Name-level kill switch: blocks the string from being extracted or linked
+ * and removes every entity row carrying that name (all qualifiers) plus its
+ * aliases.
+ */
 export function blacklistEntity(name: string, type: keyof DiaryEntities): void {
   const normalized = name.trim();
   if (normalized.length === 0) return;
@@ -373,44 +489,66 @@ function entityExistsInAnyType(
 
 function setLinkedEntities(
   entryId: number,
-  names: string[],
+  labels: string[],
   entityTable: string,
   linkTable: string,
   column: string
 ): void {
-  const normalized = [...new Set(names.map((n) => n.trim()).filter((n) => n.length > 0))];
+  const type = entityTable as keyof DiaryEntities;
+  const normalized = [...new Set(labels.map((n) => n.trim()).filter((n) => n.length > 0))];
 
   db.prepare(`DELETE FROM ${linkTable} WHERE diary_entry_id = ?`).run(entryId);
   if (normalized.length === 0) return;
 
   const blacklists = getBlacklists();
-  const blacklistKey = entityTable as keyof DiaryEntities;
-  const blacklist = blacklists[blacklistKey];
+  const blacklist = blacklists[type];
 
-  const insertEntity = db.prepare(`INSERT OR IGNORE INTO ${entityTable} (name) VALUES (?)`);
-  const getEntity = db.prepare(`SELECT id FROM ${entityTable} WHERE name = ?`);
   const linkEntity = db.prepare(
     `INSERT INTO ${linkTable} (diary_entry_id, ${column}) VALUES (?, ?)`
   );
 
-  const tx = db.transaction((targetId: number, namesToLink: string[]) => {
-    for (const name of namesToLink) {
-      const originalLower = name.toLowerCase();
-      const aliasResolved = resolveEntityName(name, blacklistKey);
-      const existing = db
-        .prepare(`SELECT name FROM ${entityTable} WHERE name = ? COLLATE NOCASE`)
-        .get(aliasResolved) as { name: string } | undefined;
+  const tx = db.transaction((targetId: number, labelsToLink: string[]) => {
+    for (const label of labelsToLink) {
+      const labelLower = label.toLowerCase();
 
-      if (!existing && originalLower !== aliasResolved.toLowerCase()) continue;
+      // Resolve the label to an exact entity identity:
+      // 1. The untouched string as a plain name (legacy round-trips and real
+      //    names that contain parentheses).
+      // 2. Alias resolution / "Name (Qualifier)" labels matched against exact
+      //    (name, qualifier) rows - this is how qualified homonyms survive a
+      //    client save round-trip.
+      // 3. Unknown unredirected names are created (plain or with qualifier).
+      //    Alias strings that point elsewhere are never materialized blindly.
+      let ref: EntityRef | null = null;
+      const exactRow = findEntityRow(type, { name: label, qualifier: '' });
+      if (exactRow) {
+        ref = { name: exactRow.name, qualifier: exactRow.qualifier ?? '' };
+      } else {
+        const parsed = splitEntityLabel(label);
+        const resolved = resolveEntityRef(parsed, type);
+        const redirected =
+          resolved.name.toLowerCase() !== parsed.name.toLowerCase() ||
+          resolved.qualifier !== parsed.qualifier;
+        const row = findEntityRow(type, resolved);
+        if (row) {
+          ref = { name: row.name, qualifier: row.qualifier ?? '' };
+        } else if (!redirected) {
+          ref = resolved;
+        }
+      }
 
-      const canonical = existing?.name ?? aliasResolved;
-      const canonicalLower = canonical.toLowerCase();
+      if (!ref) continue;
 
-      if (blacklist.has(originalLower) || blacklist.has(canonicalLower)) continue;
-      if (entityExistsInAnyType(canonical, blacklistKey)) continue;
+      if (blacklist.has(labelLower) || blacklist.has(ref.name.toLowerCase())) continue;
+      if (entityExistsInAnyType(ref.name, type)) continue;
 
-      insertEntity.run(canonical);
-      const entity = getEntity.get(canonical) as { id: number } | undefined;
+      // OR IGNORE: the identity may already exist (linking is idempotent);
+      // the composite unique index only ignores true duplicates.
+      const insertEntity = db.prepare(
+        `INSERT OR IGNORE INTO ${entityTable} (name, qualifier) VALUES (?, ?)`
+      );
+      insertEntity.run(ref.name, ref.qualifier);
+      const entity = findEntityRow(type, ref);
       if (!entity) continue;
       linkEntity.run(targetId, entity.id);
     }
@@ -560,15 +698,17 @@ export function searchDiaryEntries(
 export function listDiaryEntryContentsByEntity(
   type: keyof DiaryEntities,
   name: string,
-  userId?: string
+  userId?: string,
+  qualifier = ''
 ): { id: number; title: string; content: string; createdAt: string }[] {
-  const { table, linkTable, column } = entityConfig[type];
-  const params: (string | number)[] = [name];
+  const { linkTable, column } = entityConfig[type];
+  const row = findEntityRow(type, { name, qualifier });
+  if (!row) return [];
+  const params: (string | number)[] = [row.id];
   let sql = `SELECT de.id, de.title, de.content, de.created_at AS createdAt
        FROM diary_entries de
        JOIN ${linkTable} l ON l.diary_entry_id = de.id
-       JOIN ${table} e ON e.id = l.${column}
-       WHERE e.name = ? COLLATE NOCASE`;
+       WHERE l.${column} = ?`;
   if (userId) {
     sql += ' AND de.user_id = ?';
     params.push(userId);
@@ -753,7 +893,8 @@ function isEntityBlacklisted(name: string, type: keyof DiaryEntities): boolean {
 export function reclassifyEntity(
   name: string,
   fromType: keyof DiaryEntities,
-  toType: keyof DiaryEntities
+  toType: keyof DiaryEntities,
+  qualifier = ''
 ): void {
   const normalized = name.trim();
   if (normalized.length === 0 || fromType === toType) return;
@@ -764,22 +905,20 @@ export function reclassifyEntity(
   const to = entityConfig[toType];
 
   const tx = db.transaction(() => {
-    const source = db
-      .prepare(`SELECT id FROM ${from.table} WHERE name = ? COLLATE NOCASE`)
-      .get(normalized) as { id: number } | undefined;
+    const source = findEntityRow(fromType, { name: normalized, qualifier });
     if (!source) return;
 
     let targetId: number;
-    const existingTarget = db
-      .prepare(`SELECT id FROM ${to.table} WHERE name = ? COLLATE NOCASE`)
-      .get(normalized) as { id: number } | undefined;
+    const existingTarget = findEntityRow(toType, { name: normalized, qualifier });
 
     if (existingTarget) {
       targetId = existingTarget.id;
     } else {
       if (entityExistsInAnyType(normalized, fromType)) return;
       targetId = Number(
-        db.prepare(`INSERT INTO ${to.table} (name) VALUES (?)`).run(normalized).lastInsertRowid
+        db
+          .prepare(`INSERT INTO ${to.table} (name, qualifier) VALUES (?, ?)`)
+          .run(normalized, source.qualifier ?? '').lastInsertRowid
       );
     }
 
@@ -797,33 +936,39 @@ export function reclassifyEntity(
     db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?').run(fromType, normalized);
 
     const aliases = db
-      .prepare('SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE')
-      .all(fromType, normalized) as { alias: string }[];
+      .prepare(
+        'SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
+      )
+      .all(fromType, normalized, source.qualifier ?? '') as { alias: string }[];
     const insertAlias = db.prepare(
-      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)'
+      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical, canonical_qualifier) VALUES (?, ?, ?, ?)'
     );
     for (const { alias } of aliases) {
-      insertAlias.run(toType, alias, normalized);
+      insertAlias.run(toType, alias, normalized, source.qualifier ?? '');
     }
-    db.prepare('DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE').run(
-      fromType,
-      normalized
-    );
+    db.prepare(
+      'DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
+    ).run(fromType, normalized, source.qualifier ?? '');
 
-    mergeEntityKnowledge(fromType, normalized, toType, normalized);
-    mergeEntitySummary(fromType, normalized, toType, normalized);
+    mergeEntityKnowledge(fromType, normalized, toType, normalized, qualifier, qualifier);
+    mergeEntitySummary(fromType, normalized, toType, normalized, qualifier, qualifier);
   });
 
   tx();
 }
 
-export function addEntityAlias(type: keyof DiaryEntities, alias: string, canonical: string): void {
+export function addEntityAlias(
+  type: keyof DiaryEntities,
+  alias: string,
+  canonical: string,
+  canonicalQualifier = ''
+): void {
   const aliasNormalized = alias.trim();
   const canonicalNormalized = canonical.trim();
   if (
     !aliasNormalized ||
     !canonicalNormalized ||
-    aliasNormalized.toLowerCase() === canonicalNormalized.toLowerCase()
+    (aliasNormalized.toLowerCase() === canonicalNormalized.toLowerCase() && !canonicalQualifier)
   ) {
     return;
   }
@@ -835,20 +980,21 @@ export function addEntityAlias(type: keyof DiaryEntities, alias: string, canonic
     return;
   }
   if (entityExistsInAnyType(aliasNormalized, type)) return;
-  if (entityExistsInAnyType(canonicalNormalized, type)) return;
 
   const { table, linkTable, column } = entityConfig[type];
 
   const tx = db.transaction(() => {
-    const canonicalRow = db
-      .prepare(`SELECT id FROM ${table} WHERE name = ? COLLATE NOCASE`)
-      .get(canonicalNormalized) as { id: number } | undefined;
+    const canonicalRow = findEntityRow(type, {
+      name: canonicalNormalized,
+      qualifier: canonicalQualifier,
+    });
     if (!canonicalRow) return;
 
-    const aliasRow = db
-      .prepare(`SELECT id FROM ${table} WHERE name = ? COLLATE NOCASE`)
-      .get(aliasNormalized) as { id: number } | undefined;
-    if (aliasRow) {
+    // An alias string must not double as an entity name of another type.
+    if (entityExistsInAnyType(canonicalNormalized, type)) return;
+
+    const aliasRow = findEntityRow(type, { name: aliasNormalized, qualifier: '' }) ?? undefined;
+    if (aliasRow && aliasRow.id !== canonicalRow.id) {
       const links = db
         .prepare(`SELECT diary_entry_id FROM ${linkTable} WHERE ${column} = ?`)
         .all(aliasRow.id) as { diary_entry_id: number }[];
@@ -859,8 +1005,15 @@ export function addEntityAlias(type: keyof DiaryEntities, alias: string, canonic
         insertLink.run(diary_entry_id, canonicalRow.id);
       }
       db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(aliasRow.id);
-      mergeEntityKnowledge(type, aliasNormalized, type, canonicalNormalized);
-      mergeEntitySummary(type, aliasNormalized, type, canonicalNormalized);
+      mergeEntityKnowledge(
+        type,
+        aliasNormalized,
+        type,
+        canonicalNormalized,
+        '',
+        canonicalQualifier
+      );
+      mergeEntitySummary(type, aliasNormalized, type, canonicalNormalized, '', canonicalQualifier);
     }
 
     db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?').run(
@@ -869,8 +1022,8 @@ export function addEntityAlias(type: keyof DiaryEntities, alias: string, canonic
     );
 
     db.prepare(
-      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)'
-    ).run(type, aliasNormalized, canonicalNormalized);
+      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical, canonical_qualifier) VALUES (?, ?, ?, ?)'
+    ).run(type, aliasNormalized, canonicalRow.name, canonicalRow.qualifier ?? '');
   });
 
   tx();
@@ -878,25 +1031,22 @@ export function addEntityAlias(type: keyof DiaryEntities, alias: string, canonic
 
 export function getEntityDetail(
   type: keyof DiaryEntities,
-  name: string
-): { type: keyof DiaryEntities; canonical: string; aliases: string[] } | null {
-  const { table } = entityConfig[type];
-  const canonical = resolveEntityName(name.trim(), type);
-
-  const row = db
-    .prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`)
-    .get(canonical) as { name: string } | undefined;
+  name: string,
+  qualifier = ''
+): { type: keyof DiaryEntities; canonical: string; qualifier: string; aliases: string[] } | null {
+  const row = findEntityRow(type, resolveEntityRef({ name: name.trim(), qualifier }, type));
   if (!row) return null;
 
   const aliasRows = db
     .prepare(
-      'SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE ORDER BY alias COLLATE NOCASE'
+      'SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ? ORDER BY alias COLLATE NOCASE'
     )
-    .all(type, row.name) as { alias: string }[];
+    .all(type, row.name, row.qualifier ?? '') as { alias: string }[];
 
   return {
     type,
     canonical: row.name,
+    qualifier: row.qualifier ?? '',
     aliases: aliasRows.map((a) => a.alias),
   };
 }
@@ -905,7 +1055,9 @@ export function updateEntity(
   type: keyof DiaryEntities,
   oldName: string,
   newName: string,
-  aliases: string[]
+  aliases: string[],
+  oldQualifier = '',
+  newQualifier = ''
 ): void {
   const oldNormalized = oldName.trim();
   const newNormalized = newName.trim();
@@ -920,39 +1072,44 @@ export function updateEntity(
     ...new Set(
       aliases
         .map((a) => a.trim())
-        .filter((a) => a.length > 0 && a.toLowerCase() !== newNormalized.toLowerCase())
+        .filter(
+          (a) => a.length > 0 && !(a.toLowerCase() === newNormalized.toLowerCase() && !newQualifier)
+        )
     ),
   ];
 
   const tx = db.transaction(() => {
-    const oldRow = db
-      .prepare(`SELECT id, name FROM ${table} WHERE name = ? COLLATE NOCASE`)
-      .get(oldNormalized) as { id: number; name: string } | undefined;
+    const oldRow = findEntityRow(type, { name: oldNormalized, qualifier: oldQualifier });
     if (!oldRow) {
       throw new Error('Entität nicht gefunden');
     }
 
-    if (newNormalized !== oldRow.name) {
-      const existing = db
-        .prepare(`SELECT id FROM ${table} WHERE name = ? COLLATE NOCASE AND id != ?`)
-        .get(newNormalized, oldRow.id) as { id: number } | undefined;
-      if (existing) {
+    if (newNormalized !== oldRow.name || newQualifier !== (oldRow.qualifier ?? '')) {
+      const clash = findEntityRow(type, { name: newNormalized, qualifier: newQualifier });
+      if (clash && clash.id !== oldRow.id) {
         throw new Error('Name existiert bereits');
       }
-      db.prepare(`UPDATE ${table} SET name = ? WHERE id = ?`).run(newNormalized, oldRow.id);
+      db.prepare(`UPDATE ${table} SET name = ?, qualifier = ? WHERE id = ?`).run(
+        newNormalized,
+        newQualifier,
+        oldRow.id
+      );
       db.prepare(
-        'UPDATE entity_aliases SET canonical = ? WHERE type = ? AND canonical = ? COLLATE NOCASE'
-      ).run(newNormalized, type, oldRow.name);
-      renameEntityKnowledge(type, oldRow.name, newNormalized);
+        'UPDATE entity_aliases SET canonical = ?, canonical_qualifier = ? WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
+      ).run(newNormalized, newQualifier, type, oldRow.name, oldRow.qualifier ?? '');
+      renameEntityKnowledge(type, oldRow.name, newNormalized, oldRow.qualifier ?? '', newQualifier);
+    } else {
+      db.prepare(
+        'UPDATE entity_aliases SET canonical_qualifier = ? WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
+      ).run(newQualifier, type, oldRow.name, oldRow.qualifier ?? '');
     }
 
-    db.prepare('DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE').run(
-      type,
-      newNormalized
-    );
+    db.prepare(
+      'DELETE FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
+    ).run(type, newNormalized, newQualifier);
 
     const insertAlias = db.prepare(
-      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical) VALUES (?, ?, ?)'
+      'INSERT OR IGNORE INTO entity_aliases (type, alias, canonical, canonical_qualifier) VALUES (?, ?, ?, ?)'
     );
     const deleteAlias = db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?');
 
@@ -960,9 +1117,19 @@ export function updateEntity(
       if (entityExistsInAnyType(alias)) {
         throw new Error(`„${alias}“ ist bereits ein Hauptname`);
       }
+      // A bare-name alias of a qualified homonym would hijack every plain
+      // mention of that name; only allow it when it targets the plain name.
+      const parsedAlias = splitEntityLabel(alias);
+      if (
+        parsedAlias.name.toLowerCase() === newNormalized.toLowerCase() &&
+        parsedAlias.qualifier &&
+        parsedAlias.qualifier !== newQualifier
+      ) {
+        throw new Error(`„${alias}“ kollidiert mit dem Hauptnamen`);
+      }
 
       deleteAlias.run(type, alias);
-      insertAlias.run(type, alias, newNormalized);
+      insertAlias.run(type, alias, newNormalized, newQualifier);
     }
   });
 

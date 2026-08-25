@@ -10,6 +10,7 @@ import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
 import { EntityRichText } from '../components/EntityRichText';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
+import { EntityChooserModal, type EntityCandidate } from '../components/EntityChooserModal';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { Toggle } from '../components/Toggle';
 import ReactQuill from 'react-quill-new';
@@ -106,6 +107,7 @@ export function Sessions({ user }: SessionsProps) {
     Record<number, SessionDiaryEntryLink[]>
   >({});
   const [aiStatus, setAiStatus] = useState<string | null>(null);
+  const [chooserCandidates, setChooserCandidates] = useState<EntityCandidate[] | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<
     Record<
       number,
@@ -341,7 +343,30 @@ export function Sessions({ user }: SessionsProps) {
           if (!target) return;
           const type = target.getAttribute('data-type') as EntityType | null;
           const canonical = target.getAttribute('data-canonical');
-          if (type && canonical) openEntity(canonical, type);
+          if (!type || !canonical) return;
+          const qualifier = target.getAttribute('data-qualifier') ?? '';
+          if (target.getAttribute('data-ambiguous')) {
+            // Several homonyms share this mention - ask which one was meant.
+            const text = (target.textContent ?? '').trim();
+            const candidates = mappings
+              .filter(
+                (m) =>
+                  m.type === type &&
+                  (m.canonical.toLowerCase() === text.toLowerCase() ||
+                    m.aliases.some((a) => a.toLowerCase() === text.toLowerCase()))
+              )
+              .map((m) => ({
+                type: m.type,
+                name: m.canonical,
+                qualifier: m.qualifier ?? '',
+                miniSummary: m.miniSummary,
+              }));
+            if (candidates.length > 1) {
+              setChooserCandidates(candidates);
+              return;
+            }
+          }
+          openEntity(canonical, type, undefined, qualifier);
         };
         quill.root.addEventListener('click', handleClick);
         attached.push({ quill, handler: handleClick });
@@ -828,6 +853,17 @@ export function Sessions({ user }: SessionsProps) {
             erhalten.
           </p>
         </ConfirmDialog>
+      )}
+
+      {chooserCandidates && (
+        <EntityChooserModal
+          candidates={chooserCandidates}
+          onClose={() => setChooserCandidates(null)}
+          onPick={(candidate) => {
+            setChooserCandidates(null);
+            openEntity(candidate.name, candidate.type, undefined, candidate.qualifier);
+          }}
+        />
       )}
     </div>
   );
