@@ -95,7 +95,7 @@ async function generateLongSessionSummary(
     '',
     'Vorgehen:',
     `1. Lies die Datei ${workFile} mit dem read-Tool.`,
-    '2. Nutze get_previous_session_summaries, list_entities, get_entity und search_diary_entries, um Hintergrundinformationen zu sammeln. Da du Admin-Rechte hast, siehst du alle Tagebücher aller Spieler und alle bisherigen Session-Zusammenfassungen.',
+    '2. Nutze get_previous_session_summaries, list_entities, get_entity und search_diary_entries, um Hintergrundinformationen zu sammeln. Da du Admin-Rechte hast, siehst du alle Tagebücher aller Spieler und alle bisherigen Session-Zusammenfassungen. Gibt es mehrere Entitäten mit demselben Namen (list_entities zeigt sie mit unterschiedlichem Qualifier), lies get_entity mit dem zum Kontext passenden Qualifier.',
     '3. Erstelle eine ausführliche, gut strukturierte HTML-Zusammenfassung der Session. Gliedere sie in Abschnitte (z. B. Orte, Personen, Ereignisse, Kämpfe, Entscheidungen). Verwende dafür <h2>, <h3>, <p>, <ul>/<li> und andere sinnvolle HTML-Elemente.',
     `4. Rufe set_session_long_summary(sessionId=${sessionId}, longSummary) mit deinem HTML auf.`,
     '5. Gib danach nur eine kurze Bestätigung aus, nicht den HTML-Text selbst.',
