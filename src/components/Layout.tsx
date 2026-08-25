@@ -26,8 +26,12 @@ export function Layout({ user, realUser, version, onLogout, onUserChange, childr
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    request<{ persons: string[] }>('/api/entities', undefined, false).then(({ data }) => {
-      if (data) setPersons(data.persons ?? []);
+    request<{ persons: { name: string; qualifier: string }[] }>(
+      '/api/entities',
+      undefined,
+      false
+    ).then(({ data }) => {
+      if (data) setPersons((data.persons ?? []).map((p) => p.name));
     });
   }, [request]);
 

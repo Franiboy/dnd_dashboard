@@ -339,21 +339,41 @@ export interface DiaryEntry {
 
 export type EntityType = 'persons' | 'organizations' | 'locations';
 
+/**
+ * One known entity of the world knowledge graph.
+ *
+ * Names alone are not unique in a campaign (two different beings can both be
+ * called "Kerigan"). The optional qualifier disambiguates them, e.g.
+ * "Kerigan" + "Begleiter von Calzone". Uniqueness is (name, qualifier);
+ * an empty qualifier means the plain, unambiguous name.
+ */
+export interface EntityListItem {
+  name: string;
+  qualifier: string;
+}
+
+/** Formatted display form of an entity: "Name" or "Name (Qualifier)". */
+export type EntityLabel = string;
+
 export interface EntitiesResponse {
-  persons: string[];
-  organizations: string[];
-  locations: string[];
+  persons: EntityListItem[];
+  organizations: EntityListItem[];
+  locations: EntityListItem[];
 }
 
 export interface EntityDetail {
   type: EntityType;
   canonical: string;
+  qualifier: string;
   aliases: string[];
 }
 
 export interface EntityMapping {
   type: EntityType;
   canonical: string;
+  qualifier: string;
+  /** Display form "Name" or "Name (Qualifier)" used wherever entities are listed. */
+  label: EntityLabel;
   aliases: string[];
   miniSummary: string | null;
 }
@@ -361,7 +381,9 @@ export interface EntityMapping {
 export interface EntityUpdatePayload {
   type: EntityType;
   oldName: string;
+  oldQualifier?: string;
   newName: string;
+  newQualifier?: string;
   aliases: string[];
 }
 
@@ -372,6 +394,8 @@ export interface EntityKnowledgeEntry {
   id: number;
   entityType: EntityType;
   entityName: string;
+  /** Disambiguator of the entity; '' targets the plain name. */
+  entityQualifier: string;
   title: string | null;
   content: string;
   source: string;

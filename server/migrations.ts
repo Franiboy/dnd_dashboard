@@ -218,13 +218,79 @@ function migrateAiSettingsSingleModel(): void {
   `);
 }
 
+// Legacy persons/organizations/locations tables bake UNIQUE(name) into their
+// DDL and lack the qualifier column, so homonyms cannot exist. Rebuild them
+// following the official SQLite table-rebuild order (create *_new, copy,
+// drop old, rename) so the diary link tables' foreign key references - which
+// keep pointing at the unchanged table name - stay intact.
+//
+// Pragma calls are no-ops inside a transaction, so this hook runs outside
+// the runMigrations() transaction with foreign keys temporarily disabled.
+function rebuildEntityTablesForQualifier(): void {
+  const tables = ['persons', 'organizations', 'locations'] as const;
+  const stale = tables.filter((name) => {
+    if (!tableExists(name)) return false;
+    const row = db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(name) as { sql: string } | undefined;
+    return !!row && !/\bqualifier\b/.test(row.sql);
+  });
+  if (stale.length === 0) return;
+
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      for (const name of stale) {
+        const temp = `${name}_qualifier_rebuild`;
+        db.exec(`DROP TABLE IF EXISTS ${quote(temp)}`);
+        db.exec(createTableSql(temp, schema[name]));
+        db.exec(
+          `INSERT INTO ${quote(temp)} (id, name, qualifier) SELECT id, name, '' FROM ${quote(name)};`
+        );
+        db.exec(`DROP TABLE ${quote(name)}`);
+        db.exec(`ALTER TABLE ${quote(temp)} RENAME TO ${quote(name)}`);
+        log.info(`Rebuilt table "${name}" with qualifier column`);
+      }
+    })();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+}
+
+// entity_summaries used to be keyed by (entity_type, entity_name) only.
+// Summaries belong to a specific homonym, so the qualifier joins the primary
+// key. Nothing references this table, so a plain rename-rebuild is safe.
+function rebuildEntitySummariesForQualifier(): void {
+  if (!tableExists('entity_summaries')) return;
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'entity_summaries'")
+    .get() as { sql: string } | undefined;
+  if (!row || /\bentity_qualifier\b/.test(row.sql)) return;
+
+  db.exec('ALTER TABLE entity_summaries RENAME TO entity_summaries_old;');
+  db.exec(createTableSql('entity_summaries', schema.entity_summaries));
+  db.exec(`
+    INSERT INTO entity_summaries (
+      entity_type, entity_name, entity_qualifier, summary, is_dirty, updated_at, mini_summary
+    )
+    SELECT entity_type, entity_name, '', summary, is_dirty, updated_at, mini_summary
+    FROM entity_summaries_old;
+  `);
+  db.exec('DROP TABLE entity_summaries_old;');
+  log.info('Rebuilt entity_summaries with qualifier in primary key');
+}
+
 export function runMigrations(): void {
+  // Table rebuilds that require foreign_keys = OFF must run outside the
+  // outer transaction; the pragma is a no-op while a transaction is open.
+  rebuildEntityTablesForQualifier();
   db.transaction(() => {
     // Apply non-generative data migrations that reshape schema first.
     migrateEntityBlacklistTypes();
     migrateWhiteboardElementTypes();
     dropLegacyDiaryEntryDate();
     migrateWhiteboardElementTypes();
+    rebuildEntitySummariesForQualifier();
     // Apply the declarative schema diff (tables, columns, indexes).
     applySchema();
     // Backfills that depend on the schema being present.

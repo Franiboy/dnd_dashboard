@@ -11,7 +11,6 @@ import {
 import {
   addEntityAlias,
   blacklistEntity,
-  finalizeEntities,
   getBlacklistedEntities,
   getEntityDetail,
   getEntityMappings,
@@ -43,18 +42,20 @@ router.get('/mappings', (_req: AuthRequest, res) => {
 });
 
 router.get('/', (_req: AuthRequest, res) => {
-  const fetchNames = (table: string): string[] => {
-    const rows = db.prepare(`SELECT name FROM ${table} ORDER BY name COLLATE NOCASE`).all() as {
-      name: string;
-    }[];
-    return rows.map((row) => row.name);
+  const fetchRefs = (table: string) => {
+    const rows = db
+      .prepare(
+        `SELECT name, qualifier FROM ${table} ORDER BY name COLLATE NOCASE, qualifier COLLATE NOCASE`
+      )
+      .all() as { name: string; qualifier?: string }[];
+    return rows.map((row) => ({ name: row.name, qualifier: row.qualifier ?? '' }));
   };
 
-  const entities = finalizeEntities({
-    persons: fetchNames('persons'),
-    organizations: fetchNames('organizations'),
-    locations: fetchNames('locations'),
-  });
+  const entities = {
+    persons: fetchRefs('persons'),
+    organizations: fetchRefs('organizations'),
+    locations: fetchRefs('locations'),
+  };
 
   res.json(entities);
 });
@@ -106,7 +107,7 @@ router.post('/unblacklist', (req: AuthRequest, res) => {
 });
 
 router.post('/reclassify', (req: AuthRequest, res) => {
-  const { name, fromType, toType } = req.body;
+  const { name, qualifier, fromType, toType } = req.body;
   if (!name || typeof name !== 'string' || !name.trim()) {
     res.status(400).json({ error: 'Name ist erforderlich' });
     return;
@@ -117,7 +118,12 @@ router.post('/reclassify', (req: AuthRequest, res) => {
   }
 
   try {
-    reclassifyEntity(name.trim(), fromType, toType);
+    reclassifyEntity(
+      name.trim(),
+      fromType,
+      toType,
+      typeof qualifier === 'string' ? qualifier.trim() : ''
+    );
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: 'Reklassifizierung fehlgeschlagen' });
@@ -125,7 +131,7 @@ router.post('/reclassify', (req: AuthRequest, res) => {
 });
 
 router.post('/alias', (req: AuthRequest, res) => {
-  const { type, alias, canonical } = req.body;
+  const { type, alias, canonical, canonicalQualifier } = req.body;
   if (
     !alias ||
     typeof alias !== 'string' ||
@@ -143,7 +149,12 @@ router.post('/alias', (req: AuthRequest, res) => {
   }
 
   try {
-    addEntityAlias(type, alias.trim(), canonical.trim());
+    addEntityAlias(
+      type,
+      alias.trim(),
+      canonical.trim(),
+      typeof canonicalQualifier === 'string' ? canonicalQualifier.trim() : ''
+    );
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: 'Verknüpfen fehlgeschlagen' });
@@ -151,7 +162,7 @@ router.post('/alias', (req: AuthRequest, res) => {
 });
 
 router.get('/detail', (req: AuthRequest, res) => {
-  const { type, name } = req.query;
+  const { type, name, qualifier } = req.query;
   if (
     !type ||
     typeof type !== 'string' ||
@@ -165,7 +176,11 @@ router.get('/detail', (req: AuthRequest, res) => {
   }
 
   try {
-    const detail = getEntityDetail(type as keyof DiaryEntities, name.trim());
+    const detail = getEntityDetail(
+      type as keyof DiaryEntities,
+      name.trim(),
+      typeof qualifier === 'string' ? qualifier : ''
+    );
     if (!detail) {
       res.status(404).json({ error: 'Entität nicht gefunden' });
       return;
@@ -177,7 +192,7 @@ router.get('/detail', (req: AuthRequest, res) => {
 });
 
 router.put('/detail', (req: AuthRequest, res) => {
-  const { type, oldName, newName, aliases } = req.body;
+  const { type, oldName, oldQualifier, newName, newQualifier, aliases } = req.body;
   if (
     !type ||
     !ENTITY_TYPES.includes(type) ||
@@ -198,7 +213,9 @@ router.put('/detail', (req: AuthRequest, res) => {
       type,
       oldName.trim(),
       newName.trim(),
-      aliases.map((a: unknown) => String(a).trim()).filter(Boolean)
+      aliases.map((a: unknown) => String(a).trim()).filter(Boolean),
+      typeof oldQualifier === 'string' ? oldQualifier.trim() : '',
+      typeof newQualifier === 'string' ? newQualifier.trim() : ''
     );
     res.json({ ok: true });
   } catch (err) {
@@ -209,7 +226,7 @@ router.put('/detail', (req: AuthRequest, res) => {
 });
 
 router.get('/knowledge', (req: AuthRequest, res) => {
-  const { type, name } = req.query;
+  const { type, name, qualifier } = req.query;
   if (
     !type ||
     typeof type !== 'string' ||
@@ -223,7 +240,11 @@ router.get('/knowledge', (req: AuthRequest, res) => {
   }
 
   try {
-    const entries = listEntityKnowledge(type as keyof DiaryEntities, name.trim());
+    const entries = listEntityKnowledge(
+      type as keyof DiaryEntities,
+      name.trim(),
+      typeof qualifier === 'string' ? qualifier : ''
+    );
     res.json({ entries });
   } catch {
     res.status(500).json({ error: 'Laden fehlgeschlagen' });
@@ -231,7 +252,7 @@ router.get('/knowledge', (req: AuthRequest, res) => {
 });
 
 router.post('/knowledge', (req: AuthRequest, res) => {
-  const { type, name, title, content } = req.body;
+  const { type, name, qualifier, title, content } = req.body;
   if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
     res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
     return;
@@ -247,7 +268,8 @@ router.post('/knowledge', (req: AuthRequest, res) => {
       name.trim(),
       title && typeof title === 'string' ? title.trim() : null,
       content.trim(),
-      'manual'
+      'manual',
+      typeof qualifier === 'string' ? qualifier.trim() : ''
     );
     res.status(201).json({ entry });
   } catch {
@@ -342,13 +364,15 @@ router.post('/knowledge/correct', async (req: AuthRequest, res) => {
     return;
   }
 
-  const { text, type, name } = req.body;
+  const { text, type, name, qualifier } = req.body;
   if (!text || typeof text !== 'string' || !text.trim()) {
     res.status(400).json({ error: 'Text ist erforderlich' });
     return;
   }
 
-  let focus: { entityType: (typeof ENTITY_TYPES)[number]; entityName: string } | undefined;
+  let focus:
+    | { entityType: (typeof ENTITY_TYPES)[number]; entityName: string; entityQualifier: string }
+    | undefined;
   if (type !== undefined || name !== undefined) {
     if (
       !type ||
@@ -360,7 +384,11 @@ router.post('/knowledge/correct', async (req: AuthRequest, res) => {
       res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
       return;
     }
-    focus = { entityType: type, entityName: name.trim() };
+    focus = {
+      entityType: type,
+      entityName: name.trim(),
+      entityQualifier: typeof qualifier === 'string' ? qualifier.trim() : '',
+    };
   }
 
   try {
@@ -372,7 +400,7 @@ router.post('/knowledge/correct', async (req: AuthRequest, res) => {
 });
 
 router.get('/summary', (req: AuthRequest, res) => {
-  const { type, name } = req.query;
+  const { type, name, qualifier } = req.query;
   if (
     !type ||
     !ENTITY_TYPES.includes(type as keyof DiaryEntities) ||
@@ -385,11 +413,13 @@ router.get('/summary', (req: AuthRequest, res) => {
   }
 
   try {
-    const summary = getEntitySummary(type as keyof DiaryEntities, name.trim());
+    const summaryQualifier = typeof qualifier === 'string' ? qualifier : '';
+    const summary = getEntitySummary(type as keyof DiaryEntities, name.trim(), summaryQualifier);
     res.json(
       summary ?? {
         entityType: type,
         entityName: name.trim(),
+        entityQualifier: summaryQualifier,
         summary: null,
         miniSummary: null,
         isDirty: true,
@@ -407,14 +437,16 @@ router.post('/summary/generate', async (req: AuthRequest, res) => {
     return;
   }
 
-  const { type, name } = req.body;
+  const { type, name, qualifier } = req.body;
   if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
     res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
     return;
   }
 
   try {
-    const result = await generateEntitySummary(type, name.trim());
+    const result = await generateEntitySummary(type, name.trim(), {
+      qualifier: typeof qualifier === 'string' ? qualifier.trim() : '',
+    });
     if (result === null) {
       res.status(500).json({ error: 'KI-Zusammenfassung fehlgeschlagen' });
       return;
@@ -426,7 +458,7 @@ router.post('/summary/generate', async (req: AuthRequest, res) => {
 });
 
 router.put('/mini-summary', (req: AuthRequest, res) => {
-  const { type, name, miniSummary } = req.body;
+  const { type, name, qualifier, miniSummary } = req.body;
   if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
     res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
     return;
@@ -435,7 +467,12 @@ router.put('/mini-summary', (req: AuthRequest, res) => {
   const normalizedMini = typeof miniSummary === 'string' ? miniSummary.trim() : null;
 
   try {
-    const entry = setEntityMiniSummary(type, name.trim(), normalizedMini);
+    const entry = setEntityMiniSummary(
+      type,
+      name.trim(),
+      normalizedMini,
+      typeof qualifier === 'string' ? qualifier.trim() : ''
+    );
     res.json({ miniSummary: entry.miniSummary });
   } catch {
     res.status(500).json({ error: 'Mini-Zusammenfassung konnte nicht gespeichert werden' });

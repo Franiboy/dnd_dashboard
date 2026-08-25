@@ -71,12 +71,25 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 ### World (`/welt`)
 
 - Shows all known entities (people, organizations, places).
+- **Entity identity is `(name, qualifier)`**: names alone are not unique in a
+  campaign (two different beings can both be called "Kerigan"). The optional
+  qualifier disambiguates homonyms; it is stored in the `qualifier` column of
+  `persons` / `organizations` / `locations` and is part of the unique index.
+  An empty qualifier means the plain name. Display form is
+  "Name (Qualifier)"; linked entities in diary entries use this label so a
+  save round-trip keeps the exact homonym.
 - Each entity has:
-  - Summary (`entitySummaries`)
-  - Knowledge entries (`entityKnowledge`)
+  - Summary (`entitySummaries`, keyed by type + name + qualifier)
+  - Knowledge entries (`entityKnowledge`, keyed by type + name + qualifier)
   - Linked diary entries
-  - Aliases
-- Entities can be edited, merged, reclassified and blacklisted.
+  - Aliases (`entity_aliases`; each alias points at exactly one entity,
+    including its qualifier, so an alias can disambiguate between homonyms)
+- Entities can be edited, merged, reclassified and blacklisted. Blacklisting
+  works on the bare name and removes every homonym carrying that name.
+- When diary/session text mentions an ambiguous bare name (several entities
+  share it), automatic linking skips that mention; AI extraction decides via
+  qualifier. Clicking an ambiguous highlight in the UI opens a chooser
+  listing all matching entities with their qualifiers and mini summaries.
 - Knowledge distribution takes free text (e.g. from the diary) and assigns facts to entities.
 - The entity dialog has a "Wissen korrigieren" action: free text describes what is wrong and
   the AI (`correctKnowledgeFromText`) checks the affected entities, marks contradicting

@@ -85,9 +85,9 @@ export async function distributeKnowledgeFromText(
     'Aufgabe: Analysiere den folgenden Text und ordne die darin enthaltenen Fakten den passenden Entitäten zu.',
     '',
     'Verfügbare Tools:',
-    '- get_entity(type, name): Liefert Zusammenfassung, Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
-    '- list_entities(type?): Listet alle bekannten Entitäten auf.',
-    '- create_knowledge(type, name, content, title?): Erstellt einen Wissenseintrag.',
+    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
+    '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
+    '- create_knowledge(type, name, content, title?, qualifier?): Erstellt einen Wissenseintrag.',
     '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht.',
     '',
     'Regeln:',
@@ -95,6 +95,7 @@ export async function distributeKnowledgeFromText(
     '- Ordne jeden Fakt einer oder mehreren Entitäten zu.',
     '- Wenn eine Entität noch nicht existiert, wird sie automatisch durch create_knowledge angelegt.',
     '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
+    '- Gibt es mehrere Entitäten mit demselben Namen (list_entities zeigt sie mit unterschiedlichem Qualifier), wähle anhand des Kontexts die richtige Entität und gib beim Aufruf von get_entity bzw. create_knowledge deren Qualifier an.',
     '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
     '- content ist der eigentliche Faktentext.',
     '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
@@ -155,6 +156,7 @@ export async function distributeKnowledgeFromText(
 export interface KnowledgeCorrectionTarget {
   entityType: EntityType;
   entityName: string;
+  entityQualifier?: string;
 }
 
 export interface CorrectedEntitySummary extends KnowledgeCorrectionTarget {
@@ -166,18 +168,26 @@ export interface KnowledgeCorrectionResult extends DistributeResult {
   summaries: CorrectedEntitySummary[];
 }
 
+function targetKey(target: KnowledgeCorrectionTarget): string {
+  return `${target.entityType}/${target.entityName.toLowerCase()}/${target.entityQualifier ?? ''}`;
+}
+
 export function collectAffectedEntities(
   focus: KnowledgeCorrectionTarget | null,
   result: DistributeResult
 ): KnowledgeCorrectionTarget[] {
   const targets = new Map<string, KnowledgeCorrectionTarget>();
   if (focus) {
-    targets.set(`${focus.entityType}/${focus.entityName.toLowerCase()}`, focus);
+    targets.set(targetKey(focus), focus);
   }
   for (const entry of [...result.created, ...result.deleted.map((d) => d.entry)]) {
-    const key = `${entry.entityType}/${entry.entityName.toLowerCase()}`;
-    if (!targets.has(key)) {
-      targets.set(key, { entityType: entry.entityType, entityName: entry.entityName });
+    const target = {
+      entityType: entry.entityType,
+      entityName: entry.entityName,
+      entityQualifier: entry.entityQualifier ?? '',
+    };
+    if (!targets.has(targetKey(target))) {
+      targets.set(targetKey(target), target);
     }
   }
   return [...targets.values()];
@@ -211,9 +221,9 @@ export async function correctKnowledgeFromText(
       : []),
     '',
     'Verfügbare Tools:',
-    '- get_entity(type, name): Liefert Zusammenfassung, Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
-    '- list_entities(type?): Listet alle bekannten Entitäten auf.',
-    '- create_knowledge(type, name, content, title?): Erstellt einen Wissenseintrag.',
+    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
+    '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
+    '- create_knowledge(type, name, content, title?, qualifier?): Erstellt einen Wissenseintrag.',
     '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht.',
     '',
     'Regeln:',
@@ -224,6 +234,7 @@ export async function correctKnowledgeFromText(
     '- Extrahiere nur Fakten, die in der Korrektur tatsächlich vorkommen. Erfinke keine Details.',
     '- Lasse Einträge unangetastet, die nicht von der Korrektur betroffen sind.',
     '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
+    '- Gibt es mehrere Entitäten mit demselben Namen (list_entities zeigt sie mit unterschiedlichem Qualifier), wähle anhand des Kontexts die richtige Entität und gib deren Qualifier an.',
     '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
     '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
     '- In delete_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
@@ -258,15 +269,15 @@ export async function correctKnowledgeFromText(
   // Refresh summaries of every affected entity so corrections are visible immediately.
   const summaries: CorrectedEntitySummary[] = [];
   for (const target of collectAffectedEntities(focus ?? null, diff)) {
-    const generated = await generateEntitySummary(
-      target.entityType,
-      target.entityName,
+    const generated = await generateEntitySummary(target.entityType, target.entityName, {
       model,
-      onLog
-    );
+      onLog,
+      qualifier: target.entityQualifier ?? '',
+    });
     summaries.push({
       entityType: target.entityType,
       entityName: target.entityName,
+      entityQualifier: target.entityQualifier ?? '',
       summary: generated?.summary ?? null,
       miniSummary: generated?.miniSummary ?? null,
     });
@@ -287,16 +298,24 @@ export interface GeneratedEntitySummary {
   miniSummary: string | null;
 }
 
+export interface EntitySummaryOptions {
+  model?: string;
+  onLog?: (line: string) => void;
+  /** Disambiguator for homonyms; '' targets the plain name. */
+  qualifier?: string;
+}
+
 export async function generateEntitySummary(
   entityType: EntityType,
   entityName: string,
-  model?: string,
-  onLog?: (line: string) => void
+  options: EntitySummaryOptions = {}
 ): Promise<GeneratedEntitySummary | null> {
+  const { model, onLog, qualifier = '' } = options;
   const typeLabel =
     entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
+  const qualifiedName = qualifier ? `${entityName} (${qualifier})` : entityName;
 
-  const summaryRow = getEntitySummary(entityType, entityName);
+  const summaryRow = getEntitySummary(entityType, entityName, qualifier);
   const previousSummary = summaryRow?.summary
     ? `Vorherige Zusammenfassung (korrigiere oder erweitere sie bei Bedarf):\n${summaryRow.summary}\n\n`
     : '';
@@ -304,11 +323,15 @@ export async function generateEntitySummary(
   const prompt = [
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
-    `Aufgabe: Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${entityName}" und zusätzlich eine sehr kurze Mini-Zusammenfassung (1 Satz, maximal 150 Zeichen) für Tooltips.`,
+    `Aufgabe: Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${qualifiedName}" und zusätzlich eine sehr kurze Mini-Zusammenfassung (1 Satz, maximal 150 Zeichen) für Tooltips.`,
     '',
     'Verfügbare Tools:',
-    `- get_entity(type="${entityType}", name="${entityName}"): Liefert alle Informationen zur Entität. DU MUSST dieses Tool aufrufen, bevor du die Zusammenfassung erstellst.`,
-    `- set_entity_summary(type="${entityType}", name="${entityName}", summary, miniSummary): Speichert die Zusammenfassung und Mini-Zusammenfassung. Verwende diesen type und name genau so.`,
+    `- get_entity(type="${entityType}", name="${entityName}"${
+      qualifier ? `, qualifier="${qualifier}"` : ''
+    }): Liefert alle Informationen zur Entität. DU MUSST dieses Tool aufrufen, bevor du die Zusammenfassung erstellst.`,
+    `- set_entity_summary(type="${entityType}", name="${entityName}", summary, miniSummary${
+      qualifier ? `, qualifier="${qualifier}"` : ''
+    }): Speichert die Zusammenfassung und Mini-Zusammenfassung. Verwende type und name (und qualifier, falls angegeben) genau so.`,
     '',
     'Regeln:',
     '- Rufe get_entity auf, um Wissen und verknüpfte Tagebucheinträge zu erhalten.',
@@ -320,10 +343,10 @@ export async function generateEntitySummary(
     '- Speichere beides zusammen mit set_entity_summary, nachdem du get_entity aufgerufen hast.',
     '',
     previousSummary,
-    `Zusammenfassung für ${entityName}:`,
+    `Zusammenfassung für ${qualifiedName}:`,
   ].join('\n');
 
-  log.info(`Generating summary for ${entityType}/${entityName}`);
+  log.info(`Generating summary for ${entityType}/${qualifiedName}`);
 
   const result = await runOpenCode({
     prompt,
@@ -340,18 +363,18 @@ export async function generateEntitySummary(
 
   if (!result.success) {
     log.warn(
-      `Summary generation failed for ${entityType}/${entityName}: exitCode=${result.exitCode}`
+      `Summary generation failed for ${entityType}/${qualifiedName}: exitCode=${result.exitCode}`
     );
     return null;
   }
 
-  const summaryRowAfter = getEntitySummary(entityType, entityName);
+  const summaryRowAfter = getEntitySummary(entityType, entityName, qualifier);
   if (!summaryRowAfter?.summary) {
-    log.warn(`No summary saved for ${entityType}/${entityName}`);
+    log.warn(`No summary saved for ${entityType}/${qualifiedName}`);
     return null;
   }
 
-  log.info(`Summary generated for ${entityType}/${entityName}`);
+  log.info(`Summary generated for ${entityType}/${qualifiedName}`);
   return {
     summary: summaryRowAfter.summary,
     miniSummary: summaryRowAfter.miniSummary,
