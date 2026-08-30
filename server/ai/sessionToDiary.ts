@@ -5,6 +5,8 @@ import { getDiaryEntryBySessionDraftFor } from '../repositories/diary.js';
 import { getSessionById } from '../repositories/recordings.js';
 import type { DiaryEntry } from '../../shared/types.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
+import { getAllUsers } from '../users.js';
+import { annotateTranscriptSpeakers } from './transcriptSpeakers.js';
 import { getModel } from './modelConfig.js';
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
 import { getSessionWorkDir } from './sessionWorkdir.js';
@@ -44,6 +46,18 @@ function playerPerspectiveLines(user: McpSessionUser): string[] {
     '- Wenn der Charakter etwas nur aus Erzählungen oder Berichten anderer erfährt, kennzeichne das als Hör-Sage (z. B. "Ich erfuhr, dass...", "Man erzählte mir...").'
   );
   return lines;
+}
+
+function perspectiveGuardLines(): string[] {
+  return [
+    'Perspektiv-Regeln (strikt einhalten):',
+    '- Stelle für jede Szene zuerst fest, wo sich dein Charakter befindet, und folge einer durchgängigen Zeitleiste seiner eigenen Position.',
+    '- Nur Handlungen unter dem Discord-Namen deines Spielers sind Handlungen deines Charakters. Handlungen anderer Charaktere (z. B. "Vimak betritt die Arena") niemals in der Ich-Form übernehmen.',
+    '- Szenen, an denen dein Charakter nicht beteiligt ist, gehören NICHT in den Eintrag – auch wenn die Zusammenfassung sie beschreibt. Höchstens als Hör-Sage, wenn dein Charakter davon erfährt.',
+    '- Achtung bei getrennten Gruppen (Split-Party): Dein Charakter kann nicht gleichzeitig an zwei Orten sein. Hat er die Gruppe verlassen, erlebt er spätere Szenen der anderen nicht mit.',
+    '- Kommentare deines Spielers im Transkript (Spott, Regel- oder Wettdiskussionen, Meta-Gerede) sind Out-of-Character-Gerede und bedeuten weder Anwesenheit noch Handlung des Charakters.',
+    '- Der Spielleiter (DM) hat keinen Charakter; er beschreibt nur die Welt und die NPCs.',
+  ];
 }
 
 function formatOffset(seconds: number): string {
@@ -87,18 +101,21 @@ export async function generateSessionDiaryDraft(
     return null;
   }
 
-  const source =
-    session.longSummary && session.longSummary.trim() ? session.longSummary : session.transcript;
+  const longSummary = session.longSummary && session.longSummary.trim();
+  const source = longSummary ? longSummary : session.transcript;
   if (!source.trim()) {
     log.warn(`No source text available for session ${sessionId}`);
     return null;
   }
 
+  const users = getAllUsers();
+  const annotatedTranscript = annotateTranscriptSpeakers(session.transcript, users, user.id);
+
   const sourceFile = getSessionDiarySourceFile(sessionId);
   const transcriptFile = getSessionDiaryTranscriptFile(sessionId);
   mkdirSync(getSessionWorkDir(sessionId), { recursive: true });
-  writeFileSync(sourceFile, source, 'utf-8');
-  writeFileSync(transcriptFile, session.transcript, 'utf-8');
+  writeFileSync(sourceFile, longSummary ? source : annotatedTranscript.transcript, 'utf-8');
+  writeFileSync(transcriptFile, annotatedTranscript.transcript, 'utf-8');
 
   log.info(`Starting session-to-diary draft for session ${sessionId} (${source.length} bytes)`);
 
@@ -113,12 +130,19 @@ export async function generateSessionDiaryDraft(
     '- Wenn mit dieser Session ein neuer Spieltag anbricht, erstelle einen neuen Tagebucheintrag (targetEntryId weglassen).',
     ...playerPerspectiveLines(user),
     '',
+    'Zuordnung der Sprecher im Transkript:',
+    ...(annotatedTranscript.mappingLines.length > 0
+      ? annotatedTranscript.mappingLines
+      : ['- (keine Sprechernamen im Transkript erkannt)']),
+    '',
+    ...perspectiveGuardLines(),
+    '',
     ...sessionBoundaryLines(session),
     '',
     'Verfügbare Tools:',
     `- get_session_summary(sessionId=${session.id}): Liefert Kurz- und Lang-Zusammenfassung der Session.`,
     `- Lies die Datei ${sourceFile} mit dem read-Tool. Sie enthält den ausführlichen Ausgangstext (Lang-Zusammenfassung oder, falls nicht vorhanden, das Transkript) der Session.`,
-    `- Lies die Datei ${transcriptFile} mit dem read-Tool. Sie enthält das vollständige Roh-Transkript. Nutze sie als Referenz, um herzuleiten, was der Spieler aktiv mitbekommen hat.`,
+    `- Lies die Datei ${transcriptFile} mit dem read-Tool. Sie enthält das vollständige Transkript; die Sprecher sind mit "Charakter (Discord-Name)" bzw. "Spielleiter (Name)" gekennzeichnet, dein Charakter zusätzlich mit "(du)". Nutze sie als Referenz, um herzuleiten, was der Spieler aktiv mitbekommen hat.`,
     '- list_user_diary_entries(limit?): Listet die Tagebucheinträge des Spielers auf.',
     '- get_diary_entry(entryId): Liefert den vollständigen Inhalt eines bestimmten Eintrags.',
     '- get_entity(type, name, qualifier?): Liefert Wissen und Zusammenfassungen zu einer Entität. Gibt es mehrere Entitäten mit demselben Namen (siehe list_entities), gib den Qualifier der gemeinten Entität an.',
@@ -127,17 +151,19 @@ export async function generateSessionDiaryDraft(
     '',
     'Vorgehen:',
     `1. Rufe get_session_summary(sessionId=${session.id}) auf und lies ${sourceFile}, um den Session-Inhalt zu kennen.`,
-    `2. Lies ${transcriptFile}, um zu ermitteln, welche Szenen, Dialoge und Ereignisse direkt den Spieler betreffen.`,
+    `2. Lies ${transcriptFile}, um zu ermitteln, welche Szenen, Dialoge und Ereignisse direkt den Spieler betreffen (Sprecher mit "(du)").`,
     '3. Rufe list_user_diary_entries auf, um die aktuellsten Tagebucheinträge des Spielers zu sehen.',
     '4. Prüfe mit get_diary_entry die neuesten Einträge und bestimme den laufenden Spieltag (Titel, Inhalt, Datums-/Tageshinweise).',
     '5. Vergleiche den laufenden Spieltag mit der aktuellen Session. Befinden wir uns am selben, laufenden Spieltag? Dann erweitere den passenden Eintrag (targetEntryId = ID). Beginnt mit dieser Session ein neuer Spieltag? Dann erstelle einen neuen Eintrag (targetEntryId weglassen).',
-    '6. Erstelle einen HTML-Tagebucheintrag. Bei bestehendem Eintrag: integriere die vorhandenen Inhalte sinnvoll, erhalte den alten Text und füge die neuen Session-Ereignisse an passender Stelle an. Bei neuem Eintrag: schreibe einen vollständigen Eintrag.',
+    '6. Erstelle einen HTML-Tagebucheintrag ausschließlich aus der Perspektive deines Charakters. Bei bestehendem Eintrag: integriere die vorhandenen Inhalte sinnvoll, erhalte den alten Text und füge die neuen Session-Ereignisse an passender Stelle an. Bei neuem Eintrag: schreibe einen vollständigen Eintrag.',
     '7. Wenn Personen, Organisationen oder Orte vorkommen, prüfe ihre Schreibweise mit list_entities und get_entity. Gibt es mehrere Entitäten mit demselben Namen, verwende durchgehend die mit dem zur Szene passenden Qualifier (Anzeigeform „Name (Qualifier)“).',
-    `8. Rufe am Ende genau einmal set_session_diary_draft(sessionId=${session.id}, title, html, targetEntryId?) auf. targetEntryId nur setzen, wenn ein Eintrag zum laufenden Spieltag erweitert wird; sonst weglassen, um einen neuen Eintrag anzulegen.`,
-    '9. Gib danach nur eine kurze Bestätigung aus, nicht den HTML-Text selbst.',
+    '8. Prüfe den Entwurf auf Perspektiv-Widersprüche: Befindet sich dein Charakter in jeder Szene? Kann er sich dort aufhalten (keine zwei Orte gleichzeitig, keine Szenen nach seiner Abreise)? Stehen Handlungen anderer Charaktere in der Ich-Form? Korrigiere solche Stellen, bevor du speicherst.',
+    `9. Rufe am Ende genau einmal set_session_diary_draft(sessionId=${session.id}, title, html, targetEntryId?) auf. targetEntryId nur setzen, wenn ein Eintrag zum laufenden Spieltag erweitert wird; sonst weglassen, um einen neuen Eintrag anzulegen.`,
+    '10. Gib danach nur eine kurze Bestätigung aus, nicht den HTML-Text selbst.',
     '',
     'Wichtig:',
     '- Halte dich strikt an den vorliegenden Text und erfinke keine Details.',
+    '- Die Lang-Zusammenfassung ist die Faktenquelle und nennt Handlungen mit dem Namen des Handelnden (z. B. "Vimak betritt die Arena"). Übernimm diese Zuordnungen exakt und schreibe Handlungen anderer Charaktere niemals in der Ich-Form.',
     '- Verwende die exakte Schreibweise von Entitäten aus der Datenbank.',
     '- Nutze HTML, aber keine Markdown-Code-Blöcke.',
     '- Verwende sinnvolle HTML-Strukturen wie <h2>, <h3>, <p>, <ul>/<li> und <strong>/<em>.',
