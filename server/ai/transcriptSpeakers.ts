@@ -16,7 +16,7 @@ export interface SpeakerAnnotationResult {
 
 const MIN_NAME_LENGTH = 4;
 
-const LINE_PREFIX_RE = /^\[(\d{1,3}:\d{2})\] ([^\n:]+):/gm;
+const LINE_PREFIX_RE = /^\[(\d{1,3}:\d{2}(?::\d{2})?)\] ([^\n:]+):/gm;
 
 // Whisper transcripts contain misattribution artifacts inside the text, e.g.
 // "Cloudsen:"..., "franiboy:"..." or "Cloudsen& Nils & ...". These are not real
@@ -173,12 +173,15 @@ export function annotateTranscriptSpeakers(
     const label = buildLabel(user, transcriptName, isAuthor);
 
     result = result.replace(
-      new RegExp(`^(\\[\\d{1,3}:\\d{2}\\] )${escapeRegExp(lineName ?? inTextName!)}(?=:)`, 'gm'),
-      `$1${label}`
+      new RegExp(
+        `^(\\[\\d{1,3}:\\d{2}(?::\\d{2})?\\] )${escapeRegExp(lineName ?? inTextName!)}(?=:)`,
+        'gm'
+      ),
+      (_match, prefix: string) => `${prefix}${label}`
     );
     result = result.replace(
       new RegExp(`${escapeRegExp(lineName ?? inTextName!)}(?=:\\s*"|=\\s*"|\\s*&)`, 'gi'),
-      label
+      () => label
     );
 
     if (lineNames.has(key)) {

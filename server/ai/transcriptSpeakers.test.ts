@@ -134,6 +134,11 @@ describe('annotateTranscriptSpeakers', () => {
     expect(result.transcript).toContain('[10:10] Calzone (Franiboy) (du): Ich bleibe hier.');
   });
 
+  it('annotates hour-format timestamps', () => {
+    const result = annotate('[01:05:00] Franiboy: Ich bin noch da.', 'u-franiboy');
+    expect(result.transcript).toBe('[01:05:00] Calzone (Franiboy) (du): Ich bin noch da.');
+  });
+
   it('matches the fuzzy nickname "Variance | Jogi"', () => {
     const result = annotate('[10:05] Variance | Jogi: Ich wette fünf Gold.');
     expect(result.transcript).toContain(
