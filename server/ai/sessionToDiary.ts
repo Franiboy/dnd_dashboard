@@ -101,8 +101,8 @@ export async function generateSessionDiaryDraft(
     return null;
   }
 
-  const hasLongSummary = !!session.longSummary && !!session.longSummary.trim();
-  const source = hasLongSummary ? session.longSummary : session.transcript;
+  const longSummary = session.longSummary && session.longSummary.trim();
+  const source = longSummary ? longSummary : session.transcript;
   if (!source.trim()) {
     log.warn(`No source text available for session ${sessionId}`);
     return null;
@@ -114,7 +114,7 @@ export async function generateSessionDiaryDraft(
   const sourceFile = getSessionDiarySourceFile(sessionId);
   const transcriptFile = getSessionDiaryTranscriptFile(sessionId);
   mkdirSync(getSessionWorkDir(sessionId), { recursive: true });
-  writeFileSync(sourceFile, hasLongSummary ? source : annotatedTranscript.transcript, 'utf-8');
+  writeFileSync(sourceFile, longSummary ? source : annotatedTranscript.transcript, 'utf-8');
   writeFileSync(transcriptFile, annotatedTranscript.transcript, 'utf-8');
 
   log.info(`Starting session-to-diary draft for session ${sessionId} (${source.length} bytes)`);

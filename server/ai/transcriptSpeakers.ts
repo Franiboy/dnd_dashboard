@@ -78,9 +78,9 @@ export function resolveTranscriptSpeaker(
         normalized.length >= MIN_NAME_LENGTH &&
         (normalized.includes(norm) || norm.includes(normalized))
       ) {
-        score = score === null ? 1 : Math.min(score, 1);
+        if (score === null || score > 1) score = 1;
       } else if (normalized.length >= MIN_NAME_LENGTH && editDistance(normalized, norm) <= 1) {
-        score = score === null ? 2 : Math.min(score, 2);
+        if (score === null || score > 2) score = 2;
       }
     }
     if (score === null) continue;
