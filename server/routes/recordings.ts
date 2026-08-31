@@ -524,6 +524,10 @@ router.put('/:id/game-day', requireAdmin, (req, res) => {
     res.status(400).json({ error: 'Endtag darf nicht vor Starttag liegen' });
     return;
   }
+  if (start !== null && end !== null && end - start > 30) {
+    res.status(400).json({ error: 'Zeitraum zu groß (max 30 Tage)' });
+    return;
+  }
   const label =
     typeof gameDateLabel === 'string' && gameDateLabel.trim() ? gameDateLabel.trim() : null;
 

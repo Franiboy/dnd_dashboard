@@ -311,6 +311,10 @@ function seedCampaignDays(): void {
     for (const s of sessions) {
       const start = s.game_day;
       const end = s.game_day_end ?? start;
+      if (end - start > 30) {
+        log.warn(`Skipping seed for session range ${start}-${end} too large (max 30)`);
+        continue;
+      }
       for (let d = start; d <= end; d++) {
         insert.run(d, now, now);
       }

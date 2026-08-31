@@ -300,6 +300,9 @@ export function updateSession(
       updates.gameDayEnd !== undefined ? updates.gameDayEnd : (current?.gameDayEnd ?? start);
     const end = endRaw ?? start;
     if (start !== null) {
+      if (end !== null && end - start > 30) {
+        throw new Error('Zeitraum zu groß (max 30 Tage)');
+      }
       const label = updates.gameDateLabel ?? current?.gameDateLabel ?? null;
       for (let d = start; d <= (end ?? start); d++) {
         ensureCampaignDay(d, d === start ? label : null);
