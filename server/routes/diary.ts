@@ -8,6 +8,7 @@ import {
 } from '../ai/rewrite.js';
 import { deleteOpenCodeSession } from '../ai/opencode.js';
 import { deleteRewrittenFile, getRewrittenFilePath, readRewrittenFile } from '../diaryFiles.js';
+import { db } from '../database.js';
 import { createLogger } from '../logger.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 import {
@@ -177,9 +178,21 @@ router.post('/entries', async (req: AuthRequest, res) => {
     return;
   }
 
-  const finalTitle = `Spieltag ${day}`;
+  const entry = db.transaction(() => {
+    const existing = db
+      .prepare('SELECT 1 FROM diary_entries WHERE user_id = ? AND game_day = ?')
+      .get(req.user!.id, day) as { '1': number } | undefined;
+    if (existing) return null;
 
-  const entry = createDiaryEntry(req.user.id, finalTitle, content, undefined, day);
+    const finalTitle = `Spieltag ${day}`;
+    return createDiaryEntry(req.user!.id, finalTitle, content, undefined, day);
+  })();
+
+  if (!entry) {
+    res.status(409).json({ error: `Spieltag ${day} existiert bereits` });
+    return;
+  }
+
   res.status(201).json({ entry });
 });
 
