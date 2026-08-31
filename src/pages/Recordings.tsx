@@ -484,12 +484,14 @@ export function Sessions({ user }: SessionsProps) {
       const isLatest =
         pendingGameDaysRef.current[sessionId]?.gameDay === selection.gameDay &&
         pendingGameDaysRef.current[sessionId]?.gameDayEnd === selection.gameDayEnd;
-      if (data && isLatest) {
+      if (data) {
         setSessions((prev) => prev.map((s) => (s.id === sessionId ? data.session : s)));
-        pendingGameDaysRef.current = { ...pendingGameDaysRef.current };
-        delete pendingGameDaysRef.current[sessionId];
-        setPendingGameDays(pendingGameDaysRef.current);
-        showSuccess('Spieltag gespeichert.');
+        if (isLatest) {
+          pendingGameDaysRef.current = { ...pendingGameDaysRef.current };
+          delete pendingGameDaysRef.current[sessionId];
+          setPendingGameDays(pendingGameDaysRef.current);
+          showSuccess('Spieltag gespeichert.');
+        }
       } else if (error && isLatest) {
         pendingGameDaysRef.current = { ...pendingGameDaysRef.current };
         delete pendingGameDaysRef.current[sessionId];
