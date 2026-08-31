@@ -540,7 +540,7 @@ if (requireScope('entity:read')) {
             ? listDiaryEntryContentsByEntity(
                 type,
                 canonicalRef.name,
-                undefined,
+                canReadAllDiaries ? undefined : (sessionUserId ?? '__no_user__'),
                 canonicalRef.qualifier
               )
             : [];
