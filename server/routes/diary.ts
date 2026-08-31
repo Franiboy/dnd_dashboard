@@ -8,6 +8,7 @@ import {
 } from '../ai/rewrite.js';
 import { deleteOpenCodeSession } from '../ai/opencode.js';
 import { deleteRewrittenFile, getRewrittenFilePath, readRewrittenFile } from '../diaryFiles.js';
+import { db } from '../database.js';
 import { createLogger } from '../logger.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 import {
@@ -174,6 +175,14 @@ router.post('/entries', async (req: AuthRequest, res) => {
   const day = gameDay === undefined || gameDay === null ? null : Number(gameDay);
   if (day === null || !Number.isInteger(day) || day <= 0) {
     res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl sein' });
+    return;
+  }
+
+  const existing = db
+    .prepare('SELECT 1 FROM diary_entries WHERE user_id = ? AND game_day = ?')
+    .get(req.user.id, day) as { '1': number } | undefined;
+  if (existing) {
+    res.status(409).json({ error: `Spieltag ${day} existiert bereits` });
     return;
   }
 
