@@ -9,6 +9,7 @@ import { getEntitySummary } from '../repositories/entitySummaries.js';
 import { getCurrentGameDay } from '../repositories/gameTimeline.js';
 import { stripHtml } from './rewrite.js';
 import { createLogger } from '../logger.js';
+import type { McpSessionUser } from '../mcp/tokens.js';
 import type { EntityKnowledgeEntry, EntityType, KnowledgeOriginType } from '../../shared/types.js';
 
 const log = createLogger('knowledge');
@@ -32,6 +33,16 @@ interface KnowledgeSnapshot {
   entityName: string;
   status: 'active' | 'deleted';
   validUntil: number | null;
+}
+
+/** Shared options for the opencode-based knowledge flows. */
+export interface KnowledgePromptOptions {
+  model?: string;
+  onLog?: (line: string) => void;
+  /** Display-only provenance (diary entry / session the text came from). */
+  origin?: KnowledgeOrigin;
+  /** Acting user; scopes the searchable diary entries (admin sees all). */
+  user?: McpSessionUser;
 }
 
 function takeKnowledgeSnapshot(): Map<number, KnowledgeSnapshot> {
@@ -92,10 +103,9 @@ function computeDistributionDiff(
 
 export async function distributeKnowledgeFromText(
   text: string,
-  model?: string,
-  onLog?: (line: string) => void,
-  origin?: KnowledgeOrigin
+  options: KnowledgePromptOptions = {}
 ): Promise<DistributeResult> {
+  const { model, onLog, origin, user } = options;
   const plainText = stripHtml(text).trim();
   if (!plainText) return { created: [], deleted: [], ended: [] };
 
@@ -109,14 +119,19 @@ export async function distributeKnowledgeFromText(
     `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}. Nutze ihn als Bezugspunkt für zeitgebundene Fakten.`,
     '',
     'Verfügbare Tools:',
-    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, aktuell gültiges Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
+    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Historie und verknüpfte Tagebucheinträge (mit Spieltag) zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
     '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
+    '- search_diary_entries(query, limit?): Durchsucht Tagebucheinträge nach einem Begriff, um Aussagen zu verifizieren.',
+    '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
+    '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
     '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag. validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
     '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (war wahr, gilt ab dann nicht mehr) - für zeitliche Änderungen, nicht für Widerrufe.',
     '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch / trifft nie zu).',
     '',
     'Regeln:',
-    '- DU MUSST vor dem Erstellen, Beenden oder Löschen von Wissen get_entity für jede im Text erwähnte Entität aufrufen, um bestehendes Wissen zu sehen.',
+    '- DU MUSST vor dem Erstellen, Beenden oder Löschen von Wissen get_entity für jede im Text erwähnte Entität aufrufen, um bestehendes Wissen zu sehen (inkl. includeHistory=true, um beendete/gelöschte Einträge zu berücksichtigen).',
+    '- Verifiziere zeitgebundene Aussagen gegen das Tagebuch: Suche mit search_diary_entries nach dem Ereignis und lese Treffer mit get_diary_entry vollständig, um zu bestimmen, wann etwas passiert ist (die verknüpften Einträge in get_entity zeigen den Spieltag).',
+    '- Du siehst die Tagebucheinträge aller Spieler (gemeinsames Weltwissen) – nutze sie zur Verifikation.',
     '- Ordne jeden Fakt einer oder mehreren Entitäten zu.',
     '- Wenn eine Entität noch nicht existiert, wird sie automatisch durch create_knowledge angelegt.',
     '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
@@ -149,7 +164,8 @@ export async function distributeKnowledgeFromText(
     worktreePath: process.cwd(),
     model: model || getModel(),
     title: `dnd-distribute-knowledge-${Date.now()}`,
-    scopes: ['entity:read', 'knowledge:distribute'],
+    scopes: ['entity:read', 'knowledge:distribute', 'diary:read', 'diary:read-all'],
+    user,
     onLog,
   });
 
@@ -229,9 +245,9 @@ export function collectAffectedEntities(
 export async function correctKnowledgeFromText(
   correction: string,
   focus?: KnowledgeCorrectionTarget,
-  model?: string,
-  onLog?: (line: string) => void
+  options: KnowledgePromptOptions = {}
 ): Promise<KnowledgeCorrectionResult> {
+  const { model, onLog, user } = options;
   const plainText = stripHtml(correction).trim();
   if (!plainText) return { created: [], deleted: [], ended: [], summaries: [] };
 
@@ -257,20 +273,25 @@ export async function correctKnowledgeFromText(
     `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}.`,
     '',
     'Verfügbare Tools:',
-    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, aktuell gültiges Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
+    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Historie und verknüpfte Tagebucheinträge (mit Spieltag) zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
     '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
+    '- search_diary_entries(query, limit?): Durchsucht Tagebucheinträge nach einem Begriff, um Aussagen zu verifizieren.',
+    '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
+    '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
     '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag; validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
     '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (zeitliche Änderung, bleibt als Historie).',
     '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch).',
     '',
     'Regeln:',
-    '- DU MUSST vor dem Löschen, Beenden oder Erstellen get_entity für die Fokus-Entität und jede in der Korrektur erwähnte Entität aufrufen.',
+    '- DU MUSST vor dem Löschen, Beenden oder Erstellen get_entity für die Fokus-Entität und jede in der Korrektur erwähnte Entität aufrufen – am besten mit includeHistory=true, um auch beendete/gelöschte Einträge zu sehen.',
+    '- Verifiziere Aussagen der Korrektur gegen das Tagebuch: Suche mit search_diary_entries nach dem Ereignis und lese Treffer mit get_diary_entry vollständig. Die verknüpften Einträge in get_entity zeigen den Spieltag, damit du "wann" etwas passiert ist bestimmen und Gültigkeitsfenster sauber setzen kannst.',
+    '- Du siehst die Tagebucheinträge aller Spieler (gemeinsames Weltwissen) – nutze sie zur Verifikation.',
     '- Ist ein bestehender aktiver Eintrag nur überholt (zeitliche Änderung, z. B. "steht A nicht mehr gut"), beende ihn mit end_knowledge(id, until=<Spieltag>, reason) und erstelle den korrigierten Fakt mit validFrom=<Spieltag>.',
     '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
     '- Widerspricht ein Eintrag der Korrektur grundlegend (er war falsch), markiere ihn mit delete_knowledge(id, reason).',
     '- In delete_knowledge und end_knowledge muss reason kurz erklären, warum der Eintrag falsch bzw. beendet ist, mit Bezug zur Korrektur.',
     '- Erstelle mit create_knowledge die korrekten Fakten, die sich aus der Korrektur ergeben; setze bei zeitgebundenen Fakten das Gültigkeitsfenster.',
-    '- Extrahiere nur Fakten, die in der Korrektur tatsächlich vorkommen. Erfinke keine Details.',
+    '- Extrahiere nur Fakten, die in der Korrektur tatsächlich vorkommen. Erfinde keine Details.',
     '- Lasse Einträge unangetastet, die nicht von der Korrektur betroffen sind.',
     '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
     '- Gibt es mehrere Entitäten mit demselben Namen (list_entities zeigt sie mit unterschiedlichem Qualifier), wähle anhand des Kontexts die richtige Entität und gib deren Qualifier an.',
@@ -293,7 +314,8 @@ export async function correctKnowledgeFromText(
     worktreePath: process.cwd(),
     model: model || getModel(),
     title: `dnd-correct-knowledge-${Date.now()}`,
-    scopes: ['entity:read', 'knowledge:distribute'],
+    scopes: ['entity:read', 'knowledge:distribute', 'diary:read', 'diary:read-all'],
+    user,
     onLog,
   });
 
@@ -311,6 +333,7 @@ export async function correctKnowledgeFromText(
     const generated = await generateEntitySummary(target.entityType, target.entityName, {
       model,
       onLog,
+      user,
       qualifier: target.entityQualifier ?? '',
     });
     summaries.push({
@@ -340,6 +363,8 @@ export interface GeneratedEntitySummary {
 export interface EntitySummaryOptions {
   model?: string;
   onLog?: (line: string) => void;
+  /** Acting user; scopes the searchable diary entries (admin sees all). */
+  user?: McpSessionUser;
   /** Disambiguator for homonyms; '' targets the plain name. */
   qualifier?: string;
 }
@@ -349,7 +374,7 @@ export async function generateEntitySummary(
   entityName: string,
   options: EntitySummaryOptions = {}
 ): Promise<GeneratedEntitySummary | null> {
-  const { model, onLog, qualifier = '' } = options;
+  const { model, onLog, user, qualifier = '' } = options;
   const typeLabel =
     entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
   const qualifiedName = qualifier ? `${entityName} (${qualifier})` : entityName;
@@ -392,7 +417,8 @@ export async function generateEntitySummary(
     worktreePath: process.cwd(),
     model: model || getModel(),
     title: `dnd-entity-summary-${entityType}-${entityName}-${Date.now()}`,
-    scopes: ['entity:read', 'entity:summary'],
+    scopes: ['entity:read', 'entity:summary', 'diary:read', 'diary:read-all'],
+    user,
     onLog,
   });
 

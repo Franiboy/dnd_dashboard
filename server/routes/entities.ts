@@ -406,7 +406,7 @@ router.post('/knowledge/distribute', async (req: AuthRequest, res) => {
   }
 
   try {
-    const result = await distributeKnowledgeFromText(text.trim());
+    const result = await distributeKnowledgeFromText(text.trim(), { user: req.user });
     res.json(result);
   } catch {
     res.status(500).json({ error: 'KI-Einordnung fehlgeschlagen' });
@@ -447,7 +447,7 @@ router.post('/knowledge/correct', async (req: AuthRequest, res) => {
   }
 
   try {
-    const result = await correctKnowledgeFromText(text.trim(), focus);
+    const result = await correctKnowledgeFromText(text.trim(), focus, { user: req.user });
     res.json(result);
   } catch {
     res.status(500).json({ error: 'KI-Berichtigung fehlgeschlagen' });
@@ -500,6 +500,7 @@ router.post('/summary/generate', async (req: AuthRequest, res) => {
 
   try {
     const result = await generateEntitySummary(type, name.trim(), {
+      user: req.user,
       qualifier: typeof qualifier === 'string' ? qualifier.trim() : '',
     });
     if (result === null) {

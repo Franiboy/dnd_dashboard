@@ -28,6 +28,7 @@ import {
   createEntityKnowledge,
   getEntityKnowledgeEntry,
   listActiveEntityKnowledge,
+  listEntityKnowledge,
   markEntityKnowledgeDeleted,
   markEntityKnowledgeTimelineEnd,
 } from '../repositories/entityKnowledge.js';
@@ -90,11 +91,15 @@ function error(message: string): { content: Array<{ type: 'text'; text: string }
 
 const sessionUserId = payload?.userId ?? null;
 const sessionIsAdmin = payload?.isAdmin ?? false;
+// Grants full read access to all players' diary entries for shared-world
+// flows (knowledge verify/correct/summary) even when the acting user is not
+// an admin - entities, knowledge and the world belong to everyone.
+const canReadAllDiaries = allowedScopes.has('diary:read-all') || sessionIsAdmin;
 
 function canAccessDiaryEntry(entry: DiaryEntry | null): boolean {
   if (!entry) return false;
+  if (canReadAllDiaries) return true;
   if (!sessionUserId) return false;
-  if (sessionIsAdmin) return true;
   return entry.userId === sessionUserId;
 }
 
@@ -407,12 +412,9 @@ if (requireScope('diary:read')) {
     },
     async ({ query, limit }) => {
       try {
-        if (!sessionUserId) return error('Kein Benutzerkontext vorhanden');
-        const entries = searchDiaryEntries(
-          query,
-          sessionIsAdmin ? undefined : sessionUserId,
-          limit ?? 5
-        );
+        if (!canReadAllDiaries && !sessionUserId) return error('Kein Benutzerkontext vorhanden');
+        const diaryUserId = canReadAllDiaries ? undefined : (sessionUserId ?? undefined);
+        const entries = searchDiaryEntries(query, diaryUserId, limit ?? 5);
         if (entries.length === 0) return success('Keine Tagebucheinträge gefunden.');
         const lines = entries.map((e) => {
           const plain = stripHtml(e.content);
@@ -508,14 +510,15 @@ if (requireScope('entity:read')) {
 
   loggedTool(
     'get_entity',
-    'Liefert Zusammenfassung, aktuell gültiges Wissen und verknüpfte Tagebucheinträge zu einer bestimmten Entität. Bei Namensgleichheit muss der Qualifier angegeben werden.',
+    'Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Wissens-Historie und verknüpfte Tagebucheinträge (inkl. Spieltag) zu einer bestimmten Entität. Bei Namensgleichheit muss der Qualifier angegeben werden. includeHistory=false blendet die Historie aus; includeDiaryEntries=false blendet die Tagebucheinträge aus.',
     {
       type: z.enum(['persons', 'organizations', 'locations']),
       name: z.string().min(1),
       qualifier: z.string().optional(),
       includeDiaryEntries: z.boolean().optional(),
+      includeHistory: z.boolean().optional(),
     },
-    async ({ type, name, qualifier, includeDiaryEntries }) => {
+    async ({ type, name, qualifier, includeDiaryEntries, includeHistory }) => {
       try {
         const canonicalRef = findEntityCanonical(type, name, qualifier?.trim() ?? '');
         if (!canonicalRef) {
@@ -537,7 +540,7 @@ if (requireScope('entity:read')) {
             ? listDiaryEntryContentsByEntity(
                 type,
                 canonicalRef.name,
-                sessionIsAdmin ? undefined : (sessionUserId ?? undefined),
+                canReadAllDiaries ? undefined : (sessionUserId ?? '__no_user__'),
                 canonicalRef.qualifier
               )
             : [];
@@ -565,12 +568,39 @@ if (requireScope('entity:read')) {
           }
         }
 
+        if (includeHistory !== false) {
+          const activeIds = new Set(knowledge.map((k) => k.id));
+          const history = listEntityKnowledge(
+            type,
+            canonicalRef.name,
+            canonicalRef.qualifier
+          ).filter((k) => !activeIds.has(k.id));
+          if (history.length > 0) {
+            lines.push('');
+            lines.push('Historie (nicht mehr gültig):');
+            for (const entry of history.slice(0, 30)) {
+              const title = entry.title ? `${entry.title}: ` : '';
+              const window =
+                entry.validFrom !== null || entry.validUntil !== null
+                  ? entry.validUntil !== null
+                    ? ` [gültig Tag ${entry.validFrom ?? '…'}–${entry.validUntil - 1}]`
+                    : ` [ab Tag ${entry.validFrom ?? '…'}]`
+                  : '';
+              const state = entry.status === 'deleted' ? 'gelöscht' : 'beendet';
+              const reason = entry.statusReason ? ` – ${entry.statusReason}` : '';
+              lines.push(`- ${title}${entry.content}${window} (${state}${reason})`);
+            }
+          }
+        }
+
         if (diaryEntries.length > 0) {
           lines.push('');
           lines.push('Verknüpfte Tagebucheinträge:');
           for (const entry of diaryEntries.slice(0, 5)) {
             const plain = stripHtml(entry.content);
-            lines.push(`ID ${entry.id} | ${entry.createdAt} | ${entry.title}`);
+            lines.push(
+              `ID ${entry.id} | Spieltag ${entry.gameDay ?? '?'} | ${entry.createdAt} | ${entry.title}`
+            );
             lines.push(`${plain.slice(0, 200)}${plain.length > 200 ? '...' : ''}`);
           }
         }
