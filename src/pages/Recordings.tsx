@@ -105,6 +105,11 @@ export function Sessions({ user }: SessionsProps) {
   const [draftingId, setDraftingId] = useState<number | null>(null);
   const [diaryTransfers, setDiaryTransfers] = useState<Record<number, SessionDiaryTransfer>>({});
   const [campaignDays, setCampaignDays] = useState<CampaignDay[]>([]);
+  const [pendingGameDays, setPendingGameDays] = useState<
+    Record<number, { gameDay: number | null; gameDayEnd: number | null }>
+  >({});
+  const pendingGameDaysRef = useRef(pendingGameDays);
+  const gameDaySaveQueues = useRef<Record<number, Promise<void>>>({});
   const [sessionDiaryEntries, setSessionDiaryEntries] = useState<
     Record<number, SessionDiaryEntryLink[]>
   >({});
@@ -459,22 +464,40 @@ export function Sessions({ user }: SessionsProps) {
   }
 
   async function saveGameDay(sessionId: number, gameDay: number | null, gameDayEnd: number | null) {
-    setWorking(true);
-    const { data, error } = await request<{ session: RecordingSession }>(
-      `/api/recordings/${sessionId}/game-day`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameDay, gameDayEnd }),
+    const selection = { gameDay, gameDayEnd };
+    pendingGameDaysRef.current = { ...pendingGameDaysRef.current, [sessionId]: selection };
+    setPendingGameDays(pendingGameDaysRef.current);
+
+    const previous = gameDaySaveQueues.current[sessionId] ?? Promise.resolve();
+    const save = previous.then(async () => {
+      setWorking(true);
+      const { data, error } = await request<{ session: RecordingSession }>(
+        `/api/recordings/${sessionId}/game-day`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(selection),
+        }
+      );
+      setWorking(false);
+
+      const isLatest =
+        pendingGameDaysRef.current[sessionId]?.gameDay === selection.gameDay &&
+        pendingGameDaysRef.current[sessionId]?.gameDayEnd === selection.gameDayEnd;
+      if (data && isLatest) {
+        setSessions((prev) => prev.map((s) => (s.id === sessionId ? data.session : s)));
+        pendingGameDaysRef.current = { ...pendingGameDaysRef.current };
+        delete pendingGameDaysRef.current[sessionId];
+        setPendingGameDays(pendingGameDaysRef.current);
+        showSuccess('Spieltag gespeichert.');
+      } else if (error && isLatest) {
+        pendingGameDaysRef.current = { ...pendingGameDaysRef.current };
+        delete pendingGameDaysRef.current[sessionId];
+        setPendingGameDays(pendingGameDaysRef.current);
+        showError(error);
       }
-    );
-    setWorking(false);
-    if (data) {
-      setSessions((prev) => prev.map((s) => (s.id === sessionId ? data.session : s)));
-      showSuccess('Spieltag gespeichert.');
-    } else if (error) {
-      showError(error);
-    }
+    });
+    gameDaySaveQueues.current[sessionId] = save.catch(() => undefined);
   }
 
   async function updateSessionDiarySettings(
@@ -590,18 +613,26 @@ export function Sessions({ user }: SessionsProps) {
                     <label className="text-slate-400">Spieltag</label>
                     <div className="flex items-center gap-2">
                       <select
-                        value={session.gameDay ?? ''}
+                        value={
+                          (pendingGameDays[session.id]
+                            ? pendingGameDays[session.id].gameDay
+                            : session.gameDay) ?? ''
+                        }
                         onChange={(e) => {
                           const newDay = e.target.value === '' ? null : Number(e.target.value);
+                          const current = pendingGameDaysRef.current[session.id] ?? {
+                            gameDay: session.gameDay,
+                            gameDayEnd: session.gameDayEnd,
+                          };
                           let newEnd: number | null;
                           if (newDay === null) {
                             newEnd = null;
                           } else if (
-                            session.gameDayEnd !== null &&
-                            session.gameDayEnd !== undefined &&
-                            session.gameDayEnd >= newDay
+                            current.gameDayEnd !== null &&
+                            current.gameDayEnd !== undefined &&
+                            current.gameDayEnd >= newDay
                           ) {
-                            newEnd = session.gameDayEnd;
+                            newEnd = current.gameDayEnd;
                           } else {
                             newEnd = newDay;
                           }
@@ -618,10 +649,18 @@ export function Sessions({ user }: SessionsProps) {
                       </select>
                       <span className="text-slate-400">bis</span>
                       <select
-                        value={session.gameDayEnd ?? session.gameDay ?? ''}
+                        value={
+                          (pendingGameDays[session.id]
+                            ? pendingGameDays[session.id].gameDayEnd
+                            : (session.gameDayEnd ?? session.gameDay)) ?? ''
+                        }
                         onChange={(e) => {
                           const raw = e.target.value === '' ? null : Number(e.target.value);
-                          let newStart: number | null = session.gameDay ?? null;
+                          const current = pendingGameDaysRef.current[session.id] ?? {
+                            gameDay: session.gameDay,
+                            gameDayEnd: session.gameDayEnd,
+                          };
+                          let newStart: number | null = current.gameDay ?? null;
                           let newEnd: number | null = raw;
                           if (newStart === null && newEnd !== null) {
                             newStart = newEnd;
