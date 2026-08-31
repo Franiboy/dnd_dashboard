@@ -117,8 +117,10 @@ function CorrectKnowledgeDialog({
       <div className="space-y-4">
         <p className="text-sm text-slate-400">
           Beschreibe, was am gespeicherten Wissen falsch ist. Die KI prüft die betroffenen
-          Entitäten, markiert widersprüchliche Einträge als gelöscht, legt korrigierte Einträge an
-          und aktualisiert die Zusammenfassungen.
+          Entitäten, durchsucht die Tagebucheinträge zur Verifikation (z. B. um „wann“ etwas
+          passiert ist), setzt Zeitpunkte und Gültigkeitsfenster sauber, markiert widersprüchliche
+          Einträge als gelöscht, legt korrigierte Einträge an und aktualisiert die
+          Zusammenfassungen.
         </p>
         <textarea
           value={text}
