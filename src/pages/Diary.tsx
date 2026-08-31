@@ -1297,6 +1297,7 @@ export function Diary() {
               className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             >
               <option value="">Spieltag wählen…</option>
+              <option value="__skip__">Tage überspringen…</option>
               {nextGameDay !== null && (
                 <option value={nextGameDay}>Spieltag {nextGameDay} – nächster Tag</option>
               )}
@@ -1309,7 +1310,6 @@ export function Diary() {
                     Spieltag {d.day}
                   </option>
                 ))}
-              <option value="__skip__">Tage überspringen…</option>
             </select>
             {skipMode && (
               <div className="mt-3">
