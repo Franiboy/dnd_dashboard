@@ -79,13 +79,26 @@ deploy_production() {
 }
 
 merge_pr() {
-	log "Merging PR #$PR_NUMBER (auto-merge, squash, delete branch)"
-	# Use --auto so GitHub merges the PR as soon as it becomes mergeable.
+	# The commit that was reviewed and locally validated: merging anything else
+	# would auto-merge unreviewed code (e.g. a push that lands while --auto is
+	# queued). Verify the head still points at it right before and throughout
+	# the auto-merge; on any mismatch cancel the auto-merge and fail.
+	local target_sha
+	target_sha="$(git rev-parse HEAD)"
+	log "Merging PR #$PR_NUMBER (auto-merge, squash, delete branch) for head ${target_sha:0:7}"
+
+	local merge_error=0
+	if [ "$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid)" != "$target_sha" ]; then
+		log "ERROR: PR head moved away from the reviewed commit before merging"
+		return 1
+	fi
+
+	# Use --auto so GitHub performs the merge as soon as the PR is mergeable.
 	# This crucially avoids failing on the transient 'UNSTABLE'/'Head branch is
 	# out of date' state and on the `action_required` check-suite that the bot
 	# push leaves behind on private repos: the PR is merged once GitHub accepts
 	# it, and we are not racing a stale, unapproved CI run.
-	gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
+	gh pr merge "$PR_NUMBER" --auto --squash --delete-branch || merge_error=1
 
 	# --auto only queues the merge; reap it so the deployment below runs on the
 	# actually merged commit. Timeout generous because GitHub may still be
@@ -93,6 +106,12 @@ merge_pr() {
 	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-90}"
 	local deadline=$(( $(date +%s) + timeout_seconds ))
 	while [ "$(date +%s)" -lt "$deadline" ]; do
+		# Cancel auto-merge immediately if the head moves off the reviewed commit.
+		if [ "$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid)" != "$target_sha" ]; then
+			log "ERROR: head changed while merging; cancelling auto-merge"
+			gh pr merge "$PR_NUMBER" --disable-auto >/dev/null 2>&1 || true
+			return 1
+		fi
 		local state merged_at oid
 		read -r state merged_at oid <<<"$(gh pr view "$PR_NUMBER" --json state,mergedAt,mergeCommit --jq '[.state,.mergedAt//"",.mergeCommit.oid//""] | @tsv')"
 		if [ "$state" = "MERGED" ] && [ -n "$merged_at" ]; then
@@ -106,7 +125,11 @@ merge_pr() {
 		fi
 		sleep 10
 	done
-	log "ERROR: PR #$PR_NUMBER did not reach MERGED within ${timeout_seconds}s"
+	if [ "$merge_error" -ne 0 ]; then
+		log "ERROR: enabling auto-merge failed for PR #$PR_NUMBER"
+	else
+		log "ERROR: PR #$PR_NUMBER did not reach MERGED within ${timeout_seconds}s"
+	fi
 	return 1
 }
 
