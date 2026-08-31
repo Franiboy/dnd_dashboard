@@ -29,20 +29,22 @@ This document describes the high-level structure of the D&D Dashboard.
 | `admin.ts`      | Admin API, SSE `/admin/users/events`, SSE `/admin/logs/events`, paginated `/admin/logs` |
 | `ai.ts`         | `POST /api/execute` – direct execution of AI tool actions (admin/debug only)            |
 | `bingo.ts`      | AI bingo suggestions: list, accept, reject, refresh                                     |
+| `campaign.ts`   | Central campaign timeline: list days, create/advance a day                              |
 | `diary.ts`      | CRUD for diary entries, AI rewrite, summary, entities; SSE for AI status                |
 | `entities.ts`   | Entity list, details, aliases, blacklist, knowledge and summary CRUD                    |
 | `recordings.ts` | Discord recording sessions, transcripts, trimming and AI session-to-diary draft         |
 
 ### Repositories (`server/repositories/`)
 
-| File                  | Purpose                                                             |
-| --------------------- | ------------------------------------------------------------------- |
-| `games.ts`            | SQLite game state storage (JSON in `games` table)                   |
-| `bingoSuggestions.ts` | Pending, accepted and rejected AI bingo suggestions                 |
-| `diary.ts`            | Diary entries, entities, aliases, search, canonical name resolution |
-| `entityKnowledge.ts`  | Knowledge entries for entities (CRUD, soft-delete)                  |
-| `entitySummaries.ts`  | AI-generated entity summaries                                       |
-| `recordings.ts`       | Recording sessions and files                                        |
+| File                  | Purpose                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| `games.ts`            | SQLite game state storage (JSON in `games` table)                                       |
+| `bingoSuggestions.ts` | Pending, accepted and rejected AI bingo suggestions                                     |
+| `diary.ts`            | Diary entries, entities, aliases, search, canonical name resolution                     |
+| `entityKnowledge.ts`  | Knowledge entries for entities (CRUD, soft-delete, in-game validity windows)            |
+| `entitySummaries.ts`  | AI-generated entity summaries                                                           |
+| `gameTimeline.ts`     | Central `campaign_days` timeline, current/next day helpers, session & diary day setters |
+| `recordings.ts`       | Recording sessions and files                                                            |
 
 ### AI / MCP (`server/ai/` & `server/mcp/`)
 

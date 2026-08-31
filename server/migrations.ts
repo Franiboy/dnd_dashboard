@@ -201,6 +201,90 @@ function dropLegacyDiaryEntryDate(): void {
   }
 }
 
+// Seed the in-game day counter (game_day) for legacy data from the real
+// chronology. Sessions and diary entries without a game_day get a monotonic
+// counter following their real date order; the counter continues from the
+// highest known value so repeated runs are no-ops.
+function backfillGameDays(): void {
+  if (!tableExists('recording_sessions') || !tableExists('diary_entries')) return;
+  const sessionCols = getExistingColumns('recording_sessions');
+  const diaryCols = getExistingColumns('diary_entries');
+  if (!sessionCols.has('game_day') || !diaryCols.has('game_day')) return;
+
+  const maxRow = db
+    .prepare(
+      `SELECT COALESCE(MAX(m), 0) AS m FROM (
+         SELECT game_day AS m FROM recording_sessions
+         UNION ALL
+         SELECT game_day AS m FROM diary_entries
+       )`
+    )
+    .get() as { m: number };
+  let next = maxRow.m;
+
+  const pending = db
+    .prepare(
+      `SELECT kind, id FROM (
+         SELECT 'session' AS kind, id, started_at AS dt FROM recording_sessions WHERE game_day IS NULL
+         UNION ALL
+         SELECT 'diary' AS kind, id, created_at AS dt FROM diary_entries WHERE game_day IS NULL
+       )
+       ORDER BY dt, kind`
+    )
+    .all() as { kind: string; id: number }[];
+
+  const updateSession = db.prepare('UPDATE recording_sessions SET game_day = ? WHERE id = ?');
+  const updateDiary = db.prepare('UPDATE diary_entries SET game_day = ? WHERE id = ?');
+  for (const row of pending) {
+    next += 1;
+    if (row.kind === 'session') updateSession.run(next, row.id);
+    else updateDiary.run(next, row.id);
+  }
+  if (pending.length > 0) {
+    log.info(`Backfilled game_day for ${pending.length} sessions/diary entries`);
+  }
+}
+
+// Legacy knowledge entries extracted from a session or diary inherit the
+// source's game_day as their valid_from, so already-known facts receive a
+// starting point on the in-game timeline.
+function backfillKnowledgeValidity(): void {
+  if (!tableExists('entity_knowledge_entries') || !tableExists('recording_sessions')) return;
+  if (!tableExists('diary_entries')) return;
+  const cols = getExistingColumns('entity_knowledge_entries');
+  if (!cols.has('valid_from')) return;
+  db.exec(`
+    UPDATE entity_knowledge_entries
+    SET valid_from = COALESCE(
+      (SELECT s.game_day FROM recording_sessions s
+       WHERE origin_type = 'session' AND s.id = entity_knowledge_entries.origin_id),
+      (SELECT d.game_day FROM diary_entries d
+       WHERE origin_type = 'diary' AND d.id = entity_knowledge_entries.origin_id)
+    )
+    WHERE valid_from IS NULL AND origin_type IS NOT NULL
+  `);
+}
+
+// Populate the central campaign_days timeline from all game_day values that
+// already exist on sessions and diary entries. This is the single source of
+// truth for the in-game day numbers; knowledge validity windows and editors
+// resolve against it.
+function seedCampaignDays(): void {
+  if (!tableExists('campaign_days')) return;
+  const cols = getExistingColumns('campaign_days');
+  if (!cols.has('day')) return;
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT OR IGNORE INTO campaign_days (day, label, created_at, updated_at)
+     SELECT m AS day, NULL AS label, ? AS created_at, ? AS updated_at
+     FROM (
+       SELECT DISTINCT game_day AS m FROM recording_sessions WHERE game_day IS NOT NULL
+       UNION
+       SELECT DISTINCT game_day AS m FROM diary_entries WHERE game_day IS NOT NULL
+     )`
+  ).run(now, now);
+}
+
 // Legacy ai_settings rows used separate normal_model/cheap_model columns.
 // Collapse any stored override into the single model column (normal wins).
 function migrateAiSettingsSingleModel(): void {
@@ -296,5 +380,8 @@ export function runMigrations(): void {
     // Backfills that depend on the schema being present.
     migrateAiSettingsSingleModel();
     fillRecordingSessionUpdatedAt();
+    backfillGameDays();
+    seedCampaignDays();
+    backfillKnowledgeValidity();
   })();
 }

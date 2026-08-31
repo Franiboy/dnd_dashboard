@@ -101,6 +101,39 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
   ("Quelle: Tagebuch …" / "Quelle: Session …") for all users; it is never clickable.
   Manual entries and free-text distributions have no origin.
 
+#### In-game time & knowledge timeline
+
+Facts that change over the campaign (whose a character likes, allegiances, goals) are handled
+as **time-bounded knowledge** instead of being overwritten:
+
+- **Central timeline:** `campaign_days` is the single source of truth for in-game time (one row
+  per day: `day` + optional `label`). `recording_sessions.game_day` and `diary_entries.game_day`
+  reference it; the **current day is the highest day present**. Legacy rows are auto-imported
+  into `campaign_days` by `server/migrations.ts` (`seedCampaignDays`).
+- **Manual diary entry creation** no longer asks for a free title: the user picks an existing
+  campaign day ("Spieltag N – Label") or creates the next one (+ optional label). The server
+  derives the entry title from the day (`Spieltag {N}` or `Spieltag {N} – {Label}`) and sets the
+  entry's `game_day`. AI-generated session drafts keep their own title.
+- **Validity window:** knowledge entries carry `valid_from` / `valid_until` (in-game days).
+  `valid_from` is inclusive (the fact starts on that day); `valid_until` is **exclusive** (the
+  first day the fact no longer holds). `NULL` is open-ended. This keeps an ending fact and its
+  replacement disjoint on the transition day (old ends at day X, new starts at day X – never
+  both current). A fact whose window has closed stays `status='active'` and remains
+  visible in the entity timeline as historically true, but is no longer part of the _current_
+  knowledge (`listActiveEntityKnowledge` filters by the current game day, `getCurrentGameDay`).
+- **New MCP tool `end_knowledge(id, until, reason?)`** ends a time-bounded fact at a game day
+  (timeline change) instead of deleting it; `delete_knowledge` is reserved for contradictions
+  (the fact was wrong). `create_knowledge` now accepts optional `validFrom`/`validUntil`.
+- **AI distribution/correction:** the prompts now instruct the AI to classify facts as
+  timeless (no window, e.g. "is an elf") vs. time-bounded (window derived from relative time
+  phrases) and to use `end_knowledge` + a new `create_knowledge` instead of delete when a fact
+  merely changes over time. `get_entity` reports the current game day and only current facts.
+- **UI:** the entity dialog (Wissen tab) shows each fact's validity window as a
+  badge (e.g. "Spieltag 3 bis Tag 7" – the exclusive end shown as its last valid day) and
+  offers a "Beenden" action that ends the fact at the current game day;
+  admin session/diary editors let you set the day and label. The World "Wissen einordnen"
+  result counts ended facts.
+
 ### AI Workflow
 
 1. Prompts in `server/ai/rewrite.ts` / `server/ai/knowledge.ts` instruct the AI to query background information via MCP tools before storing data.

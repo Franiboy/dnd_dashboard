@@ -84,6 +84,23 @@ merge_pr() {
 	deploy_production
 }
 
+# After the review pushes a fix commit, that push triggers a fresh workflow
+# run whose `ci` checks are still pending. Merging immediately races that run
+# and GitHub rejects the merge ("Pull Request is not mergeable"), leaving the
+# PR stuck. Wait until the required checks (ci) turn green before merging.
+# Only the required checks are watched, so this never blocks on this job's own
+# (non-required) "AI review" check, which would deadlock.
+wait_for_ci() {
+	local pr="$1"
+	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-900}"
+	log "Waiting for required CI checks on PR #$pr (timeout ${timeout_seconds}s)"
+	if ! timeout "$timeout_seconds" gh pr checks "$pr" --watch --fail-fast --required --interval 15; then
+		log "ERROR: required CI checks for PR #$pr did not complete green in time"
+		return 1
+	fi
+	log "Required CI checks green"
+}
+
 fail_with_blockers() {
 	log "Critical unfixed findings reported; posting to PR and failing"
 	gh pr comment "$PR_NUMBER" --body "$(cat "$BLOCKERS_FILE")"
@@ -193,4 +210,5 @@ Validated with lint, build and tests before push.
 
 $SUMMARY"
 git push
+wait_for_ci "$PR_NUMBER" || exit 1
 merge_pr

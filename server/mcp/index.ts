@@ -29,7 +29,9 @@ import {
   getEntityKnowledgeEntry,
   listActiveEntityKnowledge,
   markEntityKnowledgeDeleted,
+  markEntityKnowledgeTimelineEnd,
 } from '../repositories/entityKnowledge.js';
+import { getCurrentGameDay } from '../repositories/gameTimeline.js';
 import { getEntitySummary, setEntitySummary } from '../repositories/entitySummaries.js';
 import { writeRewrittenFile } from '../diaryFiles.js';
 import { normalizeToHtml } from '../ai/rewrite.js';
@@ -289,15 +291,17 @@ if (requireScope('entity:summary')) {
 if (requireScope('knowledge:distribute')) {
   loggedTool(
     'create_knowledge',
-    'Erstellt einen Wissenseintrag für eine Entität. Bei Namensgleichheit muss der Qualifier der Ziel-Entität angegeben werden.',
+    'Erstellt einen Wissenseintrag für eine Entität. Bei Namensgleichheit muss der Qualifier der Ziel-Entität angegeben werden. validFrom/validUntil sind optionale in-game Spieltage (recording_sessions.game_day): damit wird ein zeitgebundener Fakt auf der Chronologie der Entität verankert. Zeitlose Fakten (z. B. "ist eine Elfe") lassen diese Felder weg.',
     {
       type: z.enum(['persons', 'organizations', 'locations']),
       name: z.string().min(1),
       content: z.string().min(1),
       title: z.string().optional(),
       qualifier: z.string().optional(),
+      validFrom: z.number().int().optional(),
+      validUntil: z.number().int().optional(),
     },
-    async ({ type, name, content, title, qualifier }) => {
+    async ({ type, name, content, title, qualifier, validFrom, validUntil }) => {
       try {
         const ref = ensureEntityExists(type, name, qualifier?.trim() ?? '');
         const entry = createEntityKnowledge(
@@ -306,7 +310,9 @@ if (requireScope('knowledge:distribute')) {
           title?.trim() || null,
           content.trim(),
           'ai_extracted',
-          ref.qualifier
+          ref.qualifier,
+          validFrom ?? null,
+          validUntil ?? null
         );
         return success(`Wissenseintrag ${entry.id} für ${type}/${entityLabel(ref)} erstellt.`);
       } catch (err) {
@@ -319,7 +325,7 @@ if (requireScope('knowledge:distribute')) {
 
   loggedTool(
     'delete_knowledge',
-    'Markiert einen Wissenseintrag als gelöscht.',
+    'Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch bzw. trifft nie zu). Für zeitgebundene Änderungen (der Fakt war wahr, gilt aber ab einem Spieltag nicht mehr) end_knowledge verwenden.',
     {
       id: z.number().int().positive(),
       reason: z.string().optional(),
@@ -333,6 +339,29 @@ if (requireScope('knowledge:distribute')) {
       } catch (err) {
         return error(
           err instanceof Error ? err.message : 'Fehler beim Löschen des Wissenseintrags'
+        );
+      }
+    }
+  );
+
+  loggedTool(
+    'end_knowledge',
+    'Beendet einen zeitgebundenen Wissenseintrag: ab dem angegebenen in-game Spieltag gilt der Fakt nicht mehr, bleibt aber als Historie sichtbar. Verwende dies statt delete_knowledge, wenn sich ein Fakt über die Zeit ändert (z. B. "X steht A gut", nach einem Zwischenfall aber nicht mehr).',
+    {
+      id: z.number().int().positive(),
+      until: z.number().int().positive(),
+      reason: z.string().optional(),
+    },
+    async ({ id, until, reason }) => {
+      try {
+        const existing = getEntityKnowledgeEntry(id);
+        if (!existing) return error('Wissenseintrag nicht gefunden');
+        if (existing.status !== 'active') return error('Nur aktive Einträge können beendet werden');
+        markEntityKnowledgeTimelineEnd(id, until, reason?.trim() || null);
+        return success(`Wissenseintrag ${id} bis Spieltag ${until} beendet.`);
+      } catch (err) {
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Beenden des Wissenseintrags'
         );
       }
     }
@@ -479,7 +508,7 @@ if (requireScope('entity:read')) {
 
   loggedTool(
     'get_entity',
-    'Liefert Zusammenfassung, aktives Wissen und verknüpfte Tagebucheinträge zu einer bestimmten Entität. Bei Namensgleichheit muss der Qualifier angegeben werden.',
+    'Liefert Zusammenfassung, aktuell gültiges Wissen und verknüpfte Tagebucheinträge zu einer bestimmten Entität. Bei Namensgleichheit muss der Qualifier angegeben werden.',
     {
       type: z.enum(['persons', 'organizations', 'locations']),
       name: z.string().min(1),
@@ -496,10 +525,12 @@ if (requireScope('entity:read')) {
         }
         const label = entityLabel(canonicalRef);
         const summary = getEntitySummary(type, canonicalRef.name, canonicalRef.qualifier);
+        const currentGameDay = getCurrentGameDay();
         const knowledge = listActiveEntityKnowledge(
           type,
           canonicalRef.name,
-          canonicalRef.qualifier
+          canonicalRef.qualifier,
+          currentGameDay
         );
         const diaryEntries =
           includeDiaryEntries !== false
@@ -512,15 +543,25 @@ if (requireScope('entity:read')) {
             : [];
 
         const lines: string[] = [`Entität: ${label} (${type})`];
+        lines.push(
+          `Aktueller Spieltag der Kampagne: ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}`
+        );
         lines.push(`Zusammenfassung: ${summary?.summary ?? '-'}`);
         lines.push(`Mini-Zusammenfassung: ${summary?.miniSummary ?? '-'}`);
 
         if (knowledge.length > 0) {
           lines.push('');
-          lines.push('Wissen:');
+          lines.push('Wissen (aktuell gültig):');
           for (const entry of knowledge) {
             const title = entry.title ? `${entry.title}: ` : '';
-            lines.push(`- ${title}${entry.content}`);
+            // valid_until is EXCLUSIVE: the fact holds up to (validUntil - 1).
+            const window =
+              entry.validFrom !== null || entry.validUntil !== null
+                ? entry.validUntil !== null
+                  ? ` [ab Spieltag ${entry.validFrom ?? '…'} bis Tag ${entry.validUntil - 1}]`
+                  : ` [ab Spieltag ${entry.validFrom ?? '…'}]`
+                : '';
+            lines.push(`- ${title}${entry.content}${window}`);
           }
         }
 
