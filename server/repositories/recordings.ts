@@ -6,6 +6,7 @@ import type {
   SessionDiaryEntryLink,
   SessionDiaryTransfer,
 } from '../../shared/types.js';
+import { ensureCampaignDay } from './gameTimeline.js';
 
 interface CreateSessionInput {
   name: string;
@@ -285,6 +286,10 @@ export function updateSession(
   if (updates.gameDay !== undefined) {
     fields.push('game_day = ?');
     values.push(updates.gameDay);
+    if (updates.gameDay !== null) {
+      const current = getSessionById(id);
+      ensureCampaignDay(updates.gameDay, updates.gameDateLabel ?? current?.gameDateLabel ?? null);
+    }
   }
   if (updates.gameDateLabel !== undefined) {
     fields.push('game_date_label = ?');

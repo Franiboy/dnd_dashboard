@@ -807,6 +807,9 @@ export function updateDiaryEntry(
   if (updates.gameDay !== undefined) {
     fields.push('game_day = ?');
     values.push(updates.gameDay);
+    if (updates.gameDay !== null) {
+      ensureCampaignDay(updates.gameDay, updates.gameDateLabel ?? existing.gameDateLabel);
+    }
   }
   if (updates.gameDateLabel !== undefined) {
     fields.push('game_date_label = ?');
