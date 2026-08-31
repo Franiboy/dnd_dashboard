@@ -177,6 +177,7 @@ export function EntityEditDialog({
   const [reviewing, setReviewing] = useState(false);
   const staleRef = useRef(false);
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeAfterAutoSaveRef = useRef(false);
   const lastSavedRef = useRef<{ canonical: string; qualifier: string; aliases: string[] } | null>(
     null
   );
@@ -211,6 +212,7 @@ export function EntityEditDialog({
       clearTimeout(autoSaveTimeoutRef.current);
       autoSaveTimeoutRef.current = null;
     }
+    closeAfterAutoSaveRef.current = false;
   }, [name, type, qualifier]);
 
   useEffect(() => {
@@ -303,6 +305,7 @@ export function EntityEditDialog({
     if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
 
     autoSaveTimeoutRef.current = setTimeout(async () => {
+      autoSaveTimeoutRef.current = null;
       const oldName = detail.canonical;
       const oldQualifier = detail.qualifier ?? '';
       // Skip if detail already matches target (e.g. after successful save)
@@ -332,6 +335,7 @@ export function EntityEditDialog({
       });
       if (staleRef.current) return;
       if (error) {
+        closeAfterAutoSaveRef.current = false;
         setAutoSaveStatus('error');
         setAutoSaveError(error);
         return;
@@ -342,12 +346,24 @@ export function EntityEditDialog({
         aliases: normalizedAliases,
       };
       setDetail((prev) =>
-        prev ? { ...prev, canonical: normalizedCanonical, qualifier: normalizedQualifier, aliases: normalizedAliases } : prev
+        prev
+          ? {
+              ...prev,
+              canonical: normalizedCanonical,
+              qualifier: normalizedQualifier,
+              aliases: normalizedAliases,
+            }
+          : prev
       );
       setAutoSaveStatus('saved');
       await refresh();
       if (staleRef.current) return;
       onSaved?.();
+      if (closeAfterAutoSaveRef.current) {
+        closeAfterAutoSaveRef.current = false;
+        onClose();
+        return;
+      }
       // Reset "saved" indicator back to idle after a short delay
       setTimeout(() => {
         if (!staleRef.current) setAutoSaveStatus('idle');
@@ -357,9 +373,28 @@ export function EntityEditDialog({
     return () => {
       if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
     };
-  }, [canonical, qualifierValue, aliases, detail, loading, onSaved, refresh, request, type]);
+  }, [
+    canonical,
+    qualifierValue,
+    aliases,
+    detail,
+    loading,
+    onClose,
+    onSaved,
+    refresh,
+    request,
+    type,
+  ]);
 
-  // Flush pending autosave on unmount / close
+  function handleClose() {
+    if (autoSaveTimeoutRef.current) {
+      closeAfterAutoSaveRef.current = true;
+      return;
+    }
+    onClose();
+  }
+
+  // Cancel only the timer on unmount; an in-flight request is allowed to finish.
   useEffect(() => {
     return () => {
       if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
@@ -638,7 +673,7 @@ export function EntityEditDialog({
         isOpen
         title={`${typeLabels[type]}: ${formatEntityLabel(detail?.canonical ?? name, detail?.qualifier ?? qualifier)}`}
         className="max-w-xl"
-        onClose={onClose}
+        onClose={handleClose}
       >
         {loading ? (
           <div className="py-8 flex justify-center">
@@ -695,9 +730,7 @@ export function EntityEditDialog({
 
             {!loading && detail && (
               <div className="text-xs min-h-[1rem]">
-                {autoSaveStatus === 'saving' && (
-                  <span className="text-slate-400">Speichert…</span>
-                )}
+                {autoSaveStatus === 'saving' && <span className="text-slate-400">Speichert…</span>}
                 {autoSaveStatus === 'saved' && (
                   <span className="text-emerald-400">Gespeichert ✓</span>
                 )}
