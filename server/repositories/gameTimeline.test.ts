@@ -66,9 +66,9 @@ describe('gameTimeline', () => {
         .run(now, now).lastInsertRowid
     );
     setDiaryGameDay(did, 13);
-    const row = db
-      .prepare('SELECT game_day AS d FROM diary_entries WHERE id = ?')
-      .get(did) as { d: number | null };
+    const row = db.prepare('SELECT game_day AS d FROM diary_entries WHERE id = ?').get(did) as {
+      d: number | null;
+    };
     expect(row.d).toBe(13);
     const day = db.prepare('SELECT day FROM campaign_days WHERE day = 13').get();
     expect(day).toBeDefined();

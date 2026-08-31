@@ -1,6 +1,7 @@
 import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
 import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
 import { detectSessionBoundaries } from '../ai/sessionBoundary.js';
+import { detectSessionGameDay } from '../ai/sessionGameDay.js';
 import { createLogger } from '../logger.js';
 import { getSessionById, listSessionsPendingAi } from '../repositories/recordings.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
@@ -60,6 +61,20 @@ async function processSession(id: number): Promise<void> {
     }
   }
 
+  // Detect in-game days (Spieltag range) AFTER transcript improvement and
+  // boundary detection, so the AI sees the cleaned text and can focus on the
+  // actual game. Runs automatically, but never overwrites a manually set day
+  // (detectSessionGameDay bails when gameDay is already present).
+  if (session?.gameDay === null || session?.gameDay === undefined) {
+    log.info(`Detecting game day for session ${id}`);
+    await detectSessionGameDay(id, SCHEDULER_USER, undefined);
+    session = getSessionById(id);
+    if (!session || !session.transcript) {
+      log.warn(`Session ${id} disappeared after game day detection`);
+      return;
+    }
+  }
+
   if (sessionNeedsSummary(session)) {
     log.info(`Generating summaries for session ${id}`);
     await processSessionSummaryEntities(id, SCHEDULER_USER, undefined);
@@ -71,7 +86,12 @@ async function processSession(id: number): Promise<void> {
 export async function processPendingSessions(): Promise<void> {
   const pending = listSessionsPendingAi();
   const needsWork = pending.filter(
-    (s) => !s.gameBoundaryDetectedAt || sessionNeedsImprovement(s) || sessionNeedsSummary(s)
+    (s) =>
+      !s.gameBoundaryDetectedAt ||
+      s.gameDay === null ||
+      s.gameDay === undefined ||
+      sessionNeedsImprovement(s) ||
+      sessionNeedsSummary(s)
   );
   if (needsWork.length === 0) {
     log.info('No sessions pending AI processing');

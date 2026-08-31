@@ -15,6 +15,7 @@ export type McpScope =
   | 'recording:read'
   | 'recording:summarize'
   | 'recording:boundaries'
+  | 'recording:game-day'
   | 'bingo:read'
   | 'bingo:write';
 

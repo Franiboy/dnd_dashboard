@@ -582,7 +582,7 @@ export function createDiaryEntry(
   title: string,
   content: string,
   summary?: string | null,
-  gameDay?: number | null,
+  gameDay?: number | null
 ): DiaryEntry {
   const now = new Date().toISOString();
   const day = gameDay ?? null;
@@ -856,17 +856,7 @@ export function createSessionDiaryDraft(
     .prepare(
       'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, game_day, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
-    .run(
-      userId,
-      derivedTitle,
-      sanitizeHtml('').trim(),
-      null,
-      0,
-      sessionId,
-      gameDay,
-      now,
-      now
-    );
+    .run(userId, derivedTitle, sanitizeHtml('').trim(), null, 0, sessionId, gameDay, now, now);
   const entryId = Number(result.lastInsertRowid);
   const filePath = getRewrittenFilePath(entryId);
   writeRewrittenFile(entryId, sanitizeHtml(html).trim());

@@ -4,22 +4,24 @@ This document describes the high-level structure of the D&D Dashboard.
 
 ## Server
 
-| File                          | Purpose                                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `server/index.ts`             | Express and Socket.io setup, router mounting, shutdown handler, scheduler/bot startup                  |
-| `server/auth.ts`              | JWT creation/validation, auth middleware, admin middleware, rate limiting                              |
-| `server/database.ts`          | Central `better-sqlite3` connection (`dnd.db`) with WAL and foreign keys                               |
-| `server/encryption.ts`        | Symmetric encryption helpers for sensitive tokens (AES-256-GCM)                                        |
-| `server/users.ts`             | SQLite user management, password hashing, account lockout, Discord profile and encrypted token storage |
-| `server/env.ts`               | Zod-validated environment configuration and startup validation                                         |
-| `server/schema.ts`            | Declarative target database schema (tables, columns, indexes, references)                              |
-| `server/migrations.ts`        | Schema-diff engine: applies missing tables/columns/indexes against `schema.ts` + data-level hooks      |
-| `server/errors.ts`            | Central `AppError` class, 404 handler and Express error middleware                                     |
-| `server/logger.ts`            | Centralized, categorized logger with in-memory buffer and SSE subscription                             |
-| `server/version.ts`           | Returns active feature flags (`aiEnabled`, `recordingEnabled`)                                         |
-| `server/socket.ts`            | Socket.io event handlers for Bingo                                                                     |
-| `server/diaryFiles.ts`        | Stores AI rewrites as files under `rewritten/`                                                         |
-| `server/ai/sessionToDiary.ts` | AI prompt and orchestration for transferring a session into a diary draft                              |
+| File                           | Purpose                                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `server/index.ts`              | Express and Socket.io setup, router mounting, shutdown handler, scheduler/bot startup                  |
+| `server/auth.ts`               | JWT creation/validation, auth middleware, admin middleware, rate limiting                              |
+| `server/database.ts`           | Central `better-sqlite3` connection (`dnd.db`) with WAL and foreign keys                               |
+| `server/encryption.ts`         | Symmetric encryption helpers for sensitive tokens (AES-256-GCM)                                        |
+| `server/users.ts`              | SQLite user management, password hashing, account lockout, Discord profile and encrypted token storage |
+| `server/env.ts`                | Zod-validated environment configuration and startup validation                                         |
+| `server/schema.ts`             | Declarative target database schema (tables, columns, indexes, references)                              |
+| `server/migrations.ts`         | Schema-diff engine: applies missing tables/columns/indexes against `schema.ts` + data-level hooks      |
+| `server/errors.ts`             | Central `AppError` class, 404 handler and Express error middleware                                     |
+| `server/logger.ts`             | Centralized, categorized logger with in-memory buffer and SSE subscription                             |
+| `server/version.ts`            | Returns active feature flags (`aiEnabled`, `recordingEnabled`)                                         |
+| `server/socket.ts`             | Socket.io event handlers for Bingo                                                                     |
+| `server/diaryFiles.ts`         | Stores AI rewrites as files under `rewritten/`                                                         |
+| `server/ai/sessionToDiary.ts`  | AI prompt and orchestration for transferring a session into a diary draft                              |
+| `server/ai/sessionBoundary.ts` | Detects actual game play boundaries in a transcript (pre/post small talk)                              |
+| `server/ai/sessionGameDay.ts`  | Detects affected in-game days (Spieltag range) from transcript + campaign context                      |
 
 ### Routes (`server/routes/`)
 
@@ -55,24 +57,27 @@ This document describes the high-level structure of the D&D Dashboard.
 | `ai/opencode.ts`         | Spawns `opencode run` with MCP token and scopes; supports the V2 CLI (`opencode2`) via a persistent background server for session reuse/cleanup |
 | `ai/rewrite.ts`          | Prompts for rewrite, summary and entity extraction                                                                                              |
 | `ai/knowledge.ts`        | Prompts for knowledge distribution and entity summaries                                                                                         |
+| `ai/sessionBoundary.ts`  | AI boundary detection (recording timeline)                                                                                                      |
+| `ai/sessionGameDay.ts`   | AI game-day range detection (transcript + previous sessions + campaign timeline)                                                                |
 | `ai/actions.ts`          | Parser and executor for direct AI tool actions                                                                                                  |
-| `mcp/index.ts`           | MCP server with tools (`set_diary_*`, `get_entity`, `create_knowledge`, …)                                                                      |
+| `mcp/index.ts`           | MCP server with tools (`set_diary_*`, `get_entity`, `create_knowledge`, `set_session_game_day`, …)                                              |
 | `mcp/tokens.ts`          | JWT-based MCP session tokens with scopes                                                                                                        |
 
 ### Scheduler & Discord (`server/scheduler/` & `server/discord/`)
 
-| File                                                    | Purpose                                                        |
-| ------------------------------------------------------- | -------------------------------------------------------------- |
-| `scheduler/bingoSuggestions.ts`                         | Keeps the AI bingo suggestion pool filled in the background    |
-| `scheduler/entitySummaries.ts`                          | Starts AI-generated entity summaries in the background         |
-| `scheduler/sessionToDiary.ts`                           | Nightly auto-transfer of completed sessions to user diaries    |
-| `discord/bot.ts`                                        | Starts the Discord bot and joins voice channels for recordings |
-| `discord/recorder.ts`                                   | Records Discord audio and stores PCM files                     |
-| `discord/transcriber.ts`                                | Runs Whisper transcription                                     |
-| `discord/scheduler.ts`                                  | Processes pending transcriptions                               |
-| `discord/oauth.ts`                                      | Discord OAuth2 token exchange, refresh and profile sync        |
-| `scheduler/discordTokenRefresh.ts`                      | Periodic refresh of stored Discord OAuth tokens                |
-| `discord/audio.ts` / `files.ts` / `recordingsEvents.ts` | Audio processing, file management, events                      |
+| File                                                    | Purpose                                                                                        |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `scheduler/sessionAi.ts`                                | Nightly AI pipeline: transcript improvement → game boundaries → game-day detection → summaries |
+| `scheduler/bingoSuggestions.ts`                         | Keeps the AI bingo suggestion pool filled in the background                                    |
+| `scheduler/entitySummaries.ts`                          | Starts AI-generated entity summaries in the background                                         |
+| `scheduler/sessionToDiary.ts`                           | Nightly auto-transfer of completed sessions to user diaries                                    |
+| `discord/bot.ts`                                        | Starts the Discord bot and joins voice channels for recordings                                 |
+| `discord/recorder.ts`                                   | Records Discord audio and stores PCM files                                                     |
+| `discord/transcriber.ts`                                | Runs Whisper transcription                                                                     |
+| `discord/scheduler.ts`                                  | Processes pending transcriptions                                                               |
+| `discord/oauth.ts`                                      | Discord OAuth2 token exchange, refresh and profile sync                                        |
+| `scheduler/discordTokenRefresh.ts`                      | Periodic refresh of stored Discord OAuth tokens                                                |
+| `discord/audio.ts` / `files.ts` / `recordingsEvents.ts` | Audio processing, file management, events                                                      |
 
 ## Frontend (`src/`)
 
