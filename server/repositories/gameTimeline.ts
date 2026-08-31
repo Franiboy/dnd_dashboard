@@ -12,19 +12,15 @@ import { db } from '../database.js';
 
 export interface CampaignDay {
   day: number;
-  /** Optional display label, e.g. "Feast of the Moon". */
-  label: string | null;
 }
 
 export function listCampaignDays(): CampaignDay[] {
-  const rows = db
-    .prepare('SELECT day, label FROM campaign_days ORDER BY day ASC')
-    .all() as CampaignDay[];
+  const rows = db.prepare('SELECT day FROM campaign_days ORDER BY day ASC').all() as CampaignDay[];
   return rows;
 }
 
 export function getCampaignDay(day: number): CampaignDay | null {
-  const row = db.prepare('SELECT day, label FROM campaign_days WHERE day = ?').get(day) as
+  const row = db.prepare('SELECT day FROM campaign_days WHERE day = ?').get(day) as
     CampaignDay | undefined;
   return row ?? null;
 }
@@ -40,19 +36,16 @@ export function getNextGameDay(): number {
 }
 
 /**
- * Registers a campaign day with the given label (upsert by day). Ensures the
- * in-game timeline row exists so sessions/diary entries can reference it and
- * the current day advances.
+ * Registers a campaign day. Ensures the in-game timeline row exists so
+ * sessions/diary entries can reference it and the current day advances.
  */
-export function ensureCampaignDay(day: number, label: string | null): CampaignDay {
+export function ensureCampaignDay(day: number): CampaignDay {
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO campaign_days (day, label, created_at, updated_at)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT(day) DO UPDATE SET
-       label = COALESCE(excluded.label, campaign_days.label),
-       updated_at = excluded.updated_at`
-  ).run(day, label?.trim() ?? null, now, now);
+    `INSERT INTO campaign_days (day, created_at, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(day) DO UPDATE SET updated_at = excluded.updated_at`
+  ).run(day, now, now);
   return getCampaignDay(day)!;
 }
 
@@ -78,42 +71,37 @@ export function getDiaryGameDay(entryId: number): number | null {
   return row?.d ?? null;
 }
 
-export function setSessionGameDay(
-  sessionId: number,
-  gameDay: number | null,
-  gameDateLabel: string | null
-): void {
-  if (gameDay !== null) ensureCampaignDay(gameDay, gameDateLabel);
-  db.prepare(
-    'UPDATE recording_sessions SET game_day = ?, game_date_label = ?, updated_at = ? WHERE id = ?'
-  ).run(gameDay, gameDateLabel?.trim() ?? null, new Date().toISOString(), sessionId);
+export function setSessionGameDay(sessionId: number, gameDay: number | null): void {
+  if (gameDay !== null) ensureCampaignDay(gameDay);
+  db.prepare('UPDATE recording_sessions SET game_day = ?, updated_at = ? WHERE id = ?').run(
+    gameDay,
+    new Date().toISOString(),
+    sessionId
+  );
 }
 
 export function setSessionGameDayRange(
   sessionId: number,
   gameDayStart: number | null,
-  gameDayEnd: number | null,
-  gameDateLabel: string | null
+  gameDayEnd: number | null
 ): void {
   const start = gameDayStart;
   const end = gameDayEnd ?? start;
   if (start !== null) {
     for (let d = start; d <= (end ?? start); d++) {
-      ensureCampaignDay(d, d === start ? gameDateLabel : null);
+      ensureCampaignDay(d);
     }
   }
   db.prepare(
-    'UPDATE recording_sessions SET game_day = ?, game_day_end = ?, game_date_label = ?, updated_at = ? WHERE id = ?'
-  ).run(start, end, gameDateLabel?.trim() ?? null, new Date().toISOString(), sessionId);
+    'UPDATE recording_sessions SET game_day = ?, game_day_end = ?, updated_at = ? WHERE id = ?'
+  ).run(start, end, new Date().toISOString(), sessionId);
 }
 
-export function setDiaryGameDay(
-  entryId: number,
-  gameDay: number | null,
-  gameDateLabel: string | null
-): void {
-  if (gameDay !== null) ensureCampaignDay(gameDay, gameDateLabel);
-  db.prepare(
-    'UPDATE diary_entries SET game_day = ?, game_date_label = ?, updated_at = ? WHERE id = ?'
-  ).run(gameDay, gameDateLabel?.trim() ?? null, new Date().toISOString(), entryId);
+export function setDiaryGameDay(entryId: number, gameDay: number | null): void {
+  if (gameDay !== null) ensureCampaignDay(gameDay);
+  db.prepare('UPDATE diary_entries SET game_day = ?, updated_at = ? WHERE id = ?').run(
+    gameDay,
+    new Date().toISOString(),
+    entryId
+  );
 }

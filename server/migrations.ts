@@ -201,6 +201,22 @@ function dropLegacyDiaryEntryDate(): void {
   }
 }
 
+// Remove the obsolete in-game date label columns from databases created before
+// the timeline was reduced to numeric days.
+function dropLegacyGameDateLabels(): void {
+  const columns: Array<[string, string]> = [
+    ['recording_sessions', 'game_date_label'],
+    ['diary_entries', 'game_date_label'],
+    ['campaign_days', 'label'],
+  ];
+  for (const [table, column] of columns) {
+    if (tableExists(table) && getExistingColumns(table).has(column)) {
+      db.exec(`ALTER TABLE ${quote(table)} DROP COLUMN ${quote(column)}`);
+      log.info(`Dropped legacy column ${table}.${column}`);
+    }
+  }
+}
+
 // Seed the in-game day counter (game_day) for legacy data from the real
 // chronology. Sessions and diary entries without a game_day get a monotonic
 // counter following their real date order; the counter continues from the
@@ -288,8 +304,8 @@ function seedCampaignDays(): void {
   if (!cols.has('day')) return;
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT OR IGNORE INTO campaign_days (day, label, created_at, updated_at)
-     SELECT m AS day, NULL AS label, ? AS created_at, ? AS updated_at
+    `INSERT OR IGNORE INTO campaign_days (day, created_at, updated_at)
+     SELECT m AS day, ? AS created_at, ? AS updated_at
      FROM (
        SELECT DISTINCT game_day AS m FROM recording_sessions WHERE game_day IS NOT NULL
        UNION
@@ -306,7 +322,7 @@ function seedCampaignDays(): void {
       )
       .all() as { game_day: number; game_day_end: number }[];
     const insert = db.prepare(
-      'INSERT OR IGNORE INTO campaign_days (day, label, created_at, updated_at) VALUES (?, NULL, ?, ?)'
+      'INSERT OR IGNORE INTO campaign_days (day, created_at, updated_at) VALUES (?, ?, ?)'
     );
     for (const s of sessions) {
       const start = s.game_day;
@@ -410,6 +426,7 @@ export function runMigrations(): void {
     migrateEntityBlacklistTypes();
     migrateWhiteboardElementTypes();
     dropLegacyDiaryEntryDate();
+    dropLegacyGameDateLabels();
     migrateWhiteboardElementTypes();
     rebuildEntitySummariesForQualifier();
     // Apply the declarative schema diff (tables, columns, indexes).
