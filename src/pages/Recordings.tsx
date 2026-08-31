@@ -105,9 +105,6 @@ export function Sessions({ user }: SessionsProps) {
   const [draftingId, setDraftingId] = useState<number | null>(null);
   const [diaryTransfers, setDiaryTransfers] = useState<Record<number, SessionDiaryTransfer>>({});
   const [campaignDays, setCampaignDays] = useState<CampaignDay[]>([]);
-  const [gameDayDrafts, setGameDayDrafts] = useState<
-    Record<number, { day: number | null; dayEnd: number | null }>
-  >({});
   const [sessionDiaryEntries, setSessionDiaryEntries] = useState<
     Record<number, SessionDiaryEntryLink[]>
   >({});
@@ -593,23 +590,23 @@ export function Sessions({ user }: SessionsProps) {
                     <label className="text-slate-400">Spieltag</label>
                     <div className="flex items-center gap-2">
                       <select
-                        value={
-                          gameDayDrafts[session.id]?.day !== undefined
-                            ? (gameDayDrafts[session.id]!.day ?? '')
-                            : (session.gameDay ?? '')
-                        }
-                        onChange={(e) =>
-                          setGameDayDrafts((prev) => ({
-                            ...prev,
-                            [session.id]: {
-                              day: e.target.value === '' ? null : Number(e.target.value),
-                              dayEnd:
-                                prev[session.id]?.dayEnd ??
-                                session.gameDayEnd ??
-                                (e.target.value === '' ? null : Number(e.target.value)),
-                            },
-                          }))
-                        }
+                        value={session.gameDay ?? ''}
+                        onChange={(e) => {
+                          const newDay = e.target.value === '' ? null : Number(e.target.value);
+                          let newEnd: number | null;
+                          if (newDay === null) {
+                            newEnd = null;
+                          } else if (
+                            session.gameDayEnd !== null &&
+                            session.gameDayEnd !== undefined &&
+                            session.gameDayEnd >= newDay
+                          ) {
+                            newEnd = session.gameDayEnd;
+                          } else {
+                            newEnd = newDay;
+                          }
+                          void saveGameDay(session.id, newDay, newEnd);
+                        }}
                         className="min-w-0 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                       >
                         <option value="">– kein –</option>
@@ -621,20 +618,16 @@ export function Sessions({ user }: SessionsProps) {
                       </select>
                       <span className="text-slate-400">bis</span>
                       <select
-                        value={
-                          gameDayDrafts[session.id]?.dayEnd !== undefined
-                            ? (gameDayDrafts[session.id]!.dayEnd ?? '')
-                            : (session.gameDayEnd ?? session.gameDay ?? '')
-                        }
-                        onChange={(e) =>
-                          setGameDayDrafts((prev) => ({
-                            ...prev,
-                            [session.id]: {
-                              day: prev[session.id]?.day ?? session.gameDay,
-                              dayEnd: e.target.value === '' ? null : Number(e.target.value),
-                            },
-                          }))
-                        }
+                        value={session.gameDayEnd ?? session.gameDay ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value === '' ? null : Number(e.target.value);
+                          let newStart: number | null = session.gameDay ?? null;
+                          let newEnd: number | null = raw;
+                          if (newStart === null && newEnd !== null) {
+                            newStart = newEnd;
+                          }
+                          void saveGameDay(session.id, newStart, newEnd);
+                        }}
                         className="min-w-0 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                       >
                         <option value="">–</option>
@@ -644,23 +637,6 @@ export function Sessions({ user }: SessionsProps) {
                           </option>
                         ))}
                       </select>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          saveGameDay(
-                            session.id,
-                            (gameDayDrafts[session.id]?.day !== undefined
-                              ? gameDayDrafts[session.id]!.day
-                              : session.gameDay) ?? null,
-                            (gameDayDrafts[session.id]?.dayEnd !== undefined
-                              ? gameDayDrafts[session.id]!.dayEnd
-                              : (session.gameDayEnd ?? session.gameDay)) ?? null
-                          )
-                        }
-                        className="px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition"
-                      >
-                        Speichern
-                      </button>
                     </div>
                   </div>
                 )}
