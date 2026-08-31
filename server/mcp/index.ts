@@ -309,6 +309,8 @@ if (requireScope('entity:summary')) {
     },
     async ({ type, name, summary, miniSummary, qualifier }) => {
       try {
+        const targetError = assertKnowledgeTargetAllowed(type, name, qualifier?.trim() ?? '');
+        if (targetError) return targetError;
         const ref = ensureEntityExists(type, name, qualifier?.trim() ?? '');
         setEntitySummary(type, ref.name, summary.trim(), false, miniSummary, ref.qualifier);
         return success(`Zusammenfassung für ${type}/${entityLabel(ref)} gesetzt.`);

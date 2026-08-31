@@ -9,7 +9,7 @@ import { getEntitySummary } from '../repositories/entitySummaries.js';
 import { getCurrentGameDay } from '../repositories/gameTimeline.js';
 import { stripHtml } from './rewrite.js';
 import { createLogger } from '../logger.js';
-import type { McpSessionUser } from '../mcp/tokens.js';
+import type { KnowledgeTarget, McpSessionUser } from '../mcp/tokens.js';
 import type { EntityKnowledgeEntry, EntityType, KnowledgeOriginType } from '../../shared/types.js';
 
 const log = createLogger('knowledge');
@@ -335,6 +335,11 @@ export async function correctKnowledgeFromText(
       onLog,
       user,
       qualifier: target.entityQualifier ?? '',
+      knowledgeTarget: {
+        entityType: target.entityType,
+        entityName: target.entityName,
+        entityQualifier: target.entityQualifier ?? '',
+      },
     });
     summaries.push({
       entityType: target.entityType,
@@ -457,6 +462,11 @@ export async function reviewEntityKnowledge(
       onLog,
       user,
       qualifier: target.entityQualifier ?? '',
+      knowledgeTarget: {
+        entityType,
+        entityName,
+        entityQualifier: qualifier,
+      },
     });
     summaries.push({
       entityType: target.entityType,
@@ -489,6 +499,8 @@ export interface EntitySummaryOptions {
   user?: McpSessionUser;
   /** Disambiguator for homonyms; '' targets the plain name. */
   qualifier?: string;
+  /** Restricts summary writes to the requested entity. */
+  knowledgeTarget?: KnowledgeTarget;
 }
 
 export async function generateEntitySummary(
@@ -496,7 +508,7 @@ export async function generateEntitySummary(
   entityName: string,
   options: EntitySummaryOptions = {}
 ): Promise<GeneratedEntitySummary | null> {
-  const { model, onLog, user, qualifier = '' } = options;
+  const { model, onLog, user, qualifier = '', knowledgeTarget } = options;
   const typeLabel =
     entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
   const qualifiedName = qualifier ? `${entityName} (${qualifier})` : entityName;
@@ -541,6 +553,7 @@ export async function generateEntitySummary(
     title: `dnd-entity-summary-${entityType}-${entityName}-${Date.now()}`,
     scopes: ['entity:read', 'entity:summary', 'diary:read', 'diary:read-all'],
     user,
+    knowledgeTarget,
     onLog,
   });
 
