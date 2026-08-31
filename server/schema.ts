@@ -96,7 +96,10 @@ export const schema: Record<string, TableDef> = {
       // In-game time of the session: a monotonic day counter of the campaign
       // (the sortable axis) plus an optional display label, e.g. "Feast of the
       // Moon". NULL means the in-game day is not (yet) known.
+      // game_day is the first day of the session, game_day_end is the last
+      // day (inclusive). A single-day session has both equal.
       game_day: { type: 'INTEGER' },
+      game_day_end: { type: 'INTEGER' },
       game_date_label: { type: 'TEXT' },
       updated_at: { type: 'TEXT' },
     },

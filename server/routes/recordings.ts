@@ -508,16 +508,30 @@ router.put('/:id/game-day', requireAdmin, (req, res) => {
     return;
   }
 
-  const { gameDay, gameDateLabel } = req.body;
-  const day = gameDay === null || gameDay === undefined ? null : Number(gameDay);
-  if (day !== null && (!Number.isInteger(day) || day <= 0)) {
+  const { gameDay, gameDayEnd, gameDateLabel } = req.body;
+  const start = gameDay === null || gameDay === undefined ? null : Number(gameDay);
+  const endRaw = gameDayEnd === null || gameDayEnd === undefined ? null : Number(gameDayEnd);
+  const end = start === null ? null : (endRaw ?? start);
+  if (start !== null && (!Number.isInteger(start) || start <= 0)) {
     res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl oder null sein' });
+    return;
+  }
+  if (end !== null && (!Number.isInteger(end) || end <= 0)) {
+    res.status(400).json({ error: 'Spieltag-Ende muss eine positive ganze Zahl oder null sein' });
+    return;
+  }
+  if (start !== null && end !== null && end < start) {
+    res.status(400).json({ error: 'Endtag darf nicht vor Starttag liegen' });
+    return;
+  }
+  if (start !== null && end !== null && end - start > 30) {
+    res.status(400).json({ error: 'Zeitraum zu groß (max 30 Tage)' });
     return;
   }
   const label =
     typeof gameDateLabel === 'string' && gameDateLabel.trim() ? gameDateLabel.trim() : null;
 
-  updateSession(id, { gameDay: day, gameDateLabel: label });
+  updateSession(id, { gameDay: start, gameDayEnd: end, gameDateLabel: label });
   emitSessionsUpdated();
   res.json({ session: getSessionById(id) });
 });

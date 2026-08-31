@@ -63,6 +63,15 @@ export function getSessionGameDay(sessionId: number): number | null {
   return row?.d ?? null;
 }
 
+export function getSessionGameDayRange(
+  sessionId: number
+): { start: number | null; end: number | null } | null {
+  const row = db
+    .prepare('SELECT game_day AS start, game_day_end AS end FROM recording_sessions WHERE id = ?')
+    .get(sessionId) as { start: number | null; end: number | null } | undefined;
+  return row ? { start: row.start, end: row.end ?? row.start } : null;
+}
+
 export function getDiaryGameDay(entryId: number): number | null {
   const row = db.prepare('SELECT game_day AS d FROM diary_entries WHERE id = ?').get(entryId) as
     { d: number | null } | undefined;
@@ -78,6 +87,24 @@ export function setSessionGameDay(
   db.prepare(
     'UPDATE recording_sessions SET game_day = ?, game_date_label = ?, updated_at = ? WHERE id = ?'
   ).run(gameDay, gameDateLabel?.trim() ?? null, new Date().toISOString(), sessionId);
+}
+
+export function setSessionGameDayRange(
+  sessionId: number,
+  gameDayStart: number | null,
+  gameDayEnd: number | null,
+  gameDateLabel: string | null
+): void {
+  const start = gameDayStart;
+  const end = gameDayEnd ?? start;
+  if (start !== null) {
+    for (let d = start; d <= (end ?? start); d++) {
+      ensureCampaignDay(d, d === start ? gameDateLabel : null);
+    }
+  }
+  db.prepare(
+    'UPDATE recording_sessions SET game_day = ?, game_day_end = ?, game_date_label = ?, updated_at = ? WHERE id = ?'
+  ).run(start, end, gameDateLabel?.trim() ?? null, new Date().toISOString(), sessionId);
 }
 
 export function setDiaryGameDay(
