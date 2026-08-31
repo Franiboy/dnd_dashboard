@@ -321,11 +321,12 @@ export const schema: Record<string, TableDef> = {
       origin_type: { type: 'TEXT' },
       origin_id: { type: 'INTEGER' },
       // Validity window on the in-game timeline (recording_sessions.game_day):
-      // valid_from = first game day the fact holds, valid_until = last game
-      // day it holds. NULL is open-ended (from the beginning / still current).
-      // A fact whose window has closed is historically true but no longer the
-      // current state; it stays visible in the entity timeline instead of
-      // being treated as a contradiction.
+      // valid_from = first game day the fact holds (inclusive); valid_until =
+      // first game day the fact no longer holds (EXCLUSIVE). NULL is
+      // open-ended (from the beginning / still current). A fact whose window
+      // has closed is historically true but no longer the current state; it
+      // stays visible in the entity timeline instead of being treated as a
+      // contradiction.
       valid_from: { type: 'INTEGER' },
       valid_until: { type: 'INTEGER' },
       created_at: { type: 'TEXT', notNull: true },

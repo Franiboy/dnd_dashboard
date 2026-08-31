@@ -61,8 +61,12 @@ export function listActiveEntityKnowledge(
   asOfGameDay?: number | null
 ): EntityKnowledgeEntry[] {
   // Filter against the known in-game timeline: a fact is "current" when its
-  // validity window covers the reference day. With no game_day known at all
-  // every active entry is considered current (legacy behaviour).
+  // validity window covers the reference day. valid_from is inclusive (the
+  // fact starts being true on that day); valid_until is EXCLUSIVE (the first
+  // day the fact no longer holds). This keeps a transition day disjoint: an
+  // old fact ending at day X and a replacement starting at day X never overlap.
+  // With no game_day known at all every active entry is considered current
+  // (legacy behaviour).
   const asOf = asOfGameDay !== undefined ? asOfGameDay : getCurrentGameDay();
   let sql = `SELECT ${selectColumns}
      ${selectFrom}
@@ -70,7 +74,7 @@ export function listActiveEntityKnowledge(
   const params: unknown[] = [entityType, entityName, entityQualifier];
   if (asOf !== null && asOf !== undefined && Number.isFinite(asOf)) {
     sql +=
-      ' AND (k.valid_from IS NULL OR k.valid_from <= ?) AND (k.valid_until IS NULL OR k.valid_until >= ?)';
+      ' AND (k.valid_from IS NULL OR k.valid_from <= ?) AND (k.valid_until IS NULL OR k.valid_until > ?)';
     params.push(asOf, asOf);
   }
   sql += ' ORDER BY k.created_at DESC';
@@ -213,10 +217,12 @@ export function markEntityKnowledgeDeleted(
 }
 
 /**
- * Marks an active fact as having changed over time: from the given in-game
- * day on it no longer holds, but it stays active (historically true) so the
- * timeline keeps it visible. This replaces the "delete old + create new"
- * pattern for sequenced facts.
+ * Marks an active fact as having changed over time: from the given in-game day
+ * it no longer holds (the passed day is EXCLUSIVE - the fact stays valid up to
+ * validUntil - 1), but it stays active (historically true) so the timeline
+ * keeps it visible. A replacement fact may start at the same day without
+ * overlapping. This replaces the "delete old + create new" pattern for
+ * sequenced facts.
  */
 export function markEntityKnowledgeTimelineEnd(
   id: number,

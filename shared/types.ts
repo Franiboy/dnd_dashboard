@@ -422,13 +422,15 @@ export interface EntityKnowledgeEntry {
   /** Title/name of the origin (diary entry title or session name) at display time. */
   originTitle: string | null;
   /**
-   * First in-game day (recording_sessions.game_day) the fact holds. NULL means
-   * timeless/from the beginning.
+   * First in-game day (recording_sessions.game_day) the fact holds (inclusive).
+   * NULL means timeless/from the beginning.
    */
   validFrom: number | null;
   /**
-   * Last in-game day the fact holds. NULL means still current/open-ended. A
-   * non-null validUntil marks a fact that changed over time (see timeline).
+   * First in-game day the fact no longer holds (EXCLUSIVE). NULL means still
+   * current/open-ended. A non-null validUntil marks a fact that changed over
+   * time (see timeline); a replacement fact may start on the same day without
+   * overlapping.
    */
   validUntil: number | null;
   createdAt: string;

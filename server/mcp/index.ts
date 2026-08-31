@@ -554,9 +554,12 @@ if (requireScope('entity:read')) {
           lines.push('Wissen (aktuell gültig):');
           for (const entry of knowledge) {
             const title = entry.title ? `${entry.title}: ` : '';
+            // valid_until is EXCLUSIVE: the fact holds up to (validUntil - 1).
             const window =
               entry.validFrom !== null || entry.validUntil !== null
-                ? ` [Spieltage ${entry.validFrom ?? '…'}–${entry.validUntil ?? 'heute'}]`
+                ? entry.validUntil !== null
+                  ? ` [ab Spieltag ${entry.validFrom ?? '…'} bis Tag ${entry.validUntil - 1}]`
+                  : ` [ab Spieltag ${entry.validFrom ?? '…'}]`
                 : '';
             lines.push(`- ${title}${entry.content}${window}`);
           }

@@ -878,21 +878,37 @@ export function EntityEditDialog({
                                   </span>
                                 )}
                                 {(entry.validFrom !== null ||
-                                  (!isDeleted && entry.validUntil !== null)) && (
-                                  <span
-                                    title="Zeitgebundener Fakt auf der in-game Chronologie"
-                                    className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${
+                                  (!isDeleted && entry.validUntil !== null)) &&
+                                  (() => {
+                                    // valid_until is EXCLUSIVE: the fact holds up to
+                                    // (validUntil - 1), so it is over now when
+                                    // validUntil <= current day.
+                                    const isOver =
                                       !isDeleted &&
                                       entry.validUntil !== null &&
                                       currentGameDay != null &&
-                                      entry.validUntil < currentGameDay
-                                        ? 'bg-amber-500/10 text-amber-400'
-                                        : 'bg-[var(--accent)]/10 text-[var(--accent)]'
-                                    }`}
-                                  >
-                                    Spieltag {entry.validFrom ?? '…'}–{entry.validUntil ?? 'heute'}
-                                  </span>
-                                )}
+                                      entry.validUntil <= currentGameDay;
+                                    const lastValid =
+                                      entry.validUntil !== null ? entry.validUntil - 1 : null;
+                                    return (
+                                      <span
+                                        title={
+                                          entry.validUntil !== null
+                                            ? `Gültig von Spieltag ${entry.validFrom ?? 'Beginn'} bis einschließlich Spieltag ${lastValid}; ab Spieltag ${entry.validUntil} nicht mehr.`
+                                            : `Gültig ab Spieltag ${entry.validFrom ?? 'Beginn'}.`
+                                        }
+                                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${
+                                          isOver
+                                            ? 'bg-amber-500/10 text-amber-400'
+                                            : 'bg-[var(--accent)]/10 text-[var(--accent)]'
+                                        }`}
+                                      >
+                                        {entry.validUntil !== null
+                                          ? `Spieltag ${entry.validFrom ?? '…'} bis Tag ${lastValid}`
+                                          : `Spieltag ab ${entry.validFrom ?? '…'}`}
+                                      </span>
+                                    );
+                                  })()}
                               </div>
                               <p
                                 className={`text-sm whitespace-pre-wrap ${isDeleted ? 'text-slate-500 line-through' : 'text-[var(--text-h)]'}`}

@@ -115,7 +115,10 @@ as **time-bounded knowledge** instead of being overwritten:
   derives the entry title from the day (`Spieltag {N}` or `Spieltag {N} – {Label}`) and sets the
   entry's `game_day`. AI-generated session drafts keep their own title.
 - **Validity window:** knowledge entries carry `valid_from` / `valid_until` (in-game days).
-  `NULL` is open-ended. A fact whose window has closed stays `status='active'` and remains
+  `valid_from` is inclusive (the fact starts on that day); `valid_until` is **exclusive** (the
+  first day the fact no longer holds). `NULL` is open-ended. This keeps an ending fact and its
+  replacement disjoint on the transition day (old ends at day X, new starts at day X – never
+  both current). A fact whose window has closed stays `status='active'` and remains
   visible in the entity timeline as historically true, but is no longer part of the _current_
   knowledge (`listActiveEntityKnowledge` filters by the current game day, `getCurrentGameDay`).
 - **New MCP tool `end_knowledge(id, until, reason?)`** ends a time-bounded fact at a game day
@@ -126,7 +129,8 @@ as **time-bounded knowledge** instead of being overwritten:
   phrases) and to use `end_knowledge` + a new `create_knowledge` instead of delete when a fact
   merely changes over time. `get_entity` reports the current game day and only current facts.
 - **UI:** the entity dialog (Wissen tab) shows each fact's validity window as a
-  "Spieltag X–Y" badge and offers a "Beenden" action that ends the fact at the current game day;
+  badge (e.g. "Spieltag 3 bis Tag 7" – the exclusive end shown as its last valid day) and
+  offers a "Beenden" action that ends the fact at the current game day;
   admin session/diary editors let you set the day and label. The World "Wissen einordnen"
   result counts ended facts.
 
