@@ -858,11 +858,32 @@ export function createSessionDiaryDraft(
   html: string
 ): DiaryEntry {
   const now = new Date().toISOString();
+  const session = db
+    .prepare('SELECT game_day, game_date_label FROM recording_sessions WHERE id = ?')
+    .get(sessionId) as { game_day: number | null; game_date_label: string | null } | undefined;
+  const gameDay = session?.game_day ?? null;
+  const gameDateLabel = session?.game_date_label ?? null;
+  if (gameDay !== null) ensureCampaignDay(gameDay, gameDateLabel);
+  const derivedTitle =
+    gameDay !== null
+      ? `Spieltag ${gameDay}`
+      : sanitizePlainText(title);
   const result = db
     .prepare(
-      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, game_day, game_date_label, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
-    .run(userId, sanitizePlainText(title), sanitizeHtml('').trim(), null, 0, sessionId, now, now);
+    .run(
+      userId,
+      derivedTitle,
+      sanitizeHtml('').trim(),
+      null,
+      0,
+      sessionId,
+      gameDay,
+      gameDateLabel,
+      now,
+      now
+    );
   const entryId = Number(result.lastInsertRowid);
   const filePath = getRewrittenFilePath(entryId);
   writeRewrittenFile(entryId, sanitizeHtml(html).trim());
