@@ -178,17 +178,21 @@ router.post('/entries', async (req: AuthRequest, res) => {
     return;
   }
 
-  const existing = db
-    .prepare('SELECT 1 FROM diary_entries WHERE user_id = ? AND game_day = ?')
-    .get(req.user.id, day) as { '1': number } | undefined;
-  if (existing) {
+  const entry = db.transaction(() => {
+    const existing = db
+      .prepare('SELECT 1 FROM diary_entries WHERE user_id = ? AND game_day = ?')
+      .get(req.user!.id, day) as { '1': number } | undefined;
+    if (existing) return null;
+
+    const finalTitle = `Spieltag ${day}`;
+    return createDiaryEntry(req.user!.id, finalTitle, content, undefined, day);
+  })();
+
+  if (!entry) {
     res.status(409).json({ error: `Spieltag ${day} existiert bereits` });
     return;
   }
 
-  const finalTitle = `Spieltag ${day}`;
-
-  const entry = createDiaryEntry(req.user.id, finalTitle, content, undefined, day);
   res.status(201).json({ entry });
 });
 
