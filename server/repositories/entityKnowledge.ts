@@ -2,6 +2,7 @@ import type { EntityKnowledgeEntry, EntityType, KnowledgeOriginType } from '../.
 import { db } from '../database.js';
 import { sanitizePlainText } from '../utils/sanitizeHtml.js';
 import { markEntitySummaryDirty, renameEntitySummary } from './entitySummaries.js';
+import { getCurrentGameDay } from './gameTimeline.js';
 
 // Origin titles are resolved live so renamed diary entries / sessions stay current.
 const selectColumns = `
@@ -20,6 +21,8 @@ const selectColumns = `
     WHEN 'diary' THEN d.title
     WHEN 'session' THEN s.name
   END AS originTitle,
+  k.valid_from AS validFrom,
+  k.valid_until AS validUntil,
   k.created_at AS createdAt,
   k.updated_at AS updatedAt`;
 
@@ -54,16 +57,24 @@ export function listEntityKnowledge(
 export function listActiveEntityKnowledge(
   entityType: EntityType,
   entityName: string,
-  entityQualifier = ''
+  entityQualifier = '',
+  asOfGameDay?: number | null
 ): EntityKnowledgeEntry[] {
-  const rows = db
-    .prepare(
-      `SELECT ${selectColumns}
-       ${selectFrom}
-       WHERE k.entity_type = ? AND k.entity_name = ? COLLATE NOCASE AND k.entity_qualifier = ? AND k.status = 'active'
-       ORDER BY k.created_at DESC`
-    )
-    .all(entityType, entityName, entityQualifier) as EntityKnowledgeEntry[];
+  // Filter against the known in-game timeline: a fact is "current" when its
+  // validity window covers the reference day. With no game_day known at all
+  // every active entry is considered current (legacy behaviour).
+  const asOf = asOfGameDay !== undefined ? asOfGameDay : getCurrentGameDay();
+  let sql = `SELECT ${selectColumns}
+     ${selectFrom}
+     WHERE k.entity_type = ? AND k.entity_name = ? COLLATE NOCASE AND k.entity_qualifier = ? AND k.status = 'active'`;
+  const params: unknown[] = [entityType, entityName, entityQualifier];
+  if (asOf !== null && asOf !== undefined && Number.isFinite(asOf)) {
+    sql +=
+      ' AND (k.valid_from IS NULL OR k.valid_from <= ?) AND (k.valid_until IS NULL OR k.valid_until >= ?)';
+    params.push(asOf, asOf);
+  }
+  sql += ' ORDER BY k.created_at DESC';
+  const rows = db.prepare(sql).all(...params) as EntityKnowledgeEntry[];
   return rows;
 }
 
@@ -84,12 +95,15 @@ export function createEntityKnowledge(
   title: string | null,
   content: string,
   source = 'manual',
-  entityQualifier = ''
+  entityQualifier = '',
+  validFrom: number | null = null,
+  validUntil: number | null = null
 ): EntityKnowledgeEntry {
   const now = new Date().toISOString();
   const result = db
     .prepare(
-      'INSERT INTO entity_knowledge_entries (entity_type, entity_name, entity_qualifier, title, content, source, status, status_reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      `INSERT INTO entity_knowledge_entries (entity_type, entity_name, entity_qualifier, title, content, source, status, status_reason, valid_from, valid_until, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       entityType,
@@ -100,6 +114,8 @@ export function createEntityKnowledge(
       source,
       'active',
       null,
+      validFrom !== null && Number.isFinite(validFrom) ? validFrom : null,
+      validUntil !== null && Number.isFinite(validUntil) ? validUntil : null,
       now,
       now
     );
@@ -128,7 +144,12 @@ export function setEntityKnowledgeOrigin(
 
 export function updateEntityKnowledge(
   id: number,
-  updates: { title?: string | null; content?: string }
+  updates: {
+    title?: string | null;
+    content?: string;
+    validFrom?: number | null;
+    validUntil?: number | null;
+  }
 ): EntityKnowledgeEntry | null {
   const existing = getEntityKnowledgeEntry(id);
   if (!existing) return null;
@@ -143,6 +164,18 @@ export function updateEntityKnowledge(
   if (updates.content !== undefined) {
     fields.push('content = ?');
     values.push(sanitizePlainText(updates.content));
+  }
+  if (updates.validFrom !== undefined) {
+    fields.push('valid_from = ?');
+    values.push(
+      updates.validFrom !== null && Number.isFinite(updates.validFrom) ? updates.validFrom : null
+    );
+  }
+  if (updates.validUntil !== undefined) {
+    fields.push('valid_until = ?');
+    values.push(
+      updates.validUntil !== null && Number.isFinite(updates.validUntil) ? updates.validUntil : null
+    );
   }
   if (fields.length === 0) return existing;
 
@@ -172,6 +205,31 @@ export function markEntityKnowledgeDeleted(
   db.prepare(
     'UPDATE entity_knowledge_entries SET status = ?, status_reason = ?, updated_at = ? WHERE id = ?'
   ).run('deleted', reason ? reason.trim() : null, now, id);
+  const entry = getEntityKnowledgeEntry(id);
+  if (entry) {
+    markEntitySummaryDirty(entry.entityType, entry.entityName, entry.entityQualifier ?? '');
+  }
+  return entry;
+}
+
+/**
+ * Marks an active fact as having changed over time: from the given in-game
+ * day on it no longer holds, but it stays active (historically true) so the
+ * timeline keeps it visible. This replaces the "delete old + create new"
+ * pattern for sequenced facts.
+ */
+export function markEntityKnowledgeTimelineEnd(
+  id: number,
+  validUntil: number,
+  reason: string | null = null
+): EntityKnowledgeEntry | null {
+  const existing = getEntityKnowledgeEntry(id);
+  if (!existing) return null;
+
+  const now = new Date().toISOString();
+  db.prepare(
+    'UPDATE entity_knowledge_entries SET valid_until = ?, status_reason = ?, updated_at = ? WHERE id = ?'
+  ).run(validUntil, reason ? reason.trim() : null, now, id);
   const entry = getEntityKnowledgeEntry(id);
   if (entry) {
     markEntitySummaryDirty(entry.entityType, entry.entityName, entry.entityQualifier ?? '');

@@ -23,6 +23,7 @@ import type {
   SessionDiaryEntryLink,
   SessionDiaryTransfer,
   VersionInfo,
+  CampaignDay,
 } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -103,6 +104,10 @@ export function Sessions({ user }: SessionsProps) {
   const [summarizingId, setSummarizingId] = useState<number | null>(null);
   const [draftingId, setDraftingId] = useState<number | null>(null);
   const [diaryTransfers, setDiaryTransfers] = useState<Record<number, SessionDiaryTransfer>>({});
+  const [campaignDays, setCampaignDays] = useState<CampaignDay[]>([]);
+  const [gameDayDrafts, setGameDayDrafts] = useState<
+    Record<number, { day: number | null; label: string | null }>
+  >({});
   const [sessionDiaryEntries, setSessionDiaryEntries] = useState<
     Record<number, SessionDiaryEntryLink[]>
   >({});
@@ -207,6 +212,21 @@ export function Sessions({ user }: SessionsProps) {
     return () => {
       cancelled = true;
       clearInterval(interval);
+    };
+  }, [request]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCampaignDays() {
+      const { data } = await request<{ days: CampaignDay[]; currentGameDay: number | null }>(
+        '/api/campaign/days'
+      );
+      if (cancelled || !data) return;
+      setCampaignDays(data.days);
+    }
+    loadCampaignDays();
+    return () => {
+      cancelled = true;
     };
   }, [request]);
 
@@ -441,6 +461,29 @@ export function Sessions({ user }: SessionsProps) {
     }
   }
 
+  async function saveGameDay(
+    sessionId: number,
+    gameDay: number | null,
+    gameDateLabel: string | null
+  ) {
+    setWorking(true);
+    const { data, error } = await request<{ session: RecordingSession }>(
+      `/api/recordings/${sessionId}/game-day`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameDay, gameDateLabel }),
+      }
+    );
+    setWorking(false);
+    if (data) {
+      setSessions((prev) => prev.map((s) => (s.id === sessionId ? data.session : s)));
+      showSuccess('Spieltag gespeichert.');
+    } else if (error) {
+      showError(error);
+    }
+  }
+
   async function updateSessionDiarySettings(
     updates: Partial<Pick<SafeUser, 'autoSessionToDiary' | 'autoAcceptSessionDiary'>>
   ) {
@@ -546,6 +589,69 @@ export function Sessions({ user }: SessionsProps) {
                     </span>
                   )}
                 </p>
+                {user.isAdmin && (
+                  <div className="mt-1 grid grid-cols-[auto_1fr] gap-2 items-center text-xs">
+                    <label className="text-slate-400">Spieltag</label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={
+                          gameDayDrafts[session.id]?.day !== undefined
+                            ? (gameDayDrafts[session.id]!.day ?? '')
+                            : (session.gameDay ?? '')
+                        }
+                        onChange={(e) =>
+                          setGameDayDrafts((prev) => ({
+                            ...prev,
+                            [session.id]: {
+                              day: e.target.value === '' ? null : Number(e.target.value),
+                              label: prev[session.id]?.label ?? session.gameDateLabel ?? '',
+                            },
+                          }))
+                        }
+                        className="min-w-0 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                      >
+                        <option value="">– kein –</option>
+                        {campaignDays.map((d) => (
+                          <option key={d.day} value={d.day}>
+                            Spieltag {d.day}
+                            {d.label ? ` – ${d.label}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={gameDayDrafts[session.id]?.label ?? session.gameDateLabel ?? ''}
+                        onChange={(e) =>
+                          setGameDayDrafts((prev) => ({
+                            ...prev,
+                            [session.id]: {
+                              day: prev[session.id]?.day ?? session.gameDay,
+                              label: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="Label (optional)"
+                        className="flex-1 min-w-0 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          saveGameDay(
+                            session.id,
+                            (gameDayDrafts[session.id]?.day !== undefined
+                              ? gameDayDrafts[session.id]!.day
+                              : session.gameDay) ?? null,
+                            (gameDayDrafts[session.id]?.label ?? session.gameDateLabel ?? '') as
+                              string | null
+                          )
+                        }
+                        className="px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition"
+                      >
+                        Speichern
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {diaryTransfers[session.id] && (
                   <div className="mt-1">
                     <SessionDiaryTransferBadge transfer={diaryTransfers[session.id]!} />

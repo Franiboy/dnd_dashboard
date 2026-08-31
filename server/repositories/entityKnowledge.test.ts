@@ -6,6 +6,7 @@ import {
   listActiveEntityKnowledge,
   listEntityKnowledge,
   markEntityKnowledgeDeleted,
+  markEntityKnowledgeTimelineEnd,
   setEntityKnowledgeOrigin,
   updateEntityKnowledge,
 } from './entityKnowledge.js';
@@ -22,6 +23,43 @@ describe('entityKnowledge repository', () => {
 
     const retrieved = getEntityKnowledgeEntry(entry.id);
     expect(retrieved).toEqual(entry);
+    expect(retrieved!.validFrom).toBeNull();
+    expect(retrieved!.validUntil).toBeNull();
+  });
+
+  it('creates an entry with a validity window', () => {
+    const entry = createEntityKnowledge(
+      'persons',
+      'Vimak',
+      'Beziehungen',
+      'Steht Gideon wohlgesonnen',
+      'ai_extracted',
+      '',
+      3,
+      7
+    );
+    expect(entry.validFrom).toBe(3);
+    expect(entry.validUntil).toBe(7);
+  });
+
+  it('timeline-end keeps the fact active but limits its window', () => {
+    const entry = createEntityKnowledge(
+      'persons',
+      'Timeline End Person',
+      null,
+      'Steht Gideon gut',
+      'manual'
+    );
+    expect(listActiveEntityKnowledge('persons', 'Timeline End Person')).toHaveLength(1);
+
+    const ended = markEntityKnowledgeTimelineEnd(entry.id, 5, 'after the ambush');
+    expect(ended!.status).toBe('active');
+    expect(ended!.validUntil).toBe(5);
+    expect(ended!.statusReason).toBe('after the ambush');
+
+    // Now that the timeline is at a later day, the ended fact is not "current".
+    const now = listActiveEntityKnowledge('persons', 'Timeline End Person', '', 6);
+    expect(now).toHaveLength(0);
   });
 
   it('lists entries for an entity case-insensitively', () => {

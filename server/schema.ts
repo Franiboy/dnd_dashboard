@@ -93,7 +93,26 @@ export const schema: Record<string, TableDef> = {
       game_start_seconds: { type: 'REAL' },
       game_end_seconds: { type: 'REAL' },
       game_boundary_detected_at: { type: 'TEXT' },
+      // In-game time of the session: a monotonic day counter of the campaign
+      // (the sortable axis) plus an optional display label, e.g. "Feast of the
+      // Moon". NULL means the in-game day is not (yet) known.
+      game_day: { type: 'INTEGER' },
+      game_date_label: { type: 'TEXT' },
       updated_at: { type: 'TEXT' },
+    },
+  },
+
+  // Central campaign timeline: one row per in-game day. Sessions and diary
+  // entries reference a day via their game_day column; knowledge validity
+  // windows (valid_from / valid_until) share the same day numbers. The
+  // current day is the highest day present.
+  campaign_days: {
+    columns: {
+      day: { type: 'INTEGER', primaryKey: true },
+      // Optional display label, e.g. "Feast of the Moon".
+      label: { type: 'TEXT' },
+      created_at: { type: 'TEXT', notNull: true },
+      updated_at: { type: 'TEXT', notNull: true },
     },
   },
 
@@ -141,6 +160,10 @@ export const schema: Record<string, TableDef> = {
       ai_dirty: { type: 'INTEGER', notNull: true, default: '0' },
       ai_processed_at: { type: 'TEXT' },
       session_draft_for: { type: 'INTEGER' },
+      // In-game day of this entry ("Eintrag = Spieltag"); see
+      // recording_sessions.game_day for the shared timeline axis.
+      game_day: { type: 'INTEGER' },
+      game_date_label: { type: 'TEXT' },
     },
     indexes: [
       {
@@ -297,6 +320,14 @@ export const schema: Record<string, TableDef> = {
       // Display-only provenance; never used for navigation.
       origin_type: { type: 'TEXT' },
       origin_id: { type: 'INTEGER' },
+      // Validity window on the in-game timeline (recording_sessions.game_day):
+      // valid_from = first game day the fact holds, valid_until = last game
+      // day it holds. NULL is open-ended (from the beginning / still current).
+      // A fact whose window has closed is historically true but no longer the
+      // current state; it stays visible in the entity timeline instead of
+      // being treated as a contradiction.
+      valid_from: { type: 'INTEGER' },
+      valid_until: { type: 'INTEGER' },
       created_at: { type: 'TEXT', notNull: true },
       updated_at: { type: 'TEXT', notNull: true },
     },

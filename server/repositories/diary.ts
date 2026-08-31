@@ -6,6 +6,7 @@ import { getRewrittenFilePath, readRewrittenFile, writeRewrittenFile } from '../
 import { sanitizeHtml, sanitizePlainText } from '../utils/sanitizeHtml.js';
 import { mergeEntityKnowledge, renameEntityKnowledge } from './entityKnowledge.js';
 import { mergeEntitySummary } from './entitySummaries.js';
+import { ensureCampaignDay } from './gameTimeline.js';
 
 interface EntityConfig {
   table: string;
@@ -76,6 +77,8 @@ function rowToDiaryEntry(
     persons: entities.persons,
     organizations: entities.organizations,
     locations: entities.locations,
+    gameDay: (row.game_day as number | null | undefined) ?? null,
+    gameDateLabel: (row.game_date_label as string | null | undefined) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -579,12 +582,21 @@ export function createDiaryEntry(
   userId: string,
   title: string,
   content: string,
-  summary?: string | null
+  summary?: string | null,
+  gameDay?: number | null,
+  gameDateLabel?: string | null
 ): DiaryEntry {
   const now = new Date().toISOString();
+  const day = gameDay ?? null;
+  const label =
+    gameDateLabel && typeof gameDateLabel === 'string' && gameDateLabel.trim()
+      ? gameDateLabel.trim()
+      : null;
+  if (day !== null) ensureCampaignDay(day, label);
   const result = db
     .prepare(
-      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      `INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, game_day, game_date_label, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       userId,
@@ -592,6 +604,8 @@ export function createDiaryEntry(
       sanitizeHtml(content).trim(),
       summary ? sanitizePlainText(summary) : null,
       1,
+      day,
+      label,
       now,
       now
     );
@@ -738,6 +752,8 @@ export function updateDiaryEntry(
       | 'aiDirty'
       | 'aiProcessedAt'
       | 'sessionDraftFor'
+      | 'gameDay'
+      | 'gameDateLabel'
     > & {
       rewrittenFilePath?: string | null;
       rewriteSessionId?: string | null;
@@ -787,6 +803,14 @@ export function updateDiaryEntry(
   if (updates.sessionDraftFor !== undefined) {
     fields.push('session_draft_for = ?');
     values.push(updates.sessionDraftFor ?? null);
+  }
+  if (updates.gameDay !== undefined) {
+    fields.push('game_day = ?');
+    values.push(updates.gameDay);
+  }
+  if (updates.gameDateLabel !== undefined) {
+    fields.push('game_date_label = ?');
+    values.push(updates.gameDateLabel ? sanitizePlainText(updates.gameDateLabel) : null);
   }
   if (updates.aiDirty !== undefined) {
     fields.push('ai_dirty = ?');

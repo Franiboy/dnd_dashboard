@@ -64,13 +64,15 @@ export function createSession(input: CreateSessionInput): RecordingSession {
     gameStartSeconds: null,
     gameEndSeconds: null,
     gameBoundaryDetectedAt: null,
+    gameDay: null,
+    gameDateLabel: null,
   };
 }
 
 export function getSessionById(id: number): RecordingSession | null {
   const row = db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt FROM recording_sessions WHERE id = ?'
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt, game_day as gameDay, game_date_label as gameDateLabel FROM recording_sessions WHERE id = ?'
     )
     .get(id) as RecordingSession | undefined;
   return row ?? null;
@@ -154,6 +156,7 @@ export function listSessions(): RecordingSession[] {
         s.transcript_improved_at as transcriptImprovedAt, s.summary, s.summary_generated_at as summaryGeneratedAt,
         s.long_summary as longSummary, s.long_summary_generated_at as longSummaryGeneratedAt,
         s.game_start_seconds as gameStartSeconds, s.game_end_seconds as gameEndSeconds, s.game_boundary_detected_at as gameBoundaryDetectedAt,
+        s.game_day as gameDay, s.game_date_label as gameDateLabel,
         COALESCE((SELECT COUNT(*) FROM recording_files f WHERE f.session_id = s.id AND f.wav_path IS NOT NULL), 0) as hasWavFiles
       FROM recording_sessions s
       ORDER BY started_at DESC`
@@ -168,7 +171,7 @@ export function listSessions(): RecordingSession[] {
 export function listPendingTranscriptionSessions(): RecordingSession[] {
   return db
     .prepare(
-      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC"
+      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt, game_day as gameDay, game_date_label as gameDateLabel FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC"
     )
     .all() as RecordingSession[];
 }
@@ -176,7 +179,7 @@ export function listPendingTranscriptionSessions(): RecordingSession[] {
 export function listSessionsByStatus(status: RecordingStatus): RecordingSession[] {
   return db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt FROM recording_sessions WHERE status = ? ORDER BY started_at ASC'
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt, game_day as gameDay, game_date_label as gameDateLabel FROM recording_sessions WHERE status = ? ORDER BY started_at ASC'
     )
     .all(status) as RecordingSession[];
 }
@@ -203,6 +206,8 @@ export function updateSession(
       | 'gameStartSeconds'
       | 'gameEndSeconds'
       | 'gameBoundaryDetectedAt'
+      | 'gameDay'
+      | 'gameDateLabel'
     >
   >
 ): void {
@@ -276,6 +281,14 @@ export function updateSession(
   if (updates.gameBoundaryDetectedAt !== undefined) {
     fields.push('game_boundary_detected_at = ?');
     values.push(updates.gameBoundaryDetectedAt);
+  }
+  if (updates.gameDay !== undefined) {
+    fields.push('game_day = ?');
+    values.push(updates.gameDay);
+  }
+  if (updates.gameDateLabel !== undefined) {
+    fields.push('game_date_label = ?');
+    values.push(updates.gameDateLabel ? updates.gameDateLabel.trim() : null);
   }
 
   if (fields.length === 0) return;
