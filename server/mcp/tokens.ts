@@ -5,6 +5,7 @@ const log = createLogger('mcp-tokens');
 
 export type McpScope =
   | 'diary:read'
+  | 'diary:read-all'
   | 'diary:summarize'
   | 'diary:rewrite'
   | 'diary:draft'
