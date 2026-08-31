@@ -511,7 +511,7 @@ router.put('/:id/game-day', requireAdmin, (req, res) => {
   const { gameDay, gameDayEnd, gameDateLabel } = req.body;
   const start = gameDay === null || gameDay === undefined ? null : Number(gameDay);
   const endRaw = gameDayEnd === null || gameDayEnd === undefined ? null : Number(gameDayEnd);
-  const end = endRaw ?? start;
+  const end = start === null ? null : (endRaw ?? start);
   if (start !== null && (!Number.isInteger(start) || start <= 0)) {
     res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl oder null sein' });
     return;
