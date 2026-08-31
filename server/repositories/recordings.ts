@@ -67,7 +67,6 @@ export function createSession(input: CreateSessionInput): RecordingSession {
     gameBoundaryDetectedAt: null,
     gameDay: null,
     gameDayEnd: null,
-    gameDateLabel: null,
   };
 }
 
