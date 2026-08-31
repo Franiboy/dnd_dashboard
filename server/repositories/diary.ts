@@ -707,12 +707,12 @@ export function listDiaryEntryContentsByEntity(
   name: string,
   userId?: string,
   qualifier = ''
-): { id: number; title: string; content: string; createdAt: string }[] {
+): { id: number; title: string; content: string; createdAt: string; gameDay: number | null }[] {
   const { linkTable, column } = entityConfig[type];
   const row = findEntityRow(type, { name, qualifier });
   if (!row) return [];
   const params: (string | number)[] = [row.id];
-  let sql = `SELECT de.id, de.title, de.content, de.created_at AS createdAt
+  let sql = `SELECT de.id, de.title, de.content, de.created_at AS createdAt, de.game_day AS gameDay
        FROM diary_entries de
        JOIN ${linkTable} l ON l.diary_entry_id = de.id
        WHERE l.${column} = ?`;
@@ -726,6 +726,7 @@ export function listDiaryEntryContentsByEntity(
     title: string;
     content: string;
     createdAt: string;
+    gameDay: number | null;
   }[];
   return rows;
 }
