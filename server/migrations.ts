@@ -288,8 +288,8 @@ function seedCampaignDays(): void {
   if (!cols.has('day')) return;
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT OR IGNORE INTO campaign_days (day, label, created_at, updated_at)
-     SELECT m AS day, NULL AS label, ? AS created_at, ? AS updated_at
+    `INSERT OR IGNORE INTO campaign_days (day, created_at, updated_at)
+     SELECT m AS day, ? AS created_at, ? AS updated_at
      FROM (
        SELECT DISTINCT game_day AS m FROM recording_sessions WHERE game_day IS NOT NULL
        UNION
@@ -306,7 +306,7 @@ function seedCampaignDays(): void {
       )
       .all() as { game_day: number; game_day_end: number }[];
     const insert = db.prepare(
-      'INSERT OR IGNORE INTO campaign_days (day, label, created_at, updated_at) VALUES (?, NULL, ?, ?)'
+      'INSERT OR IGNORE INTO campaign_days (day, created_at, updated_at) VALUES (?, ?, ?)'
     );
     for (const s of sessions) {
       const start = s.game_day;

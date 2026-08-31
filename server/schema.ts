@@ -93,14 +93,11 @@ export const schema: Record<string, TableDef> = {
       game_start_seconds: { type: 'REAL' },
       game_end_seconds: { type: 'REAL' },
       game_boundary_detected_at: { type: 'TEXT' },
-      // In-game time of the session: a monotonic day counter of the campaign
-      // (the sortable axis) plus an optional display label, e.g. "Feast of the
-      // Moon". NULL means the in-game day is not (yet) known.
+      // In-game time of the session: a monotonic day counter of the campaign.
       // game_day is the first day of the session, game_day_end is the last
       // day (inclusive). A single-day session has both equal.
       game_day: { type: 'INTEGER' },
       game_day_end: { type: 'INTEGER' },
-      game_date_label: { type: 'TEXT' },
       updated_at: { type: 'TEXT' },
     },
   },
@@ -112,8 +109,6 @@ export const schema: Record<string, TableDef> = {
   campaign_days: {
     columns: {
       day: { type: 'INTEGER', primaryKey: true },
-      // Optional display label, e.g. "Feast of the Moon".
-      label: { type: 'TEXT' },
       created_at: { type: 'TEXT', notNull: true },
       updated_at: { type: 'TEXT', notNull: true },
     },
@@ -166,7 +161,6 @@ export const schema: Record<string, TableDef> = {
       // In-game day of this entry ("Eintrag = Spieltag"); see
       // recording_sessions.game_day for the shared timeline axis.
       game_day: { type: 'INTEGER' },
-      game_date_label: { type: 'TEXT' },
     },
     indexes: [
       {
