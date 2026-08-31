@@ -79,9 +79,35 @@ deploy_production() {
 }
 
 merge_pr() {
-	log "Squash merging PR #$PR_NUMBER"
-	gh pr merge "$PR_NUMBER" --squash --delete-branch
-	deploy_production
+	log "Merging PR #$PR_NUMBER (auto-merge, squash, delete branch)"
+	# Use --auto so GitHub merges the PR as soon as it becomes mergeable.
+	# This crucially avoids failing on the transient 'UNSTABLE'/'Head branch is
+	# out of date' state and on the `action_required` check-suite that the bot
+	# push leaves behind on private repos: the PR is merged once GitHub accepts
+	# it, and we are not racing a stale, unapproved CI run.
+	gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
+
+	# --auto only queues the merge; reap it so the deployment below runs on the
+	# actually merged commit. Timeout generous because GitHub may still be
+	# finishing the re-triggered (action_required) run before accepting it.
+	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-90}"
+	local deadline=$(( $(date +%s) + timeout_seconds ))
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		local state merged_at oid
+		read -r state merged_at oid <<<"$(gh pr view "$PR_NUMBER" --json state,mergedAt,mergeCommit --jq '[.state,.mergedAt//"",.mergeCommit.oid//""] | @tsv')"
+		if [ "$state" = "MERGED" ] && [ -n "$merged_at" ]; then
+			log "PR #$PR_NUMBER merged as ${oid:0:7}"
+			deploy_production
+			return 0
+		fi
+		if [ "$state" = "CLOSED" ]; then
+			log "ERROR: PR #$PR_NUMBER is CLOSED without a merge"
+			return 1
+		fi
+		sleep 10
+	done
+	log "ERROR: PR #$PR_NUMBER did not reach MERGED within ${timeout_seconds}s"
+	return 1
 }
 
 # After the review pushes a fix commit, that push triggers a fresh workflow
@@ -97,10 +123,29 @@ merge_pr() {
 # (private without Pro). Local validation already ran lint/build/test, so a
 # missing or unapproved CI must never block the merge – otherwise the PR stays
 # stuck in `action_required` forever.
+rebase_head_to_base() {
+	# Keep the PR head on top of the latest base so `gh pr merge` never fails
+	# with "Head branch is out of date". Only rebase if there is something to
+	# fetch; a clean replay of local commits (force-push) is fine here because
+	# the only author of the head is this bot during review.
+	log "Rebasing PR head onto latest $BASE_BRANCH"
+	git fetch origin "$BASE_BRANCH" --quiet
+	if ! git rebase "origin/$BASE_BRANCH"; then
+		git rebase --abort >/dev/null 2>&1 || true
+		log "WARN: rebase onto $BASE_BRANCH had conflicts; leaving head as-is (local validation already green)"
+	fi
+	git push --force-with-lease origin HEAD:refs/heads/$(git rev-parse --abbrev-ref HEAD) || {
+		log "WARN: could not push rebased head; continuing (local validation already green)"
+	}
+}
+
 wait_for_ci() {
 	local pr="$1"
 	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-90}"
 	log "Waiting for required CI checks on PR #$pr (best effort, timeout ${timeout_seconds}s)"
+	# Bring the head up to date first so the resulting/auto merge is never
+	# rejected for being out of date against base.
+	rebase_head_to_base
 	local log_file
 	log_file="$(mktemp)"
 	if timeout "$timeout_seconds" gh pr checks "$pr" --watch --fail-fast --required --interval 15 2>&1 | tee "$log_file"; then
