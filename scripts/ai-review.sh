@@ -119,14 +119,15 @@ wait_for_ci() {
 		rm -f "$log_file"
 		return 0
 	fi
-	# Fix commits via GITHUB_TOKEN do not retrigger workflows (recursion
-	# protection) or trigger with `action_required` on self-hosted runners.
-	# Local `npm run lint && build && test` already passed, so wait failures
-	# must not block the merge forever.
-	log "WARN: CI checks not green (ec=$ec) – local validation passed, proceeding to merge"
+	if grep -qi "action_required" "$log_file"; then
+		log "WARN: CI requires approval (action_required) – local validation already green, proceeding to merge"
+		rm -f "$log_file"
+		return 0
+	fi
+	log "ERROR: CI checks not green (ec=$ec) – failing"
 	cat "$log_file" || true
 	rm -f "$log_file"
-	return 0
+	return 1
 }
 
 fail_with_blockers() {
