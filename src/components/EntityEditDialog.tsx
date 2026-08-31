@@ -168,11 +168,19 @@ export function EntityEditDialog({
   const [newKnowledgeValidUntil, setNewKnowledgeValidUntil] = useState<string>('');
   const [currentGameDay, setCurrentGameDay] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>(
+    'idle'
+  );
+  const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'summary' | 'aliases' | 'knowledge'>('summary');
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const staleRef = useRef(false);
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedRef = useRef<{ canonical: string; qualifier: string; aliases: string[] } | null>(
+    null
+  );
+  const hasInitializedRef = useRef(false);
 
   // Canonical identity of the entity this dialog works on. After loading it
   // reflects the server-resolved row; before that it mirrors the props.
@@ -195,6 +203,14 @@ export function EntityEditDialog({
     setMiniSummary(null);
     setSummaryDirty(true);
     setLoading(true);
+    setAutoSaveStatus('idle');
+    setAutoSaveError(null);
+    lastSavedRef.current = null;
+    hasInitializedRef.current = false;
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
   }, [name, type, qualifier]);
 
   useEffect(() => {
@@ -230,6 +246,13 @@ export function EntityEditDialog({
       setSummary(summaryData?.summary ?? null);
       setMiniSummary(summaryData?.miniSummary ?? null);
       setSummaryDirty(summaryData?.isDirty ?? true);
+      lastSavedRef.current = {
+        canonical: canonicalName,
+        qualifier: canonicalQualifier,
+        aliases: detailData.aliases,
+      };
+      hasInitializedRef.current = true;
+      setAutoSaveStatus('idle');
       setLoading(false);
     }
     load();
@@ -237,6 +260,111 @@ export function EntityEditDialog({
       cancelled = true;
     };
   }, [request, type, name, qualifier]);
+
+  // Autosave for canonical, qualifier and aliases — debounced 600ms, no explicit Save/Cancel.
+  useEffect(() => {
+    if (loading || !detail || !hasInitializedRef.current || !lastSavedRef.current) return;
+
+    const normalizedCanonical = canonical.trim();
+    const normalizedQualifier = qualifierValue.trim();
+    const normalizedAliases = [
+      ...new Set(
+        aliases
+          .map((a) => a.trim())
+          .filter(
+            (a) =>
+              a.length > 0 &&
+              !(a.toLowerCase() === normalizedCanonical.toLowerCase() && !normalizedQualifier)
+          )
+      ),
+    ];
+
+    const last = lastSavedRef.current;
+    const aliasesEqual =
+      last.aliases.length === normalizedAliases.length &&
+      last.aliases.every((v, i) => v === normalizedAliases[i]);
+
+    if (
+      last.canonical === normalizedCanonical &&
+      last.qualifier === normalizedQualifier &&
+      aliasesEqual
+    ) {
+      return;
+    }
+
+    // Don't auto-save while canonical is empty — show inline error instead.
+    if (!normalizedCanonical) {
+      setAutoSaveStatus('error');
+      setAutoSaveError('Hauptname ist erforderlich.');
+      return;
+    }
+    setAutoSaveError(null);
+
+    if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      const oldName = detail.canonical;
+      const oldQualifier = detail.qualifier ?? '';
+      // Skip if detail already matches target (e.g. after successful save)
+      const currentLast = lastSavedRef.current;
+      if (
+        currentLast &&
+        currentLast.canonical === normalizedCanonical &&
+        currentLast.qualifier === normalizedQualifier &&
+        currentLast.aliases.length === normalizedAliases.length &&
+        currentLast.aliases.every((v, i) => v === normalizedAliases[i])
+      ) {
+        return;
+      }
+
+      setAutoSaveStatus('saving');
+      const { error } = await request('/api/entities/detail', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          oldName,
+          oldQualifier,
+          newName: normalizedCanonical,
+          newQualifier: normalizedQualifier,
+          aliases: normalizedAliases,
+        } as EntityUpdatePayload),
+      });
+      if (staleRef.current) return;
+      if (error) {
+        setAutoSaveStatus('error');
+        setAutoSaveError(error);
+        return;
+      }
+      lastSavedRef.current = {
+        canonical: normalizedCanonical,
+        qualifier: normalizedQualifier,
+        aliases: normalizedAliases,
+      };
+      setDetail((prev) =>
+        prev ? { ...prev, canonical: normalizedCanonical, qualifier: normalizedQualifier, aliases: normalizedAliases } : prev
+      );
+      setAutoSaveStatus('saved');
+      await refresh();
+      if (staleRef.current) return;
+      onSaved?.();
+      // Reset "saved" indicator back to idle after a short delay
+      setTimeout(() => {
+        if (!staleRef.current) setAutoSaveStatus('idle');
+      }, 2000);
+    }, 600);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+    };
+  }, [canonical, qualifierValue, aliases, detail, loading, onSaved, refresh, request, type]);
+
+  // Flush pending autosave on unmount / close
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+    };
+  }, []);
 
   function addAlias() {
     const normalized = newAlias.trim();
@@ -504,54 +632,6 @@ export function EntityEditDialog({
     }
   }
 
-  async function handleSave() {
-    const normalizedCanonical = canonical.trim();
-    if (!normalizedCanonical) {
-      showError('Hauptname ist erforderlich.');
-      return;
-    }
-    const normalizedQualifier = qualifierValue.trim();
-
-    const normalizedAliases = [
-      ...new Set(
-        aliases
-          .map((a) => a.trim())
-          .filter(
-            (a) =>
-              a.length > 0 &&
-              !(a.toLowerCase() === normalizedCanonical.toLowerCase() && !normalizedQualifier)
-          )
-      ),
-    ];
-
-    setSaving(true);
-    const { error } = await request('/api/entities/detail', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type,
-        oldName: detail?.canonical ?? name,
-        oldQualifier: identityQualifier,
-        newName: normalizedCanonical,
-        newQualifier: normalizedQualifier,
-        aliases: normalizedAliases,
-      } as EntityUpdatePayload),
-    });
-    if (staleRef.current) return;
-
-    if (error) {
-      setSaving(false);
-      return;
-    }
-
-    showSuccess('Entität gespeichert.');
-    await refresh();
-    if (staleRef.current) return;
-    setSaving(false);
-    onSaved?.();
-    onClose();
-  }
-
   return (
     <>
       <Modal
@@ -559,26 +639,6 @@ export function EntityEditDialog({
         title={`${typeLabels[type]}: ${formatEntityLabel(detail?.canonical ?? name, detail?.qualifier ?? qualifier)}`}
         className="max-w-xl"
         onClose={onClose}
-        actions={
-          <>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
-            >
-              Abbrechen
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || loading}
-              className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
-            >
-              {saving ? 'Speichern...' : 'Speichern'}
-            </button>
-          </>
-        }
       >
         {loading ? (
           <div className="py-8 flex justify-center">
@@ -632,6 +692,20 @@ export function EntityEditDialog({
                 </span>
               </p>
             </div>
+
+            {!loading && detail && (
+              <div className="text-xs min-h-[1rem]">
+                {autoSaveStatus === 'saving' && (
+                  <span className="text-slate-400">Speichert…</span>
+                )}
+                {autoSaveStatus === 'saved' && (
+                  <span className="text-emerald-400">Gespeichert ✓</span>
+                )}
+                {autoSaveStatus === 'error' && autoSaveError && (
+                  <span className="text-[var(--danger)]">{autoSaveError}</span>
+                )}
+              </div>
+            )}
 
             <div className="border-b border-[var(--border)]">
               <div className="flex gap-2">
