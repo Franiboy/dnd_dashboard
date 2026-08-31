@@ -78,7 +78,6 @@ function rowToDiaryEntry(
     organizations: entities.organizations,
     locations: entities.locations,
     gameDay: (row.game_day as number | null | undefined) ?? null,
-    gameDateLabel: (row.game_date_label as string | null | undefined) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -584,19 +583,14 @@ export function createDiaryEntry(
   content: string,
   summary?: string | null,
   gameDay?: number | null,
-  gameDateLabel?: string | null
 ): DiaryEntry {
   const now = new Date().toISOString();
   const day = gameDay ?? null;
-  const label =
-    gameDateLabel && typeof gameDateLabel === 'string' && gameDateLabel.trim()
-      ? gameDateLabel.trim()
-      : null;
-  if (day !== null) ensureCampaignDay(day, label);
+  if (day !== null) ensureCampaignDay(day);
   const result = db
     .prepare(
-      `INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, game_day, game_date_label, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, game_day, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       userId,
@@ -605,7 +599,6 @@ export function createDiaryEntry(
       summary ? sanitizePlainText(summary) : null,
       1,
       day,
-      label,
       now,
       now
     );
@@ -753,7 +746,6 @@ export function updateDiaryEntry(
       | 'aiProcessedAt'
       | 'sessionDraftFor'
       | 'gameDay'
-      | 'gameDateLabel'
     > & {
       rewrittenFilePath?: string | null;
       rewriteSessionId?: string | null;
@@ -808,12 +800,8 @@ export function updateDiaryEntry(
     fields.push('game_day = ?');
     values.push(updates.gameDay);
     if (updates.gameDay !== null) {
-      ensureCampaignDay(updates.gameDay, updates.gameDateLabel ?? existing.gameDateLabel);
+      ensureCampaignDay(updates.gameDay);
     }
-  }
-  if (updates.gameDateLabel !== undefined) {
-    fields.push('game_date_label = ?');
-    values.push(updates.gameDateLabel ? sanitizePlainText(updates.gameDateLabel) : null);
   }
   if (updates.aiDirty !== undefined) {
     fields.push('ai_dirty = ?');
@@ -859,15 +847,14 @@ export function createSessionDiaryDraft(
 ): DiaryEntry {
   const now = new Date().toISOString();
   const session = db
-    .prepare('SELECT game_day, game_date_label FROM recording_sessions WHERE id = ?')
-    .get(sessionId) as { game_day: number | null; game_date_label: string | null } | undefined;
+    .prepare('SELECT game_day FROM recording_sessions WHERE id = ?')
+    .get(sessionId) as { game_day: number | null } | undefined;
   const gameDay = session?.game_day ?? null;
-  const gameDateLabel = session?.game_date_label ?? null;
-  if (gameDay !== null) ensureCampaignDay(gameDay, gameDateLabel);
+  if (gameDay !== null) ensureCampaignDay(gameDay);
   const derivedTitle = gameDay !== null ? `Spieltag ${gameDay}` : sanitizePlainText(title);
   const result = db
     .prepare(
-      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, game_day, game_date_label, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, game_day, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
     .run(
       userId,
@@ -877,7 +864,6 @@ export function createSessionDiaryDraft(
       0,
       sessionId,
       gameDay,
-      gameDateLabel,
       now,
       now
     );

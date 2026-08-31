@@ -179,7 +179,7 @@ router.post('/entries', async (req: AuthRequest, res) => {
 
   const finalTitle = `Spieltag ${day}`;
 
-  const entry = createDiaryEntry(req.user.id, finalTitle, content, undefined, day, null);
+  const entry = createDiaryEntry(req.user.id, finalTitle, content, undefined, day);
   res.status(201).json({ entry });
 });
 

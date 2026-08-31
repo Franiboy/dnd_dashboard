@@ -106,7 +106,7 @@ export function Sessions({ user }: SessionsProps) {
   const [diaryTransfers, setDiaryTransfers] = useState<Record<number, SessionDiaryTransfer>>({});
   const [campaignDays, setCampaignDays] = useState<CampaignDay[]>([]);
   const [gameDayDrafts, setGameDayDrafts] = useState<
-    Record<number, { day: number | null; dayEnd: number | null; label: string | null }>
+    Record<number, { day: number | null; dayEnd: number | null }>
   >({});
   const [sessionDiaryEntries, setSessionDiaryEntries] = useState<
     Record<number, SessionDiaryEntryLink[]>
@@ -464,8 +464,7 @@ export function Sessions({ user }: SessionsProps) {
   async function saveGameDay(
     sessionId: number,
     gameDay: number | null,
-    gameDayEnd: number | null,
-    gameDateLabel: string | null
+    gameDayEnd: number | null
   ) {
     setWorking(true);
     const { data, error } = await request<{ session: RecordingSession }>(
@@ -473,7 +472,7 @@ export function Sessions({ user }: SessionsProps) {
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameDay, gameDayEnd, gameDateLabel }),
+        body: JSON.stringify({ gameDay, gameDayEnd }),
       }
     );
     setWorking(false);
@@ -612,7 +611,6 @@ export function Sessions({ user }: SessionsProps) {
                                 prev[session.id]?.dayEnd ??
                                 session.gameDayEnd ??
                                 (e.target.value === '' ? null : Number(e.target.value)),
-                              label: prev[session.id]?.label ?? session.gameDateLabel ?? '',
                             },
                           }))
                         }
@@ -622,7 +620,6 @@ export function Sessions({ user }: SessionsProps) {
                         {campaignDays.map((d) => (
                           <option key={d.day} value={d.day}>
                             Spieltag {d.day}
-                            {d.label ? ` – ${d.label}` : ''}
                           </option>
                         ))}
                       </select>
@@ -639,7 +636,6 @@ export function Sessions({ user }: SessionsProps) {
                             [session.id]: {
                               day: prev[session.id]?.day ?? session.gameDay,
                               dayEnd: e.target.value === '' ? null : Number(e.target.value),
-                              label: prev[session.id]?.label ?? session.gameDateLabel ?? '',
                             },
                           }))
                         }
@@ -652,23 +648,6 @@ export function Sessions({ user }: SessionsProps) {
                           </option>
                         ))}
                       </select>
-                      <input
-                        type="text"
-                        value={gameDayDrafts[session.id]?.label ?? session.gameDateLabel ?? ''}
-                        onChange={(e) =>
-                          setGameDayDrafts((prev) => ({
-                            ...prev,
-                            [session.id]: {
-                              day: prev[session.id]?.day ?? session.gameDay,
-                              dayEnd:
-                                prev[session.id]?.dayEnd ?? session.gameDayEnd ?? session.gameDay,
-                              label: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="Label (optional)"
-                        className="flex-1 min-w-0 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                      />
                       <button
                         type="button"
                         onClick={() =>
@@ -679,9 +658,7 @@ export function Sessions({ user }: SessionsProps) {
                               : session.gameDay) ?? null,
                             (gameDayDrafts[session.id]?.dayEnd !== undefined
                               ? gameDayDrafts[session.id]!.dayEnd
-                              : (session.gameDayEnd ?? session.gameDay)) ?? null,
-                            (gameDayDrafts[session.id]?.label ?? session.gameDateLabel ?? '') as
-                              string | null
+                              : (session.gameDayEnd ?? session.gameDay)) ?? null
                           )
                         }
                         className="px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition"
