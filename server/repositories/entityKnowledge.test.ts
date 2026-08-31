@@ -6,6 +6,7 @@ import {
   listActiveEntityKnowledge,
   listEntityKnowledge,
   markEntityKnowledgeDeleted,
+  markEntityKnowledgeTimelineEnd,
   setEntityKnowledgeOrigin,
   updateEntityKnowledge,
 } from './entityKnowledge.js';
@@ -22,6 +23,46 @@ describe('entityKnowledge repository', () => {
 
     const retrieved = getEntityKnowledgeEntry(entry.id);
     expect(retrieved).toEqual(entry);
+    expect(retrieved!.validFrom).toBeNull();
+    expect(retrieved!.validUntil).toBeNull();
+  });
+
+  it('creates an entry with a validity window', () => {
+    const entry = createEntityKnowledge(
+      'persons',
+      'Vimak',
+      'Beziehungen',
+      'Steht Gideon wohlgesonnen',
+      'ai_extracted',
+      '',
+      3,
+      7
+    );
+    expect(entry.validFrom).toBe(3);
+    expect(entry.validUntil).toBe(7);
+  });
+
+  it('timeline-end keeps the fact active but limits its window', () => {
+    const entry = createEntityKnowledge(
+      'persons',
+      'Timeline End Person',
+      null,
+      'Steht Gideon gut',
+      'manual'
+    );
+    expect(listActiveEntityKnowledge('persons', 'Timeline End Person')).toHaveLength(1);
+
+    const ended = markEntityKnowledgeTimelineEnd(entry.id, 5, 'after the ambush');
+    expect(ended!.status).toBe('active');
+    expect(ended!.validUntil).toBe(5);
+    expect(ended!.statusReason).toBe('after the ambush');
+
+    // valid_until is EXCLUSIVE: the fact holds up to day (5-1)=4 and already
+    // stops being current on day 5, so it never overlaps a replacement that
+    // starts on day 5.
+    expect(listActiveEntityKnowledge('persons', 'Timeline End Person', '', 4)).toHaveLength(1);
+    expect(listActiveEntityKnowledge('persons', 'Timeline End Person', '', 5)).toHaveLength(0);
+    expect(listActiveEntityKnowledge('persons', 'Timeline End Person', '', 6)).toHaveLength(0);
   });
 
   it('lists entries for an entity case-insensitively', () => {
@@ -118,5 +159,34 @@ describe('entityKnowledge repository', () => {
     expect(entry.originType).toBeNull();
     expect(entry.originId).toBeNull();
     expect(entry.originTitle).toBeNull();
+  });
+
+  it('keeps an ending fact and its replacement disjoint on the transition day', () => {
+    // valid_until is exclusive: the old fact holds up to day 4 and ends on day
+    // 5; the replacement starts on day 5 (validFrom). They must never both be
+    // "current", so get_entity never returns contradictory facts.
+    const oldFact = createEntityKnowledge(
+      'persons',
+      'Transition Person',
+      'Beziehungen',
+      'v1',
+      'manual'
+    );
+    markEntityKnowledgeTimelineEnd(oldFact.id, 5, 'changed');
+    createEntityKnowledge(
+      'persons',
+      'Transition Person',
+      'Beziehungen',
+      'v2',
+      'manual',
+      '',
+      5,
+      null
+    );
+
+    expect(listActiveEntityKnowledge('persons', 'Transition Person', '', 4)).toHaveLength(1);
+    const onDay5 = listActiveEntityKnowledge('persons', 'Transition Person', '', 5);
+    expect(onDay5).toHaveLength(1);
+    expect(onDay5[0]!.content).toBe('v2');
   });
 });

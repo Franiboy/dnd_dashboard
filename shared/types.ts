@@ -299,6 +299,10 @@ export interface RecordingSession {
   /** AI-detected end of the actual game play, in seconds from recording start. */
   gameEndSeconds: number | null;
   gameBoundaryDetectedAt: string | null;
+  /** Monotonic in-game day of the campaign this session belongs to (sortable). */
+  gameDay: number | null;
+  /** Optional display label of the in-game day, e.g. "Feast of the Moon". */
+  gameDateLabel: string | null;
   hasWavFiles?: boolean;
   files?: RecordingFile[];
 }
@@ -333,6 +337,10 @@ export interface DiaryEntry {
   persons: string[];
   organizations: string[];
   locations: string[];
+  /** Monotonic in-game day of this entry ("Eintrag = Spieltag"). */
+  gameDay: number | null;
+  /** Optional display label of the in-game day (e.g. "Feast of the Moon"). */
+  gameDateLabel: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -390,6 +398,13 @@ export interface EntityUpdatePayload {
 /** Origin of a knowledge entry, if it was extracted from a source text. */
 export type KnowledgeOriginType = 'diary' | 'session';
 
+/** One in-game day of the central campaign timeline. */
+export interface CampaignDay {
+  day: number;
+  /** Optional display label, e.g. "Feast of the Moon". */
+  label: string | null;
+}
+
 export interface EntityKnowledgeEntry {
   id: number;
   entityType: EntityType;
@@ -406,6 +421,18 @@ export interface EntityKnowledgeEntry {
   originId: number | null;
   /** Title/name of the origin (diary entry title or session name) at display time. */
   originTitle: string | null;
+  /**
+   * First in-game day (recording_sessions.game_day) the fact holds (inclusive).
+   * NULL means timeless/from the beginning.
+   */
+  validFrom: number | null;
+  /**
+   * First in-game day the fact no longer holds (EXCLUSIVE). NULL means still
+   * current/open-ended. A non-null validUntil marks a fact that changed over
+   * time (see timeline); a replacement fact may start on the same day without
+   * overlapping.
+   */
+  validUntil: number | null;
   createdAt: string;
   updatedAt: string;
 }

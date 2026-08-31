@@ -120,4 +120,91 @@ describe('schema migrations', () => {
         .run(now, now)
     ).not.toThrow();
   });
+
+  it('backfills game_day onto knowledge entries from their session/diary origin', () => {
+    // Create a session and diary entry without game_day (legacy rows already
+    // got one by setup; insert NULL explicitly via a fresh daily row).
+    const now = new Date().toISOString();
+    const sid = Number(
+      db
+        .prepare(
+          `INSERT INTO recording_sessions (name, status, guild_id, channel_id, created_by, started_at, directory, game_day)
+           VALUES ('Legacy', 'stopped', 'g', 'c', 'tester', ?, 'dir', NULL)`
+        )
+        .run(now).lastInsertRowid
+    );
+    const did = Number(
+      db
+        .prepare(
+          `INSERT INTO diary_entries (user_id, title, content, created_at, updated_at, game_day)
+           VALUES ('tester', 'Legacy Diary', 'Inhalt', ?, ?, NULL)`
+        )
+        .run(now, now).lastInsertRowid
+    );
+
+    const eidS = Number(
+      db
+        .prepare(
+          `INSERT INTO entity_knowledge_entries (entity_type, entity_name, title, content, source, status, created_at, updated_at, origin_type, origin_id)
+           VALUES ('persons', 'Legacy Origin S', NULL, 'Fakt', 'ai_extracted', 'active', ?, ?, 'session', ?)`
+        )
+        .run(now, now, sid).lastInsertRowid
+    );
+    const eidD = Number(
+      db
+        .prepare(
+          `INSERT INTO entity_knowledge_entries (entity_type, entity_name, title, content, source, status, created_at, updated_at, origin_type, origin_id)
+           VALUES ('persons', 'Legacy Origin D', NULL, 'Fakt', 'ai_extracted', 'active', ?, ?, 'diary', ?)`
+        )
+        .run(now, now, did).lastInsertRowid
+    );
+
+    runMigrations();
+
+    const sessionDay = db
+      .prepare('SELECT game_day AS d FROM recording_sessions WHERE id = ?')
+      .get(sid) as { d: number | null };
+    const gotS = db
+      .prepare('SELECT valid_from AS v FROM entity_knowledge_entries WHERE id = ?')
+      .get(eidS) as { v: number | null };
+    const gotD = db
+      .prepare('SELECT valid_from AS v FROM entity_knowledge_entries WHERE id = ?')
+      .get(eidD) as { v: number | null };
+
+    // The backfill assigned a real day to the legacy rows...
+    expect(sessionDay.d).toBeGreaterThan(0);
+    // ...and the knowledge entries inherited it as their valid_from.
+    expect(gotS.v).toBe(sessionDay.d);
+    expect(gotD.v).toBeTruthy();
+  });
+
+  it('seeds the central campaign_days timeline from existing game_day rows', () => {
+    // A session with a known day plus one with a freshly assigned legacy day.
+    const now = new Date().toISOString();
+    const legacySid = Number(
+      db
+        .prepare(
+          `INSERT INTO recording_sessions (name, status, guild_id, channel_id, created_by, started_at, directory, game_day)
+           VALUES ('Campaign Seed', 'stopped', 'g', 'c', 'tester', ?, 'dir', NULL)`
+        )
+        .run(now).lastInsertRowid
+    );
+
+    runMigrations();
+
+    const legacyDay = db
+      .prepare('SELECT game_day AS d FROM recording_sessions WHERE id = ?')
+      .get(legacySid) as { d: number | null };
+    expect(legacyDay.d).toBeGreaterThan(0);
+
+    // campaign_days must contain the day and the current day is the highest.
+    const seeded = db.prepare('SELECT day FROM campaign_days WHERE day = ?').get(legacyDay.d) as
+      { day: number } | undefined;
+    expect(seeded).toBeDefined();
+
+    const current = db.prepare('SELECT MAX(day) AS m FROM campaign_days').get() as {
+      m: number | null;
+    };
+    expect(current.m).toBeGreaterThanOrEqual(legacyDay.d as number);
+  });
 });

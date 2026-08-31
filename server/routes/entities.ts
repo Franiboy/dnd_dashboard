@@ -23,8 +23,10 @@ import {
   getEntityKnowledgeEntry,
   listEntityKnowledge,
   markEntityKnowledgeDeleted,
+  markEntityKnowledgeTimelineEnd,
   updateEntityKnowledge,
 } from '../repositories/entityKnowledge.js';
+import { getCurrentGameDay } from '../repositories/gameTimeline.js';
 import { getEntitySummary, setEntityMiniSummary } from '../repositories/entitySummaries.js';
 
 const router = Router();
@@ -57,7 +59,7 @@ router.get('/', (_req: AuthRequest, res) => {
     locations: fetchRefs('locations'),
   };
 
-  res.json(entities);
+  res.json({ ...entities, currentGameDay: getCurrentGameDay() });
 });
 
 router.get('/blacklist', (_req: AuthRequest, res) => {
@@ -245,14 +247,14 @@ router.get('/knowledge', (req: AuthRequest, res) => {
       name.trim(),
       typeof qualifier === 'string' ? qualifier : ''
     );
-    res.json({ entries });
+    res.json({ entries, currentGameDay: getCurrentGameDay() });
   } catch {
     res.status(500).json({ error: 'Laden fehlgeschlagen' });
   }
 });
 
 router.post('/knowledge', (req: AuthRequest, res) => {
-  const { type, name, qualifier, title, content } = req.body;
+  const { type, name, qualifier, title, content, validFrom, validUntil } = req.body;
   if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
     res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
     return;
@@ -262,6 +264,9 @@ router.post('/knowledge', (req: AuthRequest, res) => {
     return;
   }
 
+  const normInt = (v: unknown): number | null =>
+    v === undefined || v === null ? null : Number.isInteger(Number(v)) ? Number(v) : null;
+
   try {
     const entry = createEntityKnowledge(
       type,
@@ -269,7 +274,9 @@ router.post('/knowledge', (req: AuthRequest, res) => {
       title && typeof title === 'string' ? title.trim() : null,
       content.trim(),
       'manual',
-      typeof qualifier === 'string' ? qualifier.trim() : ''
+      typeof qualifier === 'string' ? qualifier.trim() : '',
+      normInt(validFrom),
+      normInt(validUntil)
     );
     res.status(201).json({ entry });
   } catch {
@@ -284,8 +291,13 @@ router.put('/knowledge/:id', (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, content } = req.body;
-  const updates: { title?: string | null; content?: string } = {};
+  const { title, content, validFrom, validUntil } = req.body;
+  const updates: {
+    title?: string | null;
+    content?: string;
+    validFrom?: number | null;
+    validUntil?: number | null;
+  } = {};
   if (title !== undefined) {
     updates.title = title && typeof title === 'string' ? title.trim() : null;
   }
@@ -295,6 +307,14 @@ router.put('/knowledge/:id', (req: AuthRequest, res) => {
       return;
     }
     updates.content = content.trim();
+  }
+  if (validFrom !== undefined) {
+    updates.validFrom =
+      validFrom === null ? null : Number.isInteger(Number(validFrom)) ? Number(validFrom) : null;
+  }
+  if (validUntil !== undefined) {
+    updates.validUntil =
+      validUntil === null ? null : Number.isInteger(Number(validUntil)) ? Number(validUntil) : null;
   }
 
   try {
@@ -335,6 +355,41 @@ router.delete('/knowledge/:id', (req: AuthRequest, res) => {
     res.json({ entry });
   } catch {
     res.status(500).json({ error: 'Löschen fehlgeschlagen' });
+  }
+});
+
+router.post('/knowledge/:id/end', (req: AuthRequest, res) => {
+  const id = Number(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'Ungültige ID' });
+    return;
+  }
+
+  const { until, reason } = req.body;
+  const untilNum = Number(until);
+  if (!Number.isInteger(untilNum) || untilNum <= 0) {
+    res.status(400).json({ error: 'Gültiger "until" (Spieltag) ist erforderlich' });
+    return;
+  }
+  const endReason =
+    typeof reason === 'string' && reason.trim()
+      ? reason.trim()
+      : 'Gilt ab diesem Spieltag nicht mehr';
+
+  try {
+    const existing = getEntityKnowledgeEntry(id);
+    if (!existing) {
+      res.status(404).json({ error: 'Eintrag nicht gefunden' });
+      return;
+    }
+    if (existing.status !== 'active') {
+      res.status(400).json({ error: 'Nur aktive Einträge können beendet werden' });
+      return;
+    }
+    const entry = markEntityKnowledgeTimelineEnd(id, untilNum, endReason);
+    res.json({ entry });
+  } catch {
+    res.status(500).json({ error: 'Beenden fehlgeschlagen' });
   }
 });
 
