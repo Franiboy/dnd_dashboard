@@ -303,8 +303,6 @@ export interface RecordingSession {
   gameDay: number | null;
   /** Inclusive end of the in-game day range (for multi-day sessions). */
   gameDayEnd: number | null;
-  /** Optional display label of the in-game day, e.g. "Feast of the Moon". */
-  gameDateLabel: string | null;
   hasWavFiles?: boolean;
   files?: RecordingFile[];
 }
@@ -341,8 +339,6 @@ export interface DiaryEntry {
   locations: string[];
   /** Monotonic in-game day of this entry ("Eintrag = Spieltag"). */
   gameDay: number | null;
-  /** Optional display label of the in-game day (e.g. "Feast of the Moon"). */
-  gameDateLabel: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -403,8 +399,6 @@ export type KnowledgeOriginType = 'diary' | 'session';
 /** One in-game day of the central campaign timeline. */
 export interface CampaignDay {
   day: number;
-  /** Optional display label, e.g. "Feast of the Moon". */
-  label: string | null;
 }
 
 export interface EntityKnowledgeEntry {

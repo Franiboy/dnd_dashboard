@@ -508,7 +508,7 @@ router.put('/:id/game-day', requireAdmin, (req, res) => {
     return;
   }
 
-  const { gameDay, gameDayEnd, gameDateLabel } = req.body;
+  const { gameDay, gameDayEnd } = req.body;
   const start = gameDay === null || gameDay === undefined ? null : Number(gameDay);
   const endRaw = gameDayEnd === null || gameDayEnd === undefined ? null : Number(gameDayEnd);
   const end = start === null ? null : (endRaw ?? start);
@@ -528,10 +528,8 @@ router.put('/:id/game-day', requireAdmin, (req, res) => {
     res.status(400).json({ error: 'Zeitraum zu groß (max 30 Tage)' });
     return;
   }
-  const label =
-    typeof gameDateLabel === 'string' && gameDateLabel.trim() ? gameDateLabel.trim() : null;
 
-  updateSession(id, { gameDay: start, gameDayEnd: end, gameDateLabel: label });
+  updateSession(id, { gameDay: start, gameDayEnd: end });
   emitSessionsUpdated();
   res.json({ session: getSessionById(id) });
 });
