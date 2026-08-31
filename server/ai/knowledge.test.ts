@@ -21,6 +21,8 @@ function entry(
     originType: null,
     originId: null,
     originTitle: null,
+    validFrom: null,
+    validUntil: null,
     createdAt: '',
     updatedAt: '',
   };
@@ -34,6 +36,7 @@ describe('collectAffectedEntities', () => {
         { id: 2, reason: 'Widerspruch', entry: entry(2, 'persons', 'vimak') },
         { id: 3, reason: 'Widerspruch', entry: entry(3, 'organizations', 'Wagenwacht') },
       ],
+      ended: [],
     };
     const targets = collectAffectedEntities(
       { entityType: 'organizations', entityName: 'Wagenwacht', entityQualifier: '' },
@@ -49,6 +52,7 @@ describe('collectAffectedEntities', () => {
     const result = {
       created: [entry(1, 'persons', 'Kerigan', 'Begleiter von Calzone')],
       deleted: [{ id: 2, reason: 'Widerspruch', entry: entry(2, 'persons', 'Kerigan') }],
+      ended: [],
     };
     const targets = collectAffectedEntities(null, result);
     expect(targets).toEqual([
@@ -61,12 +65,25 @@ describe('collectAffectedEntities', () => {
     ]);
   });
 
+  it('includes the entity of a timeline-end (ended) as affected', () => {
+    const result = {
+      created: [],
+      deleted: [],
+      ended: [{ id: 2, reason: 'Gilt nicht mehr', entry: entry(2, 'organizations', 'Wagenwacht') }],
+    };
+    const targets = collectAffectedEntities(null, result);
+    expect(targets).toEqual([
+      { entityType: 'organizations', entityName: 'Wagenwacht', entityQualifier: '' },
+    ]);
+  });
+
   it('returns only the focus entity when nothing changed', () => {
     const targets = collectAffectedEntities(
       { entityType: 'locations', entityName: 'Baldur', entityQualifier: '' },
       {
         created: [],
         deleted: [],
+        ended: [],
       }
     );
     expect(targets).toEqual([
@@ -75,6 +92,6 @@ describe('collectAffectedEntities', () => {
   });
 
   it('returns an empty list without focus and without changes', () => {
-    expect(collectAffectedEntities(null, { created: [], deleted: [] })).toEqual([]);
+    expect(collectAffectedEntities(null, { created: [], deleted: [], ended: [] })).toEqual([]);
   });
 });

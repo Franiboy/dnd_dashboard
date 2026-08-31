@@ -322,6 +322,7 @@ function DistributeKnowledgeDialog({ onClose, onDistributed }: DistributeKnowled
     const { data, error } = await request<{
       created: EntityKnowledgeEntry[];
       deleted: { id: number; reason: string; entry: EntityKnowledgeEntry }[];
+      ended?: { id: number; reason: string; entry: EntityKnowledgeEntry }[];
     }>('/api/entities/knowledge/distribute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -331,6 +332,7 @@ function DistributeKnowledgeDialog({ onClose, onDistributed }: DistributeKnowled
     if (!error && data) {
       const parts: string[] = [];
       if (data.created.length) parts.push(`${data.created.length} neu`);
+      if (data.ended && data.ended.length) parts.push(`${data.ended.length} beendet`);
       if (data.deleted.length) parts.push(`${data.deleted.length} als gelöscht markiert`);
       showSuccess(
         parts.length ? `Wissen eingeordnet: ${parts.join(', ')}.` : 'Keine Änderungen erkannt.'

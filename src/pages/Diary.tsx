@@ -15,7 +15,7 @@ import ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
 import { ensureHtml, quillFormats, quillModules, stripHtml } from '../components/quillConfig';
 import { splitEntityLabel } from '../lib/entityLabels';
-import type { DiaryEntry, EntityType, VersionInfo } from '../../shared/types';
+import type { CampaignDay, DiaryEntry, EntityType, VersionInfo } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 const SUMMARY_MAX_LENGTH = 500;
@@ -24,7 +24,6 @@ const SERVER_SAVE_DELAY_MS = 1500;
 const DRAFT_KEY_PREFIX = 'diary-draft-';
 
 interface DiaryFormData {
-  title: string;
   content: string;
 }
 
@@ -108,8 +107,14 @@ export function Diary() {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [form, setForm] = useState<DiaryFormData>({ title: '', content: '' });
+  const [form, setForm] = useState<DiaryFormData>({ content: '' });
   const [formError, setFormError] = useState<string | null>(null);
+  // Manual diary creation picks an in-game day (campaign timeline) instead of a
+  // free title.
+  const [campaignDays, setCampaignDays] = useState<CampaignDay[]>([]);
+  const [createDayMode, setCreateDayMode] = useState<'existing' | 'new'>('existing');
+  const [createDayValue, setCreateDayValue] = useState<number | ''>('');
+  const [createDayLabel, setCreateDayLabel] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
   const [draftOriginal, setDraftOriginal] = useState<
@@ -133,6 +138,9 @@ export function Diary() {
   const [editingTitleText, setEditingTitleText] = useState('');
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null);
   const [editingSummaryText, setEditingSummaryText] = useState('');
+  const [gameDayDrafts, setGameDayDrafts] = useState<
+    Record<number, { day: number | null; label: string | null }>
+  >({});
   const [processingSummaryId, setProcessingSummaryId] = useState<number | null>(null);
   const [processingRewriteId, setProcessingRewriteId] = useState<number | null>(null);
   const [processingCommandId, setProcessingCommandId] = useState<number | null>(null);
@@ -274,13 +282,22 @@ export function Diary() {
   }, [mappings, expandedIds]);
 
   function resetForm() {
-    setForm({ title: '', content: '' });
+    setForm({ content: '' });
     setFormError(null);
+    setCreateDayMode('existing');
+    setCreateDayValue('');
+    setCreateDayLabel('');
   }
 
-  function openCreate() {
+  async function openCreate() {
     resetForm();
     setIsModalOpen(true);
+    const { data } = await request<{
+      days: CampaignDay[];
+      currentGameDay: number | null;
+      nextGameDay: number;
+    }>('/api/campaign/days');
+    if (data) setCampaignDays(data.days);
   }
 
   function closeModal() {
@@ -294,14 +311,46 @@ export function Diary() {
     setFormError(null);
 
     const plainText = stripHtml(form.content).trim();
-    if (!form.title.trim() || !plainText) {
-      setFormError('Titel und Inhalt sind erforderlich');
+    const contentOk = !!plainText;
+    const dayOk =
+      createDayMode === 'existing' ? createDayValue !== '' && Number(createDayValue) > 0 : true;
+    if (!contentOk || !dayOk) {
+      setFormError('Wähle einen Spieltag und erfülle den Inhalt');
       return;
     }
 
+    let gameDay: number | null;
+    let gameDateLabel: string | null = null;
+    if (createDayMode === 'new') {
+      // Register the next free day (and optional label) on the campaign timeline.
+      const label = createDayLabel.trim();
+      const { data: dayData, error: dayError } = await request<{
+        day: CampaignDay;
+        currentGameDay: number | null;
+      }>('/api/campaign/days', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label || null }),
+      });
+      if (dayError || !dayData) {
+        setFormError(dayError ?? 'Spieltag konnte nicht angelegt werden');
+        return;
+      }
+      gameDay = dayData.day.day;
+      gameDateLabel = dayData.day.label;
+    } else {
+      gameDay = Number(createDayValue);
+      const chosenLabel =
+        createDayValue !== ''
+          ? (campaignDays.find((d) => d.day === Number(createDayValue))?.label ?? null)
+          : null;
+      gameDateLabel = chosenLabel;
+    }
+
     const payload = {
-      title: form.title,
       content: form.content,
+      gameDay,
+      gameDateLabel,
     };
 
     setAiOperation(true);
@@ -614,6 +663,26 @@ export function Diary() {
     return false;
   }
 
+  async function saveGameDay(
+    entryId: number,
+    gameDay: number | null,
+    gameDateLabel: string | null
+  ) {
+    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entryId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameDay, gameDateLabel }),
+    });
+    if (error) {
+      showError(error);
+      return;
+    }
+    if (data?.entry) {
+      setEntries((prev) => prev.map((e) => (e.id === entryId ? data.entry : e)));
+      showSuccess('Spieltag gespeichert.');
+    }
+  }
+
   async function handleAcceptRewritten(entry: DiaryEntry) {
     const rawDraft =
       draftRewritten[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'rewritten'));
@@ -803,7 +872,11 @@ export function Diary() {
       <button
         type="submit"
         form="diary-form"
-        disabled={working || !form.title.trim() || !stripHtml(form.content).trim()}
+        disabled={
+          working ||
+          !stripHtml(form.content).trim() ||
+          (createDayMode === 'existing' && !(createDayValue !== '' && Number(createDayValue) > 0))
+        }
         className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
       >
         {working ? <Loading text="" size="sm" /> : 'Erstellen'}
@@ -942,6 +1015,55 @@ export function Diary() {
                       </button>
                     </div>
                   )}
+                  <div className="flex items-center gap-2 text-xs mt-1">
+                    <label className="text-slate-400">Spieltag</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={gameDayDrafts[entry.id]?.day ?? entry.gameDay ?? ''}
+                      onChange={(e) =>
+                        setGameDayDrafts((prev) => ({
+                          ...prev,
+                          [entry.id]: {
+                            day: e.target.value === '' ? null : Number(e.target.value),
+                            label: prev[entry.id]?.label ?? entry.gameDateLabel ?? '',
+                          },
+                        }))
+                      }
+                      placeholder="–"
+                      className="w-20 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={gameDayDrafts[entry.id]?.label ?? entry.gameDateLabel ?? ''}
+                      onChange={(e) =>
+                        setGameDayDrafts((prev) => ({
+                          ...prev,
+                          [entry.id]: {
+                            day: prev[entry.id]?.day ?? entry.gameDay,
+                            label: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="Datum/Label (optional)"
+                      className="w-48 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        saveGameDay(
+                          entry.id,
+                          gameDayDrafts[entry.id]?.day ?? entry.gameDay,
+                          (gameDayDrafts[entry.id]?.label ?? entry.gameDateLabel ?? '') as
+                            string | null
+                        )
+                      }
+                      disabled={working}
+                      className="px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
+                    >
+                      Speichern
+                    </button>
+                  </div>
                   <div className="flex flex-wrap gap-2 justify-end">
                     <Button
                       variant="danger"
@@ -1300,15 +1422,61 @@ export function Diary() {
           className="flex-1 min-h-0 flex flex-col space-y-4 px-1"
         >
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Titel</label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-              required
-              disabled={working}
-              className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            />
+            <label className="block text-sm text-slate-400 mb-1">Spieltag</label>
+            {createDayMode === 'existing' ? (
+              <div className="flex gap-2">
+                <select
+                  value={createDayValue}
+                  onChange={(e) =>
+                    setCreateDayValue(e.target.value === '' ? '' : Number(e.target.value))
+                  }
+                  disabled={working}
+                  required
+                  className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                >
+                  <option value="">Spieltag wählen…</option>
+                  {campaignDays.map((d) => (
+                    <option key={d.day} value={d.day}>
+                      Spieltag {d.day}
+                      {d.label ? ` – ${d.label}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setCreateDayMode('new')}
+                  disabled={working}
+                  className="px-3 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50 whitespace-nowrap"
+                  title="Neuen (nächsten) Spieltag anlegen"
+                >
+                  + Neuer Tag
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={createDayLabel}
+                  onChange={(e) => setCreateDayLabel(e.target.value)}
+                  disabled={working}
+                  placeholder="Label (optional), z. B. Festtag des Monden"
+                  className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setCreateDayMode('existing')}
+                  disabled={working}
+                  className="px-3 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50 whitespace-nowrap"
+                >
+                  Zurück
+                </button>
+              </div>
+            )}
+            {createDayMode === 'new' && (
+              <p className="mt-1 text-xs text-slate-500">
+                Erstellt den nächsten freien Spieltag und setzt ihn als Titel dieses Eintrags.
+              </p>
+            )}
           </div>
           <div className="flex-1 min-h-0 flex flex-col">
             <label className="block text-sm text-slate-400 mb-1">Inhalt</label>

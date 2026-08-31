@@ -34,6 +34,13 @@ interface KnowledgeCorrectionResponse {
   }[];
 }
 
+function parseOptionalDay(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  const n = Number(trimmed);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 interface CorrectKnowledgeDialogProps {
   type: EntityType;
   name: string;
@@ -151,8 +158,12 @@ export function EntityEditDialog({
   const [editingKnowledgeId, setEditingKnowledgeId] = useState<number | null>(null);
   const [editingKnowledgeTitle, setEditingKnowledgeTitle] = useState('');
   const [editingKnowledgeContent, setEditingKnowledgeContent] = useState('');
+  const [editingKnowledgeValidUntil, setEditingKnowledgeValidUntil] = useState<string>('');
   const [newKnowledgeTitle, setNewKnowledgeTitle] = useState('');
   const [newKnowledgeContent, setNewKnowledgeContent] = useState('');
+  const [newKnowledgeValidFrom, setNewKnowledgeValidFrom] = useState<string>('');
+  const [newKnowledgeValidUntil, setNewKnowledgeValidUntil] = useState<string>('');
+  const [currentGameDay, setCurrentGameDay] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'summary' | 'aliases' | 'knowledge'>('summary');
@@ -197,7 +208,7 @@ export function EntityEditDialog({
       const canonicalName = detailData.canonical;
       const canonicalQualifier = detailData.qualifier ?? '';
       const [{ data: knowledgeData }, { data: summaryData }] = await Promise.all([
-        request<{ entries: EntityKnowledgeEntry[] }>(
+        request<{ entries: EntityKnowledgeEntry[]; currentGameDay: number | null }>(
           `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}&qualifier=${encodeURIComponent(canonicalQualifier)}`
         ),
         request<{ summary: string | null; miniSummary: string | null; isDirty: boolean }>(
@@ -211,6 +222,7 @@ export function EntityEditDialog({
       setQualifierValue(canonicalQualifier);
       setAliases(detailData.aliases);
       setKnowledge(knowledgeData?.entries || []);
+      setCurrentGameDay(knowledgeData?.currentGameDay ?? null);
       setSummary(summaryData?.summary ?? null);
       setMiniSummary(summaryData?.miniSummary ?? null);
       setSummaryDirty(summaryData?.isDirty ?? true);
@@ -253,17 +265,25 @@ export function EntityEditDialog({
     setEditingKnowledgeId(entry.id);
     setEditingKnowledgeTitle(entry.title || '');
     setEditingKnowledgeContent(entry.content);
+    setEditingKnowledgeValidUntil(entry.validUntil == null ? '' : String(entry.validUntil));
   }
 
   function cancelEditKnowledge() {
     setEditingKnowledgeId(null);
     setEditingKnowledgeTitle('');
     setEditingKnowledgeContent('');
+    setEditingKnowledgeValidUntil('');
   }
 
   async function saveEditKnowledge(id: number) {
     if (!editingKnowledgeContent.trim()) {
       showError('Inhalt ist erforderlich');
+      return;
+    }
+    const validUntil =
+      editingKnowledgeValidUntil.trim() === '' ? null : Number(editingKnowledgeValidUntil);
+    if (validUntil !== null && (!Number.isInteger(validUntil) || validUntil <= 0)) {
+      showError('Gültig-bis-Spieltag muss eine positive ganze Zahl sein');
       return;
     }
     const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(
@@ -274,6 +294,7 @@ export function EntityEditDialog({
         body: JSON.stringify({
           title: editingKnowledgeTitle.trim() || null,
           content: editingKnowledgeContent.trim(),
+          validUntil,
         }),
       }
     );
@@ -304,6 +325,12 @@ export function EntityEditDialog({
       showError('Inhalt ist erforderlich');
       return;
     }
+    const validFrom = parseOptionalDay(newKnowledgeValidFrom);
+    const validUntil = parseOptionalDay(newKnowledgeValidUntil);
+    if (validFrom !== null && validUntil !== null && validUntil < validFrom) {
+      showError('Gültig-bis-Spieltag darf nicht vor Gültig-ab-Spieltag liegen');
+      return;
+    }
     const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(
       '/api/entities/knowledge',
       {
@@ -315,6 +342,8 @@ export function EntityEditDialog({
           qualifier: identityQualifier,
           title: newKnowledgeTitle.trim() || null,
           content: newKnowledgeContent.trim(),
+          validFrom,
+          validUntil,
         }),
       }
     );
@@ -323,8 +352,31 @@ export function EntityEditDialog({
       setKnowledge((prev) => [data.entry, ...prev]);
       setNewKnowledgeTitle('');
       setNewKnowledgeContent('');
+      setNewKnowledgeValidFrom('');
+      setNewKnowledgeValidUntil('');
       setSummaryDirty(true);
       showSuccess('Wissen hinzugefügt.');
+    }
+  }
+
+  async function handleEndKnowledge(id: number) {
+    if (currentGameDay == null) {
+      showError('Noch kein Spieltag gesetzt – Gültigkeit kann nicht beendet werden.');
+      return;
+    }
+    const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(
+      `/api/entities/knowledge/${id}/end`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ until: currentGameDay }),
+      }
+    );
+    if (staleRef.current) return;
+    if (!error && data) {
+      setKnowledge((prev) => prev.map((k) => (k.id === id ? data.entry : k)));
+      setSummaryDirty(true);
+      showSuccess(`Fakt bis Spieltag ${currentGameDay} beendet (bleibt als Historie).`);
     }
   }
 
@@ -767,6 +819,19 @@ export function EntityEditDialog({
                                 rows={2}
                                 className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
                               />
+                              <div className="flex items-center gap-2">
+                                <label className="text-[10px] text-slate-500 whitespace-nowrap">
+                                  Gültig bis Spieltag
+                                </label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={editingKnowledgeValidUntil}
+                                  onChange={(e) => setEditingKnowledgeValidUntil(e.target.value)}
+                                  placeholder="offen"
+                                  className="w-24 px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                                />
+                              </div>
                               <div className="flex gap-2">
                                 <button
                                   type="button"
@@ -812,6 +877,38 @@ export function EntityEditDialog({
                                     {entry.originTitle ? ` „${entry.originTitle}“` : ''}
                                   </span>
                                 )}
+                                {(entry.validFrom !== null ||
+                                  (!isDeleted && entry.validUntil !== null)) &&
+                                  (() => {
+                                    // valid_until is EXCLUSIVE: the fact holds up to
+                                    // (validUntil - 1), so it is over now when
+                                    // validUntil <= current day.
+                                    const isOver =
+                                      !isDeleted &&
+                                      entry.validUntil !== null &&
+                                      currentGameDay != null &&
+                                      entry.validUntil <= currentGameDay;
+                                    const lastValid =
+                                      entry.validUntil !== null ? entry.validUntil - 1 : null;
+                                    return (
+                                      <span
+                                        title={
+                                          entry.validUntil !== null
+                                            ? `Gültig von Spieltag ${entry.validFrom ?? 'Beginn'} bis einschließlich Spieltag ${lastValid}; ab Spieltag ${entry.validUntil} nicht mehr.`
+                                            : `Gültig ab Spieltag ${entry.validFrom ?? 'Beginn'}.`
+                                        }
+                                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${
+                                          isOver
+                                            ? 'bg-amber-500/10 text-amber-400'
+                                            : 'bg-[var(--accent)]/10 text-[var(--accent)]'
+                                        }`}
+                                      >
+                                        {entry.validUntil !== null
+                                          ? `Spieltag ${entry.validFrom ?? '…'} bis Tag ${lastValid}`
+                                          : `Spieltag ab ${entry.validFrom ?? '…'}`}
+                                      </span>
+                                    );
+                                  })()}
                               </div>
                               <p
                                 className={`text-sm whitespace-pre-wrap ${isDeleted ? 'text-slate-500 line-through' : 'text-[var(--text-h)]'}`}
@@ -827,6 +924,11 @@ export function EntityEditDialog({
                                   Grund: {entry.statusReason}
                                 </p>
                               )}
+                              {!isDeleted && entry.validUntil !== null && entry.statusReason && (
+                                <p className="text-xs text-slate-500 italic">
+                                  Grund: {entry.statusReason}
+                                </p>
+                              )}
                               {!isDeleted && (
                                 <div className="flex gap-2 justify-end">
                                   <button
@@ -837,6 +939,16 @@ export function EntityEditDialog({
                                   >
                                     Bearbeiten
                                   </button>
+                                  {entry.validUntil === null && currentGameDay != null && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleEndKnowledge(entry.id)}
+                                      title={`Fakt endet am aktuellen Spieltag ${currentGameDay} (bleibt als Historie)`}
+                                      className="text-xs text-slate-500 hover:text-[var(--accent)] transition"
+                                    >
+                                      Beenden
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteKnowledge(entry.id)}
@@ -881,6 +993,30 @@ export function EntityEditDialog({
                     placeholder="Neuer Wissenseintrag"
                     className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
                   />
+                  {(currentGameDay ?? null) !== null && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] text-slate-500 whitespace-nowrap">
+                        Gültig ab
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={newKnowledgeValidFrom}
+                        onChange={(e) => setNewKnowledgeValidFrom(e.target.value)}
+                        placeholder={`aktuell ${currentGameDay}`}
+                        className="w-24 px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                      />
+                      <label className="text-[10px] text-slate-500 whitespace-nowrap">bis</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={newKnowledgeValidUntil}
+                        onChange={(e) => setNewKnowledgeValidUntil(e.target.value)}
+                        placeholder="offen"
+                        className="w-24 px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                      />
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={handleAddKnowledge}

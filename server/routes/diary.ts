@@ -166,17 +166,33 @@ router.post('/entries', async (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, content } = req.body;
-  if (!title || typeof title !== 'string' || !title.trim()) {
-    res.status(400).json({ error: 'Titel ist erforderlich' });
-    return;
-  }
+  const { title, content, gameDay, gameDateLabel } = req.body;
   if (!content || typeof content !== 'string' || !content.trim()) {
     res.status(400).json({ error: 'Inhalt ist erforderlich' });
     return;
   }
+  const day = gameDay === undefined || gameDay === null ? null : Number(gameDay);
+  if (day !== null && (!Number.isInteger(day) || day <= 0)) {
+    res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl sein' });
+    return;
+  }
+  const label =
+    typeof gameDateLabel === 'string' && gameDateLabel.trim() ? gameDateLabel.trim() : null;
 
-  const entry = createDiaryEntry(req.user.id, title, content);
+  let finalTitle: string;
+  if (day !== null) {
+    // Manual diary creation selects an existing day or the next one; the title
+    // is derived from the day (and its label), never entered freely.
+    finalTitle = label ? `Spieltag ${day} – ${label}` : `Spieltag ${day}`;
+  } else {
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      res.status(400).json({ error: 'Titel ist erforderlich' });
+      return;
+    }
+    finalTitle = title;
+  }
+
+  const entry = createDiaryEntry(req.user.id, finalTitle, content, undefined, day, label);
   res.status(201).json({ entry });
 });
 
@@ -194,7 +210,7 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, content, summary, rewrittenContent } = req.body;
+  const { title, content, summary, rewrittenContent, gameDay, gameDateLabel } = req.body;
   const updates: Parameters<typeof updateDiaryEntry>[1] = {};
 
   if (title !== undefined) {
@@ -241,6 +257,16 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
         updates.rewriteSessionId = null;
       }
     }
+  }
+  if (gameDay !== undefined) {
+    const day = gameDay === null ? null : Number(gameDay);
+    if (day !== null && (!Number.isInteger(day) || day <= 0)) {
+      res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl oder null sein' });
+      return;
+    }
+    updates.gameDay = day;
+    updates.gameDateLabel =
+      typeof gameDateLabel === 'string' && gameDateLabel.trim() ? gameDateLabel.trim() : null;
   }
 
   if (updates.rewrittenFilePath === null && existing.rewrittenFilePath) {

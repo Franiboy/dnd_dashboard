@@ -6,6 +6,7 @@ import {
   setEntityKnowledgeOrigin,
 } from '../repositories/entityKnowledge.js';
 import { getEntitySummary } from '../repositories/entitySummaries.js';
+import { getCurrentGameDay } from '../repositories/gameTimeline.js';
 import { stripHtml } from './rewrite.js';
 import { createLogger } from '../logger.js';
 import type { EntityKnowledgeEntry, EntityType, KnowledgeOriginType } from '../../shared/types.js';
@@ -21,6 +22,8 @@ export interface KnowledgeOrigin {
 interface DistributeResult {
   created: EntityKnowledgeEntry[];
   deleted: { id: number; reason: string; entry: EntityKnowledgeEntry }[];
+  /** Active facts whose validity window ended during the run (timeline change). */
+  ended: { id: number; reason: string; entry: EntityKnowledgeEntry }[];
 }
 
 interface KnowledgeSnapshot {
@@ -28,6 +31,7 @@ interface KnowledgeSnapshot {
   entityType: EntityType;
   entityName: string;
   status: 'active' | 'deleted';
+  validUntil: number | null;
 }
 
 function takeKnowledgeSnapshot(): Map<number, KnowledgeSnapshot> {
@@ -39,6 +43,7 @@ function takeKnowledgeSnapshot(): Map<number, KnowledgeSnapshot> {
       entityType: row.entityType,
       entityName: row.entityName,
       status: row.status,
+      validUntil: row.validUntil,
     });
   }
   return map;
@@ -53,6 +58,7 @@ function computeDistributionDiff(
 
   const created: EntityKnowledgeEntry[] = [];
   const deleted: { id: number; reason: string; entry: EntityKnowledgeEntry }[] = [];
+  const ended: { id: number; reason: string; entry: EntityKnowledgeEntry }[] = [];
 
   for (const [id, entry] of afterById) {
     if (!before.has(id)) {
@@ -64,10 +70,24 @@ function computeDistributionDiff(
     const afterEntry = afterById.get(id);
     if (beforeEntry.status === 'active' && afterEntry?.status === 'deleted') {
       deleted.push({ id, reason: afterEntry.statusReason || 'Widerspruch', entry: afterEntry });
+      continue;
+    }
+    // An active fact was given an end of validity -> a sequenced timeline change.
+    if (
+      beforeEntry.status === 'active' &&
+      afterEntry?.status === 'active' &&
+      afterEntry.validUntil !== null &&
+      afterEntry.validUntil !== beforeEntry.validUntil
+    ) {
+      ended.push({
+        id,
+        reason: afterEntry.statusReason || 'Ende der Gültigkeit',
+        entry: afterEntry,
+      });
     }
   }
 
-  return { created, deleted };
+  return { created, deleted, ended };
 }
 
 export async function distributeKnowledgeFromText(
@@ -77,21 +97,26 @@ export async function distributeKnowledgeFromText(
   origin?: KnowledgeOrigin
 ): Promise<DistributeResult> {
   const plainText = stripHtml(text).trim();
-  if (!plainText) return { created: [], deleted: [] };
+  if (!plainText) return { created: [], deleted: [], ended: [] };
+
+  const currentGameDay = getCurrentGameDay();
 
   const prompt = [
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
     'Aufgabe: Analysiere den folgenden Text und ordne die darin enthaltenen Fakten den passenden Entitäten zu.',
     '',
+    `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}. Nutze ihn als Bezugspunkt für zeitgebundene Fakten.`,
+    '',
     'Verfügbare Tools:',
-    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
+    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, aktuell gültiges Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
     '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
-    '- create_knowledge(type, name, content, title?, qualifier?): Erstellt einen Wissenseintrag.',
-    '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht.',
+    '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag. validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
+    '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (war wahr, gilt ab dann nicht mehr) - für zeitliche Änderungen, nicht für Widerrufe.',
+    '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch / trifft nie zu).',
     '',
     'Regeln:',
-    '- DU MUSST vor dem Erstellen oder Löschen von Wissen get_entity für jede im Text erwähnte Entität aufrufen, um bestehendes Wissen zu sehen.',
+    '- DU MUSST vor dem Erstellen, Beenden oder Löschen von Wissen get_entity für jede im Text erwähnte Entität aufrufen, um bestehendes Wissen zu sehen.',
     '- Ordne jeden Fakt einer oder mehreren Entitäten zu.',
     '- Wenn eine Entität noch nicht existiert, wird sie automatisch durch create_knowledge angelegt.',
     '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
@@ -102,8 +127,12 @@ export async function distributeKnowledgeFromText(
     '- Extrahiere nur Fakten, die im Text tatsächlich vorkommen. Erfinke keine Details.',
     '- Halte jeden Fakt kurz und prägnant.',
     '- Wenn ein bestehender Eintrag unvollständig ist, ergänze ihn mit create_knowledge für dieselbe Entität.',
-    '- Widerspricht ein neuer Fakt einem bestehenden Eintrag klar und eindeutig, lösche den alten mit delete_knowledge(id) und erstelle einen neuen, korrekten Eintrag.',
-    '- In delete_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
+    '- Zeitgebundene Fakten (Beziehungen, Stimmungen, Zugehörigkeit, Ziele) bekommen ein Gültigkeitsfenster über validFrom/validUntil, immer bezogen auf den aktuellen Spieltag. Zeitliche Angaben im Text ("seit der Schlacht", "bis zum Fest", "inzwischen") werden dazu verwendet.',
+    '- Zeitlose Fakten (z. B. "ist eine Elfe", Herkunft, Beruf) erhalten kein Fenster.',
+    '- Wird ein bestehender aktiver Fakt durch eine zeitliche Änderung ersetzt ("stand X gut, jetzt nicht mehr"), beende den alten mit end_knowledge(id, until=<Spieltag>, reason) und erstelle den neuen mit validFrom=<Spieltag>.',
+    '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
+    '- Widerspricht ein neuer Fakt einem bestehenden Eintrag grundlegend (er war falsch, nicht nur überholt), lösche den alten mit delete_knowledge(id, reason) und erstelle einen neuen, korrekten Eintrag.',
+    '- In delete_knowledge und end_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
     '',
     'Text:',
     plainText,
@@ -142,11 +171,11 @@ export async function distributeKnowledgeFromText(
 
   if (!result.success) {
     log.warn(`Knowledge distribution failed: exitCode=${result.exitCode}`);
-    return { created: [], deleted: [] };
+    return { created: [], deleted: [], ended: [] };
   }
 
   log.info(
-    `Distributed ${diff.created.length} new entries and marked ${diff.deleted.length} entries as deleted${
+    `Distributed ${diff.created.length} new entries, ended ${diff.ended.length} and marked ${diff.deleted.length} entries as deleted${
       origin ? ` from ${origin.type} #${origin.id}` : ''
     }`
   );
@@ -180,7 +209,11 @@ export function collectAffectedEntities(
   if (focus) {
     targets.set(targetKey(focus), focus);
   }
-  for (const entry of [...result.created, ...result.deleted.map((d) => d.entry)]) {
+  for (const entry of [
+    ...result.created,
+    ...(result.deleted ?? []).map((d) => d.entry),
+    ...(result.ended ?? []).map((d) => d.entry),
+  ]) {
     const target = {
       entityType: entry.entityType,
       entityName: entry.entityName,
@@ -200,7 +233,7 @@ export async function correctKnowledgeFromText(
   onLog?: (line: string) => void
 ): Promise<KnowledgeCorrectionResult> {
   const plainText = stripHtml(correction).trim();
-  if (!plainText) return { created: [], deleted: [], summaries: [] };
+  if (!plainText) return { created: [], deleted: [], ended: [], summaries: [] };
 
   const typeLabel = focus
     ? focus.entityType === 'persons'
@@ -209,6 +242,8 @@ export async function correctKnowledgeFromText(
         ? 'Organisation'
         : 'Ort'
     : null;
+
+  const currentGameDay = getCurrentGameDay();
 
   const prompt = [
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
@@ -219,25 +254,29 @@ export async function correctKnowledgeFromText(
           `Fokus-Entität: ${typeLabel} "${focus.entityName}" – ihr Wissen ist auf jeden Fall zu prüfen.`,
         ]
       : []),
+    `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}.`,
     '',
     'Verfügbare Tools:',
-    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
+    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, aktuell gültiges Wissen und Tagebucheinträge zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
     '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
-    '- create_knowledge(type, name, content, title?, qualifier?): Erstellt einen Wissenseintrag.',
-    '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht.',
+    '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag; validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
+    '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (zeitliche Änderung, bleibt als Historie).',
+    '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch).',
     '',
     'Regeln:',
-    '- DU MUSST vor dem Löschen oder Erstellen get_entity für die Fokus-Entität und jede in der Korrektur erwähnte Entität aufrufen.',
-    '- Finde alle aktiven Wissenseinträge, die der Korrektur klar widersprechen, und markiere sie mit delete_knowledge(id, reason).',
-    '- In delete_knowledge muss reason kurz erklären, warum der Eintrag falsch ist, mit Bezug zur Korrektur.',
-    '- Erstelle mit create_knowledge die korrekten Fakten, die sich aus der Korrektur ergeben.',
+    '- DU MUSST vor dem Löschen, Beenden oder Erstellen get_entity für die Fokus-Entität und jede in der Korrektur erwähnte Entität aufrufen.',
+    '- Ist ein bestehender aktiver Eintrag nur überholt (zeitliche Änderung, z. B. "steht A nicht mehr gut"), beende ihn mit end_knowledge(id, until=<Spieltag>, reason) und erstelle den korrigierten Fakt mit validFrom=<Spieltag>.',
+    '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
+    '- Widerspricht ein Eintrag der Korrektur grundlegend (er war falsch), markiere ihn mit delete_knowledge(id, reason).',
+    '- In delete_knowledge und end_knowledge muss reason kurz erklären, warum der Eintrag falsch bzw. beendet ist, mit Bezug zur Korrektur.',
+    '- Erstelle mit create_knowledge die korrekten Fakten, die sich aus der Korrektur ergeben; setze bei zeitgebundenen Fakten das Gültigkeitsfenster.',
     '- Extrahiere nur Fakten, die in der Korrektur tatsächlich vorkommen. Erfinke keine Details.',
     '- Lasse Einträge unangetastet, die nicht von der Korrektur betroffen sind.',
     '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
     '- Gibt es mehrere Entitäten mit demselben Namen (list_entities zeigt sie mit unterschiedlichem Qualifier), wähle anhand des Kontexts die richtige Entität und gib deren Qualifier an.',
     '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
     '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
-    '- In delete_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
+    '- In delete_knowledge und end_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
     '',
     'Korrektur:',
     plainText,
@@ -263,7 +302,7 @@ export async function correctKnowledgeFromText(
 
   if (!result.success) {
     log.warn(`Knowledge correction failed: exitCode=${result.exitCode}`);
-    return { created: [], deleted: [], summaries: [] };
+    return { created: [], deleted: [], ended: [], summaries: [] };
   }
 
   // Refresh summaries of every affected entity so corrections are visible immediately.
@@ -288,9 +327,9 @@ export async function correctKnowledgeFromText(
   }
 
   log.info(
-    `Corrected knowledge: created ${diff.created.length} entries and marked ${diff.deleted.length} entries as deleted`
+    `Corrected knowledge: created ${diff.created.length} entries, ended ${diff.ended.length} and marked ${diff.deleted.length} entries as deleted`
   );
-  return { created: diff.created, deleted: diff.deleted, summaries };
+  return { created: diff.created, deleted: diff.deleted, ended: diff.ended, summaries };
 }
 
 export interface GeneratedEntitySummary {

@@ -500,6 +500,28 @@ router.get('/:id/progress', (req, res) => {
   res.json({ sessionId: id, status: session.status, progress });
 });
 
+router.put('/:id/game-day', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+
+  const { gameDay, gameDateLabel } = req.body;
+  const day = gameDay === null || gameDay === undefined ? null : Number(gameDay);
+  if (day !== null && (!Number.isInteger(day) || day <= 0)) {
+    res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl oder null sein' });
+    return;
+  }
+  const label =
+    typeof gameDateLabel === 'string' && gameDateLabel.trim() ? gameDateLabel.trim() : null;
+
+  updateSession(id, { gameDay: day, gameDateLabel: label });
+  emitSessionsUpdated();
+  res.json({ session: getSessionById(id) });
+});
+
 router.delete('/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const session = getSessionById(id);
