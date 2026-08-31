@@ -166,33 +166,20 @@ router.post('/entries', async (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, content, gameDay, gameDateLabel } = req.body;
+  const { content, gameDay } = req.body;
   if (!content || typeof content !== 'string' || !content.trim()) {
     res.status(400).json({ error: 'Inhalt ist erforderlich' });
     return;
   }
   const day = gameDay === undefined || gameDay === null ? null : Number(gameDay);
-  if (day !== null && (!Number.isInteger(day) || day <= 0)) {
+  if (day === null || !Number.isInteger(day) || day <= 0) {
     res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl sein' });
     return;
   }
-  const label =
-    typeof gameDateLabel === 'string' && gameDateLabel.trim() ? gameDateLabel.trim() : null;
 
-  let finalTitle: string;
-  if (day !== null) {
-    // Manual diary creation selects an existing day or the next one; the title
-    // is derived from the day (and its label), never entered freely.
-    finalTitle = label ? `Spieltag ${day} – ${label}` : `Spieltag ${day}`;
-  } else {
-    if (!title || typeof title !== 'string' || !title.trim()) {
-      res.status(400).json({ error: 'Titel ist erforderlich' });
-      return;
-    }
-    finalTitle = title;
-  }
+  const finalTitle = `Spieltag ${day}`;
 
-  const entry = createDiaryEntry(req.user.id, finalTitle, content, undefined, day, label);
+  const entry = createDiaryEntry(req.user.id, finalTitle, content, undefined, day, null);
   res.status(201).json({ entry });
 });
 
@@ -210,16 +197,8 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
     return;
   }
 
-  const { title, content, summary, rewrittenContent, gameDay, gameDateLabel } = req.body;
+  const { content, summary, rewrittenContent } = req.body;
   const updates: Parameters<typeof updateDiaryEntry>[1] = {};
-
-  if (title !== undefined) {
-    if (typeof title !== 'string' || !title.trim()) {
-      res.status(400).json({ error: 'Titel darf nicht leer sein' });
-      return;
-    }
-    updates.title = title;
-  }
   if (content !== undefined) {
     if (typeof content !== 'string' || !content.trim()) {
       res.status(400).json({ error: 'Inhalt darf nicht leer sein' });
@@ -258,17 +237,6 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
       }
     }
   }
-  if (gameDay !== undefined) {
-    const day = gameDay === null ? null : Number(gameDay);
-    if (day !== null && (!Number.isInteger(day) || day <= 0)) {
-      res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl oder null sein' });
-      return;
-    }
-    updates.gameDay = day;
-    updates.gameDateLabel =
-      typeof gameDateLabel === 'string' && gameDateLabel.trim() ? gameDateLabel.trim() : null;
-  }
-
   if (updates.rewrittenFilePath === null && existing.rewrittenFilePath) {
     deleteRewrittenFile(id);
     log.info(`Cleared rewritten file for entry ${id}`);

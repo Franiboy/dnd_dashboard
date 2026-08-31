@@ -114,7 +114,6 @@ export function Diary() {
   const [campaignDays, setCampaignDays] = useState<CampaignDay[]>([]);
   const [createDayMode, setCreateDayMode] = useState<'existing' | 'new'>('existing');
   const [createDayValue, setCreateDayValue] = useState<number | ''>('');
-  const [createDayLabel, setCreateDayLabel] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
   const [draftOriginal, setDraftOriginal] = useState<
@@ -134,13 +133,8 @@ export function Diary() {
     original: {},
     rewritten: {},
   });
-  const [editingTitleId, setEditingTitleId] = useState<number | null>(null);
-  const [editingTitleText, setEditingTitleText] = useState('');
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null);
   const [editingSummaryText, setEditingSummaryText] = useState('');
-  const [gameDayDrafts, setGameDayDrafts] = useState<
-    Record<number, { day: number | null; label: string | null }>
-  >({});
   const [processingSummaryId, setProcessingSummaryId] = useState<number | null>(null);
   const [processingRewriteId, setProcessingRewriteId] = useState<number | null>(null);
   const [processingCommandId, setProcessingCommandId] = useState<number | null>(null);
@@ -286,7 +280,6 @@ export function Diary() {
     setFormError(null);
     setCreateDayMode('existing');
     setCreateDayValue('');
-    setCreateDayLabel('');
   }
 
   async function openCreate() {
@@ -320,37 +313,27 @@ export function Diary() {
     }
 
     let gameDay: number | null;
-    let gameDateLabel: string | null = null;
     if (createDayMode === 'new') {
-      // Register the next free day (and optional label) on the campaign timeline.
-      const label = createDayLabel.trim();
       const { data: dayData, error: dayError } = await request<{
         day: CampaignDay;
         currentGameDay: number | null;
       }>('/api/campaign/days', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: label || null }),
+        body: JSON.stringify({}),
       });
       if (dayError || !dayData) {
         setFormError(dayError ?? 'Spieltag konnte nicht angelegt werden');
         return;
       }
       gameDay = dayData.day.day;
-      gameDateLabel = dayData.day.label;
     } else {
       gameDay = Number(createDayValue);
-      const chosenLabel =
-        createDayValue !== ''
-          ? (campaignDays.find((d) => d.day === Number(createDayValue))?.label ?? null)
-          : null;
-      gameDateLabel = chosenLabel;
     }
 
     const payload = {
       content: form.content,
       gameDay,
-      gameDateLabel,
     };
 
     setAiOperation(true);
@@ -663,26 +646,6 @@ export function Diary() {
     return false;
   }
 
-  async function saveGameDay(
-    entryId: number,
-    gameDay: number | null,
-    gameDateLabel: string | null
-  ) {
-    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entryId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameDay, gameDateLabel }),
-    });
-    if (error) {
-      showError(error);
-      return;
-    }
-    if (data?.entry) {
-      setEntries((prev) => prev.map((e) => (e.id === entryId ? data.entry : e)));
-      showSuccess('Spieltag gespeichert.');
-    }
-  }
-
   async function handleAcceptRewritten(entry: DiaryEntry) {
     const rawDraft =
       draftRewritten[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'rewritten'));
@@ -790,40 +753,6 @@ export function Diary() {
       else next.delete(id);
       return next;
     });
-  }
-
-  function startTitleEdit(entry: DiaryEntry) {
-    setEditingTitleId(entry.id);
-    setEditingTitleText(entry.title);
-  }
-
-  function cancelTitleEdit() {
-    setEditingTitleId(null);
-    setEditingTitleText('');
-  }
-
-  async function saveTitleEdit(entry: DiaryEntry) {
-    const title = editingTitleText.trim();
-    if (!title || title === entry.title) {
-      cancelTitleEdit();
-      return;
-    }
-
-    setWorking(true);
-    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title }),
-    });
-    setWorking(false);
-
-    if (data) {
-      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
-      showSuccess('Titel aktualisiert.');
-      cancelTitleEdit();
-    } else if (error) {
-      setFormError(error);
-    }
   }
 
   function startSummaryEdit(entry: DiaryEntry) {
@@ -953,116 +882,25 @@ export function Diary() {
                 className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 transition"
               >
                 <div className="flex items-start justify-between gap-4 mb-3">
-                  {editingTitleId === entry.id ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="text"
-                        value={editingTitleText}
-                        onChange={(e) => setEditingTitleText(e.target.value)}
-                        disabled={working}
-                        className="flex-1 px-2 py-1 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-lg font-semibold"
-                      />
-                      <Button
-                        variant="accent"
-                        onClick={() => saveTitleEdit(entry)}
-                        disabled={working || !editingTitleText.trim()}
+                  <div className="flex items-center gap-2 flex-1 flex-wrap">
+                    <h3 className="text-lg font-semibold text-[var(--text-h)]">
+                      Spieltag {entry.gameDay ?? '—'}
+                    </h3>
+                    {entry.sessionDraftFor && (
+                      <Link
+                        to={`/sessions?session=${entry.sessionDraftFor}`}
+                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/30 hover:bg-[var(--accent)]/30 transition"
+                        title={
+                          entry.sessionDraftForName
+                            ? `Springe zu Session „${entry.sessionDraftForName}“`
+                            : 'Springe zur Session'
+                        }
                       >
-                        Speichern
-                      </Button>
-                      <Button variant="ghost" onClick={cancelTitleEdit} disabled={working}>
-                        Abbrechen
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 flex-1 flex-wrap">
-                      <h3 className="text-lg font-semibold text-[var(--text-h)]">{entry.title}</h3>
-                      {entry.sessionDraftFor && (
-                        <Link
-                          to={`/sessions?session=${entry.sessionDraftFor}`}
-                          className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/30 hover:bg-[var(--accent)]/30 transition"
-                          title={
-                            entry.sessionDraftForName
-                              ? `Springe zu Session „${entry.sessionDraftForName}“`
-                              : 'Springe zur Session'
-                          }
-                        >
-                          {entry.sessionDraftForName
-                            ? `Session: ${entry.sessionDraftForName}`
-                            : 'Session-Vorschlag'}
-                        </Link>
-                      )}
-                      <button
-                        type="button"
-                        title="Titel bearbeiten"
-                        onClick={() => startTitleEdit(entry)}
-                        disabled={working}
-                        className="text-slate-400 hover:text-[var(--accent)] transition disabled:opacity-50"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 text-xs mt-1">
-                    <label className="text-slate-400">Spieltag</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={gameDayDrafts[entry.id]?.day ?? entry.gameDay ?? ''}
-                      onChange={(e) =>
-                        setGameDayDrafts((prev) => ({
-                          ...prev,
-                          [entry.id]: {
-                            day: e.target.value === '' ? null : Number(e.target.value),
-                            label: prev[entry.id]?.label ?? entry.gameDateLabel ?? '',
-                          },
-                        }))
-                      }
-                      placeholder="–"
-                      className="w-20 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                    />
-                    <input
-                      type="text"
-                      value={gameDayDrafts[entry.id]?.label ?? entry.gameDateLabel ?? ''}
-                      onChange={(e) =>
-                        setGameDayDrafts((prev) => ({
-                          ...prev,
-                          [entry.id]: {
-                            day: prev[entry.id]?.day ?? entry.gameDay,
-                            label: e.target.value,
-                          },
-                        }))
-                      }
-                      placeholder="Datum/Label (optional)"
-                      className="w-48 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        saveGameDay(
-                          entry.id,
-                          gameDayDrafts[entry.id]?.day ?? entry.gameDay,
-                          (gameDayDrafts[entry.id]?.label ?? entry.gameDateLabel ?? '') as
-                            string | null
-                        )
-                      }
-                      disabled={working}
-                      className="px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
-                    >
-                      Speichern
-                    </button>
+                        {entry.sessionDraftForName
+                          ? `Session: ${entry.sessionDraftForName}`
+                          : 'Session-Vorschlag'}
+                      </Link>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2 justify-end">
                     <Button
@@ -1438,7 +1276,6 @@ export function Diary() {
                   {campaignDays.map((d) => (
                     <option key={d.day} value={d.day}>
                       Spieltag {d.day}
-                      {d.label ? ` – ${d.label}` : ''}
                     </option>
                   ))}
                 </select>
@@ -1453,15 +1290,8 @@ export function Diary() {
                 </button>
               </div>
             ) : (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={createDayLabel}
-                  onChange={(e) => setCreateDayLabel(e.target.value)}
-                  disabled={working}
-                  placeholder="Label (optional), z. B. Festtag des Monden"
-                  className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                />
+              <div className="flex gap-2 items-center">
+                <span className="text-slate-300">Neuer Spieltag wird angelegt</span>
                 <button
                   type="button"
                   onClick={() => setCreateDayMode('existing')}
@@ -1473,9 +1303,7 @@ export function Diary() {
               </div>
             )}
             {createDayMode === 'new' && (
-              <p className="mt-1 text-xs text-slate-500">
-                Erstellt den nächsten freien Spieltag und setzt ihn als Titel dieses Eintrags.
-              </p>
+              <p className="mt-1 text-xs text-slate-500">Erstellt den nächsten freien Spieltag.</p>
             )}
           </div>
           <div className="flex-1 min-h-0 flex flex-col">
