@@ -115,6 +115,8 @@ export function Diary() {
   const [nextGameDay, setNextGameDay] = useState<number | null>(null);
   const [createDayValue, setCreateDayValue] = useState<number | ''>('');
   const [customDayValue, setCustomDayValue] = useState<number | ''>('');
+  const [skipMode, setSkipMode] = useState(false);
+  const [currentGameDay, setCurrentGameDay] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
   const [draftOriginal, setDraftOriginal] = useState<
@@ -281,6 +283,7 @@ export function Diary() {
     setFormError(null);
     setCreateDayValue('');
     setCustomDayValue('');
+    setSkipMode(false);
   }
 
   async function openCreate() {
@@ -294,6 +297,7 @@ export function Diary() {
     if (data) {
       setCampaignDays(data.days);
       setNextGameDay(data.nextGameDay);
+      setCurrentGameDay(data.currentGameDay);
     }
   }
 
@@ -309,7 +313,7 @@ export function Diary() {
 
     const plainText = stripHtml(form.content).trim();
     const contentOk = !!plainText;
-    const selectedDay = customDayValue !== '' ? Number(customDayValue) : createDayValue;
+    const selectedDay = skipMode ? customDayValue : createDayValue;
     const dayOk = selectedDay !== '' && Number(selectedDay) > 0;
     if (!contentOk || !dayOk) {
       setFormError('Wähle einen Spieltag und erfülle den Inhalt');
@@ -319,6 +323,12 @@ export function Diary() {
     const gameDay = Number(selectedDay);
     if (!Number.isInteger(gameDay) || gameDay <= 0) {
       setFormError('Spieltag muss eine positive ganze Zahl sein');
+      return;
+    }
+    if (skipMode && currentGameDay !== null && gameDay <= currentGameDay) {
+      setFormError(
+        `Überspringen nur nach dem höchsten bekannten Spieltag (Tag ${currentGameDay}) möglich`
+      );
       return;
     }
     if (entries.some((e) => e.gameDay === gameDay)) {
@@ -799,7 +809,9 @@ export function Diary() {
         disabled={
           working ||
           !stripHtml(form.content).trim() ||
-          (customDayValue === '' && !(createDayValue !== '' && Number(createDayValue) > 0))
+          (skipMode
+            ? customDayValue === ''
+            : !(createDayValue !== '' && Number(createDayValue) > 0))
         }
         className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
       >
@@ -1257,14 +1269,21 @@ export function Diary() {
           <div>
             <label className="block text-sm text-slate-400 mb-1">Spieltag</label>
             <select
-              value={createDayValue}
+              value={skipMode ? '__skip__' : createDayValue}
               onChange={(e) => {
                 const v = e.target.value;
-                setCreateDayValue(v === '' ? '' : Number(v));
-                if (v !== '') setCustomDayValue('');
+                if (v === '__skip__') {
+                  setSkipMode(true);
+                  setCreateDayValue('');
+                  setCustomDayValue('');
+                } else {
+                  setSkipMode(false);
+                  setCreateDayValue(v === '' ? '' : Number(v));
+                  setCustomDayValue('');
+                }
               }}
               disabled={working}
-              required={customDayValue === ''}
+              required={!skipMode}
               className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             >
               <option value="">Spieltag wählen…</option>
@@ -1280,28 +1299,31 @@ export function Diary() {
                     Spieltag {d.day}
                   </option>
                 ))}
+              <option value="__skip__">Tage überspringen…</option>
             </select>
-            <div className="mt-3">
-              <label className="block text-xs text-slate-400 mb-1">
-                Oder direkt auf Tag springen
-              </label>
-              <input
-                type="number"
-                min={1}
-                placeholder="z. B. 50"
-                value={customDayValue}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setCustomDayValue(v === '' ? '' : Number(v));
-                  if (v !== '') setCreateDayValue('');
-                }}
-                disabled={working}
-                className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Legt den Tag direkt an – Lücken dürfen entstehen (z. B. Sprung auf Tag 50).
-              </p>
-            </div>
+            {skipMode && (
+              <div className="mt-3">
+                <label className="block text-xs text-slate-400 mb-1">Tage überspringen</label>
+                <input
+                  type="number"
+                  min={(currentGameDay ?? 0) + 1}
+                  step={1}
+                  placeholder={currentGameDay !== null ? `z. B. ${currentGameDay + 7}` : 'z. B. 50'}
+                  value={customDayValue}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setCustomDayValue(v === '' ? '' : Number(v));
+                  }}
+                  disabled={working}
+                  required={skipMode}
+                  className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Legt den Tag direkt an – nur Ziffern, größer als der höchste bekannte Spieltag
+                  {currentGameDay !== null ? ` (Tag ${currentGameDay})` : ''}.
+                </p>
+              </div>
+            )}
           </div>
           <div className="flex-1 min-h-0 flex flex-col">
             <label className="block text-sm text-slate-400 mb-1">Inhalt</label>
