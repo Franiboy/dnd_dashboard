@@ -140,6 +140,7 @@ export async function detectSessionGameDay(
     title: `dnd-session-gameday-${sessionId}-${Date.now()}`,
     scopes: ['recording:read', 'recording:game-day'],
     user,
+    recordingSessionId: sessionId,
     onLog,
   });
 

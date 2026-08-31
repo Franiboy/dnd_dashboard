@@ -654,6 +654,9 @@ if (requireScope('recording:game-day')) {
     },
     async ({ sessionId, gameDay, gameDayEnd }) => {
       try {
+        if (payload?.recordingSessionId !== sessionId) {
+          return error('Der MCP-Token ist nicht für diese Session autorisiert.');
+        }
         const session = getSessionById(sessionId);
         if (!session) return error(`Session ${sessionId} nicht gefunden.`);
         const start = gameDay;
