@@ -116,7 +116,7 @@ export function Diary() {
   const [createDayValue, setCreateDayValue] = useState<number | ''>('');
   const [customDayValue, setCustomDayValue] = useState<number | ''>('');
   const [skipMode, setSkipMode] = useState(false);
-  const [currentGameDay, setCurrentGameDay] = useState<number | null>(null);
+  const [currentGameDay, setCurrentGameDay] = useState<number | null | undefined>(undefined);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
   const [draftOriginal, setDraftOriginal] = useState<
@@ -284,6 +284,7 @@ export function Diary() {
     setCreateDayValue('');
     setCustomDayValue('');
     setSkipMode(false);
+    setCurrentGameDay(undefined);
   }
 
   async function openCreate() {
@@ -325,7 +326,16 @@ export function Diary() {
       setFormError('Spieltag muss eine positive ganze Zahl sein');
       return;
     }
-    if (skipMode && currentGameDay !== null && gameDay <= currentGameDay) {
+    if (skipMode && currentGameDay === undefined) {
+      setFormError('Der aktuelle Spieltag wird noch geladen');
+      return;
+    }
+    if (
+      skipMode &&
+      currentGameDay !== null &&
+      currentGameDay !== undefined &&
+      gameDay <= currentGameDay
+    ) {
       setFormError(
         `Überspringen nur nach dem höchsten bekannten Spieltag (Tag ${currentGameDay}) möglich`
       );
@@ -810,7 +820,7 @@ export function Diary() {
           working ||
           !stripHtml(form.content).trim() ||
           (skipMode
-            ? customDayValue === ''
+            ? customDayValue === '' || currentGameDay === undefined
             : !(createDayValue !== '' && Number(createDayValue) > 0))
         }
         className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
@@ -1308,7 +1318,11 @@ export function Diary() {
                   type="number"
                   min={(currentGameDay ?? 0) + 1}
                   step={1}
-                  placeholder={currentGameDay !== null ? `z. B. ${currentGameDay + 7}` : 'z. B. 50'}
+                  placeholder={
+                    currentGameDay !== null && currentGameDay !== undefined
+                      ? `z. B. ${currentGameDay + 7}`
+                      : 'z. B. 50'
+                  }
                   value={customDayValue}
                   onChange={(e) => {
                     const v = e.target.value;
@@ -1320,7 +1334,10 @@ export function Diary() {
                 />
                 <p className="mt-1 text-xs text-slate-500">
                   Legt den Tag direkt an – nur Ziffern, größer als der höchste bekannte Spieltag
-                  {currentGameDay !== null ? ` (Tag ${currentGameDay})` : ''}.
+                  {currentGameDay !== null && currentGameDay !== undefined
+                    ? ` (Tag ${currentGameDay})`
+                    : ''}
+                  .
                 </p>
               </div>
             )}
