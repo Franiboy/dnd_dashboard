@@ -123,13 +123,13 @@ merge_pr() {
 			log "ERROR: PR #$PR_NUMBER is CLOSED without a merge"
 			return 1
 		fi
-		sleep 10
+		sleep 3
 	done
-	if [ "$merge_error" -ne 0 ]; then
-		log "ERROR: enabling auto-merge failed for PR #$PR_NUMBER"
-	else
-		log "ERROR: PR #$PR_NUMBER did not reach MERGED within ${timeout_seconds}s"
-	fi
+	# Never leave auto-merge armed: GitHub could merge the (unchanged) head
+	# after this job already failed, with no deployment afterwards because
+	# workflow-token merges do not trigger the main deploy job.
+	log "ERROR: PR #$PR_NUMBER did not reach MERGED within ${timeout_seconds}s; disabling auto-merge"
+	gh pr merge "$PR_NUMBER" --disable-auto >/dev/null 2>&1 || true
 	return 1
 }
 
