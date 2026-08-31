@@ -27,12 +27,20 @@ export interface McpSessionUser {
   activePerson?: string | null;
 }
 
+/** Restricts knowledge mutations in a session to one entity. */
+export interface KnowledgeTarget {
+  entityType: 'persons' | 'organizations' | 'locations';
+  entityName: string;
+  entityQualifier: string;
+}
+
 export interface McpSessionTokenInput {
   sessionId: string;
   scopes: McpScope[];
   userId?: string;
   isAdmin?: boolean;
   recordingSessionId?: number;
+  knowledgeTarget?: KnowledgeTarget;
 }
 
 export interface McpSessionPayload extends McpSessionTokenInput {
@@ -51,7 +59,8 @@ function getSecret(): string {
 export function createMcpSessionToken(
   scopes: McpScope[],
   user?: McpSessionUser,
-  recordingSessionId?: number
+  recordingSessionId?: number,
+  knowledgeTarget?: KnowledgeTarget
 ): string {
   const secret = getSecret();
   const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -62,6 +71,9 @@ export function createMcpSessionToken(
   }
   if (recordingSessionId !== undefined) {
     payload.recordingSessionId = recordingSessionId;
+  }
+  if (knowledgeTarget) {
+    payload.knowledgeTarget = knowledgeTarget;
   }
   return jwt.sign(payload, secret, { expiresIn: '10m' });
 }

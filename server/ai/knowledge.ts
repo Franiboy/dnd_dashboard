@@ -9,7 +9,7 @@ import { getEntitySummary } from '../repositories/entitySummaries.js';
 import { getCurrentGameDay } from '../repositories/gameTimeline.js';
 import { stripHtml } from './rewrite.js';
 import { createLogger } from '../logger.js';
-import type { McpSessionUser } from '../mcp/tokens.js';
+import type { KnowledgeTarget, McpSessionUser } from '../mcp/tokens.js';
 import type { EntityKnowledgeEntry, EntityType, KnowledgeOriginType } from '../../shared/types.js';
 
 const log = createLogger('knowledge');
@@ -335,6 +335,11 @@ export async function correctKnowledgeFromText(
       onLog,
       user,
       qualifier: target.entityQualifier ?? '',
+      knowledgeTarget: {
+        entityType: target.entityType,
+        entityName: target.entityName,
+        entityQualifier: target.entityQualifier ?? '',
+      },
     });
     summaries.push({
       entityType: target.entityType,
@@ -355,6 +360,133 @@ export async function correctKnowledgeFromText(
   return { created: diff.created, deleted: diff.deleted, ended: diff.ended, summaries };
 }
 
+export interface KnowledgeReviewOptions {
+  model?: string;
+  onLog?: (line: string) => void;
+  /** Acting user; scopes the searchable diary entries (admin sees all). */
+  user?: McpSessionUser;
+  /** Disambiguator for homonyms; '' targets the plain name. */
+  qualifier?: string;
+}
+
+/**
+ * Reviews the complete knowledge of a single entity against the players'
+ * diary entries (shared world context): ends outdated facts, deletes
+ * contradictions and adds corroborated facts that are missing, then refreshes
+ * the affected entity summaries.
+ */
+export async function reviewEntityKnowledge(
+  entityType: EntityType,
+  entityName: string,
+  options: KnowledgeReviewOptions = {}
+): Promise<KnowledgeCorrectionResult> {
+  const { model, onLog, user, qualifier = '' } = options;
+  const typeLabel =
+    entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
+  const qualifiedName = qualifier ? `${entityName} (${qualifier})` : entityName;
+  const currentGameDay = getCurrentGameDay();
+
+  const prompt = [
+    'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+    '',
+    'Aufgabe: Überprüfe das gesamte gespeicherte Wissen der Fokus-Entität darauf, ob es aktuell und stimmig ist, und berichtige es anhand der verfügbaren Kontext-Einträge (Tagebücher aller Spieler, Spieltage).',
+    '',
+    `Fokus-Entität: ${typeLabel} "${qualifiedName}".`,
+    `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}.`,
+    '',
+    'Verfügbare Tools:',
+    `- get_entity(type="${entityType}", name="${entityName}"${
+      qualifier ? `, qualifier="${qualifier}"` : ''
+    }, includeHistory=true): Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Historie und verknüpfte Tagebucheinträge (mit Spieltag) der Entität. MUSST du zuerst aufrufen.`,
+    '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
+    '- search_diary_entries(query, limit?): Durchsucht die Tagebucheinträge aller Spieler nach einem Begriff, um Aussagen zu verifizieren.',
+    '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
+    '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
+    '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag; validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
+    '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (zeitliche Änderung, bleibt als Historie).',
+    '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch).',
+    '',
+    'Vorgehen:',
+    '1. Rufe get_entity für die Fokus-Entität auf (includeHistory=true), um das komplette Wissen inkl. Historie und die verknüpften Tagebucheinträge (mit Spieltag) zu sehen.',
+    '2. Lies bei Bedarf die relevanten Tagebucheinträge vollständig (search_diary_entries/get_diary_entry), um den zeitlichen Verlauf und den aktuellen Stand der Entität zu verstehen.',
+    '3. Gleiche jeden aktiven Wissenseintrag gegen diesen Kontext ab:',
+    '   - Zeitlich überholt (der Fakt stimmt, gilt aber seit einem Spieltag nicht mehr): beende ihn mit end_knowledge(id, until=<Spieltag>, reason).',
+    '   - Grundsätzlich falsch (Widerspruch zum belegten Kontext): markiere ihn mit delete_knowledge(id, reason).',
+    '   - Korrekt und aktuell: lasse ihn unangetastet.',
+    '4. Ergänze mit create_knowledge Fakten, die durch den Kontext belegt sind und im gespeicherten Wissen fehlen; setze bei zeitgebundenen Fakten validFrom/validUntil anhand der Spieltage.',
+    '   - Extrahiere nur Fakten, die tatsächlich durch die Kontext-Einträge belegt sind. Erfinde keine Details.',
+    '5. Prüfe auch beendete/gelöschte Einträge: Hat sich der Zustand erneut geändert (z. B. lebt eine "verstorbene" Person doch wieder), lege den korrigierten Fakt neu mit passendem Gültigkeitsfenster an.',
+    '',
+    'Regeln:',
+    '- Arbeite nur an der Fokus-Entität; ändere kein Wissen anderer Entitäten.',
+    '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
+    '- In delete_knowledge und end_knowledge muss reason kurz erklären, warum der Eintrag falsch bzw. beendet ist, mit Bezug zum belegten Kontext.',
+    '- In delete_knowledge und end_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
+    '- Verwende die exakte Schreibweise aus der Datenbank (Qualifier bei Namensgleichheit).',
+    '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
+    '',
+    'Wenn das gesamte bestehende Wissen bereits korrekt und aktuell ist, beende die Aufgabe ohne weitere Tool-Aufrufe.',
+  ].join('\n');
+
+  log.info(`Reviewing knowledge for ${typeLabel}/${qualifiedName}`);
+
+  const snapshotBefore = takeKnowledgeSnapshot();
+
+  const result = await runOpenCode({
+    prompt,
+    worktreePath: process.cwd(),
+    model: model || getModel(),
+    title: `dnd-review-knowledge-${Date.now()}`,
+    scopes: ['entity:read', 'knowledge:distribute', 'diary:read', 'diary:read-all'],
+    user,
+    knowledgeTarget: { entityType, entityName, entityQualifier: qualifier },
+    onLog,
+  });
+
+  const allAfter = listAllKnowledge();
+  const diff = computeDistributionDiff(snapshotBefore, allAfter);
+
+  if (!result.success) {
+    log.warn(`Knowledge review failed: exitCode=${result.exitCode}`);
+    return { created: [], deleted: [], ended: [], summaries: [] };
+  }
+
+  // Refresh summaries of every affected entity so corrections are visible immediately.
+  const summaries: CorrectedEntitySummary[] = [];
+  for (const target of collectAffectedEntities(
+    { entityType, entityName, entityQualifier: qualifier },
+    diff
+  )) {
+    const generated = await generateEntitySummary(target.entityType, target.entityName, {
+      model,
+      onLog,
+      user,
+      qualifier: target.entityQualifier ?? '',
+      knowledgeTarget: {
+        entityType,
+        entityName,
+        entityQualifier: qualifier,
+      },
+    });
+    summaries.push({
+      entityType: target.entityType,
+      entityName: target.entityName,
+      entityQualifier: target.entityQualifier ?? '',
+      summary: generated?.summary ?? null,
+      miniSummary: generated?.miniSummary ?? null,
+    });
+  }
+
+  if (result.sessionId) {
+    deleteOpenCodeSession(result.sessionId);
+  }
+
+  log.info(
+    `Reviewed knowledge for ${typeLabel}/${qualifiedName}: created ${diff.created.length}, ended ${diff.ended.length}, deleted ${diff.deleted.length}`
+  );
+  return { created: diff.created, deleted: diff.deleted, ended: diff.ended, summaries };
+}
+
 export interface GeneratedEntitySummary {
   summary: string;
   miniSummary: string | null;
@@ -367,6 +499,8 @@ export interface EntitySummaryOptions {
   user?: McpSessionUser;
   /** Disambiguator for homonyms; '' targets the plain name. */
   qualifier?: string;
+  /** Restricts summary writes to the requested entity. */
+  knowledgeTarget?: KnowledgeTarget;
 }
 
 export async function generateEntitySummary(
@@ -374,7 +508,7 @@ export async function generateEntitySummary(
   entityName: string,
   options: EntitySummaryOptions = {}
 ): Promise<GeneratedEntitySummary | null> {
-  const { model, onLog, user, qualifier = '' } = options;
+  const { model, onLog, user, qualifier = '', knowledgeTarget } = options;
   const typeLabel =
     entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
   const qualifiedName = qualifier ? `${entityName} (${qualifier})` : entityName;
@@ -419,6 +553,7 @@ export async function generateEntitySummary(
     title: `dnd-entity-summary-${entityType}-${entityName}-${Date.now()}`,
     scopes: ['entity:read', 'entity:summary', 'diary:read', 'diary:read-all'],
     user,
+    knowledgeTarget,
     onLog,
   });
 

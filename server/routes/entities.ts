@@ -6,6 +6,7 @@ import { isAiEnabled } from '../ai/config.js';
 import {
   distributeKnowledgeFromText,
   correctKnowledgeFromText,
+  reviewEntityKnowledge,
   generateEntitySummary,
 } from '../ai/knowledge.js';
 import {
@@ -451,6 +452,29 @@ router.post('/knowledge/correct', async (req: AuthRequest, res) => {
     res.json(result);
   } catch {
     res.status(500).json({ error: 'KI-Berichtigung fehlgeschlagen' });
+  }
+});
+
+router.post('/knowledge/review', async (req: AuthRequest, res) => {
+  if (!isAiEnabled()) {
+    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
+    return;
+  }
+
+  const { type, name, qualifier } = req.body;
+  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+
+  try {
+    const result = await reviewEntityKnowledge(type, name.trim(), {
+      qualifier: typeof qualifier === 'string' ? qualifier.trim() : '',
+      user: req.user,
+    });
+    res.json(result);
+  } catch {
+    res.status(500).json({ error: 'KI-Prüfung fehlgeschlagen' });
   }
 });
 
