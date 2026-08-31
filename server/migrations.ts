@@ -201,6 +201,22 @@ function dropLegacyDiaryEntryDate(): void {
   }
 }
 
+// Remove the obsolete in-game date label columns from databases created before
+// the timeline was reduced to numeric days.
+function dropLegacyGameDateLabels(): void {
+  const columns: Array<[string, string]> = [
+    ['recording_sessions', 'game_date_label'],
+    ['diary_entries', 'game_date_label'],
+    ['campaign_days', 'label'],
+  ];
+  for (const [table, column] of columns) {
+    if (tableExists(table) && getExistingColumns(table).has(column)) {
+      db.exec(`ALTER TABLE ${quote(table)} DROP COLUMN ${quote(column)}`);
+      log.info(`Dropped legacy column ${table}.${column}`);
+    }
+  }
+}
+
 // Seed the in-game day counter (game_day) for legacy data from the real
 // chronology. Sessions and diary entries without a game_day get a monotonic
 // counter following their real date order; the counter continues from the
@@ -410,6 +426,7 @@ export function runMigrations(): void {
     migrateEntityBlacklistTypes();
     migrateWhiteboardElementTypes();
     dropLegacyDiaryEntryDate();
+    dropLegacyGameDateLabels();
     migrateWhiteboardElementTypes();
     rebuildEntitySummariesForQualifier();
     // Apply the declarative schema diff (tables, columns, indexes).
