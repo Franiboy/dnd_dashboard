@@ -107,13 +107,10 @@ Facts that change over the campaign (whose a character likes, allegiances, goals
 as **time-bounded knowledge** instead of being overwritten:
 
 - **Central timeline:** `campaign_days` is the single source of truth for in-game time (one row
-  per day: `day` + optional `label`). `recording_sessions.game_day` and `diary_entries.game_day`
+  per day: `day`). `recording_sessions.game_day`/`game_day_end` and `diary_entries.game_day`
   reference it; the **current day is the highest day present**. Legacy rows are auto-imported
-  into `campaign_days` by `server/migrations.ts` (`seedCampaignDays`).
-- **Manual diary entry creation** no longer asks for a free title: the user picks an existing
-  campaign day ("Spieltag N – Label") or creates the next one (+ optional label). The server
-  derives the entry title from the day (`Spieltag {N}` or `Spieltag {N} – {Label}`) and sets the
-  entry's `game_day`. AI-generated session drafts keep their own title.
+  into `campaign_days` by `server/migrations.ts` (`seedCampaignDays`). `recording_sessions` may span a range `[game_day, game_day_end]` (max 30 days) to capture multi-day sessions.
+- **Manual diary entry creation** picks an existing campaign day ("Spieltag N") or creates the next one; the server derives the title (`Spieltag {N}`) and sets `game_day`. **Sessions receive their days automatically:** after transcription + boundary detection, `detectSessionGameDay` analyses the transcript and campaign context to set `game_day`/`game_day_end` (never overwriting a manually set day). AI-generated session drafts keep their own title.
 - **Validity window:** knowledge entries carry `valid_from` / `valid_until` (in-game days).
   `valid_from` is inclusive (the fact starts on that day); `valid_until` is **exclusive** (the
   first day the fact no longer holds). `NULL` is open-ended. This keeps an ending fact and its
@@ -152,10 +149,11 @@ as **time-bounded knowledge** instead of being overwritten:
 | `entity:read`          | `list_entities`, `get_entity`                                                                      |
 | `entity:extract`       | `link_diary_entity`                                                                                |
 | `entity:summary`       | `set_entity_summary`                                                                               |
-| `knowledge:distribute` | `create_knowledge`, `delete_knowledge`                                                             |
+| `knowledge:distribute` | `create_knowledge`, `delete_knowledge`, `end_knowledge`                                            |
 | `recording:read`       | `get_session_summary`, `get_previous_session_summaries`                                            |
 | `recording:summarize`  | `set_session_summary`, `set_session_long_summary`                                                  |
 | `recording:boundaries` | `set_session_boundaries`                                                                           |
+| `recording:game-day`   | `set_session_game_day`                                                                             |
 | `bingo:read`           | `get_bingo_state`                                                                                  |
 
 ## Recording Module
@@ -168,6 +166,7 @@ as **time-bounded knowledge** instead of being overwritten:
 - Transcripts can be trimmed and saved as text.
 - Admins can generate an AI summary of a completed transcript. The AI first creates a detailed HTML summary (`set_session_long_summary`), then derives a short bullet-point summary (`set_session_summary`) from it. It can read previous session summaries, diary entries of all players, entities and knowledge (`get_session_summary`, `get_previous_session_summaries`). After generation, affected entity summaries are marked dirty and knowledge is distributed. On the Sessions page, the short summary is always shown at the top of a session; the long HTML summary can be expanded below and is rendered in a rich read-only editor, including headings, lists and other formatting.
 - Before summarizing a transcript, the AI determines the actual start/end of the game play within the recording (`detectSessionBoundaries` in `server/ai/sessionBoundary.ts`). Because the group holds pre-session team discussion and post-session small talk on the recorded voice channel, the AI inspects the head/tail of the recording and saves the boundaries (`game_start_seconds`/`game_end_seconds`/`game_boundary_detected_at`) via the `set_session_boundaries` tool. Summaries and session-to-diary prompts receive these offsets so they only cover the actual game session.
+- Right after boundary detection, the AI determines the affected in-game days (`detectSessionGameDay` in `server/ai/sessionGameDay.ts`). It reads the cleaned transcript plus campaign context (current/next day, known `campaign_days`, previous sessions via `get_previous_session_summaries`) and counts explicit day mentions and implicit long rests/overnights to infer the `game_day` → `game_day_end` range (max 30 days, single-day if no rest). The range is saved via `set_session_game_day`; manually set days are never overwritten (scheduler skips, `POST /:id/detect-game-day` needs `?force=true`). If the transcript gives no explicit day, the AI guesses by continuing from the previous session or the next free day (`getNextGameDay`). Summaries and knowledge distribution see the correct `getCurrentGameDay` because the range is set before `processSessionSummaryEntities`. Admins can also trigger detection manually via `POST /api/recordings/:id/detect-game-day`.
 - Approved users can let the AI transfer a completed session into their personal diary (`POST /api/recordings/:id/diary-draft`). The AI decides whether to append the session to an existing diary entry (similar title/content/day) or create a new one. By default the generated text is stored as an AI version (KI-Version) so the user can review, edit and accept it before it becomes the actual entry content.
 - On the Sessions page, users can open a settings drawer to enable automatic session-to-diary transfer per user. A second toggle lets the AI directly accept the generated draft (skip the KI-Version review) so the text becomes a real diary entry immediately.
 - The Nightly scheduler runs `processSessionToDiary` between session summary generation and diary summary/entity processing. For each user with auto-transfer enabled it generates one draft per completed, not-yet-transferred session. If direct accept is enabled, the generated content is written to the entry body and marked dirty so the diary summary/entity job can process it next.

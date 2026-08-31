@@ -15,6 +15,7 @@ export type McpScope =
   | 'recording:read'
   | 'recording:summarize'
   | 'recording:boundaries'
+  | 'recording:game-day'
   | 'bingo:read'
   | 'bingo:write';
 
@@ -30,6 +31,7 @@ export interface McpSessionTokenInput {
   scopes: McpScope[];
   userId?: string;
   isAdmin?: boolean;
+  recordingSessionId?: number;
 }
 
 export interface McpSessionPayload extends McpSessionTokenInput {
@@ -45,13 +47,20 @@ function getSecret(): string {
   return secret;
 }
 
-export function createMcpSessionToken(scopes: McpScope[], user?: McpSessionUser): string {
+export function createMcpSessionToken(
+  scopes: McpScope[],
+  user?: McpSessionUser,
+  recordingSessionId?: number
+): string {
   const secret = getSecret();
   const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const payload: McpSessionTokenInput = { sessionId, scopes };
   if (user) {
     payload.userId = user.id;
     payload.isAdmin = user.isAdmin ?? false;
+  }
+  if (recordingSessionId !== undefined) {
+    payload.recordingSessionId = recordingSessionId;
   }
   return jwt.sign(payload, secret, { expiresIn: '10m' });
 }

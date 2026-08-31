@@ -95,12 +95,14 @@ export interface PendingAiSession {
   longSummary: string | null;
   longSummaryGeneratedAt: string | null;
   gameBoundaryDetectedAt: string | null;
+  gameDay: number | null;
+  gameDayEnd: number | null;
 }
 
 export function listSessionsPendingAi(): PendingAiSession[] {
   return db
     .prepare(
-      "SELECT id, transcript_improved_at as transcriptImprovedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_boundary_detected_at as gameBoundaryDetectedAt FROM recording_sessions WHERE status = 'completed' AND transcript IS NOT NULL"
+      "SELECT id, transcript_improved_at as transcriptImprovedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_boundary_detected_at as gameBoundaryDetectedAt, game_day as gameDay, game_day_end as gameDayEnd FROM recording_sessions WHERE status = 'completed' AND transcript IS NOT NULL"
     )
     .all() as PendingAiSession[];
 }

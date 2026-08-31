@@ -31,7 +31,7 @@ import {
   markEntityKnowledgeDeleted,
   markEntityKnowledgeTimelineEnd,
 } from '../repositories/entityKnowledge.js';
-import { getCurrentGameDay } from '../repositories/gameTimeline.js';
+import { getCurrentGameDay, setSessionGameDayRange } from '../repositories/gameTimeline.js';
 import { getEntitySummary, setEntitySummary } from '../repositories/entitySummaries.js';
 import { writeRewrittenFile } from '../diaryFiles.js';
 import { normalizeToHtml } from '../ai/rewrite.js';
@@ -638,6 +638,41 @@ if (requireScope('recording:boundaries')) {
         return error(
           err instanceof Error ? err.message : 'Fehler beim Speichern der Spielzeitgrenzen'
         );
+      }
+    }
+  );
+}
+
+if (requireScope('recording:game-day')) {
+  loggedTool(
+    'set_session_game_day',
+    'Setzt die betroffenen In-Game-Spieltage einer Aufnahme-Session (gameDay bis gameDayEnd, inklusiv). Ein einzelner Tag hat gameDayEnd == gameDay oder weglassen. Maximal 30 Tage Spanne.',
+    {
+      sessionId: z.number().int().positive(),
+      gameDay: z.number().int().positive(),
+      gameDayEnd: z.number().int().positive().optional(),
+    },
+    async ({ sessionId, gameDay, gameDayEnd }) => {
+      try {
+        if (payload?.recordingSessionId !== sessionId) {
+          return error('Der MCP-Token ist nicht für diese Session autorisiert.');
+        }
+        const session = getSessionById(sessionId);
+        if (!session) return error(`Session ${sessionId} nicht gefunden.`);
+        const start = gameDay;
+        const end = gameDayEnd ?? start;
+        if (end < start) {
+          return error('gameDayEnd darf nicht vor gameDay liegen.');
+        }
+        if (end - start > 30) {
+          return error('Zeitraum zu groß (max 30 Tage).');
+        }
+        setSessionGameDayRange(sessionId, start, end);
+        return success(
+          `Spieltag für Session ${sessionId} gesetzt: ${start}${end !== start ? `–${end}` : ''}.`
+        );
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Setzen des Spieltags');
       }
     }
   );
