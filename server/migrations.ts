@@ -245,6 +245,19 @@ function backfillGameDays(): void {
   }
 }
 
+// Sessions that span multiple in-game days store a range [game_day, game_day_end].
+// Backfill legacy rows that only have a start day.
+function backfillSessionGameDayEnd(): void {
+  if (!tableExists('recording_sessions')) return;
+  const cols = getExistingColumns('recording_sessions');
+  if (!cols.has('game_day_end') || !cols.has('game_day')) return;
+  db.exec(`
+    UPDATE recording_sessions
+    SET game_day_end = game_day
+    WHERE game_day IS NOT NULL AND game_day_end IS NULL
+  `);
+}
+
 // Legacy knowledge entries extracted from a session or diary inherit the
 // source's game_day as their valid_from, so already-known facts receive a
 // starting point on the in-game timeline.
@@ -280,9 +293,33 @@ function seedCampaignDays(): void {
      FROM (
        SELECT DISTINCT game_day AS m FROM recording_sessions WHERE game_day IS NOT NULL
        UNION
+       SELECT DISTINCT game_day_end AS m FROM recording_sessions WHERE game_day_end IS NOT NULL
+       UNION
        SELECT DISTINCT game_day AS m FROM diary_entries WHERE game_day IS NOT NULL
      )`
   ).run(now, now);
+  // For sessions that span a range, ensure every day in the interval exists.
+  if (getExistingColumns('recording_sessions').has('game_day_end')) {
+    const sessions = db
+      .prepare(
+        'SELECT game_day, game_day_end FROM recording_sessions WHERE game_day IS NOT NULL AND game_day_end IS NOT NULL'
+      )
+      .all() as { game_day: number; game_day_end: number }[];
+    const insert = db.prepare(
+      'INSERT OR IGNORE INTO campaign_days (day, label, created_at, updated_at) VALUES (?, NULL, ?, ?)'
+    );
+    for (const s of sessions) {
+      const start = s.game_day;
+      const end = s.game_day_end ?? start;
+      if (end - start > 30) {
+        log.warn(`Skipping seed for session range ${start}-${end} too large (max 30)`);
+        continue;
+      }
+      for (let d = start; d <= end; d++) {
+        insert.run(d, now, now);
+      }
+    }
+  }
 }
 
 // Legacy ai_settings rows used separate normal_model/cheap_model columns.
@@ -381,6 +418,7 @@ export function runMigrations(): void {
     migrateAiSettingsSingleModel();
     fillRecordingSessionUpdatedAt();
     backfillGameDays();
+    backfillSessionGameDayEnd();
     seedCampaignDays();
     backfillKnowledgeValidity();
   })();

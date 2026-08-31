@@ -301,6 +301,8 @@ export interface RecordingSession {
   gameBoundaryDetectedAt: string | null;
   /** Monotonic in-game day of the campaign this session belongs to (sortable). */
   gameDay: number | null;
+  /** Inclusive end of the in-game day range (for multi-day sessions). */
+  gameDayEnd: number | null;
   /** Optional display label of the in-game day, e.g. "Feast of the Moon". */
   gameDateLabel: string | null;
   hasWavFiles?: boolean;

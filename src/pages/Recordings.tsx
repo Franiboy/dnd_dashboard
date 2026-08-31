@@ -106,7 +106,7 @@ export function Sessions({ user }: SessionsProps) {
   const [diaryTransfers, setDiaryTransfers] = useState<Record<number, SessionDiaryTransfer>>({});
   const [campaignDays, setCampaignDays] = useState<CampaignDay[]>([]);
   const [gameDayDrafts, setGameDayDrafts] = useState<
-    Record<number, { day: number | null; label: string | null }>
+    Record<number, { day: number | null; dayEnd: number | null; label: string | null }>
   >({});
   const [sessionDiaryEntries, setSessionDiaryEntries] = useState<
     Record<number, SessionDiaryEntryLink[]>
@@ -464,6 +464,7 @@ export function Sessions({ user }: SessionsProps) {
   async function saveGameDay(
     sessionId: number,
     gameDay: number | null,
+    gameDayEnd: number | null,
     gameDateLabel: string | null
   ) {
     setWorking(true);
@@ -472,7 +473,7 @@ export function Sessions({ user }: SessionsProps) {
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameDay, gameDateLabel }),
+        body: JSON.stringify({ gameDay, gameDayEnd, gameDateLabel }),
       }
     );
     setWorking(false);
@@ -582,6 +583,9 @@ export function Sessions({ user }: SessionsProps) {
               <div>
                 <h3 className="text-lg font-semibold text-[var(--text-h)]">{session.name}</h3>
                 <p className="text-sm text-slate-400">
+                  {session.gameDay
+                    ? `Spieltag ${session.gameDay}${session.gameDayEnd && session.gameDayEnd !== session.gameDay ? `–${session.gameDayEnd}` : ''} · `
+                    : ''}
                   {new Date(session.startedAt).toLocaleString('de-DE')} · Status: {session.status}
                   {session.transcriptImprovedAt && (
                     <span className="ml-2 text-xs font-medium text-[var(--accent)]">
@@ -604,6 +608,10 @@ export function Sessions({ user }: SessionsProps) {
                             ...prev,
                             [session.id]: {
                               day: e.target.value === '' ? null : Number(e.target.value),
+                              dayEnd:
+                                prev[session.id]?.dayEnd ??
+                                session.gameDayEnd ??
+                                (e.target.value === '' ? null : Number(e.target.value)),
                               label: prev[session.id]?.label ?? session.gameDateLabel ?? '',
                             },
                           }))
@@ -618,6 +626,32 @@ export function Sessions({ user }: SessionsProps) {
                           </option>
                         ))}
                       </select>
+                      <span className="text-slate-400">bis</span>
+                      <select
+                        value={
+                          gameDayDrafts[session.id]?.dayEnd !== undefined
+                            ? (gameDayDrafts[session.id]!.dayEnd ?? '')
+                            : (session.gameDayEnd ?? session.gameDay ?? '')
+                        }
+                        onChange={(e) =>
+                          setGameDayDrafts((prev) => ({
+                            ...prev,
+                            [session.id]: {
+                              day: prev[session.id]?.day ?? session.gameDay,
+                              dayEnd: e.target.value === '' ? null : Number(e.target.value),
+                              label: prev[session.id]?.label ?? session.gameDateLabel ?? '',
+                            },
+                          }))
+                        }
+                        className="min-w-0 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                      >
+                        <option value="">–</option>
+                        {campaignDays.map((d) => (
+                          <option key={d.day} value={d.day}>
+                            Spieltag {d.day}
+                          </option>
+                        ))}
+                      </select>
                       <input
                         type="text"
                         value={gameDayDrafts[session.id]?.label ?? session.gameDateLabel ?? ''}
@@ -626,6 +660,8 @@ export function Sessions({ user }: SessionsProps) {
                             ...prev,
                             [session.id]: {
                               day: prev[session.id]?.day ?? session.gameDay,
+                              dayEnd:
+                                prev[session.id]?.dayEnd ?? session.gameDayEnd ?? session.gameDay,
                               label: e.target.value,
                             },
                           }))
@@ -641,6 +677,9 @@ export function Sessions({ user }: SessionsProps) {
                             (gameDayDrafts[session.id]?.day !== undefined
                               ? gameDayDrafts[session.id]!.day
                               : session.gameDay) ?? null,
+                            (gameDayDrafts[session.id]?.dayEnd !== undefined
+                              ? gameDayDrafts[session.id]!.dayEnd
+                              : (session.gameDayEnd ?? session.gameDay)) ?? null,
                             (gameDayDrafts[session.id]?.label ?? session.gameDateLabel ?? '') as
                               string | null
                           )
