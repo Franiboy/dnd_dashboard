@@ -864,10 +864,7 @@ export function createSessionDiaryDraft(
   const gameDay = session?.game_day ?? null;
   const gameDateLabel = session?.game_date_label ?? null;
   if (gameDay !== null) ensureCampaignDay(gameDay, gameDateLabel);
-  const derivedTitle =
-    gameDay !== null
-      ? `Spieltag ${gameDay}`
-      : sanitizePlainText(title);
+  const derivedTitle = gameDay !== null ? `Spieltag ${gameDay}` : sanitizePlainText(title);
   const result = db
     .prepare(
       'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, game_day, game_date_label, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
