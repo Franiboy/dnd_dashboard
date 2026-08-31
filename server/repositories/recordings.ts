@@ -306,6 +306,14 @@ export function updateSession(
       }
     }
   }
+
+  if (fields.length === 0) return;
+
+  fields.push('updated_at = ?');
+  values.push(new Date().toISOString());
+
+  values.push(id);
+  db.prepare(`UPDATE recording_sessions SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 }
 
 export function createFile(input: CreateFileInput): RecordingFile {
