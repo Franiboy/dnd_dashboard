@@ -105,9 +105,11 @@ export function Sessions({ user }: SessionsProps) {
   const [draftingId, setDraftingId] = useState<number | null>(null);
   const [diaryTransfers, setDiaryTransfers] = useState<Record<number, SessionDiaryTransfer>>({});
   const [campaignDays, setCampaignDays] = useState<CampaignDay[]>([]);
-  const [gameDayDrafts, setGameDayDrafts] = useState<
-    Record<number, { day: number | null; dayEnd: number | null }>
+  const [pendingGameDays, setPendingGameDays] = useState<
+    Record<number, { gameDay: number | null; gameDayEnd: number | null }>
   >({});
+  const pendingGameDaysRef = useRef(pendingGameDays);
+  const gameDaySaveQueues = useRef<Record<number, Promise<void>>>({});
   const [sessionDiaryEntries, setSessionDiaryEntries] = useState<
     Record<number, SessionDiaryEntryLink[]>
   >({});
@@ -462,22 +464,42 @@ export function Sessions({ user }: SessionsProps) {
   }
 
   async function saveGameDay(sessionId: number, gameDay: number | null, gameDayEnd: number | null) {
-    setWorking(true);
-    const { data, error } = await request<{ session: RecordingSession }>(
-      `/api/recordings/${sessionId}/game-day`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameDay, gameDayEnd }),
+    const selection = { gameDay, gameDayEnd };
+    pendingGameDaysRef.current = { ...pendingGameDaysRef.current, [sessionId]: selection };
+    setPendingGameDays(pendingGameDaysRef.current);
+
+    const previous = gameDaySaveQueues.current[sessionId] ?? Promise.resolve();
+    const save = previous.then(async () => {
+      setWorking(true);
+      const { data, error } = await request<{ session: RecordingSession }>(
+        `/api/recordings/${sessionId}/game-day`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(selection),
+        }
+      );
+      setWorking(false);
+
+      const isLatest =
+        pendingGameDaysRef.current[sessionId]?.gameDay === selection.gameDay &&
+        pendingGameDaysRef.current[sessionId]?.gameDayEnd === selection.gameDayEnd;
+      if (data) {
+        setSessions((prev) => prev.map((s) => (s.id === sessionId ? data.session : s)));
+        if (isLatest) {
+          pendingGameDaysRef.current = { ...pendingGameDaysRef.current };
+          delete pendingGameDaysRef.current[sessionId];
+          setPendingGameDays(pendingGameDaysRef.current);
+          showSuccess('Spieltag gespeichert.');
+        }
+      } else if (error && isLatest) {
+        pendingGameDaysRef.current = { ...pendingGameDaysRef.current };
+        delete pendingGameDaysRef.current[sessionId];
+        setPendingGameDays(pendingGameDaysRef.current);
+        showError(error);
       }
-    );
-    setWorking(false);
-    if (data) {
-      setSessions((prev) => prev.map((s) => (s.id === sessionId ? data.session : s)));
-      showSuccess('Spieltag gespeichert.');
-    } else if (error) {
-      showError(error);
-    }
+    });
+    gameDaySaveQueues.current[sessionId] = save.catch(() => undefined);
   }
 
   async function updateSessionDiarySettings(
@@ -594,22 +616,30 @@ export function Sessions({ user }: SessionsProps) {
                     <div className="flex items-center gap-2">
                       <select
                         value={
-                          gameDayDrafts[session.id]?.day !== undefined
-                            ? (gameDayDrafts[session.id]!.day ?? '')
-                            : (session.gameDay ?? '')
+                          (pendingGameDays[session.id]
+                            ? pendingGameDays[session.id].gameDay
+                            : session.gameDay) ?? ''
                         }
-                        onChange={(e) =>
-                          setGameDayDrafts((prev) => ({
-                            ...prev,
-                            [session.id]: {
-                              day: e.target.value === '' ? null : Number(e.target.value),
-                              dayEnd:
-                                prev[session.id]?.dayEnd ??
-                                session.gameDayEnd ??
-                                (e.target.value === '' ? null : Number(e.target.value)),
-                            },
-                          }))
-                        }
+                        onChange={(e) => {
+                          const newDay = e.target.value === '' ? null : Number(e.target.value);
+                          const current = pendingGameDaysRef.current[session.id] ?? {
+                            gameDay: session.gameDay,
+                            gameDayEnd: session.gameDayEnd,
+                          };
+                          let newEnd: number | null;
+                          if (newDay === null) {
+                            newEnd = null;
+                          } else if (
+                            current.gameDayEnd !== null &&
+                            current.gameDayEnd !== undefined &&
+                            current.gameDayEnd >= newDay
+                          ) {
+                            newEnd = current.gameDayEnd;
+                          } else {
+                            newEnd = newDay;
+                          }
+                          void saveGameDay(session.id, newDay, newEnd);
+                        }}
                         className="min-w-0 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                       >
                         <option value="">– kein –</option>
@@ -622,19 +652,23 @@ export function Sessions({ user }: SessionsProps) {
                       <span className="text-slate-400">bis</span>
                       <select
                         value={
-                          gameDayDrafts[session.id]?.dayEnd !== undefined
-                            ? (gameDayDrafts[session.id]!.dayEnd ?? '')
-                            : (session.gameDayEnd ?? session.gameDay ?? '')
+                          (pendingGameDays[session.id]
+                            ? pendingGameDays[session.id].gameDayEnd
+                            : (session.gameDayEnd ?? session.gameDay)) ?? ''
                         }
-                        onChange={(e) =>
-                          setGameDayDrafts((prev) => ({
-                            ...prev,
-                            [session.id]: {
-                              day: prev[session.id]?.day ?? session.gameDay,
-                              dayEnd: e.target.value === '' ? null : Number(e.target.value),
-                            },
-                          }))
-                        }
+                        onChange={(e) => {
+                          const raw = e.target.value === '' ? null : Number(e.target.value);
+                          const current = pendingGameDaysRef.current[session.id] ?? {
+                            gameDay: session.gameDay,
+                            gameDayEnd: session.gameDayEnd,
+                          };
+                          let newStart: number | null = current.gameDay ?? null;
+                          let newEnd: number | null = raw;
+                          if (newStart === null && newEnd !== null) {
+                            newStart = newEnd;
+                          }
+                          void saveGameDay(session.id, newStart, newEnd);
+                        }}
                         className="min-w-0 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                       >
                         <option value="">–</option>
@@ -644,23 +678,6 @@ export function Sessions({ user }: SessionsProps) {
                           </option>
                         ))}
                       </select>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          saveGameDay(
-                            session.id,
-                            (gameDayDrafts[session.id]?.day !== undefined
-                              ? gameDayDrafts[session.id]!.day
-                              : session.gameDay) ?? null,
-                            (gameDayDrafts[session.id]?.dayEnd !== undefined
-                              ? gameDayDrafts[session.id]!.dayEnd
-                              : (session.gameDayEnd ?? session.gameDay)) ?? null
-                          )
-                        }
-                        className="px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition"
-                      >
-                        Speichern
-                      </button>
                     </div>
                   </div>
                 )}
