@@ -114,7 +114,7 @@ wait_for_ci() {
 		rm -f "$log_file"
 		return 0
 	fi
-	if grep -q "no checks" "$log_file"; then
+	if grep -qi "no.*checks" "$log_file"; then
 		log "No required checks – proceeding (private repo without Pro or no branch protection)"
 		rm -f "$log_file"
 		return 0
