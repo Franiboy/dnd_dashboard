@@ -30,6 +30,11 @@ describe('reviewEntityKnowledge', () => {
     expect(call.prompt).toContain('Fokus-Entität');
     expect(call.prompt).toContain('Person "Der Abt (Abt der Totenkapelle)"');
     expect(call.prompt).toContain('includeHistory=true');
+    expect(call.knowledgeTarget).toEqual({
+      entityType: 'persons',
+      entityName: 'Der Abt',
+      entityQualifier: 'Abt der Totenkapelle',
+    });
 
     // Focus entity is always part of the affected set, nothing changed.
     expect(result.created).toEqual([]);

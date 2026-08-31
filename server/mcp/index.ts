@@ -117,6 +117,32 @@ function truncateText(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength)}...`;
 }
 
+/**
+ * Server-side guard for knowledge mutations: when the session token carries a
+ * knowledgeTarget (single-entity tasks like "review entity"), any create/end/
+ * delete that does not belong to that entity is rejected. Without a target the
+ * handlers keep their previous unrestricted behaviour.
+ */
+function assertKnowledgeTargetAllowed(
+  entityType: string,
+  entityName: string,
+  entityQualifier: string
+): ReturnType<typeof error> | null {
+  const target = payload?.knowledgeTarget;
+  if (!target) return null;
+  const typeOk = entityType === target.entityType;
+  const nameOk = entityName.trim().toLowerCase() === target.entityName.toLowerCase();
+  const qualifierOk =
+    entityQualifier.trim().toLowerCase() === (target.entityQualifier ?? '').toLowerCase();
+  if (!typeOk || !nameOk || !qualifierOk) {
+    const label =
+      `${target.entityType}/${target.entityName}` +
+      (target.entityQualifier ? ` (${target.entityQualifier})` : '');
+    return error(`Die KI-Aufgabe ist serverseitig auf die Entität ${label} beschränkt.`);
+  }
+  return null;
+}
+
 function formatToolArgs(args: Record<string, unknown>): string {
   const entries = Object.entries(args)
     .map(([key, value]) => {
@@ -308,6 +334,8 @@ if (requireScope('knowledge:distribute')) {
     },
     async ({ type, name, content, title, qualifier, validFrom, validUntil }) => {
       try {
+        const targetError = assertKnowledgeTargetAllowed(type, name, qualifier?.trim() ?? '');
+        if (targetError) return targetError;
         const ref = ensureEntityExists(type, name, qualifier?.trim() ?? '');
         const entry = createEntityKnowledge(
           type,
@@ -339,6 +367,12 @@ if (requireScope('knowledge:distribute')) {
       try {
         const existing = getEntityKnowledgeEntry(id);
         if (!existing) return error('Wissenseintrag nicht gefunden');
+        const targetError = assertKnowledgeTargetAllowed(
+          existing.entityType,
+          existing.entityName,
+          existing.entityQualifier ?? ''
+        );
+        if (targetError) return targetError;
         markEntityKnowledgeDeleted(id, reason?.trim() || null);
         return success(`Wissenseintrag ${id} als gelöscht markiert.`);
       } catch (err) {
@@ -362,6 +396,12 @@ if (requireScope('knowledge:distribute')) {
         const existing = getEntityKnowledgeEntry(id);
         if (!existing) return error('Wissenseintrag nicht gefunden');
         if (existing.status !== 'active') return error('Nur aktive Einträge können beendet werden');
+        const targetError = assertKnowledgeTargetAllowed(
+          existing.entityType,
+          existing.entityName,
+          existing.entityQualifier ?? ''
+        );
+        if (targetError) return targetError;
         markEntityKnowledgeTimelineEnd(id, until, reason?.trim() || null);
         return success(`Wissenseintrag ${id} bis Spieltag ${until} beendet.`);
       } catch (err) {

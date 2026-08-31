@@ -434,6 +434,7 @@ export async function reviewEntityKnowledge(
     title: `dnd-review-knowledge-${Date.now()}`,
     scopes: ['entity:read', 'knowledge:distribute', 'diary:read', 'diary:read-all'],
     user,
+    knowledgeTarget: { entityType, entityName, entityQualifier: qualifier },
     onLog,
   });
 

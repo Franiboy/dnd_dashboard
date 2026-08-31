@@ -1,6 +1,11 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createLogger, MAX_OBJECT_ARG_LENGTH } from '../logger.js';
-import { createMcpSessionToken, type McpScope, type McpSessionUser } from '../mcp/tokens.js';
+import {
+  createMcpSessionToken,
+  type KnowledgeTarget,
+  type McpScope,
+  type McpSessionUser,
+} from '../mcp/tokens.js';
 
 const log = createLogger('opencode');
 
@@ -38,6 +43,8 @@ export interface OpenCodeOptions {
   scopes?: McpScope[];
   user?: McpSessionUser;
   recordingSessionId?: number;
+  /** Restricts knowledge mutations to a single entity (server-side). */
+  knowledgeTarget?: KnowledgeTarget;
   onLog?: (line: string) => void;
 }
 
@@ -57,6 +64,7 @@ export function runOpenCode({
   scopes,
   user,
   recordingSessionId,
+  knowledgeTarget,
   onLog,
 }: OpenCodeOptions): Promise<OpenCodeResult> {
   if (prompt.length > 50_000) {
@@ -69,7 +77,7 @@ export function runOpenCode({
 
   const mcpToken =
     scopes && scopes.length > 0
-      ? createMcpSessionToken(scopes, user, recordingSessionId)
+      ? createMcpSessionToken(scopes, user, recordingSessionId, knowledgeTarget)
       : undefined;
   if (mcpToken) {
     log.info(
