@@ -16,6 +16,7 @@ import { isAiEnabled } from '../ai/config.js';
 import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
 import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
 import { generateSessionDiaryDraft } from '../ai/sessionToDiary.js';
+import { detectSessionGameDay } from '../ai/sessionGameDay.js';
 import {
   onSessionsUpdated,
   onStatusUpdated,
@@ -428,6 +429,19 @@ router.post('/:id/summary', requireAdmin, async (req: AuthRequest, res) => {
     'Fast fertig...',
   ]);
   try {
+    // Ensure game days are known before summarizing – the scheduler normally
+    // does this automatically after transcription, but a manual summary call
+    // should also fill a missing day so knowledge/distribution sees the right
+    // campaign day.
+    const fresh = getSessionById(id);
+    if (fresh && fresh.gameDay === null) {
+      broadcastAiLog('KI ermittelt fehlende Spieltage...');
+      try {
+        await detectSessionGameDay(id, req.user!, undefined, notifyAiLog);
+      } catch (err) {
+        log.warn(`Auto game day detection before summary failed for session ${id}:`, err);
+      }
+    }
     const result = await processSessionSummaryEntities(id, req.user!, undefined, notifyAiLog);
     if (!result.longSummary || !result.summary) {
       log.error(`processSessionSummaryEntities returned incomplete result for session ${id}`);
@@ -483,6 +497,60 @@ router.post('/:id/diary-draft', async (req: AuthRequest, res) => {
   } catch (err) {
     log.error(`Unexpected error during session-to-diary draft of session ${id}:`, err);
     res.status(500).json({ error: 'KI-Überführung ins Tagebuch ist fehlgeschlagen' });
+  } finally {
+    stopProgress();
+  }
+});
+
+router.post('/:id/detect-game-day', requireAdmin, async (req: AuthRequest, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+  if (session.status !== 'completed' || !session.transcript) {
+    res.status(400).json({ error: 'Kein Transkript vorhanden' });
+    return;
+  }
+  if (!isAiEnabled()) {
+    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
+    return;
+  }
+
+  const force =
+    req.query.force === 'true' ||
+    req.query.force === '1' ||
+    (req.body && (req.body as { force?: boolean }).force === true);
+
+  if (session.gameDay !== null && !force) {
+    res.status(409).json({
+      error: 'Spieltag bereits gesetzt. Mit ?force=true überschreiben.',
+      session: getSessionById(id),
+    });
+    return;
+  }
+
+  const stopProgress = startProgressMessages('KI ermittelt Spieltage...', [
+    'KI prüft Transkript und vorherige Sessions...',
+    'KI bestimmt Spieltag-Bereich...',
+    'Fast fertig...',
+  ]);
+  try {
+    const result = await detectSessionGameDay(id, req.user!, undefined, notifyAiLog, {
+      force: !!force,
+    });
+    if (result.gameDay === null) {
+      log.error(`detectSessionGameDay returned null for session ${id}`);
+      res.status(500).json({ error: 'KI-Ermittlung des Spieltags ist fehlgeschlagen' });
+      return;
+    }
+    broadcastAiLog(`Spieltag ermittelt: ${result.gameDay}–${result.gameDayEnd ?? result.gameDay}.`);
+    emitSessionsUpdated();
+    res.json({ session: getSessionById(id) });
+  } catch (err) {
+    log.error(`Unexpected error during game day detection of session ${id}:`, err);
+    res.status(500).json({ error: 'KI-Ermittlung des Spieltags ist fehlgeschlagen' });
   } finally {
     stopProgress();
   }

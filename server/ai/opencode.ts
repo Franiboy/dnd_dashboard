@@ -37,6 +37,7 @@ export interface OpenCodeOptions {
   sessionId?: string;
   scopes?: McpScope[];
   user?: McpSessionUser;
+  recordingSessionId?: number;
   onLog?: (line: string) => void;
 }
 
@@ -55,6 +56,7 @@ export function runOpenCode({
   sessionId,
   scopes,
   user,
+  recordingSessionId,
   onLog,
 }: OpenCodeOptions): Promise<OpenCodeResult> {
   if (prompt.length > 50_000) {
@@ -65,7 +67,10 @@ export function runOpenCode({
   const bin = getOpenCodeBin();
   const args = ['run'];
 
-  const mcpToken = scopes && scopes.length > 0 ? createMcpSessionToken(scopes, user) : undefined;
+  const mcpToken =
+    scopes && scopes.length > 0
+      ? createMcpSessionToken(scopes, user, recordingSessionId)
+      : undefined;
   if (mcpToken) {
     log.info(
       `Created MCP session token with scopes: ${scopes?.join(', ')}${user ? `, user: ${user.id}` : ''}`

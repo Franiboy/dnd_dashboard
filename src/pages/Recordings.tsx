@@ -461,11 +461,7 @@ export function Sessions({ user }: SessionsProps) {
     }
   }
 
-  async function saveGameDay(
-    sessionId: number,
-    gameDay: number | null,
-    gameDayEnd: number | null
-  ) {
+  async function saveGameDay(sessionId: number, gameDay: number | null, gameDayEnd: number | null) {
     setWorking(true);
     const { data, error } = await request<{ session: RecordingSession }>(
       `/api/recordings/${sessionId}/game-day`,
