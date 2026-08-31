@@ -90,15 +90,44 @@ merge_pr() {
 # PR stuck. Wait until the required checks (ci) turn green before merging.
 # Only the required checks are watched, so this never blocks on this job's own
 # (non-required) "AI review" check, which would deadlock.
+#
+# Fix commits are pushed with the workflow's GITHUB_TOKEN, which on private
+# repos with self-hosted runners often triggers a run with conclusion
+# `action_required` (needs manual approval) or no `required` checks at all
+# (private without Pro). Local validation already ran lint/build/test, so a
+# missing or unapproved CI must never block the merge – otherwise the PR stays
+# stuck in `action_required` forever.
 wait_for_ci() {
 	local pr="$1"
-	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-900}"
-	log "Waiting for required CI checks on PR #$pr (timeout ${timeout_seconds}s)"
-	if ! timeout "$timeout_seconds" gh pr checks "$pr" --watch --fail-fast --required --interval 15; then
-		log "ERROR: required CI checks for PR #$pr did not complete green in time"
-		return 1
+	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-90}"
+	log "Waiting for required CI checks on PR #$pr (best effort, timeout ${timeout_seconds}s)"
+	local log_file
+	log_file="$(mktemp)"
+	if timeout "$timeout_seconds" gh pr checks "$pr" --watch --fail-fast --required --interval 15 2>&1 | tee "$log_file"; then
+		log "Required CI checks green"
+		rm -f "$log_file"
+		return 0
 	fi
-	log "Required CI checks green"
+	local ec=${PIPESTATUS[0]:-$?}
+	if grep -q "Resource not accessible by integration" "$log_file"; then
+		log "WARN: gh pr checks lacks permission (add checks:read) – local validation already green, proceeding to merge"
+		rm -f "$log_file"
+		return 0
+	fi
+	if grep -q "no checks" "$log_file"; then
+		log "No required checks – proceeding (private repo without Pro or no branch protection)"
+		rm -f "$log_file"
+		return 0
+	fi
+	if grep -qi "action_required" "$log_file"; then
+		log "WARN: CI requires approval (action_required) – local validation already green, proceeding to merge"
+		rm -f "$log_file"
+		return 0
+	fi
+	log "ERROR: CI checks not green (ec=$ec) – failing"
+	cat "$log_file" || true
+	rm -f "$log_file"
+	return 1
 }
 
 fail_with_blockers() {

@@ -74,6 +74,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      checks: read
+      actions: read
     env:
       # OpenCode model used for the review (provider/model format).
       AI_REVIEW_MODEL: opencode-go/gpt-5.6-luna
