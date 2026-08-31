@@ -24,6 +24,7 @@ interface EntityEditDialogProps {
 
 interface KnowledgeCorrectionResponse {
   created: EntityKnowledgeEntry[];
+  ended: { id: number; reason: string; entry: EntityKnowledgeEntry }[];
   deleted: { id: number; reason: string; entry: EntityKnowledgeEntry }[];
   summaries: {
     entityType: EntityType;
@@ -170,6 +171,7 @@ export function EntityEditDialog({
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'summary' | 'aliases' | 'knowledge'>('summary');
   const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const staleRef = useRef(false);
 
   // Canonical identity of the entity this dialog works on. After loading it
@@ -429,6 +431,40 @@ export function EntityEditDialog({
       setSummaryDirty(true);
     }
     await refresh();
+  }
+
+  async function handleReviewKnowledge() {
+    if (reviewing) return;
+    setReviewing(true);
+    const { data, error } = await request<KnowledgeCorrectionResponse>(
+      '/api/entities/knowledge/review',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          name: detail?.canonical ?? name,
+          qualifier: identityQualifier,
+        }),
+      }
+    );
+    if (staleRef.current) return;
+    setReviewing(false);
+    if (!error && data) {
+      const parts: string[] = [];
+      if (data.created.length) parts.push(`${data.created.length} ergänzt`);
+      if (data.ended.length) parts.push(`${data.ended.length} beendet`);
+      if (data.deleted.length) parts.push(`${data.deleted.length} als ungültig markiert`);
+      if (data.summaries.some((s) => s.summary)) parts.push('Zusammenfassung aktualisiert');
+      showSuccess(
+        parts.length
+          ? `Wissen geprüft: ${parts.join(', ')}.`
+          : 'Wissen ist aktuell – keine Änderungen nötig.'
+      );
+      await handleCorrected(data);
+    } else if (error) {
+      showError(error);
+    }
   }
 
   function startEditMiniSummary() {
@@ -791,6 +827,18 @@ export function EntityEditDialog({
 
             {activeTab === 'knowledge' && (
               <div>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-medium text-[var(--text-h)]">Wissenseinträge</p>
+                  <button
+                    type="button"
+                    onClick={handleReviewKnowledge}
+                    disabled={reviewing || loading}
+                    title="Alle Wissenseinträge der Entität per KI gegen die Tagebuch-Einträge prüfen und aktualisieren (veraltete beenden, Widersprüche löschen, fehlende ergänzen)"
+                    className="text-xs px-2 py-1 rounded bg-[var(--accent)]/10 border border-[var(--accent)] text-[var(--accent)] font-semibold hover:bg-[var(--accent)]/20 transition disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {reviewing ? 'Wird überprüft...' : 'Wissen überprüfen'}
+                  </button>
+                </div>
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {knowledge.length === 0 ? (
                     <p className="text-slate-500 text-sm italic">
