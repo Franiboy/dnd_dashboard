@@ -286,14 +286,17 @@ export async function correctKnowledgeFromText(
     '- search_diary_entries(query, limit?): Durchsucht Tagebucheinträge nach einem Begriff, um Aussagen zu verifizieren.',
     '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
     '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
+    '- get_session_summary(sessionId): Liefert kurze und lange Zusammenfassung einer Session (inkl. Transkript-Codes wie 000003, 696969).',
+    '- get_previous_session_summaries(sessionId, limit?): Liefert vorherige Session-Zusammenfassungen (grob).',
+    '- list_recent_sessions(limit?): Listet die letzten Sessions ohne bekannte ID auf (Einstieg für Session-Suche). Danach get_session_summary(sessionId) für Details.',
     '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag; validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
     '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (zeitliche Änderung, bleibt als Historie).',
     '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch).',
     '',
     'Regeln:',
     '- DU MUSST vor dem Löschen, Beenden oder Erstellen get_entity für die Fokus-Entität und jede in der Korrektur erwähnte Entität aufrufen – am besten mit includeHistory=true, um auch beendete/gelöschte Einträge zu sehen.',
-    '- Verifiziere Aussagen der Korrektur gegen das Tagebuch: Suche mit search_diary_entries nach dem Ereignis und lese Treffer mit get_diary_entry vollständig. Die verknüpften Einträge in get_entity zeigen den Spieltag, damit du "wann" etwas passiert ist bestimmen und Gültigkeitsfenster sauber setzen kannst.',
-    '- Du siehst die Tagebucheinträge aller Spieler (gemeinsames Weltwissen) – nutze sie zur Verifikation.',
+    '- Verifiziere Aussagen der Korrektur gegen Tagebuch UND grob gegen Sessions: Suche mit search_diary_entries nach dem Ereignis und lese Treffer mit get_diary_entry vollständig; ergänze mit list_recent_sessions / get_session_summary / get_previous_session_summaries für Session-Codes (z. B. Kreide 000003) und Transkript-Hinweise. Die verknüpften Einträge in get_entity zeigen den Spieltag, damit du "wann" etwas passiert ist bestimmen und Gültigkeitsfenster sauber setzen kannst.',
+    '- Du siehst die Tagebucheinträge aller Spieler (gemeinsames Weltwissen) plus Session-Zusammenfassungen – nutze beides zur Verifikation, Diary gilt als primäre Quelle, Sessions als grobe Ergänzung.',
     '- Ist ein bestehender aktiver Eintrag nur überholt (zeitliche Änderung, z. B. "steht A nicht mehr gut"), beende ihn mit end_knowledge(id, until=<Spieltag>, reason) und erstelle den korrigierten Fakt mit validFrom=<Spieltag>.',
     '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
     '- Widerspricht ein Eintrag der Korrektur grundlegend (er war falsch), markiere ihn mit delete_knowledge(id, reason).',
@@ -322,7 +325,13 @@ export async function correctKnowledgeFromText(
     worktreePath: process.cwd(),
     model: model || getModel(),
     title: `dnd-correct-knowledge-${Date.now()}`,
-    scopes: ['entity:read', 'knowledge:distribute', 'diary:read', 'diary:read-all'],
+    scopes: [
+      'entity:read',
+      'knowledge:distribute',
+      'diary:read',
+      'diary:read-all',
+      'recording:read',
+    ],
     user,
     onLog,
   });
@@ -379,7 +388,7 @@ export interface KnowledgeReviewOptions {
 
 /**
  * Reviews the complete knowledge of a single entity against the players'
- * diary entries (shared world context): ends outdated facts, deletes
+ * diary entries plus roughly against session summaries (shared world context): ends outdated facts, deletes
  * contradictions and adds corroborated facts that are missing, then refreshes
  * the affected entity summaries.
  */
@@ -409,14 +418,17 @@ export async function reviewEntityKnowledge(
     '- search_diary_entries(query, limit?): Durchsucht die Tagebucheinträge aller Spieler nach einem Begriff, um Aussagen zu verifizieren.',
     '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
     '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
+    '- get_session_summary(sessionId): Liefert kurze und lange Zusammenfassung einer Session (inkl. Transkript-Codes wie 000003, 696969).',
+    '- get_previous_session_summaries(sessionId, limit?): Liefert vorherige Session-Zusammenfassungen (grob).',
+    '- list_recent_sessions(limit?): Listet die letzten Sessions ohne bekannte ID auf (Einstieg für Session-Suche). Danach get_session_summary(sessionId) für Details.',
     '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag; validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
     '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (zeitliche Änderung, bleibt als Historie).',
     '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch).',
     '',
     'Vorgehen:',
     '1. Rufe get_entity für die Fokus-Entität auf (includeHistory=true), um das komplette Wissen inkl. Historie und die verknüpften Tagebucheinträge (mit Spieltag) zu sehen.',
-    '2. Lies bei Bedarf die relevanten Tagebucheinträge vollständig (search_diary_entries/get_diary_entry), um den zeitlichen Verlauf und den aktuellen Stand der Entität zu verstehen.',
-    '3. Gleiche jeden aktiven Wissenseintrag gegen diesen Kontext ab:',
+    '2. Lies bei Bedarf die relevanten Kontext-Einträge vollständig: Tagebücher via search_diary_entries/get_diary_entry UND grob Sessions via list_recent_sessions / get_session_summary / get_previous_session_summaries (wichtig für Kreide-Codes, Transkript-Hinweise wie 000003, die nur in Sessions vorkommen), um den zeitlichen Verlauf und den aktuellen Stand der Entität zu verstehen.',
+    '3. Gleiche jeden aktiven Wissenseintrag gegen diesen Kontext (Diary primär, Sessions grob ergänzend) ab:',
     '   - Zeitlich überholt (der Fakt stimmt, gilt aber seit einem Spieltag nicht mehr): beende ihn mit end_knowledge(id, until=<Spieltag>, reason).',
     '   - Grundsätzlich falsch (Widerspruch zum belegten Kontext): markiere ihn mit delete_knowledge(id, reason).',
     '   - Korrekt und aktuell: lasse ihn unangetastet.',
@@ -444,7 +456,13 @@ export async function reviewEntityKnowledge(
     worktreePath: process.cwd(),
     model: model || getModel(),
     title: `dnd-review-knowledge-${Date.now()}`,
-    scopes: ['entity:read', 'knowledge:distribute', 'diary:read', 'diary:read-all'],
+    scopes: [
+      'entity:read',
+      'knowledge:distribute',
+      'diary:read',
+      'diary:read-all',
+      'recording:read',
+    ],
     user,
     knowledgeTarget: { entityType, entityName, entityQualifier: qualifier },
     onLog,
