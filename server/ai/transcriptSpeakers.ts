@@ -21,7 +21,8 @@ const LINE_PREFIX_RE = /^\[(\d{1,3}:\d{2}(?::\d{2})?)\] ([^\n:]+):/gm;
 // Whisper transcripts contain misattribution artifacts inside the text, e.g.
 // "Cloudsen:"..., "franiboy:"..." or "Cloudsen& Nils & ...". These are not real
 // dialogue, so they are replaced together with the line-level speaker labels.
-const IN_TEXT_NAME_RE = /([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß .,'|/-]*?)(?=:\s*"|=\s*"|&\s*)/g;
+const IN_TEXT_NAME_RE = /([A-Za-zÄÖÜäöüß0-9][A-Za-zÄÖÜäöüß0-9 .,'|/-]*?)(?=:\s*"|=\s*"|\s*&\s*)/g;
+const IN_TEXT_AFTER_AMP_RE = /&\s*([A-Za-zÄÖÜäöüß0-9][A-Za-zÄÖÜäöüß0-9 .,'|/-]*?)\b/g;
 
 function normalizeName(name: string): string {
   return name
@@ -117,6 +118,9 @@ function collectNames(transcript: string): {
   for (const match of transcript.matchAll(IN_TEXT_NAME_RE)) {
     add(inTextNames, match[1]);
   }
+  for (const match of transcript.matchAll(IN_TEXT_AFTER_AMP_RE)) {
+    add(inTextNames, match[1]);
+  }
   return { lineNames, inTextNames };
 }
 
@@ -179,9 +183,20 @@ export function annotateTranscriptSpeakers(
       ),
       (_match, prefix: string) => `${prefix}${label}`
     );
+    // before-colon / before-& artifacts (e.g. `Cloudsen:"..."`, `Nils &`)
     result = result.replace(
-      new RegExp(`${escapeRegExp(lineName ?? inTextName!)}(?=:\\s*"|=\\s*"|\\s*&)`, 'gi'),
+      new RegExp(`${escapeRegExp(lineName ?? inTextName!)}(?=:\\s*"|=\\s*"|\\s*&\\s*)`, 'gi'),
       () => label
+    );
+    // after-& artifacts (e.g. `Nils & Cloudsen`, trailing `& Cloudsen` without following `:`/`&`)
+    result = result.replace(
+      new RegExp(`(?<=&\\s*)${escapeRegExp(lineName ?? inTextName!)}\\b`, 'gi'),
+      () => label
+    );
+    // fallback without lookbehind for runtimes without variable-length lookbehind support
+    result = result.replace(
+      new RegExp(`(&\\s*)${escapeRegExp(lineName ?? inTextName!)}\\b`, 'gi'),
+      (_m, prefix: string) => `${prefix}${label}`
     );
 
     if (lineNames.has(key)) {

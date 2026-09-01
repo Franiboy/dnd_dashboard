@@ -17,6 +17,8 @@ import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
 import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
 import { generateSessionDiaryDraft } from '../ai/sessionToDiary.js';
 import { detectSessionGameDay } from '../ai/sessionGameDay.js';
+import { annotateTranscriptSpeakers } from '../ai/transcriptSpeakers.js';
+import { getAllUsers } from '../users.js';
 import {
   onSessionsUpdated,
   onStatusUpdated,
@@ -41,6 +43,21 @@ import { SseBroadcaster, writeSse } from '../utils/sse.js';
 
 const log = createLogger('recordings-routes');
 const SESSION_DELETE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+function withAnnotatedTranscript(
+  session: import('../../shared/types.js').RecordingSession,
+  viewerId?: string
+): import('../../shared/types.js').RecordingSession {
+  if (!session.transcript) return session;
+  try {
+    const users = getAllUsers();
+    const annotated = annotateTranscriptSpeakers(session.transcript, users, viewerId);
+    return { ...session, transcript: annotated.transcript };
+  } catch (err) {
+    log.warn('Failed to annotate transcript for display:', err);
+    return session;
+  }
+}
 
 const router = Router();
 const sseClients = new SseBroadcaster();
@@ -205,7 +222,7 @@ router.post('/config', requireAdmin, (req: AuthRequest, res) => {
   res.json(getRecordingConfig());
 });
 
-router.get('/:id', (req, res) => {
+router.get('/:id', (req: AuthRequest, res) => {
   const id = Number(req.params.id);
   const session = getSessionById(id);
   if (!session) {
@@ -213,14 +230,16 @@ router.get('/:id', (req, res) => {
     return;
   }
   const files = getFilesBySessionId(id);
-  res.json({ session: { ...session, files } });
+  const wantRaw = req.query.raw === 'true' || req.query.raw === '1';
+  const outSession = wantRaw ? session : withAnnotatedTranscript(session, req.user?.id);
+  res.json({ session: { ...outSession, files } });
 });
 
-router.post('/:id/stop', requireAdmin, async (req, res) => {
+router.post('/:id/stop', requireAdmin, async (req: AuthRequest, res) => {
   const id = Number(req.params.id);
   try {
     const session = await finishRecording(id);
-    res.json({ session });
+    res.json({ session: withAnnotatedTranscript(session, req.user?.id) });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
@@ -262,7 +281,10 @@ router.put('/:id/trim', requireAdmin, (req, res) => {
   });
 
   emitSessionsUpdated();
-  res.json({ session: getSessionById(id) });
+  const updated = getSessionById(id);
+  res.json({
+    session: updated ? withAnnotatedTranscript(updated, (req as AuthRequest).user?.id) : updated,
+  });
 });
 
 function parseTimestamp(ts: string): number | null {
@@ -275,7 +297,7 @@ function parseTimestamp(ts: string): number | null {
   return parseInt(a, 10) * 60 + parseInt(b, 10);
 }
 
-router.post('/:id/trim-transcript', requireAdmin, async (req, res) => {
+router.post('/:id/trim-transcript', requireAdmin, async (req: AuthRequest, res) => {
   const id = Number(req.params.id);
   const session = getSessionById(id);
   if (!session) {
@@ -321,7 +343,10 @@ router.post('/:id/trim-transcript', requireAdmin, async (req, res) => {
   });
   emitSessionsUpdated();
 
-  res.json({ session: getSessionById(id) });
+  const updated = getSessionById(id);
+  res.json({
+    session: updated ? withAnnotatedTranscript(updated, (req as AuthRequest).user?.id) : updated,
+  });
 });
 
 router.post('/:id/transcribe', requireAdmin, (req, res) => {
@@ -397,7 +422,8 @@ router.post('/:id/improve-transcript', requireAdmin, async (req: AuthRequest, re
     }
     broadcastAiLog('Transkript verbessert.');
     emitSessionsUpdated();
-    res.json({ session: getSessionById(id) });
+    const updated = getSessionById(id);
+    res.json({ session: updated ? withAnnotatedTranscript(updated, req.user!.id) : updated });
   } catch (err) {
     log.error(`Unexpected error during transcript improvement of session ${id}:`, err);
     res.status(500).json({ error: 'KI-Verbesserung ist fehlgeschlagen' });
@@ -451,7 +477,8 @@ router.post('/:id/summary', requireAdmin, async (req: AuthRequest, res) => {
 
     broadcastAiLog('Zusammenfassung erstellt.');
     emitSessionsUpdated();
-    res.json({ session: getSessionById(id) });
+    const updated = getSessionById(id);
+    res.json({ session: updated ? withAnnotatedTranscript(updated, req.user!.id) : updated });
   } catch (err) {
     log.error(`Unexpected error during session summary of session ${id}:`, err);
     res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
@@ -524,9 +551,10 @@ router.post('/:id/detect-game-day', requireAdmin, async (req: AuthRequest, res) 
     (req.body && (req.body as { force?: boolean }).force === true);
 
   if (session.gameDay !== null && !force) {
+    const existing = getSessionById(id);
     res.status(409).json({
       error: 'Spieltag bereits gesetzt. Mit ?force=true überschreiben.',
-      session: getSessionById(id),
+      session: existing ? withAnnotatedTranscript(existing, req.user!.id) : existing,
     });
     return;
   }
@@ -547,7 +575,8 @@ router.post('/:id/detect-game-day', requireAdmin, async (req: AuthRequest, res) 
     }
     broadcastAiLog(`Spieltag ermittelt: ${result.gameDay}–${result.gameDayEnd ?? result.gameDay}.`);
     emitSessionsUpdated();
-    res.json({ session: getSessionById(id) });
+    const updated = getSessionById(id);
+    res.json({ session: updated ? withAnnotatedTranscript(updated, req.user!.id) : updated });
   } catch (err) {
     log.error(`Unexpected error during game day detection of session ${id}:`, err);
     res.status(500).json({ error: 'KI-Ermittlung des Spieltags ist fehlgeschlagen' });
@@ -599,7 +628,10 @@ router.put('/:id/game-day', requireAdmin, (req, res) => {
 
   updateSession(id, { gameDay: start, gameDayEnd: end });
   emitSessionsUpdated();
-  res.json({ session: getSessionById(id) });
+  const updated = getSessionById(id);
+  res.json({
+    session: updated ? withAnnotatedTranscript(updated, (req as AuthRequest).user?.id) : updated,
+  });
 });
 
 router.delete('/:id', requireAdmin, async (req, res) => {
