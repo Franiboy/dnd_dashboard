@@ -8,7 +8,11 @@ on:
 
 concurrency:
   group: cd-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel the run while the ai-review pipeline is mid-merge: its fix
+  # commit push triggers a fresh run that must not kill the merging job. The
+  # ai-review job sets the 'automerge' label right before pushing/merging, so
+  # runs triggered from then on are considered part of that merge sequence.
+  cancel-in-progress: ${{ github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'automerge') }}
 
 jobs:
   ci:
@@ -68,7 +72,11 @@ jobs:
   ai-review:
     name: AI review
     needs: ci
-    if: github.event_name == 'pull_request'
+    # Skip when the 'automerge' label is set: that identifies a run triggered
+    # by the pipeline's own fix commit during an in-progress auto-merge. The
+    # merging job already reviewed and validated this head; re-reviewing here
+    # would only duplicate work and race the active merge.
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'automerge')
     runs-on: self-hosted
     timeout-minutes: 25
     permissions:

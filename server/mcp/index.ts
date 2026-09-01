@@ -19,6 +19,7 @@ import {
   listPreviousDiaryEntriesByUser,
   searchDiaryEntries,
   setDiaryEntryLocations,
+  setDiaryEntryItems,
   setDiaryEntryOrganizations,
   setDiaryEntryPersons,
   updateDiaryEntry,
@@ -269,7 +270,7 @@ if (requireScope('entity:extract')) {
     'Verknüpft eine Entität mit einem Tagebucheintrag. Bei Namensgleichheit muss der Qualifier der gemeinten Entität angegeben werden (siehe list_entities).',
     {
       entryId: z.number().int().positive(),
-      type: z.enum(['persons', 'organizations', 'locations']),
+      type: z.enum(['persons', 'organizations', 'locations', 'items']),
       name: z.string().min(1),
       qualifier: z
         .string()
@@ -287,7 +288,8 @@ if (requireScope('entity:extract')) {
         existing.add(label);
         if (type === 'persons') setDiaryEntryPersons(entryId, [...existing]);
         else if (type === 'organizations') setDiaryEntryOrganizations(entryId, [...existing]);
-        else setDiaryEntryLocations(entryId, [...existing]);
+        else if (type === 'locations') setDiaryEntryLocations(entryId, [...existing]);
+        else setDiaryEntryItems(entryId, [...existing]);
         return success(`Entität ${label} mit Eintrag ${entryId} verknüpft.`);
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Fehler beim Verknüpfen der Entität');
@@ -301,7 +303,7 @@ if (requireScope('entity:summary')) {
     'set_entity_summary',
     'Setzt die Zusammenfassung und optionale Mini-Zusammenfassung einer Entität. Bei Namensgleichheit muss der Qualifier der Ziel-Entität angegeben werden.',
     {
-      type: z.enum(['persons', 'organizations', 'locations']),
+      type: z.enum(['persons', 'organizations', 'locations', 'items']),
       name: z.string().min(1),
       summary: z.string().min(1),
       miniSummary: z.string().max(200).optional(),
@@ -326,7 +328,7 @@ if (requireScope('knowledge:distribute')) {
     'create_knowledge',
     'Erstellt einen Wissenseintrag für eine Entität. Bei Namensgleichheit muss der Qualifier der Ziel-Entität angegeben werden. validFrom/validUntil sind optionale in-game Spieltage (recording_sessions.game_day): damit wird ein zeitgebundener Fakt auf der Chronologie der Entität verankert. Zeitlose Fakten (z. B. "ist eine Elfe") lassen diese Felder weg.',
     {
-      type: z.enum(['persons', 'organizations', 'locations']),
+      type: z.enum(['persons', 'organizations', 'locations', 'items']),
       name: z.string().min(1),
       content: z.string().min(1),
       title: z.string().optional(),
@@ -521,9 +523,9 @@ if (requireScope('diary:read')) {
 if (requireScope('entity:read')) {
   loggedTool(
     'list_entities',
-    'Listet alle bekannten Entitäten (Personen, Organisationen, Orte) mit Qualifier und Mini-Zusammenfassung auf. Optional gefiltert nach Typ.',
+    'Listet alle bekannten Entitäten (Personen, Organisationen, Orte, namenhafte Gegenstände) mit Qualifier und Mini-Zusammenfassung auf. Optional gefiltert nach Typ.',
     {
-      type: z.enum(['persons', 'organizations', 'locations']).optional(),
+      type: z.enum(['persons', 'organizations', 'locations', 'items']).optional(),
       limit: z.number().int().positive().max(200).optional(),
     },
     async ({ type, limit }) => {
@@ -533,6 +535,7 @@ if (requireScope('entity:read')) {
           ...refs.persons.map((ref) => ({ type: 'persons' as const, ref })),
           ...refs.organizations.map((ref) => ({ type: 'organizations' as const, ref })),
           ...refs.locations.map((ref) => ({ type: 'locations' as const, ref })),
+          ...refs.items.map((ref) => ({ type: 'items' as const, ref })),
         ];
         const filtered = type ? all.filter((e) => e.type === type) : all;
         const limited = filtered.slice(0, limit ?? 100);
@@ -554,7 +557,7 @@ if (requireScope('entity:read')) {
     'get_entity',
     'Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Wissens-Historie und verknüpfte Tagebucheinträge (inkl. Spieltag) zu einer bestimmten Entität. Bei Namensgleichheit muss der Qualifier angegeben werden. includeHistory=false blendet die Historie aus; includeDiaryEntries=false blendet die Tagebucheinträge aus.',
     {
-      type: z.enum(['persons', 'organizations', 'locations']),
+      type: z.enum(['persons', 'organizations', 'locations', 'items']),
       name: z.string().min(1),
       qualifier: z.string().optional(),
       includeDiaryEntries: z.boolean().optional(),

@@ -337,13 +337,14 @@ export interface DiaryEntry {
   persons: string[];
   organizations: string[];
   locations: string[];
+  items: string[];
   /** Monotonic in-game day of this entry ("Eintrag = Spieltag"). */
   gameDay: number | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export type EntityType = 'persons' | 'organizations' | 'locations';
+export type EntityType = 'persons' | 'organizations' | 'locations' | 'items';
 
 /**
  * One known entity of the world knowledge graph.
@@ -365,6 +366,7 @@ export interface EntitiesResponse {
   persons: EntityListItem[];
   organizations: EntityListItem[];
   locations: EntityListItem[];
+  items: EntityListItem[];
 }
 
 export interface EntityDetail {

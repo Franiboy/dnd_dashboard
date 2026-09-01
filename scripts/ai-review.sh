@@ -50,6 +50,33 @@ has_label() {
 	gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | grep -qx "$1"
 }
 
+# Mark the PR as being in its auto-merge sequence. The ci-cd workflow uses
+# this label to (a) never cancel the currently running ai-review job when the
+# fix-commit push below triggers a fresh run, and (b) skip the ai-review job on
+# that follow-up run so the merge is not raced by a duplicate review. Set it
+# right before any push/merge so a triggering push can no longer interrupt it.
+AUTOMERGE_LABEL="automerge"
+
+set_automerge_label() {
+	if ! has_label "$AUTOMERGE_LABEL"; then
+		log "Setting '$AUTOMERGE_LABEL' label on PR #$PR_NUMBER to protect the merge from concurrency cancellation"
+		gh pr edit "$PR_NUMBER" --add-label "$AUTOMERGE_LABEL" >/dev/null || {
+			log "WARN: could not add '$AUTOMERGE_LABEL' label; continuing (merge may race follow-up runs)"
+		}
+	fi
+}
+
+# Clear the label again only when the merge did not complete. On a successful
+# merge the label is intentionally left in place: the follow-up run triggered
+# by our fix-commit push is then already past (or skipping) its steps, and
+# removing it mid-flight could race that run.
+remove_automerge_label() {
+	if has_label "$AUTOMERGE_LABEL"; then
+		log "Removing '$AUTOMERGE_LABEL' label from PR #$PR_NUMBER"
+		gh pr edit "$PR_NUMBER" --remove-label "$AUTOMERGE_LABEL" >/dev/null || true
+	fi
+}
+
 PROD_REPO="${DND_PROD_REPO:-/dnd_dashboard}"
 
 deploy_production() {
@@ -271,7 +298,11 @@ fi
 
 if git diff --quiet && git diff --cached --quiet; then
 	log "Review clean, no fixes necessary"
-	merge_pr
+	set_automerge_label
+	if ! merge_pr; then
+		remove_automerge_label
+		exit 1
+	fi
 	exit 0
 fi
 
@@ -306,6 +337,12 @@ Applied automatically by the AI review pipeline (model: $MODEL).
 Validated with lint, build and tests before push.
 
 $SUMMARY"
+# Protect the upcoming push/merge: without this label the push would cancel
+# (concurrency) the very job that is about to merge.
+set_automerge_label
 git push
 wait_for_ci "$PR_NUMBER" || exit 1
-merge_pr
+if ! merge_pr; then
+	remove_automerge_label
+	exit 1
+fi

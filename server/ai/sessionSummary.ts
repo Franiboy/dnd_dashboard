@@ -205,10 +205,14 @@ export async function processSessionSummaryEntities(
       new Set([...longEntities.organizations, ...shortEntities.organizations])
     ),
     locations: Array.from(new Set([...longEntities.locations, ...shortEntities.locations])),
+    items: Array.from(new Set([...longEntities.items, ...shortEntities.items])),
   };
   // Detected entities are qualified labels ("Name (Qualifier)") - parse them
   // back so the dirty flag lands on the exact homonym.
-  const markDirty = (type: 'persons' | 'organizations' | 'locations', labels: string[]) => {
+  const markDirty = (
+    type: 'persons' | 'organizations' | 'locations' | 'items',
+    labels: string[]
+  ) => {
     for (const label of labels) {
       const { name, qualifier } = splitEntityLabel(label);
       markEntitySummaryDirty(type, name, qualifier);
@@ -217,6 +221,7 @@ export async function processSessionSummaryEntities(
   markDirty('persons', allEntities.persons);
   markDirty('organizations', allEntities.organizations);
   markDirty('locations', allEntities.locations);
+  markDirty('items', allEntities.items);
 
   try {
     await distributeKnowledgeFromText(result.longSummary, {
@@ -230,7 +235,12 @@ export async function processSessionSummaryEntities(
   }
 
   log.info(
-    `Session ${sessionId}: marked ${allEntities.persons.length + allEntities.organizations.length + allEntities.locations.length} entities dirty and distributed knowledge`
+    `Session ${sessionId}: marked ${
+      allEntities.persons.length +
+      allEntities.organizations.length +
+      allEntities.locations.length +
+      allEntities.items.length
+    } entities dirty and distributed knowledge`
   );
   return result;
 }
