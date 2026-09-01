@@ -31,6 +31,7 @@ const entityConfig: Record<keyof DiaryEntities, EntityConfig> = {
     column: 'organization_id',
   },
   locations: { table: 'locations', linkTable: 'diary_entry_locations', column: 'location_id' },
+  items: { table: 'items', linkTable: 'diary_entry_items', column: 'item_id' },
 };
 
 /** Finds the exact row for an entity identity (case-insensitive name). */
@@ -77,6 +78,7 @@ function rowToDiaryEntry(
     persons: entities.persons,
     organizations: entities.organizations,
     locations: entities.locations,
+    items: entities.items,
     gameDay: (row.game_day as number | null | undefined) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -84,7 +86,7 @@ function rowToDiaryEntry(
 }
 
 function emptyEntities(): DiaryEntities {
-  return { persons: [], organizations: [], locations: [] };
+  return { persons: [], organizations: [], locations: [], items: [] };
 }
 
 function buildEntryEntitiesMap(entryIds: number[]): Map<number, DiaryEntities> {
@@ -124,6 +126,7 @@ function buildEntryEntitiesMap(entryIds: number[]): Map<number, DiaryEntities> {
   load('persons', 'diary_entry_persons', 'person_id', 'persons');
   load('organizations', 'diary_entry_organizations', 'organization_id', 'organizations');
   load('locations', 'diary_entry_locations', 'location_id', 'locations');
+  load('items', 'diary_entry_items', 'item_id', 'items');
 
   return map;
 }
@@ -155,6 +158,7 @@ export function listAllEntityRefs(): Record<keyof DiaryEntities, EntityRef[]> {
     persons: getEntityRefs('persons'),
     organizations: getEntityRefs('organizations'),
     locations: getEntityRefs('locations'),
+    items: getEntityRefs('items'),
   };
 }
 
@@ -265,7 +269,7 @@ export function getEntityMappings(): EntityMapping[] {
   const result: EntityMapping[] = [];
   const blacklists = getBlacklists();
 
-  for (const type of ['persons', 'organizations', 'locations'] as const) {
+  for (const type of ['persons', 'organizations', 'locations', 'items'] as const) {
     const { table } = entityConfig[type];
     const refs = getEntityRefs(table);
     const aliasesByTarget = new Map<string, string[]>();
@@ -380,6 +384,7 @@ export function findExistingEntitiesInText(text: string): DiaryEntities {
   detect('persons');
   detect('organizations');
   detect('locations');
+  detect('items');
 
   return result;
 }
@@ -406,6 +411,7 @@ export function mergeEntities(
     persons: merge(aiEntities.persons, existingEntities.persons),
     organizations: merge(aiEntities.organizations, existingEntities.organizations),
     locations: merge(aiEntities.locations, existingEntities.locations),
+    items: merge(aiEntities.items, existingEntities.items),
   };
 }
 
@@ -421,6 +427,7 @@ function getBlacklists(): EntityBlacklists {
     persons: new Set<string>(),
     organizations: new Set<string>(),
     locations: new Set<string>(),
+    items: new Set<string>(),
   };
 
   for (const { type, name } of rows) {
@@ -441,6 +448,7 @@ export function filterBlacklisted(entities: DiaryEntities): DiaryEntities {
       (name) => !blacklists.organizations.has(name.toLowerCase())
     ),
     locations: entities.locations.filter((name) => !blacklists.locations.has(name.toLowerCase())),
+    items: entities.items.filter((name) => !blacklists.items.has(name.toLowerCase())),
   };
 }
 
@@ -478,7 +486,7 @@ function entityExistsInAnyType(
   const normalized = name.trim().toLowerCase();
   if (normalized.length === 0) return null;
 
-  for (const type of ['persons', 'organizations', 'locations'] as const) {
+  for (const type of ['persons', 'organizations', 'locations', 'items'] as const) {
     if (type === excludeType) continue;
     const { table } = entityConfig[type];
     const row = db.prepare(`SELECT name FROM ${table} WHERE name = ? COLLATE NOCASE`).get(name) as
@@ -575,6 +583,10 @@ export function setDiaryEntryOrganizations(entryId: number, organizations: strin
 
 export function setDiaryEntryLocations(entryId: number, locations: string[]): void {
   setLinkedEntities(entryId, locations, 'locations', 'diary_entry_locations', 'location_id');
+}
+
+export function setDiaryEntryItems(entryId: number, items: string[]): void {
+  setLinkedEntities(entryId, items, 'items', 'diary_entry_items', 'item_id');
 }
 
 export function createDiaryEntry(
@@ -743,6 +755,7 @@ export function updateDiaryEntry(
       | 'persons'
       | 'organizations'
       | 'locations'
+      | 'items'
       | 'aiDirty'
       | 'aiProcessedAt'
       | 'sessionDraftFor'
@@ -816,8 +829,15 @@ export function updateDiaryEntry(
   const hasPersonsUpdate = updates.persons !== undefined;
   const hasOrganizationsUpdate = updates.organizations !== undefined;
   const hasLocationsUpdate = updates.locations !== undefined;
+  const hasItemsUpdate = updates.items !== undefined;
 
-  if (fields.length === 0 && !hasPersonsUpdate && !hasOrganizationsUpdate && !hasLocationsUpdate) {
+  if (
+    fields.length === 0 &&
+    !hasPersonsUpdate &&
+    !hasOrganizationsUpdate &&
+    !hasLocationsUpdate &&
+    !hasItemsUpdate
+  ) {
     return existing;
   }
 
@@ -829,6 +849,9 @@ export function updateDiaryEntry(
   }
   if (hasLocationsUpdate) {
     setDiaryEntryLocations(id, updates.locations || []);
+  }
+  if (hasItemsUpdate) {
+    setDiaryEntryItems(id, updates.items || []);
   }
 
   const now = new Date().toISOString();
@@ -903,6 +926,7 @@ export function finalizeEntities(entities: DiaryEntities): DiaryEntities {
     persons: resolve(entities.persons, 'persons'),
     organizations: resolve(entities.organizations, 'organizations'),
     locations: resolve(entities.locations, 'locations'),
+    items: resolve(entities.items, 'items'),
   };
 
   return filterBlacklisted(mergeEntities(resolved, emptyEntities()));
@@ -1167,6 +1191,7 @@ export function getBlacklistedEntities(): DiaryEntities {
     persons: [],
     organizations: [],
     locations: [],
+    items: [],
   };
 
   for (const { type, name } of rows) {

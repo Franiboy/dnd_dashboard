@@ -138,7 +138,7 @@ function buildPrompt(
     '2. Rufe get_previous_session_summaries(limit=5) auf, um die neuesten abgeschlossenen Aufnahme-Sessions zu sehen.',
     '3. Rufe get_session_summary(sessionId) für Sessions auf, die für das Bingo besonders interessant erscheinen (z. B. die letzten 2-3 Sessions).',
     `4. Lies die Datei ${transcriptsFile} mit dem read-Tool. Sie enthält die Zusammenfassungen und gekürzten Transkripte der letzten Sessions.`,
-    '5. Nutze list_entities, um bekannte Personen, Organisationen und Orte zu sehen.',
+    '5. Nutze list_entities, um bekannte Personen, Organisationen, Orte und namenhafte Gegenstände zu sehen.',
     '6. Nutze get_entity(type, name, qualifier?) für alle Entitäten, die in den Sessions, Tagebüchern oder Bingo-Vorschlägen relevant erscheinen. Bei Namensgleichheit liefert list_entities Qualifier – nutze den passenden.',
     '7. Nutze search_diary_entries(query), um Hintergrundwissen zu wiederkehrenden Themen, Orten oder Charakteren zu finden.',
     ...dmFocus,

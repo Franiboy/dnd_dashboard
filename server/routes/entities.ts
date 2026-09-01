@@ -32,7 +32,7 @@ import { getEntitySummary, setEntityMiniSummary } from '../repositories/entitySu
 
 const router = Router();
 
-const ENTITY_TYPES: Array<keyof DiaryEntities> = ['persons', 'organizations', 'locations'];
+const ENTITY_TYPES: Array<keyof DiaryEntities> = ['persons', 'organizations', 'locations', 'items'];
 
 router.use(authMiddleware, requireApproved);
 
@@ -58,6 +58,7 @@ router.get('/', (_req: AuthRequest, res) => {
     persons: fetchRefs('persons'),
     organizations: fetchRefs('organizations'),
     locations: fetchRefs('locations'),
+    items: fetchRefs('items'),
   };
 
   res.json({ ...entities, currentGameDay: getCurrentGameDay() });

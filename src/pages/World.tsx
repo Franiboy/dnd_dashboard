@@ -396,6 +396,7 @@ export function World() {
     persons: string[];
     organizations: string[];
     locations: string[];
+    items: string[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [dragPayload, setDragPayload] = useState<DragPayload | null>(null);
@@ -405,6 +406,7 @@ export function World() {
     persons: 'entities',
     organizations: 'entities',
     locations: 'entities',
+    items: 'entities',
   });
   const [distributeOpen, setDistributeOpen] = useState(false);
 
@@ -424,6 +426,7 @@ export function World() {
       persons: string[];
       organizations: string[];
       locations: string[];
+      items: string[];
     }>('/api/entities/blacklist');
     if (data) {
       setBlacklists(data);
@@ -538,8 +541,8 @@ export function World() {
     );
   }
 
-  const data = entities ?? { persons: [], organizations: [], locations: [] };
-  const blacklistData = blacklists ?? { persons: [], organizations: [], locations: [] };
+  const data = entities ?? { persons: [], organizations: [], locations: [], items: [] };
+  const blacklistData = blacklists ?? { persons: [], organizations: [], locations: [], items: [] };
 
   function actionDialogContent(action: PendingAction) {
     switch (action.kind) {
@@ -646,10 +649,11 @@ export function World() {
         </button>
       </DashboardHeader>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 lg:grid-rows-1 gap-4 flex-1 min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 min-h-0">
         {renderPanel('persons', 'Personen', 'Noch keine Personen vorhanden.')}
         {renderPanel('organizations', 'Organisationen', 'Noch keine Organisationen vorhanden.')}
         {renderPanel('locations', 'Orte', 'Noch keine Orte vorhanden.')}
+        {renderPanel('items', 'Gegenstände', 'Noch keine Gegenstände vorhanden.')}
       </div>
 
       {pendingAction && (
