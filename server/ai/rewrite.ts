@@ -94,7 +94,7 @@ export async function rewriteTextWithAi(
     '- Wickele die Ausgabe nicht in Markdown-Code-Blöcke und füge keine Erklärungen hinzu.',
     '- Gib nach dem Tool-Aufruf nur eine kurze Bestätigung aus, nicht den HTML-Text selbst.',
     '- DU MUSST die Tools nutzen, um fehlenden Kontext abzufragen, BEVOR du set_diary_rewrite aufrufst.',
-    '- Wenn der Text Personen, Organisationen oder Orte erwähnt, rufe get_entity für jede davon auf – bei Namensgleichheit mit dem Qualifier der im Kontext gemeinten Entität (siehe list_entities).',
+    '- Wenn der Text Personen, Organisationen, Orte oder namenhafte Gegenstände erwähnt, rufe get_entity für jede davon auf – bei Namensgleichheit mit dem Qualifier der im Kontext gemeinten Entität (siehe list_entities).',
     '- Für zeitlichen Kontext rufe get_previous_diary_entries auf.',
     '- Wenn keine Entitäten erwähnt werden oder keine vorherigen Einträge existieren, speichere das Ergebnis trotzdem direkt.',
     '',
@@ -167,7 +167,7 @@ export async function improveRewrittenWithCommand(
     '- Ändere nur den Textinhalt wie gewünscht. Wickele die Ausgabe nicht in Markdown-Code-Blöcke.',
     '- Gib nach dem Tool-Aufruf nur eine kurze Bestätigung aus, nicht den HTML-Text selbst.',
     '- DU MUSST die Tools nutzen, um fehlenden Kontext abzufragen, BEVOR du set_diary_rewrite aufrufst.',
-    '- Wenn der Text oder der Befehl Personen, Organisationen oder Orte erwähnt, rufe get_entity für jede davon auf – bei Namensgleichheit mit dem Qualifier der im Kontext bzw. Befehl gemeinten Entität (siehe list_entities).',
+    '- Wenn der Text oder der Befehl Personen, Organisationen, Orte oder namenhafte Gegenstände erwähnt, rufe get_entity für jede davon auf – bei Namensgleichheit mit dem Qualifier der im Kontext bzw. Befehl gemeinten Entität (siehe list_entities).',
     '- Für zeitlichen Kontext rufe get_previous_diary_entries auf.',
     '- Wenn keine Entitäten erwähnt werden oder keine vorherigen Einträge existieren, speichere das Ergebnis trotzdem direkt.',
     '',
@@ -242,7 +242,7 @@ export async function summarizeTextWithAi(
     '- Gib maximal 3–5 Punkte aus, jeder Punkt in einer eigenen Zeile.',
     '- Gib nach dem Tool-Aufruf nur eine kurze Bestätigung aus, nicht die Zusammenfassung selbst.',
     '- DU MUSST die Tools nutzen, um Hintergrundinformationen abzufragen, BEVOR du set_diary_summary aufrufst.',
-    '- Wenn der Text Personen, Organisationen oder Orte enthält, rufe get_entity für jede davon auf.',
+    '- Wenn der Text Personen, Organisationen, Orte oder namenhafte Gegenstände enthält, rufe get_entity für jede davon auf.',
     '- Für zeitlichen Kontext rufe get_previous_diary_entries auf.',
     '- Wenn keine Entitäten erwähnt werden oder keine vorherigen Einträge existieren, speichere die Zusammenfassung trotzdem direkt.',
     '',
@@ -290,6 +290,7 @@ export interface DiaryEntities {
   persons: string[];
   organizations: string[];
   locations: string[];
+  items: string[];
 }
 
 export async function extractEntitiesFromDiary(
@@ -301,13 +302,13 @@ export async function extractEntitiesFromDiary(
 ): Promise<DiaryEntities> {
   const plainText = stripHtml(text);
   if (!plainText) {
-    return { persons: [], organizations: [], locations: [] };
+    return { persons: [], organizations: [], locations: [], items: [] };
   }
 
   const prompt = [
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
-    'Aufgabe: Extrahiere alle eindeutigen Personen/Charaktere, Organisationen/Fraktionen und Orte aus dem folgenden deutschen Tagebucheintrag.',
+    'Aufgabe: Extrahiere alle eindeutigen Personen/Charaktere, Organisationen/Fraktionen, Orte und namenhaften Gegenstände aus dem folgenden deutschen Tagebucheintrag.',
     '',
     'Verfügbare Tools:',
     `- link_diary_entity(entryId=${entryId}, type, name, qualifier?): Verknüpft eine Entität mit diesem Tagebucheintrag. MUSST du für jede gefundene Entität aufrufen.`,
@@ -318,6 +319,7 @@ export async function extractEntitiesFromDiary(
     '- persons: Lebende Wesen, Charaktere, Tiere mit eigenem Namen oder eindeutiger Bezeichnung. Keine allgemeinen Begriffe wie "Wachen", "Aufständische" oder "Leute".',
     '- organizations: Gruppen, Gilden, Fraktionen, Clans, Häuser, Orden, Reiche, Familien, militärische Einheiten, Firmen oder andere Kollektive mit eigenem Namen. Keine allgemeinen Gruppenbezeichnungen.',
     '- locations: Städte, Dörfer, Länder, Regionen, Kontinente, Landmarken, Gebäude, Dungeons, Festungen, Wälder, Berge, Flüsse oder andere Orte mit eigenem Namen. Keine unbestimmten Orte wie "ein Wald" oder "der Markt".',
+    '- items: Besondere, namenhafte Gegenstände mit kultureller, magischer oder erzählerischer Bedeutung (z. B. "Die Klinge des Magiers", "Das Amulett von Morath", "Der Schild des Klanruf"), die wiederkehrend erwähnt werden. Keine gewöhnlichen Gebrauchsgegenstände wie Schaufel, Pistole, Fackel, Seil oder Rucksack.',
     '',
     'DU MUSST die verfügbaren Tools nutzen, um bekannte Entitäten zu ermitteln, BEVOR du link_diary_entity aufrufst:',
     '- Rufe list_entities auf, um alle bereits bekannten Entitäten zu sehen.',
@@ -347,7 +349,7 @@ export async function extractEntitiesFromDiary(
   }
 
   if (!result.success) {
-    return { persons: [], organizations: [], locations: [] };
+    return { persons: [], organizations: [], locations: [], items: [] };
   }
 
   return getEntryEntities(entryId);
@@ -373,7 +375,10 @@ export async function processDiaryEntryAi(
 
   // Linked entities are qualified labels ("Name (Qualifier)") - parse them
   // back so the dirty flag lands on the exact homonym.
-  const markDirty = (type: 'persons' | 'organizations' | 'locations', labels: string[]) => {
+  const markDirty = (
+    type: 'persons' | 'organizations' | 'locations' | 'items',
+    labels: string[]
+  ) => {
     for (const label of labels) {
       const { name, qualifier } = splitEntityLabel(label);
       markEntitySummaryDirty(type, name, qualifier);
@@ -382,11 +387,16 @@ export async function processDiaryEntryAi(
   markDirty('persons', entities.persons);
   markDirty('organizations', entities.organizations);
   markDirty('locations', entities.locations);
+  markDirty('items', entities.items);
 
-  if (entities.persons.length + entities.organizations.length + entities.locations.length > 0) {
-    log.info(
-      `Marked ${entities.persons.length + entities.organizations.length + entities.locations.length} entity summaries as dirty for entry ${entryId}`
-    );
+  const totalEntities =
+    entities.persons.length +
+    entities.organizations.length +
+    entities.locations.length +
+    entities.items.length;
+
+  if (totalEntities > 0) {
+    log.info(`Marked ${totalEntities} entity summaries as dirty for entry ${entryId}`);
   }
 
   try {

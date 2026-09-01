@@ -14,6 +14,20 @@ import type { EntityKnowledgeEntry, EntityType, KnowledgeOriginType } from '../.
 
 const log = createLogger('knowledge');
 
+/** German singular label for an entity type, used in AI prompts and rules. */
+function entityTypeLabel(type: EntityType): string {
+  switch (type) {
+    case 'persons':
+      return 'Person';
+    case 'organizations':
+      return 'Organisation';
+    case 'locations':
+      return 'Ort';
+    case 'items':
+      return 'Gegenstand';
+  }
+}
+
 /** Text a knowledge distribution run was derived from. */
 export interface KnowledgeOrigin {
   type: KnowledgeOriginType;
@@ -251,13 +265,7 @@ export async function correctKnowledgeFromText(
   const plainText = stripHtml(correction).trim();
   if (!plainText) return { created: [], deleted: [], ended: [], summaries: [] };
 
-  const typeLabel = focus
-    ? focus.entityType === 'persons'
-      ? 'Person'
-      : focus.entityType === 'organizations'
-        ? 'Organisation'
-        : 'Ort'
-    : null;
+  const typeLabel = focus ? entityTypeLabel(focus.entityType) : null;
 
   const currentGameDay = getCurrentGameDay();
 
@@ -381,8 +389,7 @@ export async function reviewEntityKnowledge(
   options: KnowledgeReviewOptions = {}
 ): Promise<KnowledgeCorrectionResult> {
   const { model, onLog, user, qualifier = '' } = options;
-  const typeLabel =
-    entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
+  const typeLabel = entityTypeLabel(entityType);
   const qualifiedName = qualifier ? `${entityName} (${qualifier})` : entityName;
   const currentGameDay = getCurrentGameDay();
 
@@ -509,8 +516,7 @@ export async function generateEntitySummary(
   options: EntitySummaryOptions = {}
 ): Promise<GeneratedEntitySummary | null> {
   const { model, onLog, user, qualifier = '', knowledgeTarget } = options;
-  const typeLabel =
-    entityType === 'persons' ? 'Person' : entityType === 'organizations' ? 'Organisation' : 'Ort';
+  const typeLabel = entityTypeLabel(entityType);
   const qualifiedName = qualifier ? `${entityName} (${qualifier})` : entityName;
 
   const summaryRow = getEntitySummary(entityType, entityName, qualifier);

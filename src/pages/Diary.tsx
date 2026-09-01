@@ -52,19 +52,21 @@ function isEmptyHtml(html: string): boolean {
 
 interface BadgeListProps {
   items: string[];
-  variant: 'person' | 'organization' | 'location';
+  variant: 'person' | 'organization' | 'location' | 'item';
 }
 
 const badgeStyles = {
   person: 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20',
   organization: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
   location: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+  item: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
 };
 
 const badgeTypeMap: Record<BadgeListProps['variant'], EntityType> = {
   person: 'persons',
   organization: 'organizations',
   location: 'locations',
+  item: 'items',
 };
 
 function BadgeList({ items, variant }: BadgeListProps) {
@@ -1070,6 +1072,7 @@ export function Diary() {
                 <BadgeList items={entry.persons} variant="person" />
                 <BadgeList items={entry.organizations} variant="organization" />
                 <BadgeList items={entry.locations} variant="location" />
+                <BadgeList items={entry.items} variant="item" />
 
                 {expandedIds.has(entry.id) ? (
                   <>

@@ -4,12 +4,14 @@ export const typeLabels: Record<EntityType, string> = {
   persons: 'Person',
   organizations: 'Organisation',
   locations: 'Ort',
+  items: 'Gegenstand',
 };
 
 export const typeAccusative: Record<EntityType, string> = {
   persons: 'Personen',
   organizations: 'Organisationen',
   locations: 'Orte',
+  items: 'Gegenstände',
 };
 
 /** Display form of an entity: "Name" or "Name (Qualifier)". */
