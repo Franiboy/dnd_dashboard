@@ -23,7 +23,14 @@ import { authMiddleware, requireApproved } from './auth.js';
 import { setupSocket } from './socket.js';
 import { getVersion } from './version.js';
 import { runMigrations } from './migrations.js';
-import { startBot, recoverAllRecordings, stopBot } from './discord/bot.js';
+import {
+  startBot,
+  recoverAllRecordings,
+  stopBot,
+  startRecordingHealthCheck,
+  stopRecordingHealthCheck,
+} from './discord/bot.js';
+import { flushActiveRecording } from './discord/recorder.js';
 import { startTranscriptionScheduler, stopTranscriptionScheduler } from './discord/scheduler.js';
 import { resetInterruptedTranscriptions, stopAllTranscriptions } from './discord/transcriber.js';
 import { startSummaryScheduler, stopSummaryScheduler } from './scheduler/summaryScheduler.js';
@@ -129,6 +136,7 @@ try {
   logger.error('Failed to reset interrupted transcriptions on startup:', err);
 }
 startBot();
+startRecordingHealthCheck();
 
 startTranscriptionScheduler();
 startSummaryScheduler();
@@ -235,6 +243,12 @@ async function shutdown(signal: string) {
     logger.error('Failed to stop transcriptions:', err);
   });
 
+  try {
+    flushActiveRecording();
+  } catch (err) {
+    logger.error('Failed to flush recording segments:', err);
+  }
+
   await recoverAllRecordings().catch((err) => {
     logger.error('Failed to recover recordings:', err);
   });
@@ -244,6 +258,7 @@ async function shutdown(signal: string) {
   });
 
   stopTranscriptionScheduler();
+  stopRecordingHealthCheck();
   stopSummaryScheduler();
   stopSessionCleanupScheduler();
   stopBingoSuggestionScheduler();
