@@ -47,6 +47,7 @@ const CHANNEL_CACHE_TTL = 60_000;
 const autoStopTimeouts = new Map<string, NodeJS.Timeout>();
 let healthCheckInterval: NodeJS.Timeout | null = null;
 const AUTO_STOP_DEBOUNCE_MS = 5_000;
+let recoveryPromise: Promise<void> | null = null;
 
 export function isBotEnabled(): boolean {
   return isRecordingFeatureEnabled();
@@ -650,7 +651,19 @@ async function recoverRecording(sessionId: number): Promise<RecordingSession> {
   return updated;
 }
 
-export async function recoverAllRecordings(): Promise<void> {
+export function recoverAllRecordings(): Promise<void> {
+  if (recoveryPromise) {
+    log.info('Recording recovery already in progress; skipping overlapping run');
+    return recoveryPromise;
+  }
+
+  recoveryPromise = recoverAllRecordingsInternal().finally(() => {
+    recoveryPromise = null;
+  });
+  return recoveryPromise;
+}
+
+async function recoverAllRecordingsInternal(): Promise<void> {
   let recordingSessions: RecordingSession[];
   try {
     recordingSessions = listSessionsByStatus('recording');

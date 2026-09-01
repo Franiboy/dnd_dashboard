@@ -11,6 +11,7 @@ const log = createLogger('transcription-scheduler');
 
 let timeout: NodeJS.Timeout | null = null;
 let interval: NodeJS.Timeout | null = null;
+let startupCheckTimeout: NodeJS.Timeout | null = null;
 let isRunning = false;
 
 function getDelayUntilNext2AM(): number {
@@ -107,13 +108,20 @@ export function startTranscriptionScheduler(): void {
   );
 
   // Immediate check 30s after startup to catch sessions recovered on boot
-  setTimeout(() => runTranscriptionJobsNow(), 30_000);
+  startupCheckTimeout = setTimeout(() => {
+    startupCheckTimeout = null;
+    runTranscriptionJobsNow();
+  }, 30_000);
 }
 
 export function stopTranscriptionScheduler(): void {
   if (timeout) {
     clearTimeout(timeout);
     timeout = null;
+  }
+  if (startupCheckTimeout) {
+    clearTimeout(startupCheckTimeout);
+    startupCheckTimeout = null;
   }
   if (interval) {
     clearInterval(interval);
