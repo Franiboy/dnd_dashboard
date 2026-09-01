@@ -12,7 +12,7 @@ concurrency:
   # commit push triggers a fresh run that must not kill the merging job. The
   # ai-review job sets the 'automerge' label right before pushing/merging, so
   # runs triggered from then on are considered part of that merge sequence.
-  cancel-in-progress: ${{ !contains(github.event.pull_request.labels.*.name, 'automerge') }}
+  cancel-in-progress: ${{ github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'automerge') }}
 
 jobs:
   ci:
