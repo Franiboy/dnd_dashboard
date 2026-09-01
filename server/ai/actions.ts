@@ -77,7 +77,9 @@ export interface AiActionResult {
 }
 
 function isValidEntityType(value: unknown): value is EntityType {
-  return value === 'persons' || value === 'organizations' || value === 'locations';
+  return (
+    value === 'persons' || value === 'organizations' || value === 'locations' || value === 'items'
+  );
 }
 
 function normalizeName(value: unknown): string | null {

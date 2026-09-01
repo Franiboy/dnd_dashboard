@@ -281,12 +281,48 @@ export const schema: Record<string, TableDef> = {
     ],
   },
 
+  items: {
+    columns: {
+      id: { type: 'INTEGER', primaryKey: true, autoIncrement: true },
+      name: { type: 'TEXT', notNull: true },
+      qualifier: { type: 'TEXT', notNull: true, default: "''" },
+    },
+    indexes: [
+      {
+        name: 'idx_items_name_qualifier',
+        columns: ['name', 'qualifier'],
+        unique: true,
+      },
+    ],
+  },
+
+  diary_entry_items: {
+    columns: {
+      diary_entry_id: { type: 'INTEGER', notNull: true, primaryKey: true },
+      item_id: { type: 'INTEGER', notNull: true, primaryKey: true },
+    },
+    references: [
+      {
+        columns: ['diary_entry_id'],
+        table: 'diary_entries',
+        references: ['id'],
+        onDelete: 'CASCADE',
+      },
+      {
+        columns: ['item_id'],
+        table: 'items',
+        references: ['id'],
+        onDelete: 'CASCADE',
+      },
+    ],
+  },
+
   entity_blacklist: {
     columns: {
       type: { type: 'TEXT', notNull: true, primaryKey: true },
       name: { type: 'TEXT', notNull: true, primaryKey: true },
     },
-    check: "type IN ('persons', 'organizations', 'locations')",
+    check: "type IN ('persons', 'organizations', 'locations', 'items')",
   },
 
   entity_aliases: {
@@ -298,7 +334,7 @@ export const schema: Record<string, TableDef> = {
       // homonym. Empty string targets the plain name.
       canonical_qualifier: { type: 'TEXT', notNull: true, default: "''" },
     },
-    check: "type IN ('persons', 'organizations', 'locations')",
+    check: "type IN ('persons', 'organizations', 'locations', 'items')",
   },
 
   entity_knowledge_entries: {
@@ -330,7 +366,7 @@ export const schema: Record<string, TableDef> = {
       updated_at: { type: 'TEXT', notNull: true },
     },
     check:
-      "entity_type IN ('persons', 'organizations', 'locations') AND status IN ('active', 'deleted')",
+      "entity_type IN ('persons', 'organizations', 'locations', 'items') AND status IN ('active', 'deleted')",
     indexes: [
       {
         name: 'idx_entity_knowledge_entries_lookup',
@@ -351,7 +387,7 @@ export const schema: Record<string, TableDef> = {
       updated_at: { type: 'TEXT' },
       mini_summary: { type: 'TEXT' },
     },
-    check: "entity_type IN ('persons', 'organizations', 'locations')",
+    check: "entity_type IN ('persons', 'organizations', 'locations', 'items')",
   },
 
   logs: {

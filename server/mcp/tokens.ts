@@ -29,7 +29,7 @@ export interface McpSessionUser {
 
 /** Restricts knowledge mutations in a session to one entity. */
 export interface KnowledgeTarget {
-  entityType: 'persons' | 'organizations' | 'locations';
+  entityType: 'persons' | 'organizations' | 'locations' | 'items';
   entityName: string;
   entityQualifier: string;
 }

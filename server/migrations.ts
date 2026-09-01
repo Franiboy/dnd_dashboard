@@ -364,7 +364,7 @@ function migrateAiSettingsSingleModel(): void {
 // Pragma calls are no-ops inside a transaction, so this hook runs outside
 // the runMigrations() transaction with foreign keys temporarily disabled.
 function rebuildEntityTablesForQualifier(): void {
-  const tables = ['persons', 'organizations', 'locations'] as const;
+  const tables = ['persons', 'organizations', 'locations', 'items'] as const;
   const stale = tables.filter((name) => {
     if (!tableExists(name)) return false;
     const row = db
@@ -417,10 +417,56 @@ function rebuildEntitySummariesForQualifier(): void {
   log.info('Rebuilt entity_summaries with qualifier in primary key');
 }
 
+// The entity tables' CHECK constraints (entity_blacklist, entity_knowledge_entries,
+// entity_summaries) only allowed the original three types. Rebuild them so they
+// also accept 'items', copying all existing columns 1:1. Runs outside the
+// transaction with foreign_keys disabled (analogous to rebuildEntityTablesForQualifier).
+function migrateEntityTypeChecksForItems(): void {
+  const targets: Array<[string, TableDef]> = [
+    ['entity_blacklist', schema.entity_blacklist],
+    ['entity_aliases', schema.entity_aliases],
+    ['entity_knowledge_entries', schema.entity_knowledge_entries],
+    ['entity_summaries', schema.entity_summaries],
+  ];
+
+  db.pragma('foreign_keys = OFF');
+  try {
+    for (const [table, def] of targets) {
+      if (!tableExists(table)) continue;
+      const row = db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get(table) as { sql: string } | undefined;
+      // Already rebuilt when the CHECK constraint accepts 'items'.
+      if (!row || /'items'/.test(row.sql)) continue;
+      // Let the existing blacklist migration convert legacy singular values
+      // before rebuilding this table for the new entity type.
+      if (table === 'entity_blacklist' && /'person'|'organization'|'location'/.test(row.sql)) {
+        continue;
+      }
+
+      const old = `${table}_items_rebuild`;
+      const oldCols = getExistingColumns(table);
+      const shared = Object.keys(def.columns)
+        .filter((col) => oldCols.has(col))
+        .map((col) => `"${col}"`)
+        .join(', ');
+
+      db.exec(`ALTER TABLE ${quote(table)} RENAME TO ${quote(old)};`);
+      db.exec(createTableSql(table, def));
+      db.exec(`INSERT INTO ${quote(table)} (${shared}) SELECT ${shared} FROM ${quote(old)};`);
+      db.exec(`DROP TABLE ${quote(old)};`);
+      log.info(`Rebuilt table "${table}" to allow 'items' entity type`);
+    }
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+}
+
 export function runMigrations(): void {
   // Table rebuilds that require foreign_keys = OFF must run outside the
   // outer transaction; the pragma is a no-op while a transaction is open.
   rebuildEntityTablesForQualifier();
+  migrateEntityTypeChecksForItems();
   db.transaction(() => {
     // Apply non-generative data migrations that reshape schema first.
     migrateEntityBlacklistTypes();

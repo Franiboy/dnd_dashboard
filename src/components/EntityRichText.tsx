@@ -19,6 +19,7 @@ const entityTextStyles: Record<EntityType, string> = {
   persons: 'text-[var(--accent)]',
   organizations: 'text-blue-400',
   locations: 'text-amber-400',
+  items: 'text-emerald-400',
 };
 
 function segmentText(input: string, matches: Match[]): Segment[] {
