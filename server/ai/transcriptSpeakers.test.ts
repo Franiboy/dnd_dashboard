@@ -165,6 +165,34 @@ describe('annotateTranscriptSpeakers', () => {
     );
   });
 
+  it('replaces trailing ampersand chain artifacts (e.g. Nils & Cloudsen)', () => {
+    const transcript = '[04:26] Cloudsen: Nils & Cloudsen Ja. Ah, so rum';
+    const result = annotate(transcript);
+    expect(result.transcript).toBe(
+      '[04:26] Vimak (Cloudsen): Spielleiter (Nils) & Vimak (Cloudsen) Ja. Ah, so rum'
+    );
+  });
+
+  it('handles ampersand chains with various spacing', () => {
+    const cases: [string, string][] = [
+      [
+        '[10:00] Nils: Nils & Cloudsen Ja',
+        '[10:00] Spielleiter (Nils): Spielleiter (Nils) & Vimak (Cloudsen) Ja',
+      ],
+      [
+        '[10:00] Nils: Nils&Cloudsen Ja',
+        '[10:00] Spielleiter (Nils): Spielleiter (Nils)&Vimak (Cloudsen) Ja',
+      ],
+      [
+        '[10:00] Nils: Cloudsen& Nils & Cloudsen Ja',
+        '[10:00] Spielleiter (Nils): Vimak (Cloudsen)& Spielleiter (Nils) & Vimak (Cloudsen) Ja',
+      ],
+    ];
+    for (const [input, expected] of cases) {
+      expect(annotate(input).transcript).toBe(expected);
+    }
+  });
+
   it('leaves unknown speakers and normal speech mentions unchanged', () => {
     const transcript = '[10:00] Floh: Cloudsen ist ein Goliath. Vimak ist auch da.';
     const result = annotate(transcript, 'u-franiboy');

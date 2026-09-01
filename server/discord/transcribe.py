@@ -203,12 +203,35 @@ def _is_prompt_echo(text: str, initial_prompt: str) -> bool:
     return matched >= min_matched and matched >= len(seg_words) * 0.5
 
 
+def _is_amp_chain_hallucination(text: str) -> bool:
+    # Hallucinated ampersand chains: "cloudsen&goblin1 & cloudsen2&cloudsen2 & ..."
+    # Legitimate intra-text "&" is rare (mostly "Nils & Cloudsen Ja.").
+    # Chains with >=2 ampersands and fragmented short parts are almost always invented.
+    if "&" in text and re.search(r"\w+&\w+", text):
+        # e.g. "cloudsen&goblin1" without spaces is never intentional speech
+        return True
+    if text.count("&") < 2:
+        return False
+    # Split on & and check fragment structure
+    parts = [p.strip() for p in re.split(r"\s*&\s*", text) if p.strip()]
+    if len(parts) >= 3 and all(len(p.split()) <= 2 for p in parts):
+        return True
+    # Heuristic: repeated "cloudsen" variations with digits -> invented suffix chain
+    lower = text.lower()
+    if lower.count("cloudsen") >= 2 and "&" in text:
+        return True
+    return False
+
+
 def _is_likely_hallucination(seg: dict, no_speech_prob_threshold: float, initial_prompt: str | None) -> bool:
     text = str(seg.get("text", "")).strip()
     if not text:
         return True
 
     if initial_prompt and _is_prompt_echo(text, initial_prompt):
+        return True
+
+    if _is_amp_chain_hallucination(text):
         return True
 
     no_speech_prob = float(seg.get("no_speech_prob", 0.0))
@@ -219,6 +242,11 @@ def _is_likely_hallucination(seg: dict, no_speech_prob_threshold: float, initial
     if word_count <= 2 and no_speech_prob > no_speech_prob_threshold:
         return True
     if word_count <= 2 and avg_logprob < -1.0:
+        return True
+    # Short ampersand fragments with mediocre confidence are also hallucinations
+    if word_count <= 4 and "&" in text and avg_logprob < -0.8:
+        return True
+    if word_count <= 4 and "&" in text and no_speech_prob > 0.6:
         return True
 
     return False
