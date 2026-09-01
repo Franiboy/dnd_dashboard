@@ -438,6 +438,11 @@ function migrateEntityTypeChecksForItems(): void {
         .get(table) as { sql: string } | undefined;
       // Already rebuilt when the CHECK constraint accepts 'items'.
       if (!row || /'items'/.test(row.sql)) continue;
+      // Let the existing blacklist migration convert legacy singular values
+      // before rebuilding this table for the new entity type.
+      if (table === 'entity_blacklist' && /'person'|'organization'|'location'/.test(row.sql)) {
+        continue;
+      }
 
       const old = `${table}_items_rebuild`;
       const oldCols = getExistingColumns(table);
