@@ -44,6 +44,9 @@ let botLoginStopped = false;
 let cachedChannels: RecordingChannel[] | null = null;
 let channelsCachedAt = 0;
 const CHANNEL_CACHE_TTL = 60_000;
+const autoStopTimeouts = new Map<string, NodeJS.Timeout>();
+let healthCheckInterval: NodeJS.Timeout | null = null;
+const AUTO_STOP_DEBOUNCE_MS = 5_000;
 
 export function isBotEnabled(): boolean {
   return isRecordingFeatureEnabled();
@@ -112,12 +115,52 @@ export function getBotStatus(): { ready: boolean; enabled: boolean } {
 
 export async function stopBot(): Promise<void> {
   botLoginStopped = true;
+  stopRecordingHealthCheck();
+  for (const timeout of autoStopTimeouts.values()) clearTimeout(timeout);
+  autoStopTimeouts.clear();
   try {
     await client.destroy();
   } catch (err) {
     log.error('Discord client destroy failed:', err);
   } finally {
     botReady = false;
+  }
+}
+
+export function startRecordingHealthCheck(): void {
+  if (healthCheckInterval) return;
+  healthCheckInterval = setInterval(
+    async () => {
+      try {
+        const sessions = listSessionsByStatus('recording');
+        const active = getActiveRecording();
+        if (sessions.length > 0 && !active) {
+          log.warn(
+            `Health check: ${sessions.length} recording session(s) without active recording, triggering recovery`
+          );
+          await recoverAllRecordings();
+        } else if (sessions.length === 0 && active) {
+          log.warn(
+            `Health check: active recording ${active.sessionId} but no DB recording status, finishing`
+          );
+          try {
+            await finishRecording(active.sessionId);
+          } catch (err) {
+            log.error(`Health check finish failed for ${active.sessionId}:`, err);
+          }
+        }
+      } catch (err) {
+        log.error('Recording health check failed:', err);
+      }
+    },
+    5 * 60 * 1000
+  );
+}
+
+export function stopRecordingHealthCheck(): void {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+    healthCheckInterval = null;
   }
 }
 
@@ -227,8 +270,35 @@ function isBotUser(userId: string): boolean {
   return client.user?.id === userId;
 }
 
-function isChannelEmpty(channel: VoiceBasedChannel): boolean {
-  return channel.members.filter((member) => !member.user.bot).size === 0;
+async function isChannelEmpty(channelId: string): Promise<boolean> {
+  const guild = getGuild();
+  if (!guild) return true;
+  try {
+    const channel = (await guild.channels.fetch(channelId)) as VoiceBasedChannel | null;
+    if (!channel || !channel.isVoiceBased()) return true;
+    // Use guild voiceStates for fresh data, fallback to channel.members
+    const voiceStates = guild.voiceStates.cache.filter((s) => s.channelId === channelId);
+    if (voiceStates.size === 0) return true;
+    let nonBotCount = 0;
+    for (const state of voiceStates.values()) {
+      let member = state.member;
+      if (!member) {
+        try {
+          member = await guild.members.fetch(state.id);
+        } catch {
+          // ignore, fallback to user cache
+        }
+      }
+      const user = member?.user ?? client.users.cache.get(state.id);
+      if (user?.bot) continue;
+      if (member && member.user.bot) continue;
+      nonBotCount++;
+    }
+    return nonBotCount === 0;
+  } catch {
+    // On fetch error, assume not empty to avoid premature stop
+    return false;
+  }
 }
 
 function generateAutoSessionName(): string {
@@ -251,20 +321,31 @@ async function autoStopRecordingIfEmpty(channelId: string): Promise<void> {
   const active = getActiveRecording();
   if (!active || active.channelId !== channelId) return;
 
-  const guild = getGuild();
-  if (!guild) return;
+  // Debounce: wait 5s to handle flapping (quick join/leave) and to get fresh Discord state
+  const existing = autoStopTimeouts.get(channelId);
+  if (existing) clearTimeout(existing);
 
-  const channel = guild.channels.cache.get(channelId) as VoiceBasedChannel | undefined;
-  if (!channel) return;
+  const timeout = setTimeout(async () => {
+    autoStopTimeouts.delete(channelId);
+    try {
+      const guild = getGuild();
+      if (!guild) return;
+      // Re-validate active still matches after debounce
+      const currentActive = getActiveRecording();
+      if (!currentActive || currentActive.sessionId !== active.sessionId) return;
+      if (!(await isChannelEmpty(channelId))) return;
+      const channel = (await guild.channels
+        .fetch(channelId)
+        .catch(() => null)) as VoiceBasedChannel | null;
+      const channelName = channel?.name ?? channelId;
+      await finishRecording(active.sessionId);
+      log.info(`Auto-stopped recording in channel ${channelName}`);
+    } catch (err) {
+      log.error(`Auto-stop recording failed for session ${active.sessionId}:`, err);
+    }
+  }, AUTO_STOP_DEBOUNCE_MS);
 
-  if (!isChannelEmpty(channel)) return;
-
-  try {
-    await finishRecording(active.sessionId);
-    log.info(`Auto-stopped recording in channel ${channel.name}`);
-  } catch (err) {
-    log.error(`Auto-stop recording failed for session ${active.sessionId}:`, err);
-  }
+  autoStopTimeouts.set(channelId, timeout);
 }
 
 async function handleVoiceStateUpdate(oldState: VoiceState, newState: VoiceState): Promise<void> {
@@ -288,9 +369,25 @@ async function handleVoiceStateUpdate(oldState: VoiceState, newState: VoiceState
   if (!joinedMonitored && !leftMonitored) return;
 
   if (joinedMonitored) {
-    const channel = guild.channels.cache.get(monitoredChannelId) as VoiceBasedChannel | undefined;
-    if (channel) {
-      await autoStartRecording(channel);
+    // Cancel any pending auto-stop when someone rejoins quickly (flapping protection)
+    const pendingStop = autoStopTimeouts.get(monitoredChannelId);
+    if (pendingStop) {
+      clearTimeout(pendingStop);
+      autoStopTimeouts.delete(monitoredChannelId);
+    }
+    try {
+      const fetched = (await guild.channels.fetch(monitoredChannelId)) as VoiceBasedChannel | null;
+      const channel =
+        fetched && fetched.isVoiceBased()
+          ? fetched
+          : (guild.channels.cache.get(monitoredChannelId) as VoiceBasedChannel | undefined);
+      if (channel) {
+        await autoStartRecording(channel);
+      }
+    } catch {
+      const fallback = guild.channels.cache.get(monitoredChannelId) as
+        VoiceBasedChannel | undefined;
+      if (fallback) await autoStartRecording(fallback);
     }
   }
 
@@ -610,6 +707,20 @@ export async function finishRecording(sessionId: number): Promise<RecordingSessi
 
   const stoppedAt = new Date().toISOString();
   if (files.length === 0) {
+    // Fallback: activeRecording had no users but PCM files may exist on disk (e.g., after restart or leaked FDs)
+    const directory = session.directory;
+    try {
+      const diskFiles = await readdir(directory).catch(() => [] as string[]);
+      const pcmOnDisk = diskFiles.filter((f: string) => f.endsWith('.pcm'));
+      if (pcmOnDisk.length > 0) {
+        log.warn(
+          `finishRecording: no files from active recording ${sessionId}, but found ${pcmOnDisk.length} PCM files on disk, falling back to recoverRecording`
+        );
+        return recoverRecording(sessionId);
+      }
+    } catch (err) {
+      log.error(`Fallback disk scan failed for session ${sessionId}:`, err);
+    }
     updateSession(sessionId, {
       status: 'error',
       stoppedAt,

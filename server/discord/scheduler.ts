@@ -77,6 +77,8 @@ export function runTranscriptionJobsNow(): boolean {
   return true;
 }
 
+let pollInterval: NodeJS.Timeout | null = null;
+
 export function startTranscriptionScheduler(): void {
   if (!isRecordingFeatureEnabled()) {
     return;
@@ -95,6 +97,17 @@ export function startTranscriptionScheduler(): void {
       24 * 60 * 60 * 1000
     );
   }, delay);
+
+  // Poll every 5 minutes for pending transcriptions to avoid 24h wait after recovery
+  pollInterval = setInterval(
+    () => {
+      runTranscriptionJobsNow();
+    },
+    5 * 60 * 1000
+  );
+
+  // Immediate check 30s after startup to catch sessions recovered on boot
+  setTimeout(() => runTranscriptionJobsNow(), 30_000);
 }
 
 export function stopTranscriptionScheduler(): void {
@@ -105,5 +118,9 @@ export function stopTranscriptionScheduler(): void {
   if (interval) {
     clearInterval(interval);
     interval = null;
+  }
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
   }
 }
