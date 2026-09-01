@@ -755,6 +755,29 @@ if (requireScope('recording:game-day')) {
 
 if (requireScope('recording:read')) {
   loggedTool(
+    'list_recent_sessions',
+    'Listet die letzten Aufnahme-Sessions (ohne Transkript) mit ID, Name und Datum auf – Einstieg für Session-Verifikation ohne bekannte sessionId (z. B. für Kreide-Code 000003). Nutze danach get_session_summary(sessionId) für Details.',
+    {
+      limit: z.number().int().positive().max(20).optional(),
+    },
+    async ({ limit }) => {
+      try {
+        const { listSessions } = await import('../repositories/recordings.js');
+        const sessions = listSessions();
+        const limited = sessions.slice(0, limit ?? 5);
+        if (limited.length === 0) return success('Keine Sessions gefunden.');
+        const lines = limited.map(
+          (s) =>
+            `ID ${s.id} | ${s.startedAt} | ${s.name} | Status ${s.status} | GameDay ${s.gameDay ?? '?'}${s.gameDayEnd && s.gameDayEnd !== s.gameDay ? `-${s.gameDayEnd}` : ''}`
+        );
+        return success(lines.join('\n'));
+      } catch (err) {
+        return error(err instanceof Error ? err.message : 'Fehler beim Laden der Sessions');
+      }
+    }
+  );
+
+  loggedTool(
     'get_session_summary',
     'Liefert die kurze und lange Zusammenfassung einer bestimmten Aufnahme-Session.',
     {
