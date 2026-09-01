@@ -27,9 +27,12 @@ describe('reviewEntityKnowledge', () => {
     expect(call.scopes).toContain('knowledge:distribute');
     expect(call.scopes).toContain('diary:read');
     expect(call.scopes).toContain('diary:read-all');
+    expect(call.scopes).toContain('recording:read');
     expect(call.prompt).toContain('Fokus-Entität');
     expect(call.prompt).toContain('Person "Der Abt (Abt der Totenkapelle)"');
     expect(call.prompt).toContain('includeHistory=true');
+    expect(call.prompt).toContain('get_session_summary');
+    expect(call.prompt).toContain('get_previous_session_summaries');
     expect(call.knowledgeTarget).toEqual({
       entityType: 'persons',
       entityName: 'Der Abt',
