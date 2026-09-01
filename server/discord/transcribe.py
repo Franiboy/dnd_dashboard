@@ -207,14 +207,14 @@ def _is_amp_chain_hallucination(text: str) -> bool:
     # Hallucinated ampersand chains: "cloudsen&goblin1 & cloudsen2&cloudsen2 & ..."
     # Legitimate intra-text "&" is rare (mostly "Nils & Cloudsen Ja.").
     # Chains with >=2 ampersands and fragmented short parts are almost always invented.
-    if "&" in text and re.search(r"\w+&\w+", text):
-        # e.g. "cloudsen&goblin1" without spaces is never intentional speech
+    if text.count("&") >= 2 and re.search(r"\w{2,}&\w{2,}", text):
+        # Compact pairs within a longer chain are characteristic of the artifact.
         return True
     if text.count("&") < 2:
         return False
     # Split on & and check fragment structure
     parts = [p.strip() for p in re.split(r"\s*&\s*", text) if p.strip()]
-    if len(parts) >= 3 and all(len(p.split()) <= 2 for p in parts):
+    if len(parts) >= 3 and all(len(p) >= 2 and len(p.split()) <= 2 for p in parts):
         return True
     # Heuristic: repeated "cloudsen" variations with digits -> invented suffix chain
     lower = text.lower()
