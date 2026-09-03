@@ -129,7 +129,7 @@ merge_pr() {
 	# push leaves behind on private repos: the PR is merged once GitHub accepts
 	# it, and we are not racing a stale, unapproved CI run.
 	local auto_output
-	if auto_output="$(gh pr merge "$PR_NUMBER" --auto --squash --delete-branch 2>&1)"; then
+	if auto_output="$(gh pr merge "$PR_NUMBER" --auto --squash --delete-branch --match-head-commit "$target_sha" 2>&1)"; then
 		# --auto only queues the merge; reap it so the deployment below runs on the
 		# actually merged commit. Timeout generous because GitHub may still be
 		# finishing the re-triggered (action_required) run before accepting it.
@@ -186,8 +186,10 @@ wait_for_merged() {
 }
 
 # Direct squash merge for repositories with auto-merge disabled. Only ever
-# merges the exact reviewed commit: aborts if the head moves and retries
-# until GitHub reports the PR mergeable (checks may still be settling).
+# merges the exact reviewed commit: the merge itself is pinned to it via
+# --match-head-commit (server-side atomic check), aborts if the head moves
+# and retries until GitHub reports the PR mergeable (checks may still be
+# settling).
 direct_merge_pr() {
 	local target_sha="$1"
 	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-90}"
@@ -200,7 +202,7 @@ direct_merge_pr() {
 		local mergeable
 		mergeable="$(gh pr view "$PR_NUMBER" --json mergeable --jq .mergeable)"
 		if [ "$mergeable" = "MERGEABLE" ]; then
-			if gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+			if gh pr merge "$PR_NUMBER" --squash --delete-branch --match-head-commit "$target_sha"; then
 				wait_for_merged "$target_sha"
 				return $?
 			fi
