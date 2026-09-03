@@ -1,0 +1,3 @@
+# Always use LF line endings: normalize to LF on commit and check out LF.
+# Matches Prettier ("endOfLine": "lf") and avoids CRLF noise on Windows.
+* text=auto eol=lf
