@@ -11,7 +11,8 @@ import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
-import ReactQuill from 'react-quill-new';
+import { QuillWithEntityMention } from '../components/QuillWithEntityMention';
+import type ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
 import { ensureHtml, quillFormats, quillModules, stripHtml } from '../components/quillConfig';
 import { splitEntityLabel } from '../lib/entityLabels';
@@ -1196,10 +1197,11 @@ export function Diary() {
                             {processingCommandId === entry.id ? 'Wird verarbeitet...' : 'Ausführen'}
                           </Button>
                         </form>
-                        <ReactQuill
-                          ref={(el) => {
+                        <QuillWithEntityMention
+                          quillRef={(el) => {
                             if (el) quillRefs.current[entry.id] = el;
                           }}
+                          mappings={mappings}
                           theme="snow"
                           value={getEditingContent(entry)}
                           onChange={(value, _delta, source) =>
@@ -1229,10 +1231,11 @@ export function Diary() {
                       </div>
                     ) : (
                       <div className="mb-4">
-                        <ReactQuill
-                          ref={(el) => {
+                        <QuillWithEntityMention
+                          quillRef={(el) => {
                             if (el) quillRefs.current[entry.id] = el;
                           }}
+                          mappings={mappings}
                           theme="snow"
                           value={getEditingContent(entry)}
                           onChange={(value, _delta, source) =>
@@ -1347,8 +1350,9 @@ export function Diary() {
           </div>
           <div className="flex-1 min-h-0 flex flex-col">
             <label className="block text-sm text-slate-400 mb-1">Inhalt</label>
-            <ReactQuill
+            <QuillWithEntityMention
               theme="snow"
+              mappings={mappings}
               value={form.content}
               onChange={(value) => setForm((prev) => ({ ...prev, content: value }))}
               modules={quillModules}
