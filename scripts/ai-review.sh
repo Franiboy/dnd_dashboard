@@ -13,6 +13,10 @@
 #      - Red: discard the AI changes, comment on the PR, fail.
 #   4. If the AI changed nothing: squash merge (the ci job already passed).
 #
+# Merging prefers GitHub auto-merge and falls back to a direct squash merge
+# when the repository disallows auto-merge. Both paths only ever merge the
+# exact reviewed commit (verified via head SHA) and deploy afterwards.
+#
 # Requires: gh (GH_TOKEN), opencode on PATH, git identity is set here.
 set -euo pipefail
 
@@ -114,7 +118,6 @@ merge_pr() {
 	target_sha="$(git rev-parse HEAD)"
 	log "Merging PR #$PR_NUMBER (auto-merge, squash, delete branch) for head ${target_sha:0:7}"
 
-	local merge_error=0
 	if [ "$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid)" != "$target_sha" ]; then
 		log "ERROR: PR head moved away from the reviewed commit before merging"
 		return 1
@@ -125,18 +128,44 @@ merge_pr() {
 	# out of date' state and on the `action_required` check-suite that the bot
 	# push leaves behind on private repos: the PR is merged once GitHub accepts
 	# it, and we are not racing a stale, unapproved CI run.
-	gh pr merge "$PR_NUMBER" --auto --squash --delete-branch || merge_error=1
+	local auto_output
+	if auto_output="$(gh pr merge "$PR_NUMBER" --auto --squash --delete-branch --match-head-commit "$target_sha" 2>&1)"; then
+		# --auto only queues the merge; reap it so the deployment below runs on the
+		# actually merged commit. Timeout generous because GitHub may still be
+		# finishing the re-triggered (action_required) run before accepting it.
+		if wait_for_merged "$target_sha"; then
+			return 0
+		fi
+		# Never leave auto-merge armed: GitHub could merge the (unchanged) head
+		# after this job already failed, with no deployment afterwards because
+		# workflow-token merges do not trigger the main deploy job.
+		log "Disabling auto-merge after timeout"
+		gh pr merge "$PR_NUMBER" --disable-auto >/dev/null 2>&1 || true
+		return 1
+	fi
 
-	# --auto only queues the merge; reap it so the deployment below runs on the
-	# actually merged commit. Timeout generous because GitHub may still be
-	# finishing the re-triggered (action_required) run before accepting it.
+	# The repository may disallow auto-merge entirely ("Auto merge is not
+	# allowed for this repository"): fall back to a direct squash merge of the
+	# same reviewed commit instead of failing the whole pipeline.
+	if echo "$auto_output" | grep -qi "auto merge is not allowed"; then
+		log "WARN: auto-merge is disabled on this repository; falling back to direct squash merge"
+		direct_merge_pr "$target_sha"
+		return $?
+	fi
+	log "ERROR: could not queue auto-merge: $auto_output"
+	return 1
+}
+
+# Wait until the PR reaches MERGED (then deploy) or fail on CLOSED/timeout.
+# Shared by the auto-merge and direct-merge paths.
+wait_for_merged() {
+	local target_sha="$1"
 	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-90}"
 	local deadline=$(( $(date +%s) + timeout_seconds ))
 	while [ "$(date +%s)" -lt "$deadline" ]; do
-		# Cancel auto-merge immediately if the head moves off the reviewed commit.
+		# Abort immediately if the head moves off the reviewed commit.
 		if [ "$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid)" != "$target_sha" ]; then
-			log "ERROR: head changed while merging; cancelling auto-merge"
-			gh pr merge "$PR_NUMBER" --disable-auto >/dev/null 2>&1 || true
+			log "ERROR: head changed while merging"
 			return 1
 		fi
 		local state merged_at oid
@@ -152,11 +181,36 @@ merge_pr() {
 		fi
 		sleep 3
 	done
-	# Never leave auto-merge armed: GitHub could merge the (unchanged) head
-	# after this job already failed, with no deployment afterwards because
-	# workflow-token merges do not trigger the main deploy job.
-	log "ERROR: PR #$PR_NUMBER did not reach MERGED within ${timeout_seconds}s; disabling auto-merge"
-	gh pr merge "$PR_NUMBER" --disable-auto >/dev/null 2>&1 || true
+	log "ERROR: PR #$PR_NUMBER did not reach MERGED within ${timeout_seconds}s"
+	return 1
+}
+
+# Direct squash merge for repositories with auto-merge disabled. Only ever
+# merges the exact reviewed commit: the merge itself is pinned to it via
+# --match-head-commit (server-side atomic check), aborts if the head moves
+# and retries until GitHub reports the PR mergeable (checks may still be
+# settling).
+direct_merge_pr() {
+	local target_sha="$1"
+	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-90}"
+	local deadline=$(( $(date +%s) + timeout_seconds ))
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		if [ "$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid)" != "$target_sha" ]; then
+			log "ERROR: head changed before direct merge; aborting"
+			return 1
+		fi
+		local mergeable
+		mergeable="$(gh pr view "$PR_NUMBER" --json mergeable --jq .mergeable)"
+		if [ "$mergeable" = "MERGEABLE" ]; then
+			if gh pr merge "$PR_NUMBER" --squash --delete-branch --match-head-commit "$target_sha"; then
+				wait_for_merged "$target_sha"
+				return $?
+			fi
+			log "Direct merge rejected for now; retrying"
+		fi
+		sleep 5
+	done
+	log "ERROR: PR #$PR_NUMBER did not become mergeable within ${timeout_seconds}s"
 	return 1
 }
 
