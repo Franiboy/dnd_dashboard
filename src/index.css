@@ -281,6 +281,12 @@ button {
   min-height: 0;
 }
 
+.diary-editor .ql-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
 .diary-editor .ql-container {
   display: flex;
   flex-direction: column;
