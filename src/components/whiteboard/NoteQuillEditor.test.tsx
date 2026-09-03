@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Quill } from 'react-quill-new';
 import type { WhiteboardElement } from '../../../shared/types';
 import { NOTE_QUILL_TOOLBAR_ID, NoteQuillEditor } from './NoteQuillEditor';
+import { MappingsContext } from '../../contexts/MappingsContext';
 import { WhiteboardElementView } from './WhiteboardElementView';
 
 // Quill's mount focus reads layout metrics that jsdom does not implement.
@@ -58,7 +59,9 @@ function EditorHarness({ children }: { children: ReactNode }) {
   return (
     <div>
       <div id={NOTE_QUILL_TOOLBAR_ID} />
-      {children}
+      <MappingsContext.Provider value={{ mappings: [], refresh: async () => [] }}>
+        {children}
+      </MappingsContext.Provider>
     </div>
   );
 }
