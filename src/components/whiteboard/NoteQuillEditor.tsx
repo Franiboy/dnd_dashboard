@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import ReactQuill from 'react-quill-new';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { ensureHtml, isEmptyHtml, quillFormats, quillModules } from '../quillConfig';
+import { QuillWithEntityMention } from '../QuillWithEntityMention';
+import { useEntityMappings } from '../../hooks/useEntityMappings';
 import { useFitFontSize } from './useFitFontSize';
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -244,6 +246,7 @@ export function NoteQuillEditor({
   const saveTimerRef = useRef<number | null>(null);
   const latestRef = useRef({ id: element.id, html: ensureHtml(element.text), onUpdate });
   const [draft, setDraft] = useState(() => ensureHtml(element.text));
+  const { mappings } = useEntityMappings();
   const { ref: fitRef, fontSize } = useFitFontSize(draft, boxWidth, boxHeight, true);
 
   latestRef.current = { id: element.id, html: latestRef.current.html, onUpdate };
@@ -325,8 +328,9 @@ export function NoteQuillEditor({
       }}
     >
       <div ref={fitRef as RefObject<HTMLDivElement>} style={{ fontSize }} className="w-full">
-        <ReactQuill
-          ref={quillRef}
+        <QuillWithEntityMention
+          quillRef={quillRef}
+          mappings={mappings}
           theme="snow"
           // Save the real editor DOM (data-list + ql-ui markers) instead of
           // the semantic approximation, so lists survive into display view.
