@@ -1,3 +1,5 @@
+import Quill from 'quill';
+
 export function stripHtml(html: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
@@ -37,6 +39,37 @@ export function createTableHtml(rows: number, cols: number): string {
 }
 
 export const quillModules = {
+  keyboard: {
+    bindings: {
+      // Quill's default Tab binding inserts a literal tab character into
+      // plain paragraphs, which looks different from the toolbar's indent
+      // buttons (they set the block-level indent format). Replace it so Tab
+      // always applies the same indent format as the buttons. Tables keep
+      // their cell navigation and code blocks keep literal tabs.
+      tab: {
+        key: 'Tab',
+        handler: function (
+          this: { quill: Quill },
+          range: { index: number; length: number },
+          context: { format: Record<string, unknown> }
+        ) {
+          if (context.format.table) return true;
+          if (context.format['code-block']) {
+            // Default Quill behavior: replace the selection with a tab.
+            const Delta = Quill.import('delta');
+            const delta = new Delta().retain(range.index).delete(range.length).insert('\t');
+            this.quill.history.cutoff();
+            this.quill.updateContents(delta, 'user');
+            this.quill.history.cutoff();
+            this.quill.setSelection(range.index + 1, 'silent');
+            return false;
+          }
+          this.quill.format('indent', '+1', 'user');
+          return false;
+        },
+      },
+    },
+  },
   toolbar: {
     container: [
       [{ header: [1, 2, 3, false] }],
