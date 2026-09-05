@@ -10,6 +10,8 @@ export interface ColumnDef {
   primaryKey?: boolean;
   autoIncrement?: boolean;
   default?: string;
+  /** Optional column collation (e.g. 'NOCASE'), baked into the DDL. */
+  collate?: string;
 }
 
 export interface IndexDef {
@@ -98,8 +100,55 @@ export const schema: Record<string, TableDef> = {
       // day (inclusive). A single-day session has both equal.
       game_day: { type: 'INTEGER' },
       game_day_end: { type: 'INTEGER' },
+      // Story arc this session was filed into. Plain column without FK (same
+      // pattern as session_draft_for): it is ALTER-added on existing databases
+      // and nulled out explicitly when an arc is deleted.
+      arc_id: { type: 'INTEGER' },
       updated_at: { type: 'TEXT' },
     },
+    indexes: [{ name: 'idx_recording_sessions_arc_id', columns: ['arc_id'] }],
+  },
+
+  // Story arcs group sessions and diary entries into narrative chapters.
+  // Exactly one arc has status 'active' (enforced in the repository): newly
+  // created sessions/entries are filed into it automatically.
+  story_arcs: {
+    columns: {
+      id: { type: 'INTEGER', primaryKey: true, autoIncrement: true },
+      name: { type: 'TEXT', notNull: true },
+      description: { type: 'TEXT' },
+      status: { type: 'TEXT', notNull: true, default: "'planned'" },
+      created_at: { type: 'TEXT', notNull: true },
+      updated_at: { type: 'TEXT', notNull: true },
+    },
+    check: "status IN ('planned', 'active', 'completed')",
+  },
+
+  // Many-to-many assignment of world entities to story arcs. An entity can
+  // span several arcs (e.g. a villain across chapters); the identity follows
+  // the knowledge-graph convention (type, name, qualifier). Links are added
+  // automatically whenever an entity shows up in an arc's entry/session and
+  // can be managed manually in the entity dialog.
+  story_arc_entities: {
+    columns: {
+      arc_id: { type: 'INTEGER', notNull: true, primaryKey: true },
+      entity_type: { type: 'TEXT', notNull: true, primaryKey: true },
+      // NOCASE keeps the identity consistent with the entity lookups
+      // (findEntityRow & co match names case-insensitively): "gandalf" and
+      // "Gandalf" share one link row instead of duplicating the PK.
+      entity_name: { type: 'TEXT', notNull: true, primaryKey: true, collate: 'NOCASE' },
+      // Part of the entity identity; see persons.qualifier.
+      entity_qualifier: { type: 'TEXT', notNull: true, primaryKey: true, default: "''" },
+    },
+    references: [
+      {
+        columns: ['arc_id'],
+        table: 'story_arcs',
+        references: ['id'],
+        onDelete: 'CASCADE',
+      },
+    ],
+    check: "entity_type IN ('persons', 'organizations', 'locations', 'items')",
   },
 
   // Central campaign timeline: one row per in-game day. Sessions and diary
@@ -161,12 +210,16 @@ export const schema: Record<string, TableDef> = {
       // In-game day of this entry ("Eintrag = Spieltag"); see
       // recording_sessions.game_day for the shared timeline axis.
       game_day: { type: 'INTEGER' },
+      // Story arc this entry was filed into; see
+      // recording_sessions.arc_id for the plain-column rationale.
+      arc_id: { type: 'INTEGER' },
     },
     indexes: [
       {
         name: 'idx_diary_entries_session_draft_for',
         columns: ['session_draft_for'],
       },
+      { name: 'idx_diary_entries_arc_id', columns: ['arc_id'] },
     ],
   },
 

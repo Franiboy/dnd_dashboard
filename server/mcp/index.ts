@@ -35,6 +35,7 @@ import {
 } from '../repositories/entityKnowledge.js';
 import { getCurrentGameDay, setSessionGameDayRange } from '../repositories/gameTimeline.js';
 import { getEntitySummary, setEntitySummary } from '../repositories/entitySummaries.js';
+import { getStoryArcDayRange, knowledgeOverlapsArcRange } from '../repositories/storyArcs.js';
 import { writeRewrittenFile } from '../diaryFiles.js';
 import { normalizeToHtml } from '../ai/rewrite.js';
 import { sanitizeHtml } from '../utils/sanitizeHtml.js';
@@ -92,6 +93,10 @@ function error(message: string): { content: Array<{ type: 'text'; text: string }
 
 const sessionUserId = payload?.userId ?? null;
 const sessionIsAdmin = payload?.isAdmin ?? false;
+// Story arc of the processed object (resolved server-side before the run).
+// When set, context tools scope their queries to this arc so AI runs never
+// scan the whole campaign history.
+const sessionArcId = payload?.arcId ?? null;
 // Grants full read access to all players' diary entries for shared-world
 // flows (knowledge verify/correct/summary) even when the acting user is not
 // an admin - entities, knowledge and the world belong to everyone.
@@ -428,6 +433,11 @@ if (requireScope('diary:read')) {
       try {
         const entry = getDiaryEntryWithAccess(entryId);
         if (!entry) return diaryAccessError();
+        if (sessionArcId !== null && entry.arcId !== sessionArcId) {
+          return error(
+            'Der Eintrag gehört nicht zum Story Arc dieser Aufgabe; die Kontextabfragen sind arc-beschränkt.'
+          );
+        }
         const lines = [
           `ID: ${entry.id}`,
           `Titel: ${entry.title}`,
@@ -458,7 +468,12 @@ if (requireScope('diary:read')) {
       try {
         if (!canReadAllDiaries && !sessionUserId) return error('Kein Benutzerkontext vorhanden');
         const diaryUserId = canReadAllDiaries ? undefined : (sessionUserId ?? undefined);
-        const entries = searchDiaryEntries(query, diaryUserId, limit ?? 5);
+        const entries = searchDiaryEntries(
+          query,
+          diaryUserId,
+          limit ?? 5,
+          sessionArcId ?? undefined
+        );
         if (entries.length === 0) return success('Keine Tagebucheinträge gefunden.');
         const lines = entries.map((e) => {
           const plain = stripHtml(e.content);
@@ -482,7 +497,12 @@ if (requireScope('diary:read')) {
       try {
         const entry = getDiaryEntryWithAccess(entryId);
         if (!entry) return diaryAccessError();
-        const entries = listPreviousDiaryEntriesByUser(entry.userId, entry.createdAt, limit ?? 3);
+        const entries = listPreviousDiaryEntriesByUser(
+          entry.userId,
+          entry.createdAt,
+          limit ?? 3,
+          sessionArcId ?? undefined
+        );
         if (entries.length === 0) return success('Keine vorherigen Tagebucheinträge gefunden.');
         const lines = entries.map((e) => {
           const plain = stripHtml(e.content);
@@ -506,7 +526,11 @@ if (requireScope('diary:read')) {
     async ({ limit }) => {
       try {
         if (!sessionUserId) return error('Kein Benutzerkontext vorhanden');
-        const entries = listDiaryEntryHeadlinesByUser(sessionUserId, limit ?? 20);
+        const entries = listDiaryEntryHeadlinesByUser(
+          sessionUserId,
+          limit ?? 20,
+          sessionArcId ?? undefined
+        );
         if (entries.length === 0) return success('Keine Tagebucheinträge gefunden.');
         const lines = entries.map((e) => {
           const preview = e.content.length > 0 ? e.content : '(leerer Eintrag)';
@@ -574,19 +598,25 @@ if (requireScope('entity:read')) {
         const label = entityLabel(canonicalRef);
         const summary = getEntitySummary(type, canonicalRef.name, canonicalRef.qualifier);
         const currentGameDay = getCurrentGameDay();
+        // In arc-scoped runs, knowledge and linked diary entries are limited
+        // to the arc's derived game-day range / arc membership.
+        const arcRange = sessionArcId !== null ? getStoryArcDayRange(sessionArcId) : null;
+        const inArc = (entry: { validFrom: number | null; validUntil: number | null }): boolean =>
+          arcRange === null || knowledgeOverlapsArcRange(entry, arcRange);
         const knowledge = listActiveEntityKnowledge(
           type,
           canonicalRef.name,
           canonicalRef.qualifier,
           currentGameDay
-        );
+        ).filter(inArc);
         const diaryEntries =
           includeDiaryEntries !== false
             ? listDiaryEntryContentsByEntity(
                 type,
                 canonicalRef.name,
                 canReadAllDiaries ? undefined : (sessionUserId ?? '__no_user__'),
-                canonicalRef.qualifier
+                canonicalRef.qualifier,
+                sessionArcId ?? undefined
               )
             : [];
 
@@ -619,7 +649,7 @@ if (requireScope('entity:read')) {
             type,
             canonicalRef.name,
             canonicalRef.qualifier
-          ).filter((k) => !activeIds.has(k.id));
+          ).filter((k) => !activeIds.has(k.id) && inArc(k));
           if (history.length > 0) {
             lines.push('');
             lines.push('Historie (nicht mehr gültig):');
@@ -763,7 +793,7 @@ if (requireScope('recording:read')) {
     async ({ limit }) => {
       try {
         const { listSessions } = await import('../repositories/recordings.js');
-        const sessions = listSessions();
+        const sessions = listSessions(sessionArcId ?? undefined);
         const limited = sessions.slice(0, limit ?? 5);
         if (limited.length === 0) return success('Keine Sessions gefunden.');
         const lines = limited.map(
@@ -787,6 +817,11 @@ if (requireScope('recording:read')) {
       try {
         const session = getSessionSummaryById(sessionId);
         if (!session) return error(`Session ${sessionId} nicht gefunden.`);
+        if (sessionArcId !== null && (session.arcId ?? null) !== sessionArcId) {
+          return error(
+            'Die Session gehört nicht zum Story Arc dieser Aufgabe; die Kontextabfragen sind arc-beschränkt.'
+          );
+        }
         return success(formatSessionSummary(session));
       } catch (err) {
         return error(
@@ -805,7 +840,11 @@ if (requireScope('recording:read')) {
     },
     async ({ sessionId, limit }) => {
       try {
-        const sessions = listPreviousSessionSummaries(sessionId, limit ?? 5);
+        const sessions = listPreviousSessionSummaries(
+          sessionId,
+          limit ?? 5,
+          sessionArcId ?? undefined
+        );
         if (sessions.length === 0) return success('Keine vorherigen Sessions gefunden.');
         return success(sessions.map(formatSessionSummary).join('\n\n---\n\n'));
       } catch (err) {

@@ -7,6 +7,12 @@ import { sanitizeHtml, sanitizePlainText } from '../utils/sanitizeHtml.js';
 import { mergeEntityKnowledge, renameEntityKnowledge } from './entityKnowledge.js';
 import { mergeEntitySummary } from './entitySummaries.js';
 import { ensureCampaignDay } from './gameTimeline.js';
+import {
+  deleteStoryArcEntitiesByName,
+  getActiveArcId,
+  linkStoryArcEntityForDiaryEntry,
+  retargetStoryArcEntities,
+} from './storyArcs.js';
 
 interface EntityConfig {
   table: string;
@@ -80,6 +86,7 @@ function rowToDiaryEntry(
     locations: entities.locations,
     items: entities.items,
     gameDay: (row.game_day as number | null | undefined) ?? null,
+    arcId: (row.arc_id as number | null | undefined) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -474,6 +481,8 @@ export function blacklistEntity(name: string, type: keyof DiaryEntities): void {
       normalized,
       normalized
     );
+    // The name-level kill switch also drops the story-arc links of the name.
+    deleteStoryArcEntitiesByName(type, normalized);
   });
 
   tx();
@@ -561,6 +570,12 @@ function setLinkedEntities(
       const entity = findEntityRow(type, ref);
       if (!entity) continue;
       linkEntity.run(targetId, entity.id);
+      // Story-arc bookkeeping: an entity showing up in an entry of an arc is
+      // additively filed into that arc (m:n, idempotent via the PK).
+      linkStoryArcEntityForDiaryEntry(entryId, type, {
+        name: entity.name,
+        qualifier: entity.qualifier ?? '',
+      });
     }
   });
 
@@ -594,15 +609,18 @@ export function createDiaryEntry(
   title: string,
   content: string,
   summary?: string | null,
-  gameDay?: number | null
+  gameDay?: number | null,
+  arcId?: number | null
 ): DiaryEntry {
   const now = new Date().toISOString();
   const day = gameDay ?? null;
   if (day !== null) ensureCampaignDay(day);
+  // Explicit arc wins, otherwise the entry is filed into the active arc.
+  const resolvedArcId = arcId !== undefined ? arcId : getActiveArcId();
   const result = db
     .prepare(
-      `INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, game_day, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, game_day, arc_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       userId,
@@ -611,6 +629,7 @@ export function createDiaryEntry(
       summary ? sanitizePlainText(summary) : null,
       1,
       day,
+      resolvedArcId,
       now,
       now
     );
@@ -649,17 +668,26 @@ export function listDiaryEntriesByUser(userId: string): DiaryEntry[] {
 
 export function listDiaryEntryHeadlinesByUser(
   userId: string,
-  limit = 20
+  limit = 20,
+  arcId?: number
 ): { id: number; title: string; content: string; createdAt: string }[] {
-  const rows = db
-    .prepare(
-      `SELECT id, title, content, created_at AS createdAt
+  const params: (string | number)[] = [userId];
+  let sql = `SELECT id, title, content, created_at AS createdAt
        FROM diary_entries
-       WHERE user_id = ?
-       ORDER BY created_at DESC
-       LIMIT ?`
-    )
-    .all(userId, limit) as { id: number; title: string; content: string; createdAt: string }[];
+       WHERE user_id = ?`;
+  // Arc-scoped AI runs only see entries of their own story arc.
+  if (arcId !== undefined) {
+    sql += ' AND arc_id = ?';
+    params.push(arcId);
+  }
+  sql += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(limit);
+  const rows = db.prepare(sql).all(...params) as {
+    id: number;
+    title: string;
+    content: string;
+    createdAt: string;
+  }[];
   return rows.map((row) => ({
     ...row,
     content: stripHtml(row.content).slice(0, 300),
@@ -669,17 +697,20 @@ export function listDiaryEntryHeadlinesByUser(
 export function listPreviousDiaryEntriesByUser(
   userId: string,
   beforeCreatedAt: string,
-  limit = 3
+  limit = 3,
+  arcId?: number
 ): { id: number; title: string; content: string; createdAt: string }[] {
-  const rows = db
-    .prepare(
-      `SELECT id, title, content, created_at AS createdAt
+  const params: (string | number)[] = [userId, beforeCreatedAt];
+  let sql = `SELECT id, title, content, created_at AS createdAt
        FROM diary_entries
-       WHERE user_id = ? AND created_at < ?
-       ORDER BY created_at DESC
-       LIMIT ?`
-    )
-    .all(userId, beforeCreatedAt, limit) as {
+       WHERE user_id = ? AND created_at < ?`;
+  if (arcId !== undefined) {
+    sql += ' AND arc_id = ?';
+    params.push(arcId);
+  }
+  sql += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(limit);
+  const rows = db.prepare(sql).all(...params) as {
     id: number;
     title: string;
     content: string;
@@ -691,7 +722,8 @@ export function listPreviousDiaryEntriesByUser(
 export function searchDiaryEntries(
   query: string,
   userId?: string,
-  limit = 5
+  limit = 5,
+  arcId?: number
 ): { id: number; title: string; content: string; createdAt: string }[] {
   const escaped = query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
   const like = `%${escaped}%`;
@@ -702,6 +734,10 @@ export function searchDiaryEntries(
   if (userId) {
     sql += ' AND user_id = ?';
     params.push(userId);
+  }
+  if (arcId !== undefined) {
+    sql += ' AND arc_id = ?';
+    params.push(arcId);
   }
   sql += ' ORDER BY created_at DESC LIMIT ?';
   params.push(limit);
@@ -718,7 +754,8 @@ export function listDiaryEntryContentsByEntity(
   type: keyof DiaryEntities,
   name: string,
   userId?: string,
-  qualifier = ''
+  qualifier = '',
+  arcId?: number
 ): { id: number; title: string; content: string; createdAt: string; gameDay: number | null }[] {
   const { linkTable, column } = entityConfig[type];
   const row = findEntityRow(type, { name, qualifier });
@@ -731,6 +768,10 @@ export function listDiaryEntryContentsByEntity(
   if (userId) {
     sql += ' AND de.user_id = ?';
     params.push(userId);
+  }
+  if (arcId !== undefined) {
+    sql += ' AND de.arc_id = ?';
+    params.push(arcId);
   }
   sql += ' ORDER BY de.created_at DESC';
   const rows = db.prepare(sql).all(...params) as {
@@ -760,6 +801,7 @@ export function updateDiaryEntry(
       | 'aiProcessedAt'
       | 'sessionDraftFor'
       | 'gameDay'
+      | 'arcId'
     > & {
       rewrittenFilePath?: string | null;
       rewriteSessionId?: string | null;
@@ -817,6 +859,10 @@ export function updateDiaryEntry(
       ensureCampaignDay(updates.gameDay);
     }
   }
+  if (updates.arcId !== undefined) {
+    fields.push('arc_id = ?');
+    values.push(updates.arcId);
+  }
   if (updates.aiDirty !== undefined) {
     fields.push('ai_dirty = ?');
     values.push(updates.aiDirty ? 1 : 0);
@@ -871,16 +917,29 @@ export function createSessionDiaryDraft(
 ): DiaryEntry {
   const now = new Date().toISOString();
   const session = db
-    .prepare('SELECT game_day FROM recording_sessions WHERE id = ?')
-    .get(sessionId) as { game_day: number | null } | undefined;
+    .prepare('SELECT game_day, arc_id FROM recording_sessions WHERE id = ?')
+    .get(sessionId) as { game_day: number | null; arc_id: number | null } | undefined;
   const gameDay = session?.game_day ?? null;
   if (gameDay !== null) ensureCampaignDay(gameDay);
+  // The draft belongs to the same story arc as its source session.
+  const arcId = session?.arc_id ?? null;
   const derivedTitle = gameDay !== null ? `Spieltag ${gameDay}` : sanitizePlainText(title);
   const result = db
     .prepare(
-      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, game_day, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, game_day, arc_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
-    .run(userId, derivedTitle, sanitizeHtml('').trim(), null, 0, sessionId, gameDay, now, now);
+    .run(
+      userId,
+      derivedTitle,
+      sanitizeHtml('').trim(),
+      null,
+      0,
+      sessionId,
+      gameDay,
+      arcId,
+      now,
+      now
+    );
   const entryId = Number(result.lastInsertRowid);
   const filePath = getRewrittenFilePath(entryId);
   writeRewrittenFile(entryId, sanitizeHtml(html).trim());
@@ -981,6 +1040,14 @@ export function reclassifyEntity(
     db.prepare(`DELETE FROM ${from.table} WHERE id = ?`).run(source.id);
     db.prepare('DELETE FROM entity_aliases WHERE type = ? AND alias = ?').run(fromType, normalized);
 
+    // Keep the identity-based story-arc links attached to the moved entity.
+    retargetStoryArcEntities(
+      fromType,
+      { name: normalized, qualifier: source.qualifier ?? '' },
+      toType,
+      { name: normalized, qualifier: source.qualifier ?? '' }
+    );
+
     const aliases = db
       .prepare(
         'SELECT alias FROM entity_aliases WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
@@ -1051,6 +1118,13 @@ export function addEntityAlias(
         insertLink.run(diary_entry_id, canonicalRow.id);
       }
       db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(aliasRow.id);
+      // The alias entity disappears; its story-arc links move to the target.
+      retargetStoryArcEntities(
+        type,
+        { name: aliasRow.name, qualifier: aliasRow.qualifier ?? '' },
+        type,
+        { name: canonicalRow.name, qualifier: canonicalRow.qualifier ?? '' }
+      );
       mergeEntityKnowledge(
         type,
         aliasNormalized,
@@ -1144,6 +1218,13 @@ export function updateEntity(
         'UPDATE entity_aliases SET canonical = ?, canonical_qualifier = ? WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'
       ).run(newNormalized, newQualifier, type, oldRow.name, oldRow.qualifier ?? '');
       renameEntityKnowledge(type, oldRow.name, newNormalized, oldRow.qualifier ?? '', newQualifier);
+      // Follow the rename in the identity-based story-arc links.
+      retargetStoryArcEntities(
+        type,
+        { name: oldRow.name, qualifier: oldRow.qualifier ?? '' },
+        type,
+        { name: newNormalized, qualifier: newQualifier }
+      );
     } else {
       db.prepare(
         'UPDATE entity_aliases SET canonical_qualifier = ? WHERE type = ? AND canonical = ? COLLATE NOCASE AND canonical_qualifier = ?'

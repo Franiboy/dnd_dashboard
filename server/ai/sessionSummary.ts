@@ -9,6 +9,7 @@ import { getModel } from './modelConfig.js';
 import { runOpenCode } from './opencode.js';
 import { distributeKnowledgeFromText } from './knowledge.js';
 import { getSessionWorkDir, getSessionWorkFile } from './sessionWorkdir.js';
+import { resolveSessionArcContext } from './arcContext.js';
 
 const log = createLogger('sessionSummary');
 
@@ -74,6 +75,7 @@ async function generateLongSessionSummary(
   onLog?: (line: string) => void
 ): Promise<string | null> {
   const session = getSessionById(sessionId);
+  const arcContext = resolveSessionArcContext(sessionId);
   const boundaryHints =
     session?.gameBoundaryDetectedAt &&
     session.gameStartSeconds !== null &&
@@ -92,6 +94,7 @@ async function generateLongSessionSummary(
     'Du bist ein Assistent für ein D&D-Sessions-System. Du arbeitest mit Dateien und Tools und antwortest prägnant auf Deutsch.',
     '',
     `Aufgabe: Erstelle eine ausführliche Zusammenfassung der D&D-Session ${sessionId} im HTML-Format.`,
+    ...(arcContext?.promptLines ?? []),
     '',
     'Vorgehen:',
     `1. Lies die Datei ${workFile} mit dem read-Tool.`,
@@ -115,6 +118,7 @@ async function generateLongSessionSummary(
     title: `dnd-session-long-summary-${sessionId}-${Date.now()}`,
     scopes: ['recording:read', 'recording:summarize', 'diary:read', 'entity:read'],
     user,
+    arcId: arcContext?.arcId,
     onLog,
   });
 

@@ -3,9 +3,13 @@ import { useLocation } from 'react-router-dom';
 import { AppSwitcher } from './AppSwitcher';
 import { HeaderAction } from './HeaderAction';
 import { Loading } from './Loading';
+import { StoryArcFilter } from './StoryArcFilter';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import type { SafeUser, VersionInfo } from '../../shared/types';
+
+// Routes the global story-arc filter applies to; shown in the header there.
+const STORY_ARC_FILTER_PATHS = ['/sessions', '/tagebuch', '/welt'];
 
 interface LayoutProps {
   user: SafeUser;
@@ -161,8 +165,9 @@ export function Layout({ user, realUser, version, onLogout, onUserChange, childr
             </div>
           </div>
 
-          {/* Right: logout */}
-          <div className="flex shrink-0 items-center">
+          {/* Right: story-arc filter (on affected routes) + logout */}
+          <div className="flex shrink-0 items-center gap-2">
+            {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
             <HeaderAction onClick={onLogout} icon={logoutIcon} variant="danger">
               Logout
             </HeaderAction>

@@ -46,6 +46,7 @@ function columnSql(name: string, def: ColumnDef, inlinePk: boolean): string {
   if (def.autoIncrement) parts.push('AUTOINCREMENT');
   if (def.notNull) parts.push('NOT NULL');
   if (def.default !== undefined) parts.push(`DEFAULT ${def.default}`);
+  if (def.collate) parts.push(`COLLATE ${def.collate}`);
   return parts.join(' ');
 }
 
@@ -462,11 +463,37 @@ function migrateEntityTypeChecksForItems(): void {
   }
 }
 
+// One-time introduction of story arcs: when the story_arcs table appears for
+// the first time, seed a single active arc and file every existing session and
+// diary entry into it. Guarded by the "table is new in this run" flag, so it
+// never re-runs later (e.g. after an admin deliberately deleted all arcs).
+function seedStoryArcs(tableIsNew: boolean): void {
+  if (!tableIsNew || !tableExists('story_arcs')) return;
+
+  const now = new Date().toISOString();
+  const count = db.prepare('SELECT COUNT(*) AS n FROM story_arcs').get() as { n: number };
+  if (count.n > 0) return;
+
+  const result = db
+    .prepare(
+      "INSERT INTO story_arcs (name, description, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)"
+    )
+    .run('Erster Arc', null, now, now);
+  const arcId = Number(result.lastInsertRowid);
+
+  db.prepare('UPDATE recording_sessions SET arc_id = ? WHERE arc_id IS NULL').run(arcId);
+  db.prepare('UPDATE diary_entries SET arc_id = ? WHERE arc_id IS NULL').run(arcId);
+  log.info(`Seeded story arc ${arcId} ("Erster Arc") and assigned all existing sessions/entries`);
+}
+
 export function runMigrations(): void {
   // Table rebuilds that require foreign_keys = OFF must run outside the
   // outer transaction; the pragma is a no-op while a transaction is open.
   rebuildEntityTablesForQualifier();
   migrateEntityTypeChecksForItems();
+  // Captured before applySchema() so the story-arc seed runs exactly once,
+  // on the first startup where the table is introduced.
+  const storyArcsTableIsNew = !tableExists('story_arcs');
   db.transaction(() => {
     // Apply non-generative data migrations that reshape schema first.
     migrateEntityBlacklistTypes();
@@ -484,5 +511,6 @@ export function runMigrations(): void {
     backfillSessionGameDayEnd();
     seedCampaignDays();
     backfillKnowledgeValidity();
+    seedStoryArcs(storyArcsTableIsNew);
   })();
 }
