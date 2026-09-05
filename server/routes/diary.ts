@@ -183,6 +183,10 @@ router.post('/entries', async (req: AuthRequest, res) => {
     res.status(400).json({ error: 'arcId muss eine positive ganze Zahl oder null sein' });
     return;
   }
+  if (resolvedArcId !== undefined && !getStoryArc(resolvedArcId)) {
+    res.status(404).json({ error: 'Story Arc nicht gefunden' });
+    return;
+  }
 
   const entry = db.transaction(() => {
     const existing = db
