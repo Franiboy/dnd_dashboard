@@ -345,6 +345,7 @@ export function NoteQuillEditor({
               container: `#${NOTE_QUILL_TOOLBAR_ID}`,
               handlers: quillModules.toolbar.handlers,
             },
+            keyboard: quillModules.keyboard,
           }}
           formats={quillFormats}
           placeholder="Notiz schreiben…"

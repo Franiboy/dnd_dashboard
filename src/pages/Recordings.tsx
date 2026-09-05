@@ -13,6 +13,7 @@ import { applyEntityHighlights } from '../components/EntityQuillBlot';
 import { EntityChooserModal, type EntityCandidate } from '../components/EntityChooserModal';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { Toggle } from '../components/Toggle';
+import { quillModules } from '../components/quillConfig';
 import ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
 import type {
@@ -31,7 +32,7 @@ interface SessionsProps {
   user: SafeUser;
 }
 
-const summaryQuillModules = { toolbar: false };
+const summaryQuillModules = { toolbar: false, keyboard: quillModules.keyboard };
 const summaryQuillFormats = [
   'header',
   'bold',
