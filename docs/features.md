@@ -131,6 +131,52 @@ as **time-bounded knowledge** instead of being overwritten:
   admin session/diary editors let you set the day and label. The World "Wissen einordnen"
   result counts ended facts.
 
+### Story Arcs
+
+Sessions, diary entries and world entities are organized into **story arcs** (narrative chapters):
+
+- **Exactly one arc is active** (`status='active'`; enforced in `server/repositories/storyArcs.ts`).
+  Newly created sessions (bot), manual diary entries and AI session drafts are filed into the
+  active arc automatically. Arc lifecycle: `planned` → `active` → `completed`; activating an arc
+  completes the previously active one. An active arc cannot be deleted (members would be orphaned).
+- **Sessions and diary entries belong to exactly one arc** (`recording_sessions.arc_id`,
+  `diary_entries.arc_id`, nullable, plain columns like `session_draft_for`). Admins can reassign
+  sessions per card (`PUT /api/recordings/:id/arc`); users reassign their own entries via the
+  select on the entry card. **World entities are many-to-many** (`story_arc_entities`, identity
+  `(entity_type, entity_name, entity_qualifier)`): a villain can span several arcs.
+- **Entity links are maintained automatically and additively:** whenever an entity is linked to a
+  diary entry (`setLinkedEntities`, used by AI extraction `link_diary_entity` and manual saves) or
+  knowledge is distributed from a session/diary, the affected entities are filed into that arc
+  (names resolved canonically, so aliases and case variants never create duplicate links).
+  Manual add/remove is available in the entity dialog ("Story Arcs" tab, `POST
+/api/entities/arc-links` and `POST /api/entities/arc-links/unlink`). Renames, merges,
+  reclassifications and blacklisting keep the links in sync. Re-running AI on an old entry re-adds
+  removed links (documented behavior).
+- **Derived metadata:** an arc's game-day range and member counts (`sessionCount`,
+  `diaryEntryCount`, `entityCount`) are computed from its members on read, never stored.
+- **Global filter:** the app header shows a story-arc select on the Sessions, Diary and World
+  pages (state in `StoryArcProvider`, persisted in `localStorage`; options "Alle Story Arcs" and
+  "Ohne Arc"). Sessions/Diary filter their lists client-side; World passes `?arcId=` (a number or
+  the `none` sentinel) to `GET /api/entities` (arc-linked entities, or for `none` entities
+  assigned to no arc) and to the entity knowledge endpoint, where only
+  facts whose validity window overlaps the arc's derived day range are shown (timeless facts
+  remain visible in every arc).
+- **AI context scoping:** runs on arc-assigned content mint their MCP token with an `arcId` claim
+  (resolved server-side via `server/ai/arcContext.ts`). The scoped MCP tools
+  (`search_diary_entries`, `get_previous_diary_entries`, `list_user_diary_entries`,
+  `list_recent_sessions`, `get_previous_session_summaries`, `get_session_summary`, `get_entity`,
+  `get_diary_entry`) only see diary entries, sessions, session summaries, entity knowledge and
+  linked entries of that arc; foreign-arc `get_diary_entry`/`get_session_summary` calls are
+  rejected. `list_recent_sessions`/`listPreviousSessionSummaries` and the game-day detection's
+  previous-session context are arc-scoped as well. Prompts announce the restriction ("Story-Arc:
+  …"). Knowledge review/correction/distribution accept an optional `arcId` (world dialogs pass the
+  globally selected arc). Entity summaries stay global on purpose (facts span arcs).
+- **Management UI:** admin-only "Story Arcs" section in the Sessions page settings drawer (create,
+  rename/describe, activate, delete); arc badges and selects on session cards.
+- **Migration:** on the first startup with the new schema, `seedStoryArcs` (server/migrations.ts)
+  creates one active arc ("Erster Arc") and files all existing sessions/entries into it; it never
+  re-runs afterwards.
+
 ### AI Workflow
 
 1. Prompts in `server/ai/rewrite.ts` / `server/ai/knowledge.ts` instruct the AI to query background information via MCP tools before storing data.

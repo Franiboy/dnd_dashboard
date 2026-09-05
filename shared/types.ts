@@ -247,6 +247,36 @@ export interface ClientToServerEvents {
 export type RecordingStatus =
   'recording' | 'pending_transcription' | 'processing' | 'completed' | 'error';
 
+// ---------------------------------------------------------------------------
+// Story arcs
+// ---------------------------------------------------------------------------
+
+/**
+ * Lifecycle of a story arc. Exactly one arc is 'active' at a time: newly
+ * created sessions and diary entries are filed into it automatically.
+ */
+export type StoryArcStatus = 'planned' | 'active' | 'completed';
+
+/**
+ * A story arc groups sessions and diary entries into one narrative chapter.
+ * The game-day range and the member counts are derived from the members on
+ * read; they are never stored.
+ */
+export interface StoryArc {
+  id: number;
+  name: string;
+  description: string | null;
+  status: StoryArcStatus;
+  sessionCount: number;
+  diaryEntryCount: number;
+  /** Number of world entities assigned to this arc (many-to-many). */
+  entityCount: number;
+  gameDayStart: number | null;
+  gameDayEnd: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RecordingFile {
   id: number;
   sessionId: number;
@@ -303,6 +333,8 @@ export interface RecordingSession {
   gameDay: number | null;
   /** Inclusive end of the in-game day range (for multi-day sessions). */
   gameDayEnd: number | null;
+  /** Story arc this session was filed into; NULL means unassigned. */
+  arcId: number | null;
   hasWavFiles?: boolean;
   files?: RecordingFile[];
 }
@@ -340,6 +372,8 @@ export interface DiaryEntry {
   items: string[];
   /** Monotonic in-game day of this entry ("Eintrag = Spieltag"). */
   gameDay: number | null;
+  /** Story arc this entry was filed into; NULL means unassigned. */
+  arcId: number | null;
   createdAt: string;
   updatedAt: string;
 }
