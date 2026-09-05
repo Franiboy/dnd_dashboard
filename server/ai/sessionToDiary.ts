@@ -10,6 +10,7 @@ import { annotateTranscriptSpeakers } from './transcriptSpeakers.js';
 import { getModel } from './modelConfig.js';
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';
 import { getSessionWorkDir } from './sessionWorkdir.js';
+import { resolveSessionArcContext } from './arcContext.js';
 
 const log = createLogger('sessionToDiary');
 
@@ -118,11 +119,13 @@ export async function generateSessionDiaryDraft(
   writeFileSync(transcriptFile, annotatedTranscript.transcript, 'utf-8');
 
   log.info(`Starting session-to-diary draft for session ${sessionId} (${source.length} bytes)`);
+  const arcContext = resolveSessionArcContext(sessionId);
 
   const prompt = [
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
     `Aufgabe: Überführe die Session ${session.id} (${session.name}, ${session.startedAt}) in einen persönlichen Tagebucheintrag.`,
+    ...(arcContext?.promptLines ?? []),
     'Grundregel für neu vs. bestehend:',
     '- Ein Tagebucheintrag entspricht einem Spieltag (in-game Tag).',
     '- Prüfe zuerst, ob wir uns an einem laufenden Spieltag befinden.',
@@ -180,6 +183,7 @@ export async function generateSessionDiaryDraft(
     title: `dnd-session-to-diary-${sessionId}-${Date.now()}`,
     scopes: ['recording:read', 'diary:read', 'diary:draft', 'entity:read'],
     user,
+    arcId: arcContext?.arcId,
     onLog,
   });
 

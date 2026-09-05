@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useError } from '../hooks/useError';
+import { useStoryArcs } from '../hooks/useStoryArcs';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DashboardHeader } from '../components/DashboardHeader';
 import { Loading } from '../components/Loading';
@@ -308,9 +309,15 @@ function ListIcon() {
 interface DistributeKnowledgeDialogProps {
   onClose: () => void;
   onDistributed: () => void;
+  /** Arc the global filter is set to; knowledge gets filed there. */
+  arcId?: number;
 }
 
-function DistributeKnowledgeDialog({ onClose, onDistributed }: DistributeKnowledgeDialogProps) {
+function DistributeKnowledgeDialog({
+  onClose,
+  onDistributed,
+  arcId,
+}: DistributeKnowledgeDialogProps) {
   const { request } = useApi();
   const { showSuccess, showError } = useError();
   const [text, setText] = useState('');
@@ -326,7 +333,7 @@ function DistributeKnowledgeDialog({ onClose, onDistributed }: DistributeKnowled
     }>('/api/entities/knowledge/distribute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text.trim() }),
+      body: JSON.stringify({ text: text.trim(), ...(arcId ? { arcId } : {}) }),
     });
     setWorking(false);
     if (!error && data) {
@@ -391,6 +398,17 @@ export function World() {
   const { request } = useApi();
   const { openEntity } = useEntityDialog();
   const { showSuccess } = useError();
+  const { selectedArcId, arcs: storyArcs } = useStoryArcs();
+  // `null` = all, number = that arc, 'none' = entities without any arc. The
+  // 'none' sentinel is forwarded to the server (arcId=none), not dropped.
+  const filterArcParam = selectedArcId === null ? undefined : selectedArcId;
+  const filterArcId = typeof selectedArcId === 'number' ? selectedArcId : undefined;
+  const filterArcLabel =
+    selectedArcId === 'none'
+      ? 'Ohne Arc'
+      : typeof selectedArcId === 'number'
+        ? (storyArcs.find((arc) => arc.id === selectedArcId)?.name ?? null)
+        : null;
   const [entities, setEntities] = useState<EntitiesResponse | null>(null);
   const [blacklists, setBlacklists] = useState<{
     persons: string[];
@@ -413,13 +431,17 @@ export function World() {
   const canClickRef = useRef(true);
   const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async () => {
-    const { data } = await request<EntitiesResponse>('/api/entities');
-    if (data) {
-      setEntities(data);
-    }
-    setLoading(false);
-  }, [request]);
+  const load = useCallback(
+    async (arcParam?: number | 'none') => {
+      const query = arcParam !== undefined ? `?arcId=${arcParam}` : '';
+      const { data } = await request<EntitiesResponse>(`/api/entities${query}`);
+      if (data) {
+        setEntities(data);
+      }
+      setLoading(false);
+    },
+    [request]
+  );
 
   const loadBlacklists = useCallback(async () => {
     const { data } = await request<{
@@ -434,9 +456,9 @@ export function World() {
   }, [request]);
 
   useEffect(() => {
-    load();
+    load(filterArcParam);
     loadBlacklists();
-  }, [load, loadBlacklists]);
+  }, [load, loadBlacklists, filterArcParam]);
 
   async function executeAction(action: PendingAction) {
     setActionWorking(true);
@@ -482,7 +504,7 @@ export function World() {
 
     if (!error) {
       showSuccess('Aktion ausgeführt.');
-      load();
+      load(filterArcParam);
       loadBlacklists();
     }
   }
@@ -507,7 +529,7 @@ export function World() {
       name,
       type,
       () => {
-        load();
+        load(filterArcParam);
         loadBlacklists();
       },
       qualifier
@@ -640,6 +662,12 @@ export function World() {
   return (
     <div className="h-full flex flex-col p-6">
       <DashboardHeader>
+        {filterArcLabel && (
+          <span className="mr-auto text-sm text-slate-400">
+            Gefiltert nach Story Arc:{' '}
+            <strong className="text-[var(--text-h)]">{filterArcLabel}</strong>
+          </span>
+        )}
         <button
           type="button"
           onClick={() => setDistributeOpen(true)}
@@ -672,8 +700,9 @@ export function World() {
       {distributeOpen && (
         <DistributeKnowledgeDialog
           onClose={() => setDistributeOpen(false)}
+          arcId={filterArcId}
           onDistributed={() => {
-            load();
+            load(filterArcParam);
             loadBlacklists();
           }}
         />

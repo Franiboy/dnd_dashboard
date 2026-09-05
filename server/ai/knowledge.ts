@@ -8,6 +8,13 @@ import {
 import { getEntitySummary } from '../repositories/entitySummaries.js';
 import { getCurrentGameDay } from '../repositories/gameTimeline.js';
 import { stripHtml } from './rewrite.js';
+import {
+  resolveArcContextById,
+  resolveDiaryEntryArcContext,
+  resolveSessionArcContext,
+} from './arcContext.js';
+import { linkStoryArcEntity } from '../repositories/storyArcs.js';
+import { findEntityCanonical } from '../repositories/diary.js';
 import { createLogger } from '../logger.js';
 import type { KnowledgeTarget, McpSessionUser } from '../mcp/tokens.js';
 import type { EntityKnowledgeEntry, EntityType, KnowledgeOriginType } from '../../shared/types.js';
@@ -57,6 +64,12 @@ export interface KnowledgePromptOptions {
   origin?: KnowledgeOrigin;
   /** Acting user; scopes the searchable diary entries (admin sees all). */
   user?: McpSessionUser;
+  /**
+   * Explicit story-arc scope (e.g. chosen in the world dialog). The context
+   * tools only see diary entries/sessions of this arc. When an origin is
+   * given, the arc of the origin wins.
+   */
+  arcId?: number;
 }
 
 function takeKnowledgeSnapshot(): Map<number, KnowledgeSnapshot> {
@@ -119,16 +132,26 @@ export async function distributeKnowledgeFromText(
   text: string,
   options: KnowledgePromptOptions = {}
 ): Promise<DistributeResult> {
-  const { model, onLog, origin, user } = options;
+  const { model, onLog, origin, user, arcId: explicitArcId } = options;
   const plainText = stripHtml(text).trim();
   if (!plainText) return { created: [], deleted: [], ended: [] };
 
   const currentGameDay = getCurrentGameDay();
 
+  // Arc scope: the origin's arc wins over an explicitly chosen one.
+  const arcContext = origin
+    ? origin.type === 'diary'
+      ? resolveDiaryEntryArcContext(origin.id)
+      : resolveSessionArcContext(origin.id)
+    : explicitArcId
+      ? resolveArcContextById(explicitArcId)
+      : null;
+
   const prompt = [
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
     'Aufgabe: Analysiere den folgenden Text und ordne die darin enthaltenen Fakten den passenden Entitäten zu.',
+    ...(arcContext?.promptLines ?? []),
     '',
     `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}. Nutze ihn als Bezugspunkt für zeitgebundene Fakten.`,
     '',
@@ -180,6 +203,7 @@ export async function distributeKnowledgeFromText(
     title: `dnd-distribute-knowledge-${Date.now()}`,
     scopes: ['entity:read', 'knowledge:distribute', 'diary:read', 'diary:read-all'],
     user,
+    arcId: arcContext?.arcId,
     onLog,
   });
 
@@ -202,6 +226,12 @@ export async function distributeKnowledgeFromText(
   if (!result.success) {
     log.warn(`Knowledge distribution failed: exitCode=${result.exitCode}`);
     return { created: [], deleted: [], ended: [] };
+  }
+
+  // Story-arc bookkeeping: entities touched by this run are additively filed
+  // into the origin arc so the world filter keeps up with new knowledge.
+  if (arcContext) {
+    linkTargetsToArc(arcContext.arcId, collectAffectedEntities(null, diff));
   }
 
   log.info(
@@ -229,6 +259,24 @@ export interface KnowledgeCorrectionResult extends DistributeResult {
 
 function targetKey(target: KnowledgeCorrectionTarget): string {
   return `${target.entityType}/${target.entityName.toLowerCase()}/${target.entityQualifier ?? ''}`;
+}
+
+/**
+ * Files the affected entities of a knowledge run into the story arc. Names are
+ * resolved canonically against the entity tables first: knowledge rows may
+ * carry spellings that differ from the entity row, and the identity-based
+ * link table must not grow ghost identities.
+ */
+function linkTargetsToArc(arcId: number, targets: KnowledgeCorrectionTarget[]): void {
+  for (const target of targets) {
+    const canonical = findEntityCanonical(
+      target.entityType,
+      target.entityName,
+      target.entityQualifier ?? ''
+    );
+    if (!canonical) continue;
+    linkStoryArcEntity(arcId, target.entityType, canonical);
+  }
 }
 
 export function collectAffectedEntities(
@@ -261,11 +309,12 @@ export async function correctKnowledgeFromText(
   focus?: KnowledgeCorrectionTarget,
   options: KnowledgePromptOptions = {}
 ): Promise<KnowledgeCorrectionResult> {
-  const { model, onLog, user } = options;
+  const { model, onLog, user, arcId } = options;
   const plainText = stripHtml(correction).trim();
   if (!plainText) return { created: [], deleted: [], ended: [], summaries: [] };
 
   const typeLabel = focus ? entityTypeLabel(focus.entityType) : null;
+  const arcContext = arcId ? resolveArcContextById(arcId) : null;
 
   const currentGameDay = getCurrentGameDay();
 
@@ -278,6 +327,7 @@ export async function correctKnowledgeFromText(
           `Fokus-Entität: ${typeLabel} "${focus.entityName}" – ihr Wissen ist auf jeden Fall zu prüfen.`,
         ]
       : []),
+    ...(arcContext?.promptLines ?? []),
     `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}.`,
     '',
     'Verfügbare Tools:',
@@ -333,6 +383,7 @@ export async function correctKnowledgeFromText(
       'recording:read',
     ],
     user,
+    arcId: arcContext?.arcId,
     onLog,
   });
 
@@ -342,6 +393,12 @@ export async function correctKnowledgeFromText(
   if (!result.success) {
     log.warn(`Knowledge correction failed: exitCode=${result.exitCode}`);
     return { created: [], deleted: [], ended: [], summaries: [] };
+  }
+
+  // Story-arc bookkeeping: entities touched by this correction are additively
+  // filed into the chosen arc so the world filter keeps up.
+  if (arcContext) {
+    linkTargetsToArc(arcContext.arcId, collectAffectedEntities(focus ?? null, diff));
   }
 
   // Refresh summaries of every affected entity so corrections are visible immediately.
@@ -384,6 +441,8 @@ export interface KnowledgeReviewOptions {
   user?: McpSessionUser;
   /** Disambiguator for homonyms; '' targets the plain name. */
   qualifier?: string;
+  /** Optional story-arc scope so the review does not scan the whole campaign. */
+  arcId?: number;
 }
 
 /**
@@ -397,9 +456,10 @@ export async function reviewEntityKnowledge(
   entityName: string,
   options: KnowledgeReviewOptions = {}
 ): Promise<KnowledgeCorrectionResult> {
-  const { model, onLog, user, qualifier = '' } = options;
+  const { model, onLog, user, qualifier = '', arcId } = options;
   const typeLabel = entityTypeLabel(entityType);
   const qualifiedName = qualifier ? `${entityName} (${qualifier})` : entityName;
+  const arcContext = arcId ? resolveArcContextById(arcId) : null;
   const currentGameDay = getCurrentGameDay();
 
   const prompt = [
@@ -408,6 +468,7 @@ export async function reviewEntityKnowledge(
     'Aufgabe: Überprüfe das gesamte gespeicherte Wissen der Fokus-Entität darauf, ob es aktuell und stimmig ist, und berichtige es anhand der verfügbaren Kontext-Einträge (Tagebücher aller Spieler, Spieltage).',
     '',
     `Fokus-Entität: ${typeLabel} "${qualifiedName}".`,
+    ...(arcContext?.promptLines ?? []),
     `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}.`,
     '',
     'Verfügbare Tools:',
@@ -465,6 +526,7 @@ export async function reviewEntityKnowledge(
     ],
     user,
     knowledgeTarget: { entityType, entityName, entityQualifier: qualifier },
+    arcId: arcContext?.arcId,
     onLog,
   });
 
@@ -474,6 +536,15 @@ export async function reviewEntityKnowledge(
   if (!result.success) {
     log.warn(`Knowledge review failed: exitCode=${result.exitCode}`);
     return { created: [], deleted: [], ended: [], summaries: [] };
+  }
+
+  // Story-arc bookkeeping: entities touched by this review are additively
+  // filed into the chosen arc so the world filter keeps up.
+  if (arcContext) {
+    linkTargetsToArc(
+      arcContext.arcId,
+      collectAffectedEntities({ entityType, entityName, entityQualifier: qualifier }, diff)
+    );
   }
 
   // Refresh summaries of every affected entity so corrections are visible immediately.

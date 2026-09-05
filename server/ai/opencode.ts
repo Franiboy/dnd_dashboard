@@ -45,6 +45,8 @@ export interface OpenCodeOptions {
   recordingSessionId?: number;
   /** Restricts knowledge mutations to a single entity (server-side). */
   knowledgeTarget?: KnowledgeTarget;
+  /** Scopes all context-reading MCP tools to one story arc. */
+  arcId?: number;
   onLog?: (line: string) => void;
 }
 
@@ -65,6 +67,7 @@ export function runOpenCode({
   user,
   recordingSessionId,
   knowledgeTarget,
+  arcId,
   onLog,
 }: OpenCodeOptions): Promise<OpenCodeResult> {
   if (prompt.length > 50_000) {
@@ -77,7 +80,7 @@ export function runOpenCode({
 
   const mcpToken =
     scopes && scopes.length > 0
-      ? createMcpSessionToken(scopes, user, recordingSessionId, knowledgeTarget)
+      ? createMcpSessionToken(scopes, user, recordingSessionId, knowledgeTarget, arcId)
       : undefined;
   if (mcpToken) {
     log.info(

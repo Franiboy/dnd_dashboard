@@ -19,6 +19,7 @@ import {
   deleteDiaryEntry,
 } from '../repositories/diary.js';
 import { recordSessionToDiaryTransfer } from '../repositories/recordings.js';
+import { getStoryArc } from '../repositories/storyArcs.js';
 
 const log = createLogger('diaryRoutes');
 
@@ -167,7 +168,7 @@ router.post('/entries', async (req: AuthRequest, res) => {
     return;
   }
 
-  const { content, gameDay } = req.body;
+  const { content, gameDay, arcId } = req.body;
   if (!content || typeof content !== 'string' || !content.trim()) {
     res.status(400).json({ error: 'Inhalt ist erforderlich' });
     return;
@@ -175,6 +176,15 @@ router.post('/entries', async (req: AuthRequest, res) => {
   const day = gameDay === undefined || gameDay === null ? null : Number(gameDay);
   if (day === null || !Number.isInteger(day) || day <= 0) {
     res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl sein' });
+    return;
+  }
+  const resolvedArcId = arcId === undefined || arcId === null ? undefined : Number(arcId);
+  if (resolvedArcId !== undefined && (!Number.isInteger(resolvedArcId) || resolvedArcId <= 0)) {
+    res.status(400).json({ error: 'arcId muss eine positive ganze Zahl oder null sein' });
+    return;
+  }
+  if (resolvedArcId !== undefined && !getStoryArc(resolvedArcId)) {
+    res.status(404).json({ error: 'Story Arc nicht gefunden' });
     return;
   }
 
@@ -185,7 +195,7 @@ router.post('/entries', async (req: AuthRequest, res) => {
     if (existing) return null;
 
     const finalTitle = `Spieltag ${day}`;
-    return createDiaryEntry(req.user!.id, finalTitle, content, undefined, day);
+    return createDiaryEntry(req.user!.id, finalTitle, content, undefined, day, resolvedArcId);
   })();
 
   if (!entry) {
@@ -210,8 +220,20 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
     return;
   }
 
-  const { content, summary, rewrittenContent } = req.body;
+  const { content, summary, rewrittenContent, arcId } = req.body;
   const updates: Parameters<typeof updateDiaryEntry>[1] = {};
+  if (arcId !== undefined) {
+    const resolved = arcId === null ? null : Number(arcId);
+    if (resolved !== null && (!Number.isInteger(resolved) || resolved <= 0)) {
+      res.status(400).json({ error: 'arcId muss eine positive ganze Zahl oder null sein' });
+      return;
+    }
+    if (resolved !== null && !getStoryArc(resolved)) {
+      res.status(404).json({ error: 'Story Arc nicht gefunden' });
+      return;
+    }
+    updates.arcId = resolved;
+  }
   if (content !== undefined) {
     if (typeof content !== 'string' || !content.trim()) {
       res.status(400).json({ error: 'Inhalt darf nicht leer sein' });

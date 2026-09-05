@@ -9,6 +9,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { EntityDialogRouteSync } from './components/EntityDialogRouteSync';
 import { EntityDialogProvider } from './contexts/EntityDialogProvider';
 import { MappingsProvider } from './contexts/MappingsProvider';
+import { StoryArcProvider } from './contexts/StoryArcProvider';
 import { Login } from './pages/Login';
 import { AdminLogin } from './pages/AdminLogin';
 import { AuthCallback } from './pages/AuthCallback';
@@ -137,71 +138,73 @@ function App() {
   return (
     <BrowserRouter>
       <MappingsProvider>
-        <EntityDialogProvider>
-          <Layout
-            user={effectiveUser}
-            version={version}
-            realUser={currentUser}
-            onLogout={logout}
-            onUserChange={updateUser}
-          >
-            <Suspense fallback={pageLoader}>
-              <Routes>
-                <Route
-                  path="/admin"
-                  element={
-                    <ProtectedRoute user={currentUser} appId="admin" version={version}>
-                      <Admin currentUser={currentUser} />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="/" element={<Home version={version} />} />
-                <Route
-                  path="/tagebuch"
-                  element={
-                    <ProtectedRoute user={effectiveUser} appId="notes" version={version}>
-                      <Diary />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/welt"
-                  element={
-                    <ProtectedRoute user={effectiveUser} appId="world" version={version}>
-                      <World />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/sessions"
-                  element={
-                    <ProtectedRoute user={effectiveUser} appId="sessions" version={version}>
-                      <Sessions user={effectiveUser} />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/bingo"
-                  element={
-                    <ProtectedRoute user={effectiveUser} appId="bingo" version={version}>
-                      <Bingo user={effectiveUser} />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/whiteboard"
-                  element={
-                    <ProtectedRoute user={effectiveUser} appId="whiteboard" version={version}>
-                      <Whiteboard user={effectiveUser} />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="*" element={<Navigate to="/" />} />
-              </Routes>
-            </Suspense>
-          </Layout>
-          <EntityDialogRouteSync />
-        </EntityDialogProvider>
+        <StoryArcProvider>
+          <EntityDialogProvider>
+            <Layout
+              user={effectiveUser}
+              version={version}
+              realUser={currentUser}
+              onLogout={logout}
+              onUserChange={updateUser}
+            >
+              <Suspense fallback={pageLoader}>
+                <Routes>
+                  <Route
+                    path="/admin"
+                    element={
+                      <ProtectedRoute user={currentUser} appId="admin" version={version}>
+                        <Admin currentUser={currentUser} />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route path="/" element={<Home version={version} />} />
+                  <Route
+                    path="/tagebuch"
+                    element={
+                      <ProtectedRoute user={effectiveUser} appId="notes" version={version}>
+                        <Diary />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/welt"
+                    element={
+                      <ProtectedRoute user={effectiveUser} appId="world" version={version}>
+                        <World />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/sessions"
+                    element={
+                      <ProtectedRoute user={effectiveUser} appId="sessions" version={version}>
+                        <Sessions user={effectiveUser} />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/bingo"
+                    element={
+                      <ProtectedRoute user={effectiveUser} appId="bingo" version={version}>
+                        <Bingo user={effectiveUser} />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/whiteboard"
+                    element={
+                      <ProtectedRoute user={effectiveUser} appId="whiteboard" version={version}>
+                        <Whiteboard user={effectiveUser} />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route path="*" element={<Navigate to="/" />} />
+                </Routes>
+              </Suspense>
+            </Layout>
+            <EntityDialogRouteSync />
+          </EntityDialogProvider>
+        </StoryArcProvider>
       </MappingsProvider>
     </BrowserRouter>
   );
