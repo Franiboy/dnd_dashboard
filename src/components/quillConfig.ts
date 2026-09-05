@@ -51,11 +51,19 @@ export const quillModules = {
         handler: function (
           this: { quill: Quill },
           range: { index: number; length: number },
-          context: { format: Record<string, unknown> }
+          context: {
+            format: Record<string, unknown>;
+            event: KeyboardEvent;
+            collapsed: boolean;
+            offset: number;
+          }
         ) {
-          if (context.format.table) return true;
-          if (context.format['code-block']) {
-            // Default Quill behavior: replace the selection with a tab.
+          if (
+            context.event.shiftKey ||
+            (context.collapsed &&
+              context.offset !== 0 &&
+              (context.format.list || context.format.indent || context.format.blockquote))
+          ) {
             const Delta = Quill.import('delta');
             const delta = new Delta().retain(range.index).delete(range.length).insert('\t');
             this.quill.history.cutoff();
