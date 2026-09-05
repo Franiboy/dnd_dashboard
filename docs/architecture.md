@@ -35,6 +35,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | `diary.ts`      | CRUD for diary entries, AI rewrite, summary, entities; SSE for AI status                |
 | `entities.ts`   | Entity list, details, aliases, blacklist, knowledge and summary CRUD                    |
 | `recordings.ts` | Discord recording sessions, transcripts, trimming and AI session-to-diary draft         |
+| `storyArcs.ts`  | Story arcs: list/create/update/activate/delete (admin mutations)                        |
 
 ### Repositories (`server/repositories/`)
 
@@ -47,6 +48,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | `entitySummaries.ts`  | AI-generated entity summaries                                                           |
 | `gameTimeline.ts`     | Central `campaign_days` timeline, current/next day helpers, session & diary day setters |
 | `recordings.ts`       | Recording sessions and files                                                            |
+| `storyArcs.ts`        | Story arcs: CRUD, single-active invariant, arc entity links (m:n), derived day ranges   |
 
 ### AI / MCP (`server/ai/` & `server/mcp/`)
 
@@ -55,13 +57,14 @@ This document describes the high-level structure of the D&D Dashboard.
 | `ai/config.ts`           | Checks whether AI is enabled (`AI_PROVIDER=opencode` + valid `AI_MODEL`)                                                                        |
 | `ai/bingoSuggestions.ts` | Prompts and pool management for AI bingo suggestions                                                                                            |
 | `ai/opencode.ts`         | Spawns `opencode run` with MCP token and scopes; supports the V2 CLI (`opencode2`) via a persistent background server for session reuse/cleanup |
+| `ai/arcContext.ts`       | Resolves the story-arc context of a session/diary entry and builds the arc-restriction prompt lines                                             |
 | `ai/rewrite.ts`          | Prompts for rewrite, summary and entity extraction                                                                                              |
 | `ai/knowledge.ts`        | Prompts for knowledge distribution and entity summaries                                                                                         |
 | `ai/sessionBoundary.ts`  | AI boundary detection (recording timeline)                                                                                                      |
 | `ai/sessionGameDay.ts`   | AI game-day range detection (transcript + previous sessions + campaign timeline)                                                                |
 | `ai/actions.ts`          | Parser and executor for direct AI tool actions                                                                                                  |
 | `mcp/index.ts`           | MCP server with tools (`set_diary_*`, `get_entity`, `create_knowledge`, `set_session_game_day`, …)                                              |
-| `mcp/tokens.ts`          | JWT-based MCP session tokens with scopes                                                                                                        |
+| `mcp/tokens.ts`          | JWT-based MCP session tokens with scopes (plus optional `arcId` claim for arc-scoped context)                                                   |
 
 ### Scheduler & Discord (`server/scheduler/` & `server/discord/`)
 

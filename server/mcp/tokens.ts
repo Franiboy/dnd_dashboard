@@ -41,6 +41,12 @@ export interface McpSessionTokenInput {
   isAdmin?: boolean;
   recordingSessionId?: number;
   knowledgeTarget?: KnowledgeTarget;
+  /**
+   * Story arc of the processed object. When set, every context-reading MCP
+   * tool scopes its queries to this arc, so AI runs never scan the whole
+   * campaign history.
+   */
+  arcId?: number;
 }
 
 export interface McpSessionPayload extends McpSessionTokenInput {
@@ -60,7 +66,8 @@ export function createMcpSessionToken(
   scopes: McpScope[],
   user?: McpSessionUser,
   recordingSessionId?: number,
-  knowledgeTarget?: KnowledgeTarget
+  knowledgeTarget?: KnowledgeTarget,
+  arcId?: number
 ): string {
   const secret = getSecret();
   const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -74,6 +81,9 @@ export function createMcpSessionToken(
   }
   if (knowledgeTarget) {
     payload.knowledgeTarget = knowledgeTarget;
+  }
+  if (arcId !== undefined) {
+    payload.arcId = arcId;
   }
   return jwt.sign(payload, secret, { expiresIn: '10m' });
 }

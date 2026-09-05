@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
+import { useStoryArcs } from '../hooks/useStoryArcs';
+import { arcMatchesFilter } from '../lib/storyArcs';
 import { EntityRichText } from '../components/EntityRichText';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
 import { Button } from '../components/Button';
@@ -120,6 +122,12 @@ export function Diary() {
   const [customDayValue, setCustomDayValue] = useState<number | ''>('');
   const [skipMode, setSkipMode] = useState(false);
   const [currentGameDay, setCurrentGameDay] = useState<number | null | undefined>(undefined);
+  const [createArcValue, setCreateArcValue] = useState<number | ''>('');
+  const { arcs: storyArcs, activeArcId, selectedArcId } = useStoryArcs();
+  const visibleEntries = useMemo(
+    () => entries.filter((entry) => arcMatchesFilter(selectedArcId, entry.arcId)),
+    [entries, selectedArcId]
+  );
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
   const [draftOriginal, setDraftOriginal] = useState<
@@ -288,6 +296,7 @@ export function Diary() {
     setCustomDayValue('');
     setSkipMode(false);
     setCurrentGameDay(undefined);
+    setCreateArcValue(activeArcId ?? '');
   }
 
   async function openCreate() {
@@ -352,6 +361,7 @@ export function Diary() {
     const payload = {
       content: form.content,
       gameDay,
+      ...(createArcValue !== '' ? { arcId: Number(createArcValue) } : {}),
     };
 
     setAiOperation(true);
@@ -400,6 +410,20 @@ export function Diary() {
       delete draftRawRefs.current.original[id];
       delete draftRawRefs.current.rewritten[id];
       showSuccess('Eintrag gelöscht.');
+    }
+  }
+
+  async function handleArcChange(entry: DiaryEntry, arcId: number | null) {
+    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ arcId }),
+    });
+    if (data) {
+      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      showSuccess('Story Arc gespeichert.');
+    } else if (error) {
+      showError(error);
     }
   }
 
@@ -891,9 +915,13 @@ export function Diary() {
           <div className="flex flex-col items-center justify-center h-full text-center">
             <p className="text-slate-400">Noch keine Tagebucheinträge vorhanden.</p>
           </div>
+        ) : visibleEntries.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <p className="text-slate-400">Keine Einträge im gewählten Story Arc vorhanden.</p>
+          </div>
         ) : (
           <div className="space-y-4">
-            {entries.map((entry) => (
+            {visibleEntries.map((entry) => (
               <article
                 key={entry.id}
                 ref={(el) => {
@@ -906,6 +934,28 @@ export function Diary() {
                     <h3 className="text-lg font-semibold text-[var(--text-h)]">
                       Spieltag {entry.gameDay ?? '—'}
                     </h3>
+                    {storyArcs.length > 0 && (
+                      <select
+                        value={entry.arcId ?? ''}
+                        onChange={(e) =>
+                          void handleArcChange(
+                            entry,
+                            e.target.value === '' ? null : Number(e.target.value)
+                          )
+                        }
+                        title="Story Arc zuweisen"
+                        aria-label="Story-Arc-Zuweisung"
+                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-900 border border-[var(--border)] text-slate-300 focus:outline-none focus:border-[var(--accent)] max-w-[12rem] cursor-pointer"
+                      >
+                        <option value="">Ohne Arc</option>
+                        {storyArcs.map((arc) => (
+                          <option key={arc.id} value={arc.id}>
+                            {arc.name}
+                            {arc.status === 'active' ? ' ▶' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {entry.sessionDraftFor && (
                       <Link
                         to={`/sessions?session=${entry.sessionDraftFor}`}
@@ -1302,6 +1352,7 @@ export function Diary() {
               required={!skipMode}
               className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             >
+              {' '}
               <option value="">Spieltag wählen…</option>
               <option value="__skip__">Tage überspringen…</option>
               {nextGameDay !== null && (
@@ -1348,6 +1399,27 @@ export function Diary() {
               </div>
             )}
           </div>
+          {storyArcs.length > 0 && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Story Arc</label>
+              <select
+                value={createArcValue}
+                onChange={(e) =>
+                  setCreateArcValue(e.target.value === '' ? '' : Number(e.target.value))
+                }
+                disabled={working}
+                className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              >
+                {activeArcId === null && <option value="">Ohne Arc</option>}
+                {storyArcs.map((arc) => (
+                  <option key={arc.id} value={arc.id}>
+                    {arc.name}
+                    {arc.status === 'active' ? ' (aktiv)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex-1 min-h-0 flex flex-col">
             <label className="block text-sm text-slate-400 mb-1">Inhalt</label>
             <QuillWithEntityMention

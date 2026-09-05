@@ -8,6 +8,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
+import { useStoryArcs } from '../hooks/useStoryArcs';
+import { arcMatchesFilter, arcStatusLabel } from '../lib/storyArcs';
 import { EntityRichText } from '../components/EntityRichText';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
 import { EntityChooserModal, type EntityCandidate } from '../components/EntityChooserModal';
@@ -23,6 +25,7 @@ import type {
   SafeUser,
   SessionDiaryEntryLink,
   SessionDiaryTransfer,
+  StoryArc,
   VersionInfo,
   CampaignDay,
 } from '../../shared/types';
@@ -130,6 +133,17 @@ export function Sessions({ user }: SessionsProps) {
   >({});
   const summaryQuillRefs = useRef<Record<number, ReactQuill>>({});
   const sessionRefs = useRef<Record<number, HTMLElement>>({});
+  const { arcs: storyArcs, selectedArcId, refresh: refreshStoryArcs } = useStoryArcs();
+  const [arcCreateName, setArcCreateName] = useState('');
+  const [arcCreateDescription, setArcCreateDescription] = useState('');
+  const [arcCreateBusy, setArcCreateBusy] = useState(false);
+  const [editingArc, setEditingArc] = useState<StoryArc | null>(null);
+  const [arcToDelete, setArcToDelete] = useState<StoryArc | null>(null);
+  const arcById = useMemo(() => new Map(storyArcs.map((arc) => [arc.id, arc])), [storyArcs]);
+  const visibleSessions = useMemo(
+    () => sessions.filter((session) => arcMatchesFilter(selectedArcId, session.arcId)),
+    [sessions, selectedArcId]
+  );
   const expandedSummaryHash = useMemo(
     () =>
       sessions
@@ -522,6 +536,91 @@ export function Sessions({ user }: SessionsProps) {
     }
   }
 
+  async function assignSessionArc(sessionId: number, arcId: number | null) {
+    const { data, error } = await request<{ session: RecordingSession }>(
+      `/api/recordings/${sessionId}/arc`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ arcId }),
+      }
+    );
+    if (data?.session) {
+      setSessions((prev) => prev.map((s) => (s.id === sessionId ? data.session : s)));
+      showSuccess('Story Arc gespeichert.');
+    } else if (error) {
+      showError(error);
+    }
+  }
+
+  async function createStoryArc() {
+    if (!arcCreateName.trim()) return;
+    setArcCreateBusy(true);
+    const { data, error } = await request<{ arc: StoryArc }>('/api/story-arcs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: arcCreateName, description: arcCreateDescription }),
+    });
+    setArcCreateBusy(false);
+    if (data?.arc) {
+      setArcCreateName('');
+      setArcCreateDescription('');
+      await refreshStoryArcs();
+      showSuccess('Story Arc angelegt.');
+    } else if (error) {
+      showError(error);
+    }
+  }
+
+  async function saveArcEdits() {
+    if (!editingArc) return;
+    setWorking(true);
+    const { data, error } = await request<{ arc: StoryArc }>(`/api/story-arcs/${editingArc.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editingArc.name, description: editingArc.description }),
+    });
+    setWorking(false);
+    if (data?.arc) {
+      setEditingArc(null);
+      await refreshStoryArcs();
+      showSuccess('Story Arc gespeichert.');
+    } else if (error) {
+      showError(error);
+    }
+  }
+
+  async function activateStoryArc(arcId: number) {
+    setWorking(true);
+    const { error } = await request<{ arc: StoryArc }>(`/api/story-arcs/${arcId}/activate`, {
+      method: 'POST',
+    });
+    setWorking(false);
+    if (error) {
+      showError(error);
+    } else {
+      await refreshStoryArcs();
+      showSuccess(
+        'Story Arc aktiviert – neue Sessions und Einträge landen jetzt dort. Der bisher aktive Arc wurde als abgeschlossen markiert.'
+      );
+    }
+  }
+
+  async function confirmDeleteArc() {
+    if (!arcToDelete) return;
+    setWorking(true);
+    const target = arcToDelete;
+    setArcToDelete(null);
+    const { error } = await request(`/api/story-arcs/${target.id}`, { method: 'DELETE' });
+    setWorking(false);
+    if (error) {
+      showError(error);
+    } else {
+      await refreshStoryArcs();
+      showSuccess('Story Arc gelöscht.');
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-full flex items-center justify-center">
@@ -578,6 +677,147 @@ export function Sessions({ user }: SessionsProps) {
             </p>
           </div>
         </SideDrawerItem>
+
+        {user.isAdmin && (
+          <SideDrawerItem
+            id="story-arcs"
+            label="Story Arcs"
+            icon={
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M2 20h20" />
+                <path d="M5 20V9a3 3 0 0 1 4.5-2.6L14 9V4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v16" />
+              </svg>
+            }
+          >
+            <div className="p-2 space-y-6">
+              <h3 className="text-lg font-semibold text-[var(--text-h)]">Story Arcs</h3>
+              <p className="text-xs text-slate-400">
+                Sessions und Tagebucheinträge gehören jeweils zu genau einem Arc. Neue Inhalte
+                landen automatisch im aktiven Arc (▶). Entitäten können mehreren Arcs zugeordnet
+                sein (im Welt-Dialog pflegbar).
+              </p>
+
+              <div className="space-y-3">
+                {storyArcs.length === 0 && (
+                  <p className="text-sm text-slate-400">Noch keine Story Arcs vorhanden.</p>
+                )}
+                {storyArcs.map((arc) => (
+                  <div
+                    key={arc.id}
+                    className="border border-[var(--border)] rounded-xl p-3 space-y-2 bg-slate-900/40"
+                  >
+                    {editingArc?.id === arc.id ? (
+                      <div className="space-y-2">
+                        <input
+                          value={editingArc.name}
+                          onChange={(e) => setEditingArc({ ...editingArc, name: e.target.value })}
+                          className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                          placeholder="Name"
+                        />
+                        <textarea
+                          value={editingArc.description ?? ''}
+                          onChange={(e) =>
+                            setEditingArc({ ...editingArc, description: e.target.value })
+                          }
+                          className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                          placeholder="Beschreibung (optional)"
+                          rows={2}
+                        />
+                        <div className="flex gap-2">
+                          <Button variant="accent" disabled={working} onClick={saveArcEdits}>
+                            Speichern
+                          </Button>
+                          <Button variant="ghost" onClick={() => setEditingArc(null)}>
+                            Abbrechen
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-[var(--text-h)] truncate">
+                              {arc.status === 'active' && (
+                                <span className="text-[var(--accent)] mr-1">▶</span>
+                              )}
+                              {arc.name}
+                              <span className="ml-2 text-xs font-normal text-slate-400">
+                                {arcStatusLabel(arc)}
+                              </span>
+                            </p>
+                            {arc.description && (
+                              <p className="text-xs text-slate-400 mt-0.5">{arc.description}</p>
+                            )}
+                            <p className="text-xs text-slate-500 mt-1">
+                              {arc.gameDayStart !== null
+                                ? `Spieltag ${arc.gameDayStart}${arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart ? `–${arc.gameDayEnd}` : ''} · `
+                                : ''}
+                              {arc.sessionCount} Sessions · {arc.diaryEntryCount} Einträge ·{' '}
+                              {arc.entityCount} Entitäten
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {arc.status !== 'active' && (
+                            <Button
+                              variant="secondary"
+                              disabled={working}
+                              onClick={() => activateStoryArc(arc.id)}
+                            >
+                              Aktivieren
+                            </Button>
+                          )}
+                          <Button variant="ghost" onClick={() => setEditingArc(arc)}>
+                            Bearbeiten
+                          </Button>
+                          {arc.status !== 'active' && (
+                            <Button variant="danger" onClick={() => setArcToDelete(arc)}>
+                              Löschen
+                            </Button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-2 border-t border-[var(--border)] pt-4">
+                <h4 className="text-sm font-semibold text-[var(--text-h)]">Neuer Story Arc</h4>
+                <input
+                  value={arcCreateName}
+                  onChange={(e) => setArcCreateName(e.target.value)}
+                  className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                  placeholder="Name"
+                />
+                <textarea
+                  value={arcCreateDescription}
+                  onChange={(e) => setArcCreateDescription(e.target.value)}
+                  className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                  placeholder="Beschreibung (optional)"
+                  rows={2}
+                />
+                <Button
+                  variant="accent"
+                  disabled={arcCreateBusy || !arcCreateName.trim()}
+                  onClick={createStoryArc}
+                >
+                  Anlegen
+                </Button>
+              </div>
+            </div>
+          </SideDrawerItem>
+        )}
       </SideDrawer>
 
       {aiStatus && (
@@ -589,7 +829,10 @@ export function Sessions({ user }: SessionsProps) {
 
       <div className="space-y-4">
         {sessions.length === 0 && <p className="text-slate-400">Noch keine Sessions vorhanden.</p>}
-        {sessions.map((session) => (
+        {sessions.length > 0 && visibleSessions.length === 0 && (
+          <p className="text-slate-400">Keine Sessions im gewählten Story Arc vorhanden.</p>
+        )}
+        {visibleSessions.map((session) => (
           <div
             key={session.id}
             ref={(el) => {
@@ -599,7 +842,19 @@ export function Sessions({ user }: SessionsProps) {
           >
             <div className="flex items-center justify-between mb-2">
               <div>
-                <h3 className="text-lg font-semibold text-[var(--text-h)]">{session.name}</h3>
+                <h3 className="text-lg font-semibold text-[var(--text-h)]">
+                  {session.name}
+                  {session.arcId != null && arcById.get(session.arcId) && (
+                    <span className="ml-2 align-middle inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20">
+                      {arcById.get(session.arcId)!.name}
+                    </span>
+                  )}
+                  {session.arcId == null && (
+                    <span className="ml-2 align-middle inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                      Ohne Arc
+                    </span>
+                  )}
+                </h3>
                 <p className="text-sm text-slate-400">
                   {session.gameDay
                     ? `Spieltag ${session.gameDay}${session.gameDayEnd && session.gameDayEnd !== session.gameDay ? `–${session.gameDayEnd}` : ''} · `
@@ -611,6 +866,29 @@ export function Sessions({ user }: SessionsProps) {
                     </span>
                   )}
                 </p>
+                {user.isAdmin && (
+                  <div className="mt-1 grid grid-cols-[auto_1fr] gap-2 items-center text-xs">
+                    <label className="text-slate-400">Arc</label>
+                    <select
+                      value={session.arcId ?? ''}
+                      onChange={(e) =>
+                        void assignSessionArc(
+                          session.id,
+                          e.target.value === '' ? null : Number(e.target.value)
+                        )
+                      }
+                      className="min-w-0 max-w-[14rem] px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                    >
+                      <option value="">– ohne Arc –</option>
+                      {storyArcs.map((arc) => (
+                        <option key={arc.id} value={arc.id}>
+                          {arc.name}
+                          {arc.status === 'active' ? ' (aktiv)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {user.isAdmin && (
                   <div className="mt-1 grid grid-cols-[auto_1fr] gap-2 items-center text-xs">
                     <label className="text-slate-400">Spieltag</label>
@@ -987,6 +1265,23 @@ export function Sessions({ user }: SessionsProps) {
           <p>
             Möchtest du die WAV-Audiodateien dieser Session wirklich löschen? Das Transkript bleibt
             erhalten.
+          </p>
+        </ConfirmDialog>
+      )}
+
+      {arcToDelete !== null && (
+        <ConfirmDialog
+          title="Story Arc löschen"
+          confirmLabel="Löschen"
+          cancelLabel="Abbrechen"
+          variant="danger"
+          loading={working}
+          onConfirm={confirmDeleteArc}
+          onCancel={() => setArcToDelete(null)}
+        >
+          <p>
+            Möchtest du den Story Arc „{arcToDelete.name}“ wirklich löschen? Zugeordnete Sessions
+            und Tagebucheinträge bleiben erhalten und sind dann ohne Arc.
           </p>
         </ConfirmDialog>
       )}

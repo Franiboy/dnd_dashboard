@@ -38,6 +38,7 @@ import {
   recordSessionToDiaryTransfer,
   listAllSessionDiaryEntryLinks,
 } from '../repositories/recordings.js';
+import { assignSessionToArc } from '../repositories/storyArcs.js';
 import { createLogger } from '../logger.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 
@@ -627,6 +628,36 @@ router.put('/:id/game-day', requireAdmin, (req, res) => {
   }
 
   updateSession(id, { gameDay: start, gameDayEnd: end });
+  emitSessionsUpdated();
+  const updated = getSessionById(id);
+  res.json({
+    session: updated ? withAnnotatedTranscript(updated, (req as AuthRequest).user?.id) : updated,
+  });
+});
+
+router.put('/:id/arc', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const session = getSessionById(id);
+  if (!session) {
+    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
+    return;
+  }
+
+  const { arcId } = req.body;
+  const resolvedArcId = arcId === null || arcId === undefined ? null : Number(arcId);
+  if (resolvedArcId !== null && (!Number.isInteger(resolvedArcId) || resolvedArcId <= 0)) {
+    res.status(400).json({ error: 'arcId muss eine positive ganze Zahl oder null sein' });
+    return;
+  }
+
+  try {
+    assignSessionToArc(id, resolvedArcId);
+  } catch (err) {
+    res.status(400).json({
+      error: err instanceof Error ? err.message : 'Zuordnung fehlgeschlagen',
+    });
+    return;
+  }
   emitSessionsUpdated();
   const updated = getSessionById(id);
   res.json({

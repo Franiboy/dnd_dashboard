@@ -12,6 +12,7 @@ import {
 import {
   addEntityAlias,
   blacklistEntity,
+  findEntityCanonical,
   getBlacklistedEntities,
   getEntityDetail,
   getEntityMappings,
@@ -29,10 +30,56 @@ import {
 } from '../repositories/entityKnowledge.js';
 import { getCurrentGameDay } from '../repositories/gameTimeline.js';
 import { getEntitySummary, setEntityMiniSummary } from '../repositories/entitySummaries.js';
+import {
+  getStoryArcDayRange,
+  knowledgeOverlapsArcRange,
+  linkStoryArcEntity,
+  listArcIdsForEntity,
+  listEntitiesForArc,
+  listEntitiesOutsideArcs,
+  storyArcExists,
+  unlinkStoryArcEntity,
+} from '../repositories/storyArcs.js';
 
 const router = Router();
 
 const ENTITY_TYPES: Array<keyof DiaryEntities> = ['persons', 'organizations', 'locations', 'items'];
+
+/**
+ * Parses an optional arcId query/body value: `undefined` when absent, `'none'`
+ * for the "Ohne Arc" sentinel, a positive integer arc id, or `'invalid'`.
+ */
+function parseArcId(value: unknown): number | 'none' | undefined | 'invalid' {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (value === 'none') return 'none';
+  const num = Number(value);
+  if (!Number.isInteger(num) || num <= 0) return 'invalid';
+  return num;
+}
+
+/** Resolves an arcId param to an existing arc, the 'none' sentinel, or absent. */
+function resolveArcIdParam(
+  value: unknown
+): { arcId: number | 'none' | undefined } | { error: string } {
+  const parsed = parseArcId(value);
+  if (parsed === 'invalid')
+    return { error: 'arcId muss eine positive ganze Zahl oder "none" sein' };
+  if (parsed === undefined) return { arcId: undefined };
+  if (parsed === 'none') return { arcId: 'none' };
+  if (!storyArcExists(parsed)) return { error: 'Story Arc nicht gefunden' };
+  return { arcId: parsed };
+}
+
+/** Resolves an arcId body value for AI runs: only real arcs are allowed. */
+function resolveAiArcIdParam(value: unknown): { arcId: number | undefined } | { error: string } {
+  const parsed = parseArcId(value);
+  if (parsed === 'invalid' || parsed === 'none') {
+    return { error: 'arcId muss eine positive ganze Zahl sein' };
+  }
+  if (parsed === undefined) return { arcId: undefined };
+  if (!storyArcExists(parsed)) return { error: 'Story Arc nicht gefunden' };
+  return { arcId: parsed };
+}
 
 router.use(authMiddleware, requireApproved);
 
@@ -44,24 +91,46 @@ router.get('/mappings', (_req: AuthRequest, res) => {
   }
 });
 
-router.get('/', (_req: AuthRequest, res) => {
-  const fetchRefs = (table: string) => {
-    const rows = db
-      .prepare(
-        `SELECT name, qualifier FROM ${table} ORDER BY name COLLATE NOCASE, qualifier COLLATE NOCASE`
-      )
-      .all() as { name: string; qualifier?: string }[];
-    return rows.map((row) => ({ name: row.name, qualifier: row.qualifier ?? '' }));
-  };
+router.get('/', (req: AuthRequest, res) => {
+  const arc = resolveArcIdParam(req.query.arcId);
+  if ('error' in arc) {
+    res.status(400).json({ error: arc.error });
+    return;
+  }
 
-  const entities = {
-    persons: fetchRefs('persons'),
-    organizations: fetchRefs('organizations'),
-    locations: fetchRefs('locations'),
-    items: fetchRefs('items'),
-  };
+  try {
+    if (arc.arcId === 'none') {
+      // "Ohne Arc": only entities that are assigned to no story arc at all.
+      res.json({ ...listEntitiesOutsideArcs(), currentGameDay: getCurrentGameDay() });
+      return;
+    }
+    if (arc.arcId !== undefined) {
+      // Arc-filtered world view: only entities assigned to this story arc.
+      const filtered = listEntitiesForArc(arc.arcId);
+      res.json({ ...filtered, currentGameDay: getCurrentGameDay() });
+      return;
+    }
 
-  res.json({ ...entities, currentGameDay: getCurrentGameDay() });
+    const fetchRefs = (table: string) => {
+      const rows = db
+        .prepare(
+          `SELECT name, qualifier FROM ${table} ORDER BY name COLLATE NOCASE, qualifier COLLATE NOCASE`
+        )
+        .all() as { name: string; qualifier?: string }[];
+      return rows.map((row) => ({ name: row.name, qualifier: row.qualifier ?? '' }));
+    };
+
+    const entities = {
+      persons: fetchRefs('persons'),
+      organizations: fetchRefs('organizations'),
+      locations: fetchRefs('locations'),
+      items: fetchRefs('items'),
+    };
+
+    res.json({ ...entities, currentGameDay: getCurrentGameDay() });
+  } catch {
+    res.status(500).json({ error: 'Entitäten konnten nicht geladen werden' });
+  }
 });
 
 router.get('/blacklist', (_req: AuthRequest, res) => {
@@ -242,13 +311,24 @@ router.get('/knowledge', (req: AuthRequest, res) => {
     res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
     return;
   }
+  const arc = resolveArcIdParam(req.query.arcId);
+  if ('error' in arc) {
+    res.status(400).json({ error: arc.error });
+    return;
+  }
 
   try {
-    const entries = listEntityKnowledge(
+    let entries = listEntityKnowledge(
       type as keyof DiaryEntities,
       name.trim(),
       typeof qualifier === 'string' ? qualifier : ''
     );
+    if (typeof arc.arcId === 'number') {
+      // Arc-filtered view: only facts whose validity window overlaps the arc.
+      // ('none' has no day range, so it shows the entity's full knowledge.)
+      const range = getStoryArcDayRange(arc.arcId);
+      entries = entries.filter((entry) => knowledgeOverlapsArcRange(entry, range));
+    }
     res.json({ entries, currentGameDay: getCurrentGameDay() });
   } catch {
     res.status(500).json({ error: 'Laden fehlgeschlagen' });
@@ -395,20 +475,122 @@ router.post('/knowledge/:id/end', (req: AuthRequest, res) => {
   }
 });
 
+router.get('/arc-links', (req: AuthRequest, res) => {
+  const { type, name, qualifier } = req.query;
+  if (
+    !type ||
+    typeof type !== 'string' ||
+    !ENTITY_TYPES.includes(type as keyof DiaryEntities) ||
+    !name ||
+    typeof name !== 'string' ||
+    !name.trim()
+  ) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+
+  try {
+    const resolved = findEntityCanonical(
+      type as keyof DiaryEntities,
+      name.trim(),
+      typeof qualifier === 'string' ? qualifier : ''
+    );
+    if (!resolved) {
+      res.status(404).json({ error: 'Entität nicht gefunden' });
+      return;
+    }
+    const arcIds = listArcIdsForEntity(
+      type as keyof DiaryEntities,
+      resolved.name,
+      resolved.qualifier
+    );
+    res.json({ arcIds });
+  } catch {
+    res.status(500).json({ error: 'Laden fehlgeschlagen' });
+  }
+});
+
+router.post('/arc-links', (req: AuthRequest, res) => {
+  const { type, name, qualifier, arcId } = req.body;
+  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+  if (!Number.isInteger(Number(arcId)) || Number(arcId) <= 0 || !storyArcExists(Number(arcId))) {
+    res.status(404).json({ error: 'Gültige arcId ist erforderlich' });
+    return;
+  }
+
+  try {
+    // Canonical resolution keeps the identity-based link table clean even
+    // when the client sends an alias or a differently cased spelling.
+    const resolved = findEntityCanonical(
+      type,
+      name.trim(),
+      typeof qualifier === 'string' ? qualifier.trim() : ''
+    );
+    if (!resolved) {
+      res.status(404).json({ error: 'Entität nicht gefunden' });
+      return;
+    }
+    linkStoryArcEntity(Number(arcId), type, resolved);
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: 'Zuordnen fehlgeschlagen' });
+  }
+});
+
+// POST instead of a DELETE-with-body: some proxies/clients drop DELETE bodies.
+router.post('/arc-links/unlink', (req: AuthRequest, res) => {
+  const { type, name, qualifier, arcId } = req.body;
+  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+  if (!Number.isInteger(Number(arcId)) || Number(arcId) <= 0 || !storyArcExists(Number(arcId))) {
+    res.status(404).json({ error: 'Gültige arcId ist erforderlich' });
+    return;
+  }
+
+  try {
+    const resolved = findEntityCanonical(
+      type,
+      name.trim(),
+      typeof qualifier === 'string' ? qualifier.trim() : ''
+    );
+    if (!resolved) {
+      res.status(404).json({ error: 'Entität nicht gefunden' });
+      return;
+    }
+    unlinkStoryArcEntity(Number(arcId), type, resolved.name, resolved.qualifier);
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: 'Lösen fehlgeschlagen' });
+  }
+});
+
 router.post('/knowledge/distribute', async (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
     res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
     return;
   }
 
-  const { text } = req.body;
+  const { text, arcId } = req.body;
   if (!text || typeof text !== 'string' || !text.trim()) {
     res.status(400).json({ error: 'Text ist erforderlich' });
     return;
   }
+  const arc = resolveAiArcIdParam(arcId);
+  if ('error' in arc) {
+    res.status(400).json({ error: arc.error });
+    return;
+  }
 
   try {
-    const result = await distributeKnowledgeFromText(text.trim(), { user: req.user });
+    const result = await distributeKnowledgeFromText(text.trim(), {
+      user: req.user,
+      arcId: arc.arcId,
+    });
     res.json(result);
   } catch {
     res.status(500).json({ error: 'KI-Einordnung fehlgeschlagen' });
@@ -421,9 +603,14 @@ router.post('/knowledge/correct', async (req: AuthRequest, res) => {
     return;
   }
 
-  const { text, type, name, qualifier } = req.body;
+  const { text, type, name, qualifier, arcId } = req.body;
   if (!text || typeof text !== 'string' || !text.trim()) {
     res.status(400).json({ error: 'Text ist erforderlich' });
+    return;
+  }
+  const arc = resolveAiArcIdParam(arcId);
+  if ('error' in arc) {
+    res.status(400).json({ error: arc.error });
     return;
   }
 
@@ -449,7 +636,10 @@ router.post('/knowledge/correct', async (req: AuthRequest, res) => {
   }
 
   try {
-    const result = await correctKnowledgeFromText(text.trim(), focus, { user: req.user });
+    const result = await correctKnowledgeFromText(text.trim(), focus, {
+      user: req.user,
+      arcId: arc.arcId,
+    });
     res.json(result);
   } catch {
     res.status(500).json({ error: 'KI-Berichtigung fehlgeschlagen' });
@@ -462,9 +652,14 @@ router.post('/knowledge/review', async (req: AuthRequest, res) => {
     return;
   }
 
-  const { type, name, qualifier } = req.body;
+  const { type, name, qualifier, arcId } = req.body;
   if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
     res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
+    return;
+  }
+  const arc = resolveAiArcIdParam(arcId);
+  if ('error' in arc) {
+    res.status(400).json({ error: arc.error });
     return;
   }
 
@@ -472,6 +667,7 @@ router.post('/knowledge/review', async (req: AuthRequest, res) => {
     const result = await reviewEntityKnowledge(type, name.trim(), {
       qualifier: typeof qualifier === 'string' ? qualifier.trim() : '',
       user: req.user,
+      arcId: arc.arcId,
     });
     res.json(result);
   } catch {

@@ -9,6 +9,7 @@ import {
 } from '../repositories/diary.js';
 import { splitEntityLabel } from '../repositories/entityRefs.js';
 import { markEntitySummaryDirty } from '../repositories/entitySummaries.js';
+import { resolveDiaryEntryArcContext } from './arcContext.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('rewrite');
@@ -68,6 +69,7 @@ export async function rewriteTextWithAi(
   const title = `dnd-diary-${entryId}`;
   const mode = existingRewrittenContent ? 'improve' : 'rewrite';
   const previousContent = existingRewrittenContent || '(noch kein Rewrite vorhanden)';
+  const arcContext = resolveDiaryEntryArcContext(entryId);
 
   log.info(`Starting ${mode} for entry ${entryId}`);
 
@@ -76,6 +78,7 @@ export async function rewriteTextWithAi(
     '',
     `Aufgabe: ${mode === 'rewrite' ? 'Schreibe' : 'Verbessere'} den folgenden deutschen Tagebucheintrag in HTML-Format.`,
     ...personaLines(user.activePerson),
+    ...(arcContext?.promptLines ?? []),
     '',
     'Verfügbare Tools:',
     `- set_diary_rewrite(entryId=${entryId}, html): Speichert das umgeschriebene HTML. MUSST du am Ende genau ein einziges Mal aufrufen.`,
@@ -111,6 +114,7 @@ export async function rewriteTextWithAi(
     title,
     scopes: ['diary:read', 'entity:read', 'diary:rewrite'],
     user,
+    arcId: arcContext?.arcId,
     onLog,
   });
 
@@ -145,12 +149,14 @@ export async function improveRewrittenWithCommand(
   onLog?: (line: string) => void
 ): Promise<RewriteResult> {
   const plainOriginal = stripHtml(originalHtml).trim();
+  const arcContext = resolveDiaryEntryArcContext(entryId);
 
   const prompt = [
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
     'Aufgabe: Verbessere einen bereits umgeschriebenen deutschen Tagebucheintrag basierend auf einem Benutzerbefehl.',
     ...personaLines(user.activePerson),
+    ...(arcContext?.promptLines ?? []),
     '',
     'Verfügbare Tools:',
     `- set_diary_rewrite(entryId=${entryId}, html): Speichert das bearbeitete HTML. MUSST du am Ende genau ein einziges Mal aufrufen.`,
@@ -187,6 +193,7 @@ export async function improveRewrittenWithCommand(
     sessionId,
     scopes: ['diary:read', 'entity:read', 'diary:rewrite'],
     user,
+    arcId: arcContext?.arcId,
     onLog,
   });
 
@@ -221,12 +228,14 @@ export async function summarizeTextWithAi(
   }
 
   log.info(`Starting summarize for entry ${entryId} with model ${model ?? 'default'}`);
+  const arcContext = resolveDiaryEntryArcContext(entryId);
 
   const prompt = [
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
     'Aufgabe: Erstelle eine sehr grobe Zusammenfassung des folgenden deutschen Tagebucheintrags.',
     ...personaLines(user.activePerson),
+    ...(arcContext?.promptLines ?? []),
     '',
     'Verfügbare Tools:',
     `- set_diary_summary(entryId=${entryId}, summary): Speichert die Zusammenfassung. MUSST du am Ende genau einmal aufrufen.`,
@@ -257,6 +266,7 @@ export async function summarizeTextWithAi(
     title: `dnd-diary-summarize-${entryId}-${Date.now()}`,
     scopes: ['diary:read', 'entity:read', 'diary:summarize'],
     user,
+    arcId: arcContext?.arcId,
     onLog,
   });
 
@@ -305,10 +315,13 @@ export async function extractEntitiesFromDiary(
     return { persons: [], organizations: [], locations: [], items: [] };
   }
 
+  const arcContext = resolveDiaryEntryArcContext(entryId);
+
   const prompt = [
     'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
     '',
     'Aufgabe: Extrahiere alle eindeutigen Personen/Charaktere, Organisationen/Fraktionen, Orte und namenhaften Gegenstände aus dem folgenden deutschen Tagebucheintrag.',
+    ...(arcContext?.promptLines ?? []),
     '',
     'Verfügbare Tools:',
     `- link_diary_entity(entryId=${entryId}, type, name, qualifier?): Verknüpft eine Entität mit diesem Tagebucheintrag. MUSST du für jede gefundene Entität aufrufen.`,
@@ -341,6 +354,7 @@ export async function extractEntitiesFromDiary(
     title: `dnd-diary-entities-${entryId}-${Date.now()}`,
     scopes: ['entity:read', 'entity:extract'],
     user,
+    arcId: arcContext?.arcId,
     onLog,
   });
 

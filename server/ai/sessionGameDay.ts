@@ -11,6 +11,7 @@ import type { McpSessionUser } from '../mcp/tokens.js';
 import { getModel } from './modelConfig.js';
 import { runOpenCode } from './opencode.js';
 import { getSessionWorkDir, getSessionWorkFile } from './sessionWorkdir.js';
+import { resolveSessionArcContext } from './arcContext.js';
 
 const log = createLogger('sessionGameDay');
 
@@ -21,15 +22,18 @@ export interface SessionGameDayResult {
 
 function getPreviousSessionsContext(currentSessionId: number, limit = 5): string {
   try {
+    // Context is limited to sessions of the same story arc (NULL arc sees
+    // only other unassigned sessions) so the day estimate stays arc-local.
     const rows = db
       .prepare(
         `SELECT id, name, started_at AS startedAt, game_day AS gameDay, game_day_end AS gameDayEnd
          FROM recording_sessions
          WHERE id != ?
+           AND arc_id IS (SELECT arc_id FROM recording_sessions WHERE id = ?)
          ORDER BY started_at DESC
          LIMIT ?`
       )
-      .all(currentSessionId, limit) as {
+      .all(currentSessionId, currentSessionId, limit) as {
       id: number;
       name: string;
       startedAt: string;
@@ -86,6 +90,7 @@ export async function detectSessionGameDay(
     .map((d) => d.day)
     .join(', ');
   const previousContext = getPreviousSessionsContext(sessionId);
+  const arcContext = resolveSessionArcContext(sessionId);
 
   log.info(
     `Starting game day detection for session ${sessionId} (${session.transcript.length} bytes, currentDay=${currentGameDay}, next=${nextGameDay})`
@@ -95,6 +100,7 @@ export async function detectSessionGameDay(
     'Du bist ein Assistent für ein D&D-Sessions-System. Du arbeitest mit Dateien und Tools und antwortest prägnant auf Deutsch.',
     '',
     `Aufgabe: Bestimme für die D&D-Session ${sessionId} (${session.name}, ${session.startedAt}) die betroffenen In-Game-Spieltage (game_day bis game_day_end).`,
+    ...(arcContext?.promptLines ?? []),
     '',
     'Hintergrund:',
     '- Spieltage sind fortlaufende Integer (campaign_days). Der aktuelle Spieltag ist der höchste Tag in campaign_days.',
@@ -141,6 +147,7 @@ export async function detectSessionGameDay(
     scopes: ['recording:read', 'recording:game-day'],
     user,
     recordingSessionId: sessionId,
+    arcId: arcContext?.arcId,
     onLog,
   });
 

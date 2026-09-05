@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
+import { useStoryArcs } from '../hooks/useStoryArcs';
+import { arcStatusLabel } from '../lib/storyArcs';
 import { EntityRichText } from './EntityRichText';
 import { Loading } from './Loading';
 import { Modal } from './Modal';
@@ -172,9 +174,17 @@ export function EntityEditDialog({
     'idle'
   );
   const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'summary' | 'aliases' | 'knowledge'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'aliases' | 'knowledge' | 'arcs'>(
+    'summary'
+  );
+  const [arcLinks, setArcLinks] = useState<number[]>([]);
+  const [togglingArcIds, setTogglingArcIds] = useState<Set<number>>(new Set());
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const { arcs: storyArcs, selectedArcId } = useStoryArcs();
+  // When the global arc filter is set, knowledge is shown for that arc only
+  // (its derived day range); 'none' and unfiltered views show everything.
+  const dialogArcParam = typeof selectedArcId === 'number' ? String(selectedArcId) : null;
   const staleRef = useRef(false);
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeAfterAutoSaveRef = useRef(false);
@@ -229,12 +239,12 @@ export function EntityEditDialog({
 
       const canonicalName = detailData.canonical;
       const canonicalQualifier = detailData.qualifier ?? '';
-      const [{ data: knowledgeData }, { data: summaryData }] = await Promise.all([
-        request<{ entries: EntityKnowledgeEntry[]; currentGameDay: number | null }>(
-          `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}&qualifier=${encodeURIComponent(canonicalQualifier)}`
-        ),
+      const [{ data: summaryData }, { data: arcLinksData }] = await Promise.all([
         request<{ summary: string | null; miniSummary: string | null; isDirty: boolean }>(
           `/api/entities/summary?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}&qualifier=${encodeURIComponent(canonicalQualifier)}`
+        ),
+        request<{ arcIds: number[] }>(
+          `/api/entities/arc-links?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}&qualifier=${encodeURIComponent(canonicalQualifier)}`
         ),
       ]);
       if (cancelled) return;
@@ -243,8 +253,7 @@ export function EntityEditDialog({
       setCanonical(canonicalName);
       setQualifierValue(canonicalQualifier);
       setAliases(detailData.aliases);
-      setKnowledge(knowledgeData?.entries || []);
-      setCurrentGameDay(knowledgeData?.currentGameDay ?? null);
+      setArcLinks(arcLinksData?.arcIds ?? []);
       setSummary(summaryData?.summary ?? null);
       setMiniSummary(summaryData?.miniSummary ?? null);
       setSummaryDirty(summaryData?.isDirty ?? true);
@@ -262,6 +271,33 @@ export function EntityEditDialog({
       cancelled = true;
     };
   }, [request, type, name, qualifier]);
+
+  // Knowledge list: refetched when the entity identity or the global arc
+  // filter changes (arc-filtered views show the arc's day-range slice).
+  const canonicalIdentity = detail?.canonical ?? null;
+  const canonicalQualifierIdentity = detail?.qualifier ?? null;
+  useEffect(() => {
+    if (!canonicalIdentity) return;
+    let cancelled = false;
+    const loadKnowledge = async () => {
+      const arcQuery = dialogArcParam ? `&arcId=${dialogArcParam}` : '';
+      const { data } = await request<{
+        entries: EntityKnowledgeEntry[];
+        currentGameDay: number | null;
+      }>(
+        `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalIdentity)}&qualifier=${encodeURIComponent(canonicalQualifierIdentity ?? '')}${arcQuery}`
+      );
+      if (cancelled) return;
+      if (data) {
+        setKnowledge(data.entries);
+        setCurrentGameDay(data.currentGameDay ?? null);
+      }
+    };
+    void loadKnowledge();
+    return () => {
+      cancelled = true;
+    };
+  }, [canonicalIdentity, canonicalQualifierIdentity, dialogArcParam, request, type]);
 
   // Autosave for canonical, qualifier and aliases — debounced 600ms, no explicit Save/Cancel.
   useEffect(() => {
@@ -573,8 +609,9 @@ export function EntityEditDialog({
 
   async function handleCorrected(result: KnowledgeCorrectionResponse) {
     const canonicalName = detail?.canonical ?? name;
+    const arcQuery = dialogArcParam ? `&arcId=${dialogArcParam}` : '';
     const { data } = await request<{ entries: EntityKnowledgeEntry[] }>(
-      `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}&qualifier=${encodeURIComponent(identityQualifier)}`
+      `/api/entities/knowledge?type=${encodeURIComponent(type)}&name=${encodeURIComponent(canonicalName)}&qualifier=${encodeURIComponent(identityQualifier)}${arcQuery}`
     );
     if (staleRef.current) return;
     if (data) {
@@ -633,6 +670,43 @@ export function EntityEditDialog({
   function startEditMiniSummary() {
     setEditingMiniSummaryText(miniSummary ?? '');
     setEditingMiniSummary(true);
+  }
+
+  async function toggleArcLink(arcId: number, linked: boolean) {
+    // Per-arc busy flag: rapid re-toggles wait until the in-flight request of
+    // this arc has finished (checkbox is disabled while toggling).
+    setTogglingArcIds((prev) => new Set(prev).add(arcId));
+    try {
+      const { error } = await request(
+        linked ? '/api/entities/arc-links' : '/api/entities/arc-links/unlink',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type,
+            name: detail?.canonical ?? name,
+            qualifier: identityQualifier,
+            arcId,
+          }),
+        }
+      );
+      if (staleRef.current) return;
+      if (error) {
+        showError(error);
+        return;
+      }
+      setArcLinks((prev) =>
+        linked ? [...new Set([...prev, arcId])] : prev.filter((id) => id !== arcId)
+      );
+    } finally {
+      if (!staleRef.current) {
+        setTogglingArcIds((prev) => {
+          const next = new Set(prev);
+          next.delete(arcId);
+          return next;
+        });
+      }
+    }
   }
 
   function cancelEditMiniSummary() {
@@ -774,6 +848,17 @@ export function EntityEditDialog({
                   }`}
                 >
                   Wissen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('arcs')}
+                  className={`px-3 py-1.5 text-sm font-medium border-b-2 transition ${
+                    activeTab === 'arcs'
+                      ? 'border-[var(--accent)] text-[var(--accent)]'
+                      : 'border-transparent text-slate-400 hover:text-[var(--text-h)]'
+                  }`}
+                >
+                  Story Arcs
                 </button>
               </div>
             </div>
@@ -1183,6 +1268,56 @@ export function EntityEditDialog({
                     Hinzufügen
                   </button>
                 </div>
+              </div>
+            )}
+            {activeTab === 'arcs' && (
+              <div>
+                <p className="text-xs text-slate-500 mb-2">
+                  Zuordnung dieser {typeLabels[type]} zu Story Arcs. Einträge und Sessions gehören
+                  jeweils zu genau einem Arc; Entitäten können in mehreren Arcs auftreten. Die KI
+                  ordnet Entitäten automatisch dem Arc zu, in dem sie auftauchen – hier kannst du
+                  zusätzlich manuell zuordnen oder lösen.
+                </p>
+                {storyArcs.length === 0 ? (
+                  <p className="text-slate-500 text-sm italic">
+                    Noch keine Story Arcs vorhanden. Verwalte sie auf der Sessions-Seite.
+                  </p>
+                ) : (
+                  <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                    {storyArcs.map((arc) => {
+                      const linked = arcLinks.includes(arc.id);
+                      const toggling = togglingArcIds.has(arc.id);
+                      return (
+                        <label
+                          key={arc.id}
+                          className={`flex items-center gap-2 px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-sm text-[var(--text-h)] transition ${
+                            toggling ? 'opacity-60' : 'cursor-pointer hover:border-[var(--accent)]'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={linked}
+                            disabled={toggling}
+                            onChange={(e) => void toggleArcLink(arc.id, e.target.checked)}
+                            className="accent-[var(--accent)]"
+                          />
+                          <span className="flex-1 min-w-0 truncate">
+                            {arc.status === 'active' && (
+                              <span className="text-[var(--accent)] mr-1">▶</span>
+                            )}
+                            {arc.name}
+                            <span className="ml-2 text-xs text-slate-500">
+                              {arcStatusLabel(arc)}
+                              {arc.gameDayStart !== null
+                                ? ` · Spieltag ${arc.gameDayStart}${arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart ? `–${arc.gameDayEnd}` : ''}`
+                                : ''}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
