@@ -50,6 +50,13 @@ function insertEntry(user: string, arcId: number | null, gameDay: number | null)
   );
 }
 
+function insertUser(id: string, activePerson: string | null, approved = true): void {
+  db.prepare(
+    `INSERT INTO users (id, username, display_name, is_approved, active_person, disabled_apps, failed_login_attempts, created_at)
+     VALUES (?, ?, ?, ?, ?, '[]', 0, ?)`
+  ).run(id, id, id, approved ? 1 : 0, activePerson, new Date().toISOString());
+}
+
 describe('storyArcs repository', () => {
   it('starts with a seeded active arc (migration)', () => {
     runMigrations();
@@ -218,6 +225,39 @@ describe('story arc entity links (m:n)', () => {
     const arc = createStoryArc({ name: 'Exists-Arc' });
     expect(storyArcExists(arc.id)).toBe(true);
     expect(storyArcExists(arc.id + 99999)).toBe(false);
+  });
+});
+
+describe('story arc main-character auto-link', () => {
+  it("files the approved users' active persons into every new arc", () => {
+    ensureEntityExists('persons', 'Calzone');
+    ensureEntityExists('persons', 'Vimak');
+    ensureEntityExists('persons', 'Privat');
+    insertUser('u1', 'Calzone');
+    // Case/whitespace variants canonicalize onto the same person row.
+    insertUser('u2', ' vimak ');
+    insertUser('u3', 'VIMAK');
+    insertUser('u4', null);
+    // Unapproved users and names without a world entity row stay out.
+    insertUser('u5', 'Privat', false);
+    insertUser('u6', 'Geistercharakter');
+
+    const arc = createStoryArc({ name: 'Hauptcharakter-Arc' });
+    expect(listEntitiesForArc(arc.id).persons).toEqual([
+      { name: 'Calzone', qualifier: '' },
+      { name: 'Vimak', qualifier: '' },
+    ]);
+    expect(getStoryArc(arc.id)!.entityCount).toBe(2);
+
+    // Every subsequent arc gets the same seed, not just the first one.
+    const second = createStoryArc({ name: 'Zweiter Hauptcharakter-Arc' });
+    expect(listEntitiesForArc(second.id).persons).toEqual([
+      { name: 'Calzone', qualifier: '' },
+      { name: 'Vimak', qualifier: '' },
+    ]);
+
+    expect(listArcIdsForEntity('persons', 'Privat')).toEqual([]);
+    expect(listArcIdsForEntity('persons', 'Geistercharakter')).toEqual([]);
   });
 });
 

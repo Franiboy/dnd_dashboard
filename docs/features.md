@@ -152,6 +152,10 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
 /api/entities/arc-links` and `POST /api/entities/arc-links/unlink`). Renames, merges,
   reclassifications and blacklisting keep the links in sync. Re-running AI on an old entry re-adds
   removed links (documented behavior).
+- **Main characters are seeded on creation:** creating an arc automatically links every approved
+  user's `active_person` (the character selected in the app header) as a person to the new arc.
+  Duplicate/case-variant selections collapse into one link; names without a world entity row are
+  skipped (link rows only ever reference real entities).
 - **Derived metadata:** an arc's game-day range and member counts (`sessionCount`,
   `diaryEntryCount`, `entityCount`) are computed from its members on read, never stored.
 - **Global filter:** the app header shows a story-arc select on the Sessions, Diary and World
