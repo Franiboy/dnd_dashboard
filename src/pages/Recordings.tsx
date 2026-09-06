@@ -780,7 +780,7 @@ export function Sessions({ user }: SessionsProps) {
                           <Button variant="ghost" onClick={() => setEditingArc(arc)}>
                             Bearbeiten
                           </Button>
-                          {arc.status !== 'active' && (
+                          {arc.status === 'planned' && (
                             <Button variant="danger" onClick={() => setArcToDelete(arc)}>
                               Löschen
                             </Button>

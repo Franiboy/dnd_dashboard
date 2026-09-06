@@ -138,7 +138,8 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
 - **Exactly one arc is active** (`status='active'`; enforced in `server/repositories/storyArcs.ts`).
   Newly created sessions (bot), manual diary entries and AI session drafts are filed into the
   active arc automatically. Arc lifecycle: `planned` → `active` → `completed`; activating an arc
-  completes the previously active one. An active arc cannot be deleted (members would be orphaned).
+  completes the previously active one. Active and completed arcs cannot be deleted (members would
+  be orphaned / story history is preserved); only planned arcs are deletable.
 - **Sessions and diary entries belong to exactly one arc** (`recording_sessions.arc_id`,
   `diary_entries.arc_id`, nullable, plain columns like `session_draft_for`). Admins can reassign
   sessions per card (`PUT /api/recordings/:id/arc`); users reassign their own entries via the

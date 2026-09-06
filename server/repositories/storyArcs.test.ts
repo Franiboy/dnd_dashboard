@@ -106,6 +106,19 @@ describe('storyArcs repository', () => {
     ).toBeNull();
   });
 
+  it('refuses to delete a completed arc while planned ones stay deletable', () => {
+    const completed = createStoryArc({ name: 'Alte Kampagne' });
+    const other = createStoryArc({ name: 'Nachfolger' });
+    activateStoryArc(completed.id);
+    activateStoryArc(other.id);
+    expect(getStoryArc(completed.id)?.status).toBe('completed');
+    expect(() => deleteStoryArc(completed.id)).toThrow();
+
+    const planned = createStoryArc({ name: 'Noch nie aktiv' });
+    expect(getStoryArc(planned.id)?.status).toBe('planned');
+    expect(deleteStoryArc(planned.id)).toBe(true);
+  });
+
   it('derives game-day range and member counts from members', () => {
     const arc = createStoryArc({ name: 'Zeitreise' });
     const s1 = insertSession('S1', arc.id, 10);
