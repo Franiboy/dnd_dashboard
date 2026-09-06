@@ -61,10 +61,13 @@ has_label() {
 # right before any push/merge so a triggering push can no longer interrupt it.
 AUTOMERGE_LABEL="automerge"
 
+# Label mutations must go through the plain REST endpoints: `gh pr edit` reads
+# the PR via GraphQL including the retired Projects (classic) fields, which
+# fails on this repository ("Projects (classic) is being deprecated...").
 set_automerge_label() {
 	if ! has_label "$AUTOMERGE_LABEL"; then
 		log "Setting '$AUTOMERGE_LABEL' label on PR #$PR_NUMBER to protect the merge from concurrency cancellation"
-		gh pr edit "$PR_NUMBER" --add-label "$AUTOMERGE_LABEL" >/dev/null || {
+		gh api --method POST "repos/{owner}/{repo}/issues/$PR_NUMBER/labels" -f "labels[]=$AUTOMERGE_LABEL" >/dev/null || {
 			log "WARN: could not add '$AUTOMERGE_LABEL' label; continuing (merge may race follow-up runs)"
 		}
 	fi
@@ -77,7 +80,7 @@ set_automerge_label() {
 remove_automerge_label() {
 	if has_label "$AUTOMERGE_LABEL"; then
 		log "Removing '$AUTOMERGE_LABEL' label from PR #$PR_NUMBER"
-		gh pr edit "$PR_NUMBER" --remove-label "$AUTOMERGE_LABEL" >/dev/null || true
+		gh api --method DELETE "repos/{owner}/{repo}/issues/$PR_NUMBER/labels/$AUTOMERGE_LABEL" >/dev/null || true
 	fi
 }
 
