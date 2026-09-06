@@ -255,6 +255,9 @@ export function deleteStoryArc(id: number): boolean {
       'Der aktive Story Arc kann nicht gelöscht werden – aktiviere zuerst einen anderen Arc'
     );
   }
+  if (existing.status === 'completed') {
+    throw new Error('Abgeschlossene Story Arcs können nicht gelöscht werden');
+  }
 
   // Members keep no dangling reference (arc_id has no FK, so the columns are
   // nulled explicitly); entity links cascade via their FK.
