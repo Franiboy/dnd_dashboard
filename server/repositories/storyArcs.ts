@@ -170,14 +170,36 @@ export interface CreateStoryArcInput {
   description?: string | null;
 }
 
+/**
+ * Seeds a freshly created arc with the main characters: every approved user's
+ * active_person is linked as a person (duplicates collapse via the composite
+ * PK). Names without a world entity row are skipped — link rows must only
+ * ever reference real entities (see canonicalEntityRef).
+ */
+function linkUserActivePersons(arcId: number): void {
+  const rows = db
+    .prepare(
+      "SELECT DISTINCT active_person AS name FROM users WHERE is_approved = 1 AND active_person IS NOT NULL AND TRIM(active_person) <> ''"
+    )
+    .all() as { name: string }[];
+  for (const row of rows) {
+    linkStoryArcEntity(arcId, 'persons', { name: row.name, qualifier: '' });
+  }
+}
+
 export function createStoryArc(input: CreateStoryArcInput): StoryArc {
   const now = new Date().toISOString();
-  const result = db
-    .prepare(
-      "INSERT INTO story_arcs (name, description, status, created_at, updated_at) VALUES (?, ?, 'planned', ?, ?)"
-    )
-    .run(input.name.trim(), input.description?.trim() || null, now, now);
-  return getStoryArc(Number(result.lastInsertRowid))!;
+  const tx = db.transaction(() => {
+    const result = db
+      .prepare(
+        "INSERT INTO story_arcs (name, description, status, created_at, updated_at) VALUES (?, ?, 'planned', ?, ?)"
+      )
+      .run(input.name.trim(), input.description?.trim() || null, now, now);
+    const arcId = Number(result.lastInsertRowid);
+    linkUserActivePersons(arcId);
+    return arcId;
+  });
+  return getStoryArc(tx())!;
 }
 
 export function updateStoryArc(
