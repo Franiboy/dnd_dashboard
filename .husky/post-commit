@@ -1,0 +1,10 @@
+# Refresh the ProjectAtlas index after git changed the working tree.
+# Silent no-op when ProjectAtlas is not installed or not set up yet,
+# and never blocks git operations on refresh failures.
+projectatlas_bin="$(command -v projectatlas 2>/dev/null || true)"
+if [ -z "$projectatlas_bin" ] && [ -x "$HOME/.local/bin/projectatlas" ]; then
+  projectatlas_bin="$HOME/.local/bin/projectatlas"
+fi
+[ -n "$projectatlas_bin" ] || exit 0
+[ -f projectatlas.toml ] && [ -d .projectatlas ] || exit 0
+"$projectatlas_bin" watch --once >/dev/null 2>&1 || true
