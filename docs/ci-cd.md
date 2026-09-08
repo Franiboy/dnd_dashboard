@@ -34,3 +34,7 @@ Configuration via job env vars in the workflow:
 - Fix commits pushed with the workflow's `GITHUB_TOKEN` intentionally do not re-trigger workflows (GitHub recursion protection); that is why validation happens inside the same job.
 - The runner needs `opencode` on `PATH` (`~/.opencode/bin`) and an authenticated OpenCode credential for the configured provider.
 - Trust model: this automation assumes trusted contributors. PR content can theoretically contain prompt injection; do not enable it for public forks.
+
+## Assistant duties
+
+Coding assistants keep the loop closed: after opening a PR they actively watch the pipeline until the `ai-review` job merges it or it fails, fix and re-push on red instead of leaving the PR stale, and clean up the branch and worktree after a successful merge (see [`AGENTS.md`](../AGENTS.md)).
