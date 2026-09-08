@@ -1,6 +1,6 @@
 # AGENTS.md – D&D Dashboard
 
-This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-08-22.
+This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-09-08.
 
 ## Critical Working Rules for Assistants
 
@@ -9,6 +9,7 @@ These rules take precedence before every code change.
 - **Clarify before implementing.** Question every requirement for understanding and completeness and ask follow-up questions until the full context is clear (see "Requirements & Clarification Before Implementation" below).
 - **Always work in a dedicated Git worktree on a separate feature branch – never directly on `main`.** Create one before starting any change, even small ones (e.g. `git worktree add /tmp/opencode/<project>-<topic> -b <type>/<topic> origin/main`). If you are already inside a worktree, use it instead of creating another one (check with `git worktree list`).
 - **Finish every task with commit, push and pull request after coordinating with the user.** Commits and pushes each require explicit user approval; then open a PR against `main` so CI and the AI review pipeline can validate the change. Never push directly to `main`.
+- **Watch CI on every PR until it is merged or blocked.** After opening a PR, actively monitor the pipeline (e.g. `gh pr checks --watch`); the `ai-review` job squash-merges green PRs automatically (see [`docs/ci-cd.md`](./docs/ci-cd.md)) – never opt out via the `hold` label for routine changes. If CI fails or the AI review posts blockers, fix the findings, push again and keep watching.
 - **Clean up after a successful merge.** Delete the merged feature branch (local and remote) and remove the worktree used for development.
 - **No commits without explicit user approval.**
 - **No push without explicit user approval.**
@@ -106,7 +107,7 @@ ProjectAtlas is the standard local repository-intelligence tool for coding agent
 
 - **First-run setup:** after `npm install`, run `npm run setup:atlas`. It installs the pinned native runtime (v0.4.4), builds the index and merges the `projectatlas` MCP server into the local, git-ignored `opencode.json`.
 - **Atlas-first workflow:** when the `atlas_*` MCP tools are available, use them before broad file reads – start with one compact `atlas_session_brief`, then follow its returned selectors down to the smallest exact source slice.
-- **Refresh cadence:** run `projectatlas watch --once` (MCP: `atlas_watch_once`) after a batch of edits; a continuous `projectatlas watch` may run during long sessions.
+- **Refresh cadence:** husky hooks (`post-commit`, `post-merge`) run `projectatlas watch --once` automatically after every commit and pull; run it manually (MCP: `atlas_watch_once`) after larger edit batches before committing; a continuous `projectatlas watch` may run during long sessions.
 - **Structure checks:** `projectatlas lint --purpose-level low` flags stale/duplicate purposes. Curate folder and high-impact file purposes during normal work with `projectatlas purpose set` / `atlas_purpose_set`.
 - **Token impact:** `projectatlas token --view tui` shows the local saved-tokens dashboard.
 - Never commit `.projectatlas/` (gitignored). Scan/ignore changes belong in the committed `projectatlas.toml`; ProjectAtlas inherits `.gitignore` dynamically.
