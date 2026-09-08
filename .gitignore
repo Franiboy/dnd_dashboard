@@ -22,6 +22,8 @@ data/bingo
 *.db-*
 opencode.json
 .playwright-mcp/
+# Per-developer ZCode workspace config (absolute local MCP server paths).
+.zcode/
 __pycache__/
 *.pyc
 
