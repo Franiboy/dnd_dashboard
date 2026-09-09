@@ -242,14 +242,21 @@ export function NoteQuillEditor({
 }: NoteQuillEditorProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<ReactQuill | null>(null);
-  const mountedAt = useRef(performance.now());
+  const mountedAt = useRef<number | null>(null);
+  useEffect(() => {
+    mountedAt.current = performance.now();
+  }, []);
   const saveTimerRef = useRef<number | null>(null);
   const latestRef = useRef({ id: element.id, html: ensureHtml(element.text), onUpdate });
   const [draft, setDraft] = useState(() => ensureHtml(element.text));
   const { mappings } = useEntityMappings();
   const { ref: fitRef, fontSize } = useFitFontSize(draft, boxWidth, boxHeight, true);
 
+  // Latest-closure pattern: the autosave timer must observe the newest
+  // element data and callback, not the ones from an older render.
+  // oxlint-disable react/refs
   latestRef.current = { id: element.id, html: latestRef.current.html, onUpdate };
+  // oxlint-enable react/refs
 
   const scheduleSave = (html: string) => {
     latestRef.current.html = html;
@@ -309,7 +316,7 @@ export function NoteQuillEditor({
         const related = e.relatedTarget as Element | null;
         if (wrapperRef.current?.contains(related)) return;
         if (related?.closest?.(`#${NOTE_QUILL_TOOLBAR_ID}`)) return;
-        if (performance.now() - mountedAt.current < BLUR_GRACE_MS) {
+        if (mountedAt.current !== null && performance.now() - mountedAt.current < BLUR_GRACE_MS) {
           quillRef.current?.focus();
           return;
         }

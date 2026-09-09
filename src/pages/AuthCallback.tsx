@@ -22,6 +22,8 @@ export function AuthCallback({ onCallback, onCheckApproved }: AuthCallbackProps)
     const code = searchParams.get('code');
     const state = searchParams.get('state');
     if (!code || !state) {
+      // Status is synced from the URL (external system) on mount.
+      // oxlint-disable-next-line react/set-state-in-effect
       setStatus('Kein Code oder State von Discord erhalten.');
       return;
     }

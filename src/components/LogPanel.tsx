@@ -204,10 +204,13 @@ export function LogPanel() {
   );
 
   useEffect(() => {
+    // oxlint-disable react/set-state-in-effect -- the list state resets when
+    // the filter changes and is then refetched from the server.
     setLogs([]);
     setHasMore(true);
     setOldestId(undefined);
     setAutoScroll(true);
+    // oxlint-enable react/set-state-in-effect
     fetchLogs(undefined, true);
   }, [fetchLogs]);
 

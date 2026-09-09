@@ -37,7 +37,7 @@ export function TaskPool({
   const [isPrivate, setIsPrivate] = useState(false);
   const [assignedTo, setAssignedTo] = useState<string[]>([]);
   const [users, setUsers] = useState<SafeUser[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(true);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingText, setEditingText] = useState('');
   const [editingIsPrivate, setEditingIsPrivate] = useState(false);
@@ -72,7 +72,6 @@ export function TaskPool({
   );
 
   useEffect(() => {
-    setUsersLoading(true);
     request<SafeUser[]>('/api/users').then(({ data }) => {
       setUsers(data ?? []);
       setUsersLoading(false);

@@ -139,6 +139,14 @@ export function useDiaryDrafts(options: UseDiaryDraftsOptions) {
     }
   }
 
+  /** Removes all persisted draft data for an entry (after deletion). */
+  function purgeDrafts(id: number) {
+    localStorage.removeItem(getDraftKey(id, 'original'));
+    localStorage.removeItem(getDraftKey(id, 'rewritten'));
+    delete draftRawRefs.current.original[id];
+    delete draftRawRefs.current.rewritten[id];
+  }
+
   /** Loads persisted drafts into editor state when an entry is expanded. */
   function primeDraftsFromStorage(id: number) {
     setDraftOriginal((prev) => {
@@ -281,6 +289,7 @@ export function useDiaryDrafts(options: UseDiaryDraftsOptions) {
     getEditingContent,
     cancelEntryEdit,
     primeDraftsFromStorage,
+    purgeDrafts,
     clearServerSaveTimeout,
     saveOriginalToServer,
     handleQuillChange,

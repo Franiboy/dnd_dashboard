@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { BingoGame, Cell, Task } from '../../shared/types';
 import type { Socket } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -31,10 +31,8 @@ export function BingoGrid({
   } | null>(null);
   const [fillingCell, setFillingCell] = useState<{ r: number; c: number } | null>(null);
 
-  useEffect(() => {
-    if (!draggedCell) setIsOverDelete(false);
-  }, [draggedCell]);
-
+  // The delete target only highlights while a card is actually being dragged.
+  const isOverDeleteVisible = draggedCell !== null && isOverDelete;
   const taskMap = new Map(game.tasks.map((t) => [t.id, t]));
   // Boards are editable in setup and, for late joiners, during the running
   // game until they are locked.
@@ -252,7 +250,7 @@ export function BingoGrid({
             onDragLeave={() => setIsOverDelete(false)}
             onDrop={handleDeleteDrop}
             className={`h-14 sm:h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-xs sm:text-sm transition select-none
-              ${isOverDelete ? 'bg-red-900/40 border-red-500 text-red-500' : 'bg-red-900/20 border-[var(--danger)] text-[var(--danger)]'}`}
+              ${isOverDeleteVisible ? 'bg-red-900/40 border-red-500 text-red-500' : 'bg-red-900/20 border-[var(--danger)] text-[var(--danger)]'}`}
           >
             Aufgabe hierher ziehen zum Entfernen
           </div>

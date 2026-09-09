@@ -13,25 +13,26 @@ export function BingoAiSuggestions({ isSetup, audience }: BingoAiSuggestionsProp
   const { request } = useApi();
   const [suggestions, setSuggestions] = useState<BingoSuggestion[]>([]);
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
 
-  const fetchVersion = useCallback(async () => {
-    const { data } = await request<VersionInfo>('/api/version', undefined, false);
-    setAiEnabled(!!data?.aiEnabled);
+  const fetchVersion = useCallback(() => {
+    return request<VersionInfo>('/api/version', undefined, false).then(({ data }) => {
+      setAiEnabled(!!data?.aiEnabled);
+    });
   }, [request]);
 
-  const fetchSuggestions = useCallback(async () => {
-    setLoading(true);
-    const { data, error: reqError } = await request<{ suggestions: BingoSuggestion[] }>(
+  const fetchSuggestions = useCallback(() => {
+    return request<{ suggestions: BingoSuggestion[] }>(
       audience ? `/api/bingo/suggestions?audience=${audience}` : '/api/bingo/suggestions',
       undefined,
       false
-    );
-    setSuggestions(data?.suggestions ?? []);
-    setError(reqError);
-    setLoading(false);
+    ).then(({ data, error: reqError }) => {
+      setSuggestions(data?.suggestions ?? []);
+      setError(reqError);
+      setLoading(false);
+    });
   }, [request, audience]);
 
   useEffect(() => {

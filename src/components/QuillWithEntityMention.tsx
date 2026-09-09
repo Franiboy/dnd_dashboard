@@ -35,6 +35,8 @@ export function QuillWithEntityMention({
     if (typeof quillRef === 'function') {
       quillRef(el);
     } else if (quillRef) {
+      // Standard ref-prop forwarding; the ref is owned by the caller.
+      // oxlint-disable-next-line react/immutability
       (quillRef as { current: ReactQuill | null }).current = el;
     }
   };

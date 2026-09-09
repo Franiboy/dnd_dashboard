@@ -30,6 +30,9 @@ export function useSocket(user: SafeUser | null) {
       reconnection: true,
     });
 
+    // Publishing the created connection to state is the point of this effect
+    // (the socket is external state React must re-render for).
+    // oxlint-disable-next-line react/set-state-in-effect
     setSocket(socket);
 
     socket.on('connect', () => {
