@@ -622,15 +622,17 @@ export function createDiaryEntry(
   if (day !== null) ensureCampaignDay(day);
   // Explicit arc wins, otherwise the entry is filed into the active arc.
   const resolvedArcId = arcId !== undefined ? arcId : getActiveArcId();
+  const sanitizedContent = sanitizeHtml(content).trim();
   const result = db
     .prepare(
-      `INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, game_day, arc_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO diary_entries (user_id, title, content, content_text, summary, ai_dirty, game_day, arc_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       userId,
       sanitizePlainText(title),
-      sanitizeHtml(content).trim(),
+      sanitizedContent,
+      stripHtml(sanitizedContent),
       summary ? sanitizePlainText(summary) : null,
       1,
       day,
@@ -844,8 +846,11 @@ export function updateDiaryEntry(
     values.push(sanitizePlainText(updates.title));
   }
   if (updates.content !== undefined) {
+    const sanitizedContent = sanitizeHtml(updates.content).trim();
     fields.push('content = ?');
-    values.push(sanitizeHtml(updates.content).trim());
+    values.push(sanitizedContent);
+    fields.push('content_text = ?');
+    values.push(stripHtml(sanitizedContent));
     // Content changed -> AI summary/entities need reprocessing.
     fields.push('ai_dirty = ?');
     values.push(1);
@@ -951,12 +956,13 @@ export function createSessionDiaryDraft(
   const derivedTitle = gameDay !== null ? `Spieltag ${gameDay}` : sanitizePlainText(title);
   const result = db
     .prepare(
-      'INSERT INTO diary_entries (user_id, title, content, summary, ai_dirty, session_draft_for, game_day, arc_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO diary_entries (user_id, title, content, content_text, summary, ai_dirty, session_draft_for, game_day, arc_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
     .run(
       userId,
       derivedTitle,
       sanitizeHtml('').trim(),
+      '',
       null,
       0,
       sessionId,

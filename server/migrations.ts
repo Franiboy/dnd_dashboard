@@ -7,6 +7,7 @@
 
 import { db } from './database.js';
 import { schema, type TableDef, type ColumnDef } from './schema.js';
+import { stripHtml } from './ai/rewrite.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('migrations');
@@ -486,6 +487,199 @@ function seedStoryArcs(tableIsNew: boolean): void {
   log.info(`Seeded story arc ${arcId} ("Erster Arc") and assigned all existing sessions/entries`);
 }
 
+// ---------------------------------------------------------------------------
+// Global search index (FTS5)
+//
+// The declarative schema engine cannot express FTS5 virtual tables, so the
+// index lives entirely in this hook: idempotent creation of the virtual table,
+// sync triggers on the three source tables and a guarded backfill.
+// ---------------------------------------------------------------------------
+
+const SEARCH_INDEX_DDL = `
+  CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+    title, body,
+    source_type UNINDEXED,
+    source_id UNINDEXED,
+    owner_user_id UNINDEXED,
+    arc_id UNINDEXED,
+    entity_type UNINDEXED,
+    entity_name UNINDEXED,
+    entity_qualifier UNINDEXED,
+    tokenize = 'unicode61 remove_diacritics 2',
+    prefix = '2 3'
+  );
+`;
+
+// Indexed document per source table. Expressions use {r} as the row prefix
+// ("new" inside triggers, the table alias inside the backfill). The diary body
+// prefers the plain-text copy (content_text) because SQL triggers cannot strip
+// HTML; rewritten_content is deliberately not indexed (AI draft of the same
+// text). Knowledge facts are only indexed while status = 'active'.
+interface SearchSourceDef {
+  key: 'diary' | 'session' | 'knowledge';
+  table: string;
+  alias: string;
+  title: string;
+  body: string;
+  ownerUserId: string;
+  arcId: string;
+  entityType: string;
+  entityName: string;
+  entityQualifier: string;
+  where: string | null;
+}
+
+const SEARCH_SOURCES: SearchSourceDef[] = [
+  {
+    key: 'diary',
+    table: 'diary_entries',
+    alias: 'd',
+    title: '{r}.title',
+    body: `COALESCE({r}.content_text, {r}.content) || ' ' || COALESCE({r}.summary, '')`,
+    ownerUserId: '{r}.user_id',
+    arcId: '{r}.arc_id',
+    entityType: "''",
+    entityName: "''",
+    entityQualifier: "''",
+    where: null,
+  },
+  {
+    key: 'session',
+    table: 'recording_sessions',
+    alias: 's',
+    title: '{r}.name',
+    body: `COALESCE({r}.transcript, '') || ' ' || COALESCE({r}.summary, '') || ' ' || COALESCE({r}.long_summary, '')`,
+    ownerUserId: '{r}.created_by',
+    arcId: '{r}.arc_id',
+    entityType: "''",
+    entityName: "''",
+    entityQualifier: "''",
+    where: null,
+  },
+  {
+    key: 'knowledge',
+    table: 'entity_knowledge_entries',
+    alias: 'k',
+    title: `COALESCE(NULLIF({r}.title, ''), {r}.entity_name)`,
+    body: '{r}.content',
+    ownerUserId: "''",
+    arcId: 'NULL',
+    entityType: '{r}.entity_type',
+    entityName: '{r}.entity_name',
+    entityQualifier: '{r}.entity_qualifier',
+    where: `{r}.status = 'active'`,
+  },
+];
+
+function renderDocumentSql(def: SearchSourceDef, rowPrefix: string): string {
+  const fill = (expr: string) => expr.replaceAll('{r}', rowPrefix);
+  return [
+    fill(def.title),
+    fill(def.body),
+    `'${def.key}'`,
+    `${rowPrefix}.id`,
+    fill(def.ownerUserId),
+    fill(def.arcId),
+    fill(def.entityType),
+    fill(def.entityName),
+    fill(def.entityQualifier),
+  ].join(',\n         ');
+}
+
+function searchIndexColumnMismatch(): boolean {
+  if (!tableExists('search_index')) return false;
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'search_index'")
+    .get() as { sql: string } | undefined;
+  // The tokenize/prefix options are baked into the stored DDL; a mismatch
+  // means the index was created by an older definition and must be rebuilt.
+  return !row || !/remove_diacritics/.test(row.sql) || !/prefix/.test(row.sql);
+}
+
+function createSearchSyncTriggers(): void {
+  const statements: string[] = [];
+  for (const def of SEARCH_SOURCES) {
+    const insert = `
+        INSERT INTO search_index (title, body, source_type, source_id, owner_user_id, arc_id,
+                                  entity_type, entity_name, entity_qualifier)
+        SELECT ${renderDocumentSql(def, 'new')}`;
+    const where = def.where ? `\n        WHERE ${def.where.replaceAll('{r}', 'new')}` : '';
+    statements.push(`DROP TRIGGER IF EXISTS trg_search_${def.key}_ai;`);
+    statements.push(`
+      CREATE TRIGGER trg_search_${def.key}_ai AFTER INSERT ON ${def.table}
+      BEGIN${insert}${where};
+      END;`);
+    statements.push(`DROP TRIGGER IF EXISTS trg_search_${def.key}_au;`);
+    statements.push(`
+      CREATE TRIGGER trg_search_${def.key}_au AFTER UPDATE ON ${def.table}
+      BEGIN
+        DELETE FROM search_index WHERE source_type = '${def.key}' AND source_id = new.id;${insert}${where};
+      END;`);
+    statements.push(`DROP TRIGGER IF EXISTS trg_search_${def.key}_ad;`);
+    statements.push(`
+      CREATE TRIGGER trg_search_${def.key}_ad AFTER DELETE ON ${def.table}
+      BEGIN
+        DELETE FROM search_index WHERE source_type = '${def.key}' AND source_id = old.id;
+      END;`);
+  }
+  db.exec(statements.join('\n'));
+}
+
+// Insert index rows that are still missing (first run / newly added sources).
+// The NOT EXISTS guard makes repeated runs no-ops; the triggers cover every
+// later change.
+function backfillSearchIndex(): void {
+  const before = db.prepare('SELECT COUNT(*) AS n FROM search_index').get() as { n: number };
+  for (const def of SEARCH_SOURCES) {
+    const where = [
+      def.where ? def.where.replaceAll('{r}', def.alias) : null,
+      `NOT EXISTS (
+           SELECT 1 FROM search_index si
+           WHERE si.source_type = '${def.key}' AND si.source_id = ${def.alias}.id
+         )`,
+    ]
+      .filter(Boolean)
+      .join(' AND ');
+    db.exec(`
+      INSERT INTO search_index (title, body, source_type, source_id, owner_user_id, arc_id,
+                                entity_type, entity_name, entity_qualifier)
+      SELECT ${renderDocumentSql(def, def.alias)}
+      FROM ${def.table} ${def.alias}
+      WHERE ${where}`);
+  }
+  const after = db.prepare('SELECT COUNT(*) AS n FROM search_index').get() as { n: number };
+  if (after.n > before.n) {
+    log.info(`Backfilled search_index (${before.n} -> ${after.n} documents)`);
+  }
+}
+
+// Legacy diary rows carry HTML-only content; fill the plain-text copy once so
+// the diary trigger bodies index stripped text.
+function backfillDiaryContentText(): void {
+  const rows = db
+    .prepare('SELECT id, content FROM diary_entries WHERE content_text IS NULL')
+    .all() as { id: number; content: string }[];
+  if (rows.length === 0) return;
+  const update = db.prepare('UPDATE diary_entries SET content_text = ? WHERE id = ?');
+  for (const row of rows) {
+    update.run(stripHtml(row.content), row.id);
+  }
+  log.info(`Backfilled content_text for ${rows.length} diary entries`);
+}
+
+function setupSearchIndex(): void {
+  if (!tableExists('diary_entries') || !tableExists('recording_sessions')) return;
+  if (searchIndexColumnMismatch()) {
+    // DROP on an FTS5 table also drops its triggers' target; triggers are
+    // recreated right after and the backfill reindexes from the sources.
+    db.exec('DROP TABLE IF EXISTS search_index;');
+  }
+  db.exec(SEARCH_INDEX_DDL);
+  createSearchSyncTriggers();
+  backfillDiaryContentText();
+  backfillSearchIndex();
+}
+
 export function runMigrations(): void {
   // Table rebuilds that require foreign_keys = OFF must run outside the
   // outer transaction; the pragma is a no-op while a transaction is open.
@@ -504,6 +698,9 @@ export function runMigrations(): void {
     rebuildEntitySummariesForQualifier();
     // Apply the declarative schema diff (tables, columns, indexes).
     applySchema();
+    // FTS5 global search index: cannot live in schema.ts (virtual table) and
+    // depends on diary_entries.content_text existing first.
+    setupSearchIndex();
     // Backfills that depend on the schema being present.
     migrateAiSettingsSingleModel();
     fillRecordingSessionUpdatedAt();
