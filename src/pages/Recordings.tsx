@@ -976,8 +976,7 @@ export function Sessions({ user }: SessionsProps) {
                   )}
                 </p>
                 {user.isAdmin && (
-                  <div className="mt-1 grid grid-cols-[auto_1fr] gap-2 items-center text-xs">
-                    <label className="text-slate-400">Kapitel</label>
+                  <div className="mt-1 text-xs">
                     <ArcAssignPicker
                       arcs={storyArcs}
                       value={session.arcId ?? null}
