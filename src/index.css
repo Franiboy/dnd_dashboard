@@ -403,6 +403,23 @@ button {
   animation: wb-flyout-in 130ms ease-out;
 }
 
+/* User menu popup: pops in from the avatar trigger like a native menu. */
+@keyframes menu-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.menu-pop-in {
+  animation: menu-pop-in 130ms ease-out;
+  transform-origin: top left;
+}
+
 /* Story-arc chapter typography ("Abenteuer-Look"): serif display names and
    small-caps chapter labels. System serif stack on purpose — external web
    fonts are blocked by the app's CSP. */
