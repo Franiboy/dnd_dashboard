@@ -32,10 +32,6 @@ __pycache__/
 # The shared config `projectatlas.toml` IS committed.
 .projectatlas/
 
-# Per-user Mimosa ZCode plugin runtime state (session baselines and scan state).
-# The hooks come from the user-local ZCode plugin, not from this repo.
-.mimosa/
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
