@@ -77,6 +77,21 @@ export function AppIcon({ id, size = 20, className }: AppIconProps) {
           <path d="M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
         </svg>
       );
+    case 'logout':
+      return (
+        <svg {...COMMON_PROPS} width={size} height={size} className={className}>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      );
+    case 'undo':
+      return (
+        <svg {...COMMON_PROPS} width={size} height={size} className={className}>
+          <polyline points="1 4 1 10 7 10" />
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+        </svg>
+      );
     default:
       return (
         <svg {...COMMON_PROPS} width={size} height={size} className={className}>
