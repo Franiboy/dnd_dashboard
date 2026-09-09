@@ -9,11 +9,14 @@ import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
 import { useStoryArcs } from '../hooks/useStoryArcs';
-import { arcMatchesFilter, arcStatusLabel } from '../lib/storyArcs';
+import { arcMatchesFilter, arcStatusLabel, formatArcLabel } from '../lib/storyArcs';
 import { EntityRichText } from '../components/EntityRichText';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
 import { EntityChooserModal, type EntityCandidate } from '../components/EntityChooserModal';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
+import { ArcAssignPicker } from '../components/storyArcs/ArcAssignPicker';
+import { ChapterChip } from '../components/storyArcs/ChapterChip';
+import { ChapterStatusDot } from '../components/storyArcs/ChapterStatusDot';
 import { Toggle } from '../components/Toggle';
 import { quillModules } from '../components/quillConfig';
 import ReactQuill from 'react-quill-new';
@@ -144,10 +147,16 @@ export function Sessions({ user }: SessionsProps) {
   const { arcs: storyArcs, selectedArcId, refresh: refreshStoryArcs } = useStoryArcs();
   const [arcCreateName, setArcCreateName] = useState('');
   const [arcCreateDescription, setArcCreateDescription] = useState('');
+  const [arcCreateChapter, setArcCreateChapter] = useState<number | ''>('');
   const [arcCreateBusy, setArcCreateBusy] = useState(false);
   const [editingArc, setEditingArc] = useState<StoryArc | null>(null);
   const [arcToDelete, setArcToDelete] = useState<StoryArc | null>(null);
   const arcById = useMemo(() => new Map(storyArcs.map((arc) => [arc.id, arc])), [storyArcs]);
+  /** Next free chapter number, prefilled into the create-arc form. */
+  const nextChapterNumber = useMemo(
+    () => storyArcs.reduce((max, arc) => Math.max(max, arc.chapterNumber ?? 0), 0) + 1,
+    [storyArcs]
+  );
   const visibleSessions = useMemo(
     () => sessions.filter((session) => arcMatchesFilter(selectedArcId, session.arcId)),
     [sessions, selectedArcId]
@@ -604,15 +613,21 @@ export function Sessions({ user }: SessionsProps) {
   async function createStoryArc() {
     if (!arcCreateName.trim()) return;
     setArcCreateBusy(true);
+    const chapterNumber = arcCreateChapter === '' ? nextChapterNumber : Number(arcCreateChapter);
     const { data, error } = await request<{ arc: StoryArc }>('/api/story-arcs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: arcCreateName, description: arcCreateDescription }),
+      body: JSON.stringify({
+        name: arcCreateName,
+        description: arcCreateDescription,
+        chapterNumber,
+      }),
     });
     setArcCreateBusy(false);
     if (data?.arc) {
       setArcCreateName('');
       setArcCreateDescription('');
+      setArcCreateChapter('');
       await refreshStoryArcs();
       showSuccess('Story Arc angelegt.');
     } else if (error) {
@@ -626,7 +641,11 @@ export function Sessions({ user }: SessionsProps) {
     const { data, error } = await request<{ arc: StoryArc }>(`/api/story-arcs/${editingArc.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editingArc.name, description: editingArc.description }),
+      body: JSON.stringify({
+        name: editingArc.name,
+        description: editingArc.description,
+        chapterNumber: editingArc.chapterNumber ?? null,
+      }),
     });
     setWorking(false);
     if (data?.arc) {
@@ -750,9 +769,9 @@ export function Sessions({ user }: SessionsProps) {
             <div className="p-2 space-y-6">
               <h3 className="text-lg font-semibold text-[var(--text-h)]">Story Arcs</h3>
               <p className="text-xs text-slate-400">
-                Sessions und Tagebucheinträge gehören jeweils zu genau einem Arc. Neue Inhalte
-                landen automatisch im aktiven Arc (▶). Entitäten können mehreren Arcs zugeordnet
-                sein (im Welt-Dialog pflegbar).
+                Sessions und Tagebucheinträge gehören jeweils zu genau einem Kapitel. Neue Inhalte
+                landen automatisch im aktiven Kapitel (grün leuchtend). Entitäten können mehreren
+                Kapiteln zugeordnet sein (im Welt-Dialog pflegbar).
               </p>
 
               <div className="space-y-3">
@@ -762,7 +781,7 @@ export function Sessions({ user }: SessionsProps) {
                 {storyArcs.map((arc) => (
                   <div
                     key={arc.id}
-                    className="border border-[var(--border)] rounded-xl p-3 space-y-2 bg-slate-900/40"
+                    className="border border-amber-500/25 rounded-xl p-3 space-y-2 bg-slate-900/40"
                   >
                     {editingArc?.id === arc.id ? (
                       <div className="space-y-2">
@@ -781,6 +800,20 @@ export function Sessions({ user }: SessionsProps) {
                           placeholder="Beschreibung (optional)"
                           rows={2}
                         />
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={editingArc.chapterNumber ?? ''}
+                          onChange={(e) =>
+                            setEditingArc({
+                              ...editingArc,
+                              chapterNumber: e.target.value === '' ? null : Number(e.target.value),
+                            })
+                          }
+                          className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                          placeholder="Kapitelnummer (leer = ohne Nummer)"
+                        />
                         <div className="flex gap-2">
                           <Button variant="accent" disabled={working} onClick={saveArcEdits}>
                             Speichern
@@ -794,17 +827,28 @@ export function Sessions({ user }: SessionsProps) {
                       <>
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-[var(--text-h)] truncate">
-                              {arc.status === 'active' && (
-                                <span className="text-[var(--accent)] mr-1">▶</span>
+                            <p className="chapter-serif text-sm font-semibold tracking-[0.04em] text-amber-100/90 truncate uppercase">
+                              {arc.chapterNumber !== null && (
+                                <span className="chapter-caps mr-1.5 text-[9.5px] text-amber-200/60">
+                                  Kapitel {arc.chapterNumber} ·
+                                </span>
                               )}
                               {arc.name}
-                              <span className="ml-2 text-xs font-normal text-slate-400">
-                                {arcStatusLabel(arc)}
-                              </span>
                             </p>
+                            <span
+                              className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                arc.status === 'active'
+                                  ? 'bg-[var(--accent)]/15 text-[var(--accent)]'
+                                  : arc.status === 'planned'
+                                    ? 'bg-sky-400/10 text-sky-300'
+                                    : 'bg-slate-500/15 text-slate-400'
+                              }`}
+                            >
+                              <ChapterStatusDot status={arc.status} />
+                              {arcStatusLabel(arc)}
+                            </span>
                             {arc.description && (
-                              <p className="text-xs text-slate-400 mt-0.5">{arc.description}</p>
+                              <p className="text-xs text-slate-400 mt-1">{arc.description}</p>
                             )}
                             <p className="text-xs text-slate-500 mt-1">
                               {arc.gameDayStart !== null
@@ -855,6 +899,17 @@ export function Sessions({ user }: SessionsProps) {
                   placeholder="Beschreibung (optional)"
                   rows={2}
                 />
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={arcCreateChapter}
+                  onChange={(e) =>
+                    setArcCreateChapter(e.target.value === '' ? '' : Number(e.target.value))
+                  }
+                  className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
+                  placeholder={`Kapitelnummer (Vorschlag: ${nextChapterNumber})`}
+                />
                 <Button
                   variant="accent"
                   disabled={arcCreateBusy || !arcCreateName.trim()}
@@ -878,7 +933,7 @@ export function Sessions({ user }: SessionsProps) {
       <div className="space-y-4">
         {sessions.length === 0 && <p className="text-slate-400">Noch keine Sessions vorhanden.</p>}
         {sessions.length > 0 && visibleSessions.length === 0 && (
-          <p className="text-slate-400">Keine Sessions im gewählten Story Arc vorhanden.</p>
+          <p className="text-slate-400">Keine Sessions im gewählten Kapitel vorhanden.</p>
         )}
         {visibleSessions.map((session) => (
           <div
@@ -893,14 +948,14 @@ export function Sessions({ user }: SessionsProps) {
                 <h3 className="text-lg font-semibold text-[var(--text-h)]">
                   {session.name}
                   {session.arcId != null && arcById.get(session.arcId) && (
-                    <span className="ml-2 align-middle inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20">
-                      {arcById.get(session.arcId)!.name}
-                    </span>
+                    <ChapterChip
+                      arc={arcById.get(session.arcId)!}
+                      className="ml-2 align-middle"
+                      title={formatArcLabel(arcById.get(session.arcId)!)}
+                    />
                   )}
                   {session.arcId == null && (
-                    <span className="ml-2 align-middle inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
-                      Ohne Arc
-                    </span>
+                    <ChapterChip arc={null} className="ml-2 align-middle" />
                   )}
                 </h3>
                 <p className="text-sm text-slate-400">
@@ -916,25 +971,13 @@ export function Sessions({ user }: SessionsProps) {
                 </p>
                 {user.isAdmin && (
                   <div className="mt-1 grid grid-cols-[auto_1fr] gap-2 items-center text-xs">
-                    <label className="text-slate-400">Arc</label>
-                    <select
-                      value={session.arcId ?? ''}
-                      onChange={(e) =>
-                        void assignSessionArc(
-                          session.id,
-                          e.target.value === '' ? null : Number(e.target.value)
-                        )
-                      }
-                      className="min-w-0 max-w-[14rem] px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                    >
-                      <option value="">– ohne Arc –</option>
-                      {storyArcs.map((arc) => (
-                        <option key={arc.id} value={arc.id}>
-                          {arc.name}
-                          {arc.status === 'active' ? ' (aktiv)' : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="text-slate-400">Kapitel</label>
+                    <ArcAssignPicker
+                      arcs={storyArcs}
+                      value={session.arcId ?? null}
+                      onChange={(arcId) => void assignSessionArc(session.id, arcId)}
+                      disabled={working}
+                    />
                   </div>
                 )}
                 {user.isAdmin && (

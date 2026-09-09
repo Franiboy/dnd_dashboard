@@ -143,8 +143,14 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
 - **Sessions and diary entries belong to exactly one arc** (`recording_sessions.arc_id`,
   `diary_entries.arc_id`, nullable, plain columns like `session_draft_for`). Admins can reassign
   sessions per card (`PUT /api/recordings/:id/arc`); users reassign their own entries via the
-  select on the entry card. **World entities are many-to-many** (`story_arc_entities`, identity
-  `(entity_type, entity_name, entity_qualifier)`): a villain can span several arcs.
+  chapter chip on the entry card. **World entities are many-to-many** (`story_arc_entities`, identity
+  `(entity_type, entity_name, entity_qualifier)`): a villain can span several arcs. Unassigned
+  members ("Ohne Kapitel") are one-shots/special sessions and are never forced into an arc.
+- **Chapter numbers:** arcs carry an optional unique `chapter_number` (`story_arcs.chapter_number`,
+  `StoryArc.chapterNumber`; NULL = unnumbered). The admin create form suggests the next free
+  number, the edit form can change/clear it; duplicates are rejected with a 409. Timelines and
+  chips order arcs chronologically (`sortArcsChronologically` in `src/lib/storyArcs.ts`): numbered
+  arcs first, unnumbered last by game-day range.
 - **Entity links are maintained automatically and additively:** whenever an entity is linked to a
   diary entry (`setLinkedEntities`, used by AI extraction `link_diary_entity` and manual saves) or
   knowledge is distributed from a session/diary, the affected entities are filed into that arc
@@ -159,9 +165,12 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
   skipped (link rows only ever reference real entities).
 - **Derived metadata:** an arc's game-day range and member counts (`sessionCount`,
   `diaryEntryCount`, `entityCount`) are computed from its members on read, never stored.
-- **Global filter:** the app header shows a story-arc select on the Sessions, Diary and World
-  pages (state in `StoryArcProvider`, persisted in `localStorage`; options "Alle Story Arcs" and
-  "Ohne Arc"). Sessions/Diary filter their lists client-side; World passes `?arcId=` (a number or
+- **Global filter:** the app header shows a story-arc chapter filter on the Sessions, Diary and
+  World pages (state in `StoryArcProvider`, persisted in `localStorage`; options "Alle Kapitel"
+  and "Ohne Kapitel"). Clicking the trigger opens the campaign timeline panel directly below the
+  header (`ChapterTimeline`, serif/brass "Abenteuer-Look" styling shared by `ChapterChip`):
+  chapters as horizontal segments, active glowing green, planned dashed blue, completed dimmed.
+  Sessions/Diary filter their lists client-side; World passes `?arcId=` (a number or
   the `none` sentinel) to `GET /api/entities` (arc-linked entities, or for `none` entities
   assigned to no arc) and to the entity knowledge endpoint, where only
   facts whose validity window overlaps the arc's derived day range are shown (timeless facts
@@ -176,8 +185,9 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
   previous-session context are arc-scoped as well. Prompts announce the restriction ("Story-Arc:
   …"). Knowledge review/correction/distribution accept an optional `arcId` (world dialogs pass the
   globally selected arc). Entity summaries stay global on purpose (facts span arcs).
-- **Management UI:** admin-only "Story Arcs" section in the Sessions page settings drawer (create,
-  rename/describe, activate, delete); arc badges and selects on session cards.
+- **Management UI:** admin-only "Story Arcs" section in the Sessions page settings drawer (create
+  with suggested chapter number, rename/describe, activate, delete); chapter chips and the inline
+  `ArcAssignPicker` on session and diary entry cards.
 - **Migration:** on the first startup with the new schema, `seedStoryArcs` (server/migrations.ts)
   creates one active arc ("Erster Arc") and files all existing sessions/entries into it; it never
   re-runs afterwards.
