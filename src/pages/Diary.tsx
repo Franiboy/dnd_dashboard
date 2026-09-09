@@ -101,6 +101,8 @@ export function Diary() {
 
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
+  const [deepLinkCollapsedIds, setDeepLinkCollapsedIds] = useState<Set<number>>(new Set());
+  const [deepLinkOriginalIds, setDeepLinkOriginalIds] = useState<Set<number>>(new Set());
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null);
   const [editingSummaryText, setEditingSummaryText] = useState('');
   const [processingSummaryId, setProcessingSummaryId] = useState<number | null>(null);
@@ -124,6 +126,35 @@ export function Diary() {
     }, 300);
   }
 
+  // Deep link (?entry=<id>): expand, prefer the KI version and scroll into view.
+  // Both adjustments are derived during render instead of syncing state in an
+  // effect, so no cascading render is needed.
+  const deepLinkEntryId = useMemo(() => {
+    const raw = searchParams.get('entry');
+    const id = raw === null ? NaN : Number(raw);
+    return Number.isFinite(id) ? id : null;
+  }, [searchParams]);
+
+  const effectiveExpandedIds = useMemo(() => {
+    if (
+      deepLinkEntryId === null ||
+      deepLinkCollapsedIds.has(deepLinkEntryId) ||
+      !entries.some((e) => e.id === deepLinkEntryId)
+    ) {
+      return expandedIds;
+    }
+    return new Set(expandedIds).add(deepLinkEntryId);
+  }, [expandedIds, deepLinkEntryId, deepLinkCollapsedIds, entries]);
+
+  const effectiveViewingRewrittenIds = useMemo(() => {
+    if (deepLinkEntryId === null || deepLinkOriginalIds.has(deepLinkEntryId)) {
+      return viewingRewrittenIds;
+    }
+    const entry = entries.find((e) => e.id === deepLinkEntryId);
+    if (!entry || !(entry.rewrittenContent || entry.rewrittenFilePath)) return viewingRewrittenIds;
+    return new Set(viewingRewrittenIds).add(deepLinkEntryId);
+  }, [viewingRewrittenIds, deepLinkEntryId, deepLinkOriginalIds, entries]);
+
   const {
     draftOriginal,
     draftRewritten,
@@ -140,32 +171,9 @@ export function Diary() {
     userId: user?.id,
     entriesRef,
     setEntries,
-    viewingRewrittenIds,
+    viewingRewrittenIds: effectiveViewingRewrittenIds,
     onUserQuillInput: scheduleEntityHighlights,
   });
-
-  // Deep link (?entry=<id>): expand, prefer the KI version and scroll into view.
-  // Both adjustments are derived during render instead of syncing state in an
-  // effect, so no cascading render is needed.
-  const deepLinkEntryId = useMemo(() => {
-    const raw = searchParams.get('entry');
-    const id = raw === null ? NaN : Number(raw);
-    return Number.isFinite(id) ? id : null;
-  }, [searchParams]);
-
-  const effectiveExpandedIds = useMemo(() => {
-    if (deepLinkEntryId === null || !entries.some((e) => e.id === deepLinkEntryId)) {
-      return expandedIds;
-    }
-    return new Set(expandedIds).add(deepLinkEntryId);
-  }, [expandedIds, deepLinkEntryId, entries]);
-
-  const effectiveViewingRewrittenIds = useMemo(() => {
-    if (deepLinkEntryId === null) return viewingRewrittenIds;
-    const entry = entries.find((e) => e.id === deepLinkEntryId);
-    if (!entry || !(entry.rewrittenContent || entry.rewrittenFilePath)) return viewingRewrittenIds;
-    return new Set(viewingRewrittenIds).add(deepLinkEntryId);
-  }, [viewingRewrittenIds, deepLinkEntryId, entries]);
 
   useEffect(() => {
     if (deepLinkEntryId === null || entries.length === 0) return;
@@ -246,6 +254,14 @@ export function Diary() {
       else next.delete(id);
       return next;
     });
+    if (id === deepLinkEntryId) {
+      setDeepLinkOriginalIds((prev) => {
+        const next = new Set(prev);
+        if (showRewritten) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
   }
 
   async function handleRewrite(entry: DiaryEntry) {
@@ -374,7 +390,7 @@ export function Diary() {
   }
 
   async function toggleExpanded(id: number) {
-    const isExpanding = !expandedIds.has(id);
+    const isExpanding = !effectiveExpandedIds.has(id);
     if (isExpanding) {
       const entry = entries.find((e) => e.id === id);
       if (entry?.rewrittenFilePath && !entry.rewrittenContent) {
@@ -401,10 +417,18 @@ export function Diary() {
     }
     setExpandedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (isExpanding) next.add(id);
+      else next.delete(id);
       return next;
     });
+    if (id === deepLinkEntryId) {
+      setDeepLinkCollapsedIds((prev) => {
+        const next = new Set(prev);
+        if (isExpanding) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
   }
 
   function startSummaryEdit(entry: DiaryEntry) {
@@ -605,7 +629,7 @@ export function Diary() {
                             onClick={() => setViewRewritten(entry.id, true)}
                             disabled={working}
                             className={`px-3 py-1 rounded-md text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                              viewingRewrittenIds.has(entry.id)
+                              effectiveViewingRewrittenIds.has(entry.id)
                                 ? 'bg-[var(--accent)] text-slate-900'
                                 : 'text-slate-300 hover:text-[var(--text-h)]'
                             }`}
