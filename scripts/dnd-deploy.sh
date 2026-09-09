@@ -37,7 +37,7 @@ log() {
 # explicitly allows key generation, for fresh installs only.
 verify_jwt_key_pair() {
   if [ -f "$JWT_PRIVATE_KEY" ] && [ -f "$JWT_PUBLIC_KEY" ]; then
-    if [ -s "$JWT_PRIVATE_KEY" ] && [ -s "$JWT_PUBLIC_KEY" ] && [ -r "$JWT_PRIVATE_KEY" ]; then
+    if [ -s "$JWT_PRIVATE_KEY" ] && [ -s "$JWT_PUBLIC_KEY" ] && [ -r "$JWT_PRIVATE_KEY" ] && [ -r "$JWT_PUBLIC_KEY" ]; then
       log "JWT key pair present"
     else
       log "ABORTED: JWT key files in $KEY_DIR are empty or unreadable; refusing to deploy"
