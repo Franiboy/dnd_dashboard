@@ -9,6 +9,7 @@ import sys
 import traceback
 import wave
 from difflib import SequenceMatcher
+from pathlib import Path
 
 def emit(event: dict) -> None:
     print(json.dumps(event), flush=True)
@@ -70,26 +71,7 @@ def preprocess_audio(input_path: str) -> str:
         return input_path
 
 
-def _get_segments_path(transcript_path: str) -> str:
-    return transcript_path.replace(".txt", ".segments.json")
-
-
 _FILENAME_UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
-
-
-def _safe_filename_component(value: object) -> str:
-    """Reduce an external value (e.g. a Discord userId) to a safe filename component."""
-    cleaned = _FILENAME_UNSAFE_CHARS.sub("_", str(value)).strip(".")
-    return cleaned or "unknown"
-
-
-def _contained_path(output_dir: str, filename: str) -> str:
-    """Join filename under output_dir and refuse any escape from that directory."""
-    base = os.path.realpath(output_dir)
-    target = os.path.realpath(os.path.join(base, filename))
-    if os.path.commonpath([base, target]) != base:
-        raise ValueError(f"Refusing to write outside the output directory: {filename}")
-    return target
 
 
 def _parse_timestamp_to_seconds(ts: str) -> float | None:
@@ -177,8 +159,9 @@ def _load_completed_segments(transcript_path: str, display_name: str, trim_start
 def _write_segments(output_dir: str, transcript_filename: str, segments: list[dict]) -> None:
     try:
         stem = transcript_filename[: -len(".txt")] if transcript_filename.endswith(".txt") else transcript_filename
-        with open(_contained_path(output_dir, f"{stem}.segments.json"), "w", encoding="utf-8") as f:
-            json.dump(segments, f, ensure_ascii=False)
+        safe_stem = _FILENAME_UNSAFE_CHARS.sub("_", stem).strip(".") or "segments"
+        target = Path(output_dir) / f"{safe_stem}.segments.json"
+        target.write_text(json.dumps(segments, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
 
@@ -565,11 +548,11 @@ def main() -> None:
                 f"[{format_timestamp(seg['start'])}] {_apply_corrections(seg['text']).strip()}"
                 for seg in segs
             ]
-            transcript_filename = f"speaker-{_safe_filename_component(info['file_info'].get('userId'))}.txt"
-            transcript_path = _contained_path(output_dir, transcript_filename)
-            with open(_contained_path(output_dir, transcript_filename), "w", encoding="utf-8") as f:
-                f.write("\n".join(speaker_lines))
-            _write_segments(output_dir, transcript_filename, segs)
+            user_component = _FILENAME_UNSAFE_CHARS.sub("_", str(info["file_info"].get("userId"))).strip(".")
+            transcript_file = Path(output_dir) / f"speaker-{user_component or 'unknown'}.txt"
+            transcript_file.write_text("\n".join(speaker_lines), encoding="utf-8")
+            transcript_path = str(transcript_file)
+            _write_segments(output_dir, transcript_file.name, segs)
 
             completed_files.append({
                 "id": info["file_info"].get("id"),
@@ -596,9 +579,9 @@ def main() -> None:
             for seg in all_segments
         ]
         transcript = "\n".join(transcript_lines)
-        transcript_path = _contained_path(output_dir, "transcript.txt")
-        with open(_contained_path(output_dir, "transcript.txt"), "w", encoding="utf-8") as f:
-            f.write(transcript)
+        transcript_file = Path(output_dir) / "transcript.txt"
+        transcript_file.write_text(transcript, encoding="utf-8")
+        transcript_path = str(transcript_file)
 
         emit(
             {

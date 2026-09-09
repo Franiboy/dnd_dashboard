@@ -271,6 +271,7 @@ function runTranscriptionScript(
   });
 
   const args = [
+    '--',
     TRANSCRIBE_SCRIPT,
     '--manifest',
     '-',
