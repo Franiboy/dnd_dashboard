@@ -11,10 +11,15 @@ const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
 let interval: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
+// Initialized to today so a server started at e.g. 16:00 does not
+// immediately fire the nightly job on its first hourly tick.
+let lastRunDay = new Date().toDateString();
 
 function shouldRunNow(): boolean {
   const now = new Date();
-  return now.getHours() === NIGHT_HOUR;
+  // Any hour at/after NIGHT_HOUR counts as long as the job has not run today,
+  // so a machine that slept through 03:00 catches up on the next tick.
+  return now.getHours() >= NIGHT_HOUR && lastRunDay !== now.toDateString();
 }
 
 async function processNightlySummaries() {
@@ -51,6 +56,7 @@ export function runNightlyJobNow(): boolean {
   }
 
   isRunning = true;
+  lastRunDay = new Date().toDateString();
   processNightlySummaries()
     .catch((err) => log.error(`Nightly job failed: ${err}`))
     .finally(() => {

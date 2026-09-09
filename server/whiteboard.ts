@@ -21,10 +21,25 @@ import type {
   WhiteboardTaskStatus,
   WhiteboardZone,
 } from '../shared/types.js';
-import { db } from './database.js';
 import { getEnv } from './env.js';
+import type { SocketData } from './socket.js';
+import {
+  countElementsReferencingUrl,
+  deleteElementRow,
+  getElement,
+  insertElement,
+  updateElementRow,
+} from './repositories/whiteboard.js';
 
-type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
+type IoServer = Server<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  Record<string, never>,
+  SocketData
+>;
+
+/** Domain guard error; the HTTP layer maps it to a 400 response. */
+export class WhiteboardError extends Error {}
 
 /** Directory where pasted/uploaded board images are stored. */
 export function getWhiteboardUploadDir(): string {
@@ -50,10 +65,7 @@ export function deleteUnreferencedUpload(url: string | null | undefined): void {
   if (!url) return;
   const match = INTERNAL_UPLOAD_URL_RE.exec(url);
   if (!match) return;
-  const referenced = db
-    .prepare('SELECT COUNT(*) AS n FROM whiteboard_elements WHERE url = ?')
-    .get(url) as { n: number };
-  if (referenced.n > 0) return;
+  if (countElementsReferencingUrl(url) > 0) return;
   const dir = path.resolve(getWhiteboardUploadDir());
   const target = path.resolve(dir, match[1]);
   // Defense in depth: never resolve outside the upload directory.
@@ -93,91 +105,6 @@ const STROKE_WIDTH_FLOOR = 0;
 const MAX_STROKE_WIDTH = 64;
 /** Upper bound of stored freehand points; extra input points are dropped. */
 const MAX_POINTS = 4000;
-
-interface ElementRow {
-  id: string;
-  type: string;
-  zone: string;
-  owner_id: string;
-  owner_name: string;
-  x: number;
-  y: number;
-  x2: number | null;
-  y2: number | null;
-  width: number;
-  height: number;
-  color: string;
-  text: string;
-  description: string | null;
-  status: string | null;
-  url: string | null;
-  from_id: string | null;
-  to_id: string | null;
-  shape_kind: string | null;
-  fill_color: string | null;
-  stroke_width: number;
-  points: string | null;
-  z_index: number;
-  locked: number;
-  created_at: string;
-  updated_at: string;
-}
-
-/** Parses the stored JSON point list back into normalized pairs. */
-function parsePoints(value: string | null): [number, number][] | null {
-  if (!value) return null;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return null;
-    const pairs: [number, number][] = [];
-    for (let i = 0; i + 1 < parsed.length; i += 2) {
-      const x = parsed[i];
-      const y = parsed[i + 1];
-      if (typeof x !== 'number' || typeof y !== 'number') continue;
-      pairs.push([x, y]);
-    }
-    return pairs.length > 0 ? pairs : null;
-  } catch {
-    return null;
-  }
-}
-
-function rowToElement(row: ElementRow): WhiteboardElement {
-  return {
-    id: row.id,
-    type: row.type as WhiteboardElementType,
-    zone: row.zone as WhiteboardZone,
-    ownerId: row.owner_id,
-    ownerName: row.owner_name,
-    x: row.x,
-    y: row.y,
-    x2: row.x2,
-    y2: row.y2,
-    width: row.width,
-    height: row.height,
-    color: row.color,
-    text: row.text,
-    description: row.description,
-    status: row.status as WhiteboardTaskStatus | null,
-    url: row.url,
-    fromId: row.from_id,
-    toId: row.to_id,
-    shapeKind: row.shape_kind as WhiteboardShapeKind | null,
-    fillColor: row.fill_color,
-    strokeWidth: row.stroke_width,
-    points: parsePoints(row.points),
-    zIndex: row.z_index ?? 0,
-    locked: !!row.locked,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Sanitizers (pure)
-// ---------------------------------------------------------------------------
-
-export class WhiteboardError extends Error {}
 
 export function visibleTo(element: WhiteboardElement, user: Pick<User, 'id'>): boolean {
   return element.zone === 'public' || element.ownerId === user.id;
@@ -270,11 +197,6 @@ function asPoints(value: unknown): [number, number][] | null | undefined {
 }
 
 /** Serializes normalized stroke points for SQLite storage. */
-function serializePoints(points: [number, number][] | null): string | null {
-  return points ? JSON.stringify(points.flat()) : null;
-}
-
-/** Validates a full element payload coming from the client (create). */
 export function sanitizeElementInput(
   input: unknown,
   user: Pick<User, 'id' | 'displayName'>
@@ -435,60 +357,6 @@ function applyPatch(element: WhiteboardElement, patch: WhiteboardPatch): void {
 // Persistence
 // ---------------------------------------------------------------------------
 
-function insertElement(element: WhiteboardElement): void {
-  db.prepare(
-    `INSERT INTO whiteboard_elements
-       (id, type, zone, owner_id, owner_name, x, y, x2, y2, width, height,
-        color, text, description, status, url, from_id, to_id,
-        shape_kind, fill_color, stroke_width, points, z_index,
-        locked, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    element.id,
-    element.type,
-    element.zone,
-    element.ownerId,
-    element.ownerName,
-    element.x,
-    element.y,
-    element.x2,
-    element.y2,
-    element.width,
-    element.height,
-    element.color,
-    element.text,
-    element.description,
-    element.status,
-    element.url,
-    element.fromId,
-    element.toId,
-    element.shapeKind,
-    element.fillColor,
-    element.strokeWidth,
-    serializePoints(element.points),
-    element.zIndex,
-    element.locked ? 1 : 0,
-    element.createdAt,
-    element.updatedAt
-  );
-}
-
-export function listElementsForUser(user: Pick<User, 'id'>): WhiteboardElement[] {
-  const rows = db
-    .prepare(
-      `SELECT * FROM whiteboard_elements WHERE zone = 'public' OR owner_id = ?
-       ORDER BY created_at, id`
-    )
-    .all(user.id) as ElementRow[];
-  return rows.map(rowToElement);
-}
-
-export function getElement(id: string): WhiteboardElement | null {
-  const row = db.prepare('SELECT * FROM whiteboard_elements WHERE id = ?').get(id) as
-    ElementRow | undefined;
-  return row ? rowToElement(row) : null;
-}
-
 export function createElement(input: unknown, user: User): WhiteboardElement {
   const element = sanitizeElementInput(input, user);
   // Drop dangling anchor references up front.
@@ -496,7 +364,8 @@ export function createElement(input: unknown, user: User): WhiteboardElement {
     if (!element.fromId || !getElement(element.fromId)) element.fromId = null;
     if (!element.toId || !getElement(element.toId)) element.toId = null;
   }
-  db.transaction(() => insertElement(element))();
+  // Single INSERT: no explicit transaction wrapper needed.
+  insertElement(element);
   return element;
 }
 
@@ -521,38 +390,7 @@ export function updateElement(id: string, patch: unknown, user: User): Whiteboar
     if (next.toId && !getElement(next.toId)) next.toId = null;
   }
 
-  db.prepare(
-    `UPDATE whiteboard_elements SET
-       owner_id = ?, owner_name = ?, x = ?, y = ?, x2 = ?, y2 = ?, width = ?, height = ?, color = ?, text = ?,
-       description = ?, status = ?, url = ?, from_id = ?, to_id = ?,
-       shape_kind = ?, fill_color = ?, stroke_width = ?, points = ?, z_index = ?,
-       locked = ?, updated_at = ?
-     WHERE id = ?`
-  ).run(
-    next.ownerId,
-    next.ownerName,
-    next.x,
-    next.y,
-    next.x2,
-    next.y2,
-    next.width,
-    next.height,
-    next.color,
-    next.text,
-    next.description,
-    next.status,
-    next.url,
-    next.fromId,
-    next.toId,
-    next.shapeKind,
-    next.fillColor,
-    next.strokeWidth,
-    serializePoints(next.points),
-    next.zIndex,
-    next.locked ? 1 : 0,
-    next.updatedAt,
-    id
-  );
+  updateElementRow(next);
   // Replaced uploads (e.g. after a crop) are garbage-collected when the old
   // URL is no longer referenced anywhere.
   if (previousUrl && previousUrl !== next.url) deleteUnreferencedUpload(previousUrl);
@@ -563,12 +401,7 @@ export function removeElement(id: string, user: User): void {
   const existing = getElement(id);
   if (!existing) throw new WhiteboardError('Element nicht gefunden.');
   if (!canEditElement(existing, user)) throw new WhiteboardError('Keine Berechtigung.');
-  db.transaction(() => {
-    db.prepare('DELETE FROM whiteboard_elements WHERE id = ?').run(id);
-    // Detach arrows that were anchored to this element.
-    db.prepare('UPDATE whiteboard_elements SET from_id = NULL WHERE from_id = ?').run(id);
-    db.prepare('UPDATE whiteboard_elements SET to_id = NULL WHERE to_id = ?').run(id);
-  })();
+  deleteElementRow(id);
   // The uploaded image behind this element disappears with its last reference.
   deleteUnreferencedUpload(existing.url);
 }
@@ -583,7 +416,7 @@ function forEachVisibleSocket(
   fn: (socket: Socket<ClientToServerEvents, ServerToClientEvents>) => void
 ): void {
   for (const socket of io.sockets.sockets.values()) {
-    const socketUser = (socket as any).user as User | undefined;
+    const socketUser = socket.data?.user;
     if (!socketUser) continue;
     if (!visibleTo(element, socketUser)) continue;
     fn(socket);
@@ -604,7 +437,7 @@ export function broadcastWhiteboardZoneChange(
   after: WhiteboardElement
 ): void {
   for (const socket of io.sockets.sockets.values()) {
-    const socketUser = (socket as any).user as User | undefined;
+    const socketUser = socket.data?.user;
     if (!socketUser) continue;
     const wasVisible = visibleTo(before, socketUser);
     const isVisible = visibleTo(after, socketUser);
