@@ -1,6 +1,6 @@
 # AGENTS.md – D&D Dashboard
 
-This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-09-08.
+This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-09-09.
 
 ## Critical Working Rules for Assistants
 
@@ -111,6 +111,10 @@ ProjectAtlas is the standard local repository-intelligence tool for coding agent
 - **Structure checks:** `projectatlas lint --purpose-level low` flags stale/duplicate purposes. Curate folder and high-impact file purposes during normal work with `projectatlas purpose set` / `atlas_purpose_set`.
 - **Token impact:** `projectatlas token --view tui` shows the local saved-tokens dashboard.
 - Never commit `.projectatlas/` (gitignored). Scan/ignore changes belong in the committed `projectatlas.toml`; ProjectAtlas inherits `.gitignore` dynamically.
+
+## Mimosa Security Plugin (optional, per developer)
+
+Mimosa is a user-local ZCode plugin (not part of this repo) that adds local-first security guardrails to ZCode sessions: pre-write checks on edits and shell commands, git commit/push gates and an end-of-turn review. Installing it is recommended for everyone working on this repo with ZCode: **Settings → Plugins → "Code Security Protection" (`mimosa`)** from the official marketplace, then start a new session. Its per-project runtime state lives in the gitignored `.mimosa/` directory; the hooks themselves are never shared through this repository.
 
 ## Documentation
 
