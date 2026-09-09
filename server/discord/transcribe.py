@@ -74,6 +74,24 @@ def _get_segments_path(transcript_path: str) -> str:
     return transcript_path.replace(".txt", ".segments.json")
 
 
+_FILENAME_UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _safe_filename_component(value: object) -> str:
+    """Reduce an external value (e.g. a Discord userId) to a safe filename component."""
+    cleaned = _FILENAME_UNSAFE_CHARS.sub("_", str(value)).strip(".")
+    return cleaned or "unknown"
+
+
+def _contained_path(output_dir: str, filename: str) -> str:
+    """Join filename under output_dir and refuse any escape from that directory."""
+    base = os.path.realpath(output_dir)
+    target = os.path.realpath(os.path.join(base, filename))
+    if os.path.commonpath([base, target]) != base:
+        raise ValueError(f"Refusing to write outside the output directory: {filename}")
+    return target
+
+
 def _parse_timestamp_to_seconds(ts: str) -> float | None:
     parts = ts.split(":")
     if len(parts) == 2:
@@ -156,10 +174,10 @@ def _load_completed_segments(transcript_path: str, display_name: str, trim_start
     return None
 
 
-def _write_segments(transcript_path: str, segments: list[dict]) -> None:
+def _write_segments(output_dir: str, transcript_filename: str, segments: list[dict]) -> None:
     try:
-        segments_path = _get_segments_path(transcript_path)
-        with open(segments_path, "w", encoding="utf-8") as f:
+        stem = transcript_filename[: -len(".txt")] if transcript_filename.endswith(".txt") else transcript_filename
+        with open(_contained_path(output_dir, f"{stem}.segments.json"), "w", encoding="utf-8") as f:
             json.dump(segments, f, ensure_ascii=False)
     except Exception:
         pass
@@ -339,9 +357,7 @@ def main() -> None:
     parser.add_argument("--condition-on-previous", type=lambda x: x.lower() != "false", default=True, help="feed the rolling conversation as context to each region")
     parser.add_argument("--trim-start", type=float, default=0)
     parser.add_argument("--trim-end", type=float, default=None)
-    parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--files", required=True, help="JSON array of {id, userId, wavPath, displayName}")
-    parser.add_argument("--completed-files", default="[]", help="JSON array of already completed {id, userId, wavPath, displayName, transcriptPath}")
+    parser.add_argument("--manifest", required=True, help="'-' reads the JSON manifest {outputDir, files, completedFiles} from stdin")
     parser.add_argument("--initial-prompt", default=None)
     parser.add_argument("--noise-reduce", type=lambda x: x.lower() == "true", default=True)
     parser.add_argument("--vad-min-silence", type=float, default=2.0, help="seconds of silence that split speech regions")
@@ -358,20 +374,17 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        files = json.loads(args.files)
-    except json.JSONDecodeError as e:
-        emit({"type": "error", "error": f"Invalid files JSON: {e}"})
-        sys.exit(1)
-
-    try:
-        completed_files_arg = json.loads(args.completed_files) if args.completed_files else []
-    except json.JSONDecodeError as e:
-        emit({"type": "error", "error": f"Invalid completed files JSON: {e}"})
+        manifest_text = sys.stdin.read() if args.manifest == "-" else args.manifest
+        manifest = json.loads(manifest_text)
+        files = manifest["files"]
+        completed_files_arg = manifest.get("completedFiles", [])
+        output_dir = manifest["outputDir"]
+    except (json.JSONDecodeError, KeyError, OSError) as e:
+        emit({"type": "error", "error": f"Invalid transcription manifest: {e}"})
         sys.exit(1)
 
     completed_by_id = {str(item.get("id")): item for item in completed_files_arg if item.get("id") is not None}
 
-    output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
     trim_start = args.trim_start
@@ -552,10 +565,11 @@ def main() -> None:
                 f"[{format_timestamp(seg['start'])}] {_apply_corrections(seg['text']).strip()}"
                 for seg in segs
             ]
-            transcript_path = os.path.join(output_dir, f"speaker-{info['file_info'].get('userId')}.txt")
-            with open(transcript_path, "w", encoding="utf-8") as f:
+            transcript_filename = f"speaker-{_safe_filename_component(info['file_info'].get('userId'))}.txt"
+            transcript_path = _contained_path(output_dir, transcript_filename)
+            with open(_contained_path(output_dir, transcript_filename), "w", encoding="utf-8") as f:
                 f.write("\n".join(speaker_lines))
-            _write_segments(transcript_path, segs)
+            _write_segments(output_dir, transcript_filename, segs)
 
             completed_files.append({
                 "id": info["file_info"].get("id"),
@@ -582,8 +596,8 @@ def main() -> None:
             for seg in all_segments
         ]
         transcript = "\n".join(transcript_lines)
-        transcript_path = os.path.join(output_dir, "transcript.txt")
-        with open(transcript_path, "w", encoding="utf-8") as f:
+        transcript_path = _contained_path(output_dir, "transcript.txt")
+        with open(_contained_path(output_dir, "transcript.txt"), "w", encoding="utf-8") as f:
             f.write(transcript)
 
         emit(

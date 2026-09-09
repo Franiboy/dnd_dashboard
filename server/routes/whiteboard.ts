@@ -74,9 +74,10 @@ router.post(
 
     const dir = path.resolve(ensureWhiteboardUploadDir());
     const filename = `${randomUUID()}${extension}`;
-    const target = path.join(dir, filename);
     // Defense in depth: never write outside the upload directory.
-    if (!target.startsWith(dir)) {
+    const target = path.resolve(dir, filename);
+    const relative = path.relative(dir, target);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
       throw new AppError(400, 'Ungültiger Dateiname.');
     }
 
