@@ -2,8 +2,8 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AppSwitcher } from './AppSwitcher';
 import { GlobalSearch } from './GlobalSearch';
-import { HeaderAction } from './HeaderAction';
 import { StoryArcFilter } from './StoryArcFilter';
+import { UserMenu } from './UserMenu';
 import { useAuth } from '../hooks/useAuth';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 
@@ -39,24 +39,6 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
     return () => ro.disconnect();
   }, []);
 
-  const logoutIcon = (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  );
-
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <header
@@ -64,15 +46,12 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
         className="relative z-10 flex flex-col border-b border-[var(--border)] bg-[var(--panel)]"
       >
         <div className="flex items-center gap-2 px-3 sm:px-6 py-2">
-          {/* Left: user (Discord avatar + name) */}
-          <div className="flex min-w-0 items-center gap-2 bg-slate-800/60 border border-[var(--border)] rounded-full pl-2 pr-4 py-1">
-            {user.avatarUrl && (
-              <img src={user.avatarUrl} alt="" className="w-6 h-6 rounded-full shrink-0" />
-            )}
-            <span className="hidden md:inline truncate text-sm font-medium text-[var(--text-h)]">
-              {user.displayName}
-            </span>
-          </div>
+          {/* Left: user menu (Discord avatar, role, logout) */}
+          <UserMenu
+            user={user}
+            onLogout={onLogout}
+            onExitSimulation={isSimulating ? clearViewAsUser : undefined}
+          />
 
           {/* Center: app switcher, scrollable on narrow screens */}
           <div className="flex min-w-0 flex-1 justify-center">
@@ -81,13 +60,10 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
             </div>
           </div>
 
-          {/* Right: global search + story-arc filter (on affected routes) + logout */}
+          {/* Right: global search + story-arc filter (on affected routes) */}
           <div className="flex shrink-0 items-center gap-2">
             <GlobalSearch user={user} version={version} />
             {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
-            <HeaderAction onClick={onLogout} icon={logoutIcon} variant="danger">
-              Logout
-            </HeaderAction>
           </div>
         </div>
         {isSimulating && (
