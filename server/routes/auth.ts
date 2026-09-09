@@ -33,14 +33,12 @@ import {
   isInitialAdmin,
   recordFailedLogin,
   resetFailedLogins,
-  setUserActivePerson,
   setUserSessionDiarySettings,
   storeDiscordTokens,
   toSafeUser,
   updateDiscordProfile,
   verifyPassword,
 } from '../repositories/users.js';
-import { personExists } from '../repositories/diary.js';
 
 const log = createLogger('auth-routes');
 
@@ -237,21 +235,6 @@ router.post('/logout', (req, res) => {
 
 router.get('/me', authMiddleware, (req: AuthRequest, res) => {
   res.json({ ok: true, user: toSafeUser(req.user!) });
-});
-
-router.put('/me/active-person', authMiddleware, (req: AuthRequest, res) => {
-  const { name } = req.body;
-  const personName = typeof name === 'string' && name.trim() ? name.trim() : null;
-
-  if (personName && !personExists(personName)) {
-    throw new AppError(400, 'Person existiert nicht');
-  }
-
-  const user = setUserActivePerson(req.user!.id, personName);
-  if (!user) {
-    throw new AppError(500, 'Speichern fehlgeschlagen');
-  }
-  res.json({ ok: true, user });
 });
 
 router.put('/me/session-diary-settings', authMiddleware, (req: AuthRequest, res) => {

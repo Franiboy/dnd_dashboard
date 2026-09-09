@@ -16,7 +16,9 @@ import {
   setUserApproved,
   setUserDisabledApps,
   setUserRole,
+  setUserActivePerson,
 } from '../repositories/users.js';
+import { personExists } from '../repositories/diary.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 import { syncPlayersFromUsers } from '../game.js';
 import { isNightlyJobRunning, runNightlyJobNow } from '../scheduler/summaryScheduler.js';
@@ -146,6 +148,13 @@ const disabledAppsSchema = z.object({
   disabledApps: z.array(z.string(), { error: 'disabledApps muss ein Array von Strings sein' }),
 });
 
+const activePersonSchema = z.object({
+  name: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() ? v.trim() : null),
+    z.string().nullable()
+  ),
+});
+
 const modelSchema = z.object({
   model: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() ? v.trim() : null),
@@ -217,6 +226,21 @@ router.post('/users/:id/role', authMiddleware, requireAdmin, (req: AuthRequest, 
   // Players and dungeon masters are permanent bingo participants; reflect the
   // role change in the bingo player list immediately.
   syncPlayersFromUsers();
+  notifyUserUpdate();
+  res.json(user);
+});
+
+router.post('/users/:id/active-person', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const targetId = req.params.id as string;
+  // Like the role, the character may also be set on the own account and the
+  // initial admin - it does not grant any permissions.
+  requireExistingUser(targetId);
+  const { name } = parseWith(activePersonSchema, req.body);
+  if (name !== null && !personExists(name)) {
+    throw new AppError(400, 'Person existiert nicht');
+  }
+  const user = setUserActivePerson(targetId, name);
+  if (!user) throw new AppError(404, 'User nicht gefunden');
   notifyUserUpdate();
   res.json(user);
 });

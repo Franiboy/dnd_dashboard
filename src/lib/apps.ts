@@ -10,6 +10,11 @@ export interface AppMeta {
   adminOnly?: boolean;
   /** Optional feature flag required for the app to be visible. */
   requiresFeature?: 'recordingEnabled';
+  /**
+   * Players need an admin-assigned character to see this app; dungeon masters
+   * and admins are exempt (see isAppVisible).
+   */
+  requiresCharacter?: boolean;
   /** Optional icon ID; defaults to the app id. */
   iconId?: string;
 }
@@ -24,6 +29,7 @@ export function isAppVisible(
   if (user.disabledApps.includes(app.id)) return false;
   if (app.adminOnly && !user.isAdmin) return false;
   if (app.requiresFeature === 'recordingEnabled' && !version?.recordingEnabled) return false;
+  if (app.requiresCharacter && user.role === 'player' && !user.activePerson) return false;
   return true;
 }
 
@@ -36,6 +42,7 @@ export const APPS: AppMeta[] = [
     description:
       'Persönliche Tagebucheinträge pro Spieler hinterlegen und mit der KI überarbeiten lassen.',
     disableable: true,
+    requiresCharacter: true,
   },
   {
     id: 'bingo',

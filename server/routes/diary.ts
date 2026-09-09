@@ -2,7 +2,13 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { AppError, parseWith } from '../errors.js';
 import { aiRateLimit } from '../utils/rateLimits.js';
-import { authMiddleware, requireApproved, requireUser, type AuthRequest } from '../auth.js';
+import {
+  authMiddleware,
+  requireActivePerson,
+  requireApproved,
+  requireUser,
+  type AuthRequest,
+} from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
 import {
   improveRewrittenWithCommand,
@@ -79,7 +85,9 @@ function requireAiEnabled(): void {
   }
 }
 
-router.use(authMiddleware, requireApproved);
+// Players need an admin-assigned character to use the diary; dungeon masters
+// and admins pass unconditionally (see requireActivePerson).
+router.use(authMiddleware, requireApproved, requireActivePerson);
 
 router.get('/ai-events', (req: AuthRequest, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
