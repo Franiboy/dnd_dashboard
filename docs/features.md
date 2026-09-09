@@ -207,6 +207,36 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
 | `recording:game-day`   | `set_session_game_day`                                                                             |
 | `bingo:read`           | `get_bingo_state`                                                                                  |
 
+## Global Search (Ctrl+K)
+
+- Header search button plus `Ctrl/Cmd+K` opens a command-palette overlay
+  (`src/components/GlobalSearch.tsx`) available on every page. Arrow keys select,
+  Enter opens, Esc closes.
+- **Sources:** diary entries (title, plain text, AI summary), recording sessions
+  (name, summaries, Whisper transcript) and world knowledge facts
+  (`entity_knowledge_entries`). Entity names, qualifiers and aliases are matched
+  instantly client-side from the already-loaded mappings cache
+  (`filterEntityMappings` in `src/hooks/useGlobalSearch.ts`).
+- **Index:** an SQLite FTS5 virtual table `search_index` holds one document per
+  source row, kept in sync by triggers on `diary_entries`, `recording_sessions`
+  and `entity_knowledge_entries` (soft-deleted facts leave the index). Because
+  the declarative schema engine cannot express virtual tables, the index is
+  created and backfilled idempotently by the `setupSearchIndex` hook in
+  `server/migrations.ts`. Legacy diary rows get an HTML-stripped `content_text`
+  copy that the diary repository maintains on every write.
+- **Privacy:** diary hits are filtered by the author (`owner_user_id` in the
+  index) — users only ever see their own entries. Sessions and world knowledge
+  are visible to all approved users, matching the modules' existing behaviour.
+- **API:** `GET /api/search?q=<min. 2 Zeichen>&limit=<1–20, default 8>` returns
+  bm25-ranked hits per source with snippets whose match ranges are wrapped in
+  `\u0001`/`\u0002` markers for client-side highlighting.
+- **Deep links:** diary hits navigate to `/tagebuch?entry=<id>`, session hits to
+  `/sessions?session=<id>&t=<mm:ss>` — the transcript opens automatically and
+  the matched timestamp line is scrolled into view and highlighted. Knowledge
+  hits open the entity dialog directly on the "Wissen" tab (`initialTab`
+  parameter), entity hits open it on the summary tab.
+- Groups belonging to apps the user has disabled are hidden from the results.
+
 ## Recording Module
 
 - Activation: `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` must be set.
