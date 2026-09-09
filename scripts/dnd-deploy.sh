@@ -20,11 +20,38 @@ ROLLBACK_DIR="/tmp/dnd-deploy-rollback"
 HEALTH_URL="${DND_HEALTH_URL:-http://localhost:3001/health}"
 HEALTH_RETRIES=12
 HEALTH_SLEEP=5
+KEY_DIR="$REPO/data/keys"
+JWT_PRIVATE_KEY="$KEY_DIR/jwt-private.pem"
+JWT_PUBLIC_KEY="$KEY_DIR/jwt-public.pem"
 
 mkdir -p "$LOG_DIR"
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
+}
+
+# RS256 session cookies are signed with the RSA key pair under data/keys/
+# (see server/auth.ts). Restarting with a missing pair would silently
+# generate new keys and log out every user, and a half-present pair makes
+# the server exit(1) right after the restart. DND_DEPLOY_ALLOW_NEW_JWT_KEYS=1
+# explicitly allows key generation, for fresh installs only.
+verify_jwt_key_pair() {
+  if [ -f "$JWT_PRIVATE_KEY" ] && [ -f "$JWT_PUBLIC_KEY" ]; then
+    if [ -s "$JWT_PRIVATE_KEY" ] && [ -s "$JWT_PUBLIC_KEY" ] && [ -r "$JWT_PRIVATE_KEY" ] && [ -r "$JWT_PUBLIC_KEY" ]; then
+      log "JWT key pair present"
+    else
+      log "ABORTED: JWT key files in $KEY_DIR are empty or unreadable; refusing to deploy"
+      exit 1
+    fi
+  elif [ -f "$JWT_PRIVATE_KEY" ] || [ -f "$JWT_PUBLIC_KEY" ]; then
+    log "ABORTED: only one JWT key file present in $KEY_DIR (the server would refuse to start); fix $KEY_DIR manually"
+    exit 1
+  elif [ "${DND_DEPLOY_ALLOW_NEW_JWT_KEYS:-0}" = "1" ]; then
+    log "WARNING: no JWT key pair in $KEY_DIR; a new pair will be generated and every user logged out (DND_DEPLOY_ALLOW_NEW_JWT_KEYS=1)"
+  else
+    log "ABORTED: no JWT key pair in $KEY_DIR; restarting would generate new keys and log out every user (set DND_DEPLOY_ALLOW_NEW_JWT_KEYS=1 only for a fresh install)"
+    exit 1
+  fi
 }
 
 # Prevent overlapping runs
@@ -52,6 +79,11 @@ if ! git diff --quiet; then
   log "ABORTED: working tree has uncommitted changes; refusing to deploy"
   exit 1
 fi
+
+# Gate before the merge so an abort leaves no state behind and re-runs
+# still detect the pending change (the early exit below only fires on
+# LOCAL == REMOTE).
+verify_jwt_key_pair
 
 log "Pull changes (fast-forward only)..."
 if ! git merge --ff-only "origin/$BRANCH" >>"$LOG" 2>&1; then
