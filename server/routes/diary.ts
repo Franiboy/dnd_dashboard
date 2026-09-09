@@ -1,5 +1,8 @@
 import { Router } from 'express';
-import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
+import { z } from 'zod';
+import { AppError, parseWith } from '../errors.js';
+import { aiRateLimit } from '../utils/rateLimits.js';
+import { authMiddleware, requireApproved, requireUser, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
 import {
   improveRewrittenWithCommand,
@@ -8,11 +11,10 @@ import {
 } from '../ai/rewrite.js';
 import { deleteOpenCodeSession } from '../ai/opencode.js';
 import { deleteRewrittenFile, getRewrittenFilePath, readRewrittenFile } from '../diaryFiles.js';
-import { db } from '../database.js';
 import { createLogger } from '../logger.js';
-import { SseBroadcaster, writeSse } from '../utils/sse.js';
+import { writeSse } from '../utils/sse.js';
 import {
-  createDiaryEntry,
+  createDiaryEntryOncePerDay,
   getDiaryEntryById,
   listDiaryEntriesByUser,
   updateDiaryEntry,
@@ -20,87 +22,62 @@ import {
 } from '../repositories/diary.js';
 import { recordSessionToDiaryTransfer } from '../repositories/recordings.js';
 import { getStoryArc } from '../repositories/storyArcs.js';
+import {
+  getUserBroadcaster,
+  notifyDiaryAiLog,
+  releaseUserBroadcaster,
+  sendDiaryAiStatus,
+  startProgressMessages,
+} from '../diaryAiEvents.js';
 
 const log = createLogger('diaryRoutes');
 
 const SUMMARY_MAX_LENGTH = 500;
 
-const sseClients = new Map<string, SseBroadcaster>();
-
-function getUserBroadcaster(userId: string): SseBroadcaster {
-  let broadcaster = sseClients.get(userId);
-  if (!broadcaster) {
-    broadcaster = new SseBroadcaster();
-    sseClients.set(userId, broadcaster);
-  }
-  return broadcaster;
-}
-
-function sendDiaryAiStatus(userId: string, message: string) {
-  const broadcaster = sseClients.get(userId);
-  if (!broadcaster || broadcaster.size === 0) return;
-
-  broadcaster.broadcast('log', JSON.stringify({ message }));
-}
-
-function startProgressMessages(userId: string, initialMessage: string): () => void {
-  const messages = [
-    'KI-Modell wird geladen...',
-    'KI-Anfrage wird vorbereitet...',
-    'KI generiert Zusammenfassung und Personen...',
-    'KI arbeitet noch...',
-    'Fast fertig...',
-  ];
-  let index = 0;
-  sendDiaryAiStatus(userId, initialMessage);
-  const interval = setInterval(() => {
-    sendDiaryAiStatus(userId, messages[index % messages.length]);
-    index++;
-  }, 3000);
-  return () => clearInterval(interval);
-}
-
-function mapOpencodeStatus(line: string): string | null {
-  const [action] = line.split('·').map((s) => s.trim());
-  switch (action.toLowerCase()) {
-    case 'build':
-      return 'KI-Modell wird geladen...';
-    case 'run':
-      return 'KI-Anfrage wird ausgeführt...';
-    default:
-      return `KI arbeitet: ${action}`;
-  }
-}
-
-function notifyDiaryAiLog(userId: string, raw: string) {
-  const broadcaster = sseClients.get(userId);
-  if (!broadcaster || broadcaster.size === 0) return;
-
-  const messages = raw
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line)
-    .flatMap((line) => {
-      const statusMatch = line.match(/^>\s*(.+)$/);
-      if (statusMatch) {
-        const mapped = mapOpencodeStatus(statusMatch[1]);
-        return mapped ? [mapped] : [];
-      }
-      // Forward short diagnostic/error lines from OpenCode.
-      if (/^(error|fehler|warn|warning|opencode|spawn)/i.test(line)) {
-        return [line];
-      }
-      // Ignore raw AI output (summary text, JSON, code blocks);
-      // the final result is delivered via the normal HTTP response.
-      return [];
-    });
-
-  for (const message of messages) {
-    broadcaster.broadcast('log', JSON.stringify({ message }));
-  }
-}
-
 const router = Router();
+
+const idParamSchema = z.coerce.number().int().positive({ error: 'Ungültige ID' });
+
+const trimmedContent = (message: string) => z.string({ error: message }).trim().min(1, message);
+
+const createEntrySchema = z.object({
+  content: trimmedContent('Inhalt ist erforderlich'),
+  gameDay: z.preprocess(
+    (v) => (v === undefined || v === null ? undefined : Number(v)),
+    z
+      .number({ error: 'Spieltag muss eine positive ganze Zahl sein' })
+      .int('Spieltag muss eine positive ganze Zahl sein')
+      .positive('Spieltag muss eine positive ganze Zahl sein')
+  ),
+  arcId: z.preprocess(
+    (v) => (v === undefined || v === null ? undefined : Number(v)),
+    z
+      .number({ error: 'arcId muss eine positive ganze Zahl oder null sein' })
+      .int('arcId muss eine positive ganze Zahl oder null sein')
+      .positive('arcId muss eine positive ganze Zahl oder null sein')
+      .optional()
+  ),
+});
+
+/** arcId in update bodies additionally accepts null to clear the assignment. */
+const editableArcIdSchema = z.union([z.null(), z.coerce.number().int().positive()], {
+  error: 'arcId muss eine positive ganze Zahl oder null sein',
+});
+
+/** Guards entry ownership; diary entries are always private to their author. */
+function requireOwnEntry(id: number, userId: string) {
+  const entry = getDiaryEntryById(id);
+  if (!entry || entry.userId !== userId) {
+    throw new AppError(404, 'Eintrag nicht gefunden');
+  }
+  return entry;
+}
+
+function requireAiEnabled(): void {
+  if (!isAiEnabled()) {
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
+  }
+}
 
 router.use(authMiddleware, requireApproved);
 
@@ -116,9 +93,7 @@ router.get('/ai-events', (req: AuthRequest, res) => {
   const removeFromBroadcaster = broadcaster.add(res);
   const cleanup = () => {
     removeFromBroadcaster();
-    if (broadcaster.size === 0) {
-      sseClients.delete(userId);
-    }
+    releaseUserBroadcaster(userId, broadcaster);
   };
 
   if (!writeSse(res, 'connected', JSON.stringify({ ok: true }))) {
@@ -131,113 +106,56 @@ router.get('/ai-events', (req: AuthRequest, res) => {
   res.on('error', cleanup);
 });
 
-function isSummaryValid(summary: unknown): summary is string | null {
-  if (summary === null || summary === undefined) return true;
-  if (typeof summary !== 'string') return false;
-  return summary.length <= SUMMARY_MAX_LENGTH;
-}
-
 router.get('/entries', (req: AuthRequest, res) => {
-  if (!req.user) {
-    res.status(403).json({ error: 'Nicht autorisiert' });
-    return;
-  }
-  log.info(`Listing diary entries for user ${req.user.id}`);
-  const entries = listDiaryEntriesByUser(req.user.id);
+  const user = requireUser(req);
+  log.info(`Listing diary entries for user ${user.id}`);
+  const entries = listDiaryEntriesByUser(user.id);
   res.json({ entries });
 });
 
 router.get('/entries/:id', (req: AuthRequest, res) => {
-  if (!req.user) {
-    res.status(403).json({ error: 'Nicht autorisiert' });
-    return;
-  }
-  const id = Number(req.params.id);
+  const user = requireUser(req);
+  const id = parseWith(idParamSchema, req.params.id);
   log.info(`Fetching diary entry ${id}`);
   const entry = getDiaryEntryById(id);
-  if (!entry || entry.userId !== req.user.id) {
-    res.status(404).json({ error: 'Eintrag nicht gefunden' });
-    return;
+  if (!entry || entry.userId !== user.id) {
+    throw new AppError(404, 'Eintrag nicht gefunden');
   }
   res.json({ entry });
 });
 
-router.post('/entries', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    res.status(403).json({ error: 'Nicht autorisiert' });
-    return;
+router.post('/entries', (req: AuthRequest, res) => {
+  const user = requireUser(req);
+  const { content, gameDay, arcId } = parseWith(createEntrySchema, req.body);
+  if (arcId !== undefined && !getStoryArc(arcId)) {
+    throw new AppError(404, 'Story Arc nicht gefunden');
   }
 
-  const { content, gameDay, arcId } = req.body;
-  if (!content || typeof content !== 'string' || !content.trim()) {
-    res.status(400).json({ error: 'Inhalt ist erforderlich' });
-    return;
-  }
-  const day = gameDay === undefined || gameDay === null ? null : Number(gameDay);
-  if (day === null || !Number.isInteger(day) || day <= 0) {
-    res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl sein' });
-    return;
-  }
-  const resolvedArcId = arcId === undefined || arcId === null ? undefined : Number(arcId);
-  if (resolvedArcId !== undefined && (!Number.isInteger(resolvedArcId) || resolvedArcId <= 0)) {
-    res.status(400).json({ error: 'arcId muss eine positive ganze Zahl oder null sein' });
-    return;
-  }
-  if (resolvedArcId !== undefined && !getStoryArc(resolvedArcId)) {
-    res.status(404).json({ error: 'Story Arc nicht gefunden' });
-    return;
-  }
-
-  const entry = db.transaction(() => {
-    const existing = db
-      .prepare('SELECT 1 FROM diary_entries WHERE user_id = ? AND game_day = ?')
-      .get(req.user!.id, day) as { '1': number } | undefined;
-    if (existing) return null;
-
-    const finalTitle = `Spieltag ${day}`;
-    return createDiaryEntry(req.user!.id, finalTitle, content, undefined, day, resolvedArcId);
-  })();
-
+  const entry = createDiaryEntryOncePerDay(user.id, content, gameDay, arcId);
   if (!entry) {
-    res.status(409).json({ error: `Spieltag ${day} existiert bereits` });
-    return;
+    throw new AppError(409, `Spieltag ${gameDay} existiert bereits`);
   }
-
   res.status(201).json({ entry });
 });
 
 router.put('/entries/:id', (req: AuthRequest, res) => {
-  if (!req.user) {
-    res.status(403).json({ error: 'Nicht autorisiert' });
-    return;
-  }
-
-  const id = Number(req.params.id);
+  const user = requireUser(req);
+  const id = parseWith(idParamSchema, req.params.id);
   log.info(`Update requested for entry ${id}: body keys=${Object.keys(req.body).join(', ')}`);
-  const existing = getDiaryEntryById(id);
-  if (!existing || existing.userId !== req.user.id) {
-    res.status(404).json({ error: 'Eintrag nicht gefunden' });
-    return;
-  }
+  const existing = requireOwnEntry(id, user.id);
 
   const { content, summary, rewrittenContent, arcId } = req.body;
   const updates: Parameters<typeof updateDiaryEntry>[1] = {};
   if (arcId !== undefined) {
-    const resolved = arcId === null ? null : Number(arcId);
-    if (resolved !== null && (!Number.isInteger(resolved) || resolved <= 0)) {
-      res.status(400).json({ error: 'arcId muss eine positive ganze Zahl oder null sein' });
-      return;
-    }
+    const resolved = parseWith(editableArcIdSchema, arcId);
     if (resolved !== null && !getStoryArc(resolved)) {
-      res.status(404).json({ error: 'Story Arc nicht gefunden' });
-      return;
+      throw new AppError(404, 'Story Arc nicht gefunden');
     }
     updates.arcId = resolved;
   }
   if (content !== undefined) {
     if (typeof content !== 'string' || !content.trim()) {
-      res.status(400).json({ error: 'Inhalt darf nicht leer sein' });
-      return;
+      throw new AppError(400, 'Inhalt darf nicht leer sein');
     }
     updates.content = content;
     if (existing.rewrittenFilePath || existing.rewrittenContent) {
@@ -247,17 +165,17 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
     }
   }
   if (summary !== undefined) {
-    if (!isSummaryValid(summary)) {
-      res
-        .status(400)
-        .json({ error: `Zusammenfassung darf maximal ${SUMMARY_MAX_LENGTH} Zeichen haben` });
-      return;
+    if (
+      !(summary === null || summary === undefined
+        ? true
+        : typeof summary === 'string' && summary.length <= SUMMARY_MAX_LENGTH)
+    ) {
+      throw new AppError(400, `Zusammenfassung darf maximal ${SUMMARY_MAX_LENGTH} Zeichen haben`);
     }
     updates.summary = summary;
   }
   if (rewrittenContent !== undefined) {
-    const isString = typeof rewrittenContent === 'string';
-    const clearing = isString ? !rewrittenContent.trim() : true;
+    const clearing = typeof rewrittenContent !== 'string' || !rewrittenContent.trim();
     if (clearing) {
       if (existing.rewrittenFilePath || existing.rewrittenContent) {
         updates.rewrittenContent = null;
@@ -284,29 +202,20 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
   const entry = updateDiaryEntry(id, updates);
   if (!entry) {
     log.error(`Failed to update entry ${id}`);
-    res.status(500).json({ error: 'Aktualisieren fehlgeschlagen' });
-    return;
+    throw new AppError(500, 'Aktualisieren fehlgeschlagen');
   }
   if (existing.sessionDraftFor && updates.content) {
-    recordSessionToDiaryTransfer(existing.sessionDraftFor, req.user.id, entry.id, true);
+    recordSessionToDiaryTransfer(existing.sessionDraftFor, user.id, entry.id, true);
   }
   log.info(`Entry ${id} updated`);
   res.json({ entry });
 });
 
 router.delete('/entries/:id', (req: AuthRequest, res) => {
-  if (!req.user) {
-    res.status(403).json({ error: 'Nicht autorisiert' });
-    return;
-  }
-
-  const id = Number(req.params.id);
+  const user = requireUser(req);
+  const id = parseWith(idParamSchema, req.params.id);
   log.info(`Delete requested for entry ${id}`);
-  const existing = getDiaryEntryById(id);
-  if (!existing || existing.userId !== req.user.id) {
-    res.status(404).json({ error: 'Eintrag nicht gefunden' });
-    return;
-  }
+  const existing = requireOwnEntry(id, user.id);
 
   if (existing.rewrittenFilePath) {
     deleteRewrittenFile(id);
@@ -321,28 +230,17 @@ router.delete('/entries/:id', (req: AuthRequest, res) => {
   res.json({ ok: true });
 });
 
-router.post('/entries/:id/rewrite', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    res.status(403).json({ error: 'Nicht autorisiert' });
-    return;
-  }
+router.post('/entries/:id/rewrite', aiRateLimit, async (req: AuthRequest, res) => {
+  const user = requireUser(req);
+  requireAiEnabled();
 
-  if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
-  }
-
-  const id = Number(req.params.id);
+  const id = parseWith(idParamSchema, req.params.id);
   log.info(`Rewrite requested for entry ${id}`);
-  const existing = getDiaryEntryById(id);
-  if (!existing || existing.userId !== req.user.id) {
-    res.status(404).json({ error: 'Eintrag nicht gefunden' });
-    return;
-  }
+  const existing = requireOwnEntry(id, user.id);
 
-  const stopProgress = startProgressMessages(req.user!.id, 'KI schreibt den Text um...');
+  const stopProgress = startProgressMessages(user.id, 'KI schreibt den Text um...');
   try {
-    const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
+    const onLog = (line: string) => notifyDiaryAiLog(user.id, line);
     log.info(
       `Calling rewriteTextWithAi for entry ${id}, sessionId=${existing.rewriteSessionId ?? 'none'}`
     );
@@ -351,18 +249,17 @@ router.post('/entries/:id/rewrite', async (req: AuthRequest, res) => {
       existing.content,
       existing.rewrittenContent,
       existing.rewriteSessionId ?? null,
-      req.user,
+      user,
       undefined,
       onLog
     );
     if (rewritten === null) {
       log.error(`rewriteTextWithAi returned null for entry ${id}`);
-      res.status(500).json({ error: 'KI-Umschreiben ist fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'KI-Umschreiben ist fehlgeschlagen');
     }
 
     log.info(`Saving rewritten file path and session for entry ${id}`);
-    sendDiaryAiStatus(req.user!.id, 'Ergebnis wird gespeichert...');
+    sendDiaryAiStatus(user.id, 'Ergebnis wird gespeichert...');
     const entry = updateDiaryEntry(id, {
       rewrittenContent: null,
       rewrittenFilePath: getRewrittenFilePath(id),
@@ -370,72 +267,57 @@ router.post('/entries/:id/rewrite', async (req: AuthRequest, res) => {
     });
     if (!entry) {
       log.error(`Failed to update diary entry ${id}`);
-      res.status(500).json({ error: 'Speichern fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'Speichern fehlgeschlagen');
     }
     log.info(`Rewrite completed for entry ${id}`);
     res.json({ entry });
   } catch (err) {
+    if (err instanceof AppError) throw err;
     log.error(`Unexpected error during rewrite of entry ${id}:`, err);
-    res.status(500).json({ error: 'KI-Umschreiben ist fehlgeschlagen' });
+    throw new AppError(500, 'KI-Umschreiben ist fehlgeschlagen', { cause: err });
   } finally {
     stopProgress();
   }
 });
 
-router.post('/entries/:id/rewrite-command', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    res.status(403).json({ error: 'Nicht autorisiert' });
-    return;
-  }
+router.post('/entries/:id/rewrite-command', aiRateLimit, async (req: AuthRequest, res) => {
+  const user = requireUser(req);
+  requireAiEnabled();
 
-  if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
-  }
-
-  const id = Number(req.params.id);
+  const id = parseWith(idParamSchema, req.params.id);
   const { command } = req.body;
   if (typeof command !== 'string' || !command.trim()) {
-    res.status(400).json({ error: 'Befehl ist erforderlich' });
-    return;
+    throw new AppError(400, 'Befehl ist erforderlich');
   }
 
   log.info(`Rewrite command requested for entry ${id}: ${command.trim()}`);
-  const existing = getDiaryEntryById(id);
-  if (!existing || existing.userId !== req.user.id) {
-    res.status(404).json({ error: 'Eintrag nicht gefunden' });
-    return;
-  }
+  const existing = requireOwnEntry(id, user.id);
   if (!existing.rewriteSessionId) {
-    res.status(400).json({ error: 'Keine aktive KI-Session vorhanden' });
-    return;
+    throw new AppError(400, 'Keine aktive KI-Session vorhanden');
   }
   if (!existing.rewrittenFilePath) {
-    res.status(400).json({ error: 'Keine KI-Version vorhanden' });
-    return;
+    throw new AppError(400, 'Keine KI-Version vorhanden');
   }
 
-  const stopProgress = startProgressMessages(req.user!.id, 'KI bearbeitet den Text...');
+  const stopProgress = startProgressMessages(user.id, 'KI bearbeitet den Text...');
   try {
-    const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
+    const onLog = (line: string) => notifyDiaryAiLog(user.id, line);
     const { content: rewritten, sessionId } = await improveRewrittenWithCommand(
       id,
       existing.content,
       existing.rewrittenContent || readRewrittenFile(id) || '',
       command.trim(),
       existing.rewriteSessionId,
-      req.user,
+      user,
       undefined,
       onLog
     );
     if (rewritten === null) {
       log.error(`improveRewrittenWithCommand returned null for entry ${id}`);
-      res.status(500).json({ error: 'KI-Befehl ist fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'KI-Befehl ist fehlgeschlagen');
     }
 
-    sendDiaryAiStatus(req.user!.id, 'Ergebnis wird gespeichert...');
+    sendDiaryAiStatus(user.id, 'Ergebnis wird gespeichert...');
     const entry = updateDiaryEntry(id, {
       rewrittenContent: null,
       rewrittenFilePath: getRewrittenFilePath(id),
@@ -443,54 +325,45 @@ router.post('/entries/:id/rewrite-command', async (req: AuthRequest, res) => {
     });
     if (!entry) {
       log.error(`Failed to update diary entry ${id} after command`);
-      res.status(500).json({ error: 'Speichern fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'Speichern fehlgeschlagen');
     }
     log.info(`Rewrite command completed for entry ${id}`);
     res.json({ entry });
   } catch (err) {
+    if (err instanceof AppError) throw err;
     log.error(`Unexpected error during rewrite command of entry ${id}:`, err);
-    res.status(500).json({ error: 'KI-Befehl ist fehlgeschlagen' });
+    throw new AppError(500, 'KI-Befehl ist fehlgeschlagen', { cause: err });
   } finally {
     stopProgress();
   }
 });
 
-router.post('/entries/:id/summarize', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    res.status(403).json({ error: 'Nicht autorisiert' });
-    return;
-  }
+router.post('/entries/:id/summarize', aiRateLimit, async (req: AuthRequest, res) => {
+  const user = requireUser(req);
+  requireAiEnabled();
 
-  if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
+  const existing = requireOwnEntry(id, user.id);
 
-  const id = Number(req.params.id);
-  const existing = getDiaryEntryById(id);
-  if (!existing || existing.userId !== req.user.id) {
-    res.status(404).json({ error: 'Eintrag nicht gefunden' });
-    return;
-  }
-
-  const stopProgress = startProgressMessages(req.user!.id, 'KI analysiert den Tagebucheintrag...');
+  const stopProgress = startProgressMessages(user.id, 'KI analysiert den Tagebucheintrag...');
   try {
-    const onLog = (line: string) => notifyDiaryAiLog(req.user!.id, line);
-    const success = await processDiaryEntryAi(existing.id, req.user, undefined, onLog);
+    const onLog = (line: string) => notifyDiaryAiLog(user.id, line);
+    const success = await processDiaryEntryAi(existing.id, user, undefined, onLog);
     if (!success) {
-      res.status(500).json({ error: 'KI-Verarbeitung ist fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'KI-Verarbeitung ist fehlgeschlagen');
     }
 
-    sendDiaryAiStatus(req.user!.id, 'Ergebnisse werden gespeichert...');
+    sendDiaryAiStatus(user.id, 'Ergebnisse werden gespeichert...');
     const entry = getDiaryEntryById(id);
     if (!entry) {
-      res.status(500).json({ error: 'Speichern fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'Speichern fehlgeschlagen');
     }
 
     res.json({ entry });
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    log.error(`Unexpected error during summarize of entry ${id}:`, err);
+    throw new AppError(500, 'KI-Verarbeitung ist fehlgeschlagen', { cause: err });
   } finally {
     stopProgress();
   }

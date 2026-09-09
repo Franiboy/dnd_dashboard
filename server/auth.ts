@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 import type { User } from '../shared/types.js';
-import { findUserById } from './users.js';
+import { findUserById } from './repositories/users.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('auth');
@@ -27,8 +27,22 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
+import { AppError } from './errors.js';
+
 export interface AuthRequest extends Request {
   user?: User;
+}
+
+/**
+ * Returns the authenticated user or throws a 403 AppError. Use inside routers
+ * that already run `authMiddleware` (+ `requireApproved`) to narrow the
+ * optional `req.user` typing without repeating null checks.
+ */
+export function requireUser(req: AuthRequest): User {
+  if (!req.user) {
+    throw new AppError(403, 'Nicht autorisiert');
+  }
+  return req.user;
 }
 
 export function createToken(user: User): string {

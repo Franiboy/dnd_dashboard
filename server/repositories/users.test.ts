@@ -12,19 +12,19 @@ import {
 } from './users.js';
 
 describe('users', () => {
-  it('creates an admin user that can be found and verified', () => {
-    const user = createAdminUser('testadmin', 'Test Admin', 'secure-password');
+  it('creates an admin user that can be found and verified', async () => {
+    const user = await createAdminUser('testadmin', 'Test Admin', 'secure-password');
     expect(user.username).toBe('testadmin');
     expect(user.isAdmin).toBe(true);
 
     const fullUser = findUserByUsername('testadmin');
     expect(fullUser).toBeTruthy();
-    expect(verifyPassword(fullUser!, 'secure-password')).toBe(true);
-    expect(verifyPassword(fullUser!, 'wrong-password')).toBe(false);
+    expect(await verifyPassword(fullUser!, 'secure-password')).toBe(true);
+    expect(await verifyPassword(fullUser!, 'wrong-password')).toBe(false);
   });
 
-  it('returns a safe user without password or discord tokens', () => {
-    createAdminUser('safeadmin', 'Safe Admin', 'password');
+  it('returns a safe user without password or discord tokens', async () => {
+    await createAdminUser('safeadmin', 'Safe Admin', 'password');
     const safe = toSafeUser(findUserByUsername('safeadmin')!);
 
     expect(safe.username).toBe('safeadmin');
@@ -32,16 +32,16 @@ describe('users', () => {
     expect(safe.isInitialAdmin).toBe(false);
   });
 
-  it('defaults new users to the guest role', () => {
-    const admin = createAdminUser('roleadmin', 'Role Admin', 'password');
+  it('defaults new users to the guest role', async () => {
+    const admin = await createAdminUser('roleadmin', 'Role Admin', 'password');
     expect(admin.role).toBe('guest');
 
     const discord = createDiscordUser('discord-role-1', 'roleuser', 'Role User', null);
     expect(discord.role).toBe('guest');
   });
 
-  it('assigns and changes user roles', () => {
-    createAdminUser('assignable', 'Assignable User', 'password');
+  it('assigns and changes user roles', async () => {
+    await createAdminUser('assignable', 'Assignable User', 'password');
 
     const master = setUserRole(findUserByUsername('assignable')!.id, 'dungeon_master');
     expect(master?.role).toBe('dungeon_master');
@@ -53,8 +53,8 @@ describe('users', () => {
     expect(guest?.role).toBe('guest');
   });
 
-  it('rejects unknown roles', () => {
-    createAdminUser('rolereject', 'Role Reject', 'password');
+  it('rejects unknown roles', async () => {
+    await createAdminUser('rolereject', 'Role Reject', 'password');
     const id = findUserByUsername('rolereject')!.id;
 
     const invalid = setUserRole(id, 'wizard' as never);
@@ -64,8 +64,8 @@ describe('users', () => {
     expect(stillGuest.role).toBe('guest');
   });
 
-  it('tracks failed logins and lockout', () => {
-    createAdminUser('lockeduser', 'Locked User', 'password');
+  it('tracks failed logins and lockout', async () => {
+    await createAdminUser('lockeduser', 'Locked User', 'password');
 
     for (let i = 0; i < 5; i += 1) {
       const current = findUserByUsername('lockeduser')!;

@@ -1,57 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import type ReactQuill from 'react-quill-new';
+import type Quill from 'quill';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
 import { useStoryArcs } from '../hooks/useStoryArcs';
+import { useDiaryEntries } from '../hooks/useDiaryEntries';
+import { useDiaryDrafts } from '../hooks/useDiaryDrafts';
+import { useDiaryAiStatus } from '../hooks/useDiaryAiStatus';
 import { arcMatchesFilter } from '../lib/storyArcs';
-import { EntityRichText } from '../components/EntityRichText';
+import { splitEntityLabel } from '../lib/entityLabels';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
-import { Modal } from '../components/Modal';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { QuillWithEntityMention } from '../components/QuillWithEntityMention';
-import type ReactQuill from 'react-quill-new';
-import type Quill from 'quill';
-import { ensureHtml, quillFormats, quillModules, stripHtml } from '../components/quillConfig';
-import { splitEntityLabel } from '../lib/entityLabels';
-import type { CampaignDay, DiaryEntry, EntityType, VersionInfo } from '../../shared/types';
+import { DiaryCreateModal } from '../components/diary/DiaryCreateModal';
+import { DiarySummaryPanel } from '../components/diary/DiarySummaryPanel';
+import { isEmptyHtml, normalizeDraftHtml } from '../lib/diaryDraft';
+import { ensureHtml, stripHtml, quillFormats, quillModules } from '../components/quillConfig';
+
+import type { DiaryEntry, EntityType } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 const SUMMARY_MAX_LENGTH = 500;
-const SERVER_SAVE_DELAY_MS = 1500;
-
-const DRAFT_KEY_PREFIX = 'diary-draft-';
-
-interface DiaryFormData {
-  content: string;
-}
-
-function normalizeDraftHtml(html: string): string {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  for (const span of Array.from(doc.querySelectorAll('span.ql-entity'))) {
-    const parent = span.parentNode;
-    if (!parent) continue;
-    while (span.firstChild) parent.insertBefore(span.firstChild, span);
-    parent.removeChild(span);
-  }
-  const textNodes: CharacterData[] = [];
-  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-  while (walker.nextNode()) {
-    textNodes.push(walker.currentNode as CharacterData);
-  }
-  for (const node of textNodes) {
-    node.data = node.data.replace(/[\p{Zs}]/gu, ' ');
-  }
-  return doc.body.innerHTML.trim();
-}
-
-function isEmptyHtml(html: string): boolean {
-  return !stripHtml(html).trim();
-}
 
 interface BadgeListProps {
   items: string[];
@@ -102,128 +77,73 @@ export function Diary() {
   const { mappings } = useEntityMappings();
   const { showSuccess, showError } = useError();
   const [searchParams] = useSearchParams();
-  const draftKeyPrefix = user?.id ? `${DRAFT_KEY_PREFIX}${user.id}-` : DRAFT_KEY_PREFIX;
-  const getDraftKey = (entryId: number, kind: 'original' | 'rewritten') =>
-    `${draftKeyPrefix}${entryId}-${kind}`;
-  const [entries, setEntries] = useState<DiaryEntry[]>([]);
-  const entriesRef = useRef(entries);
-  const entryRefs = useRef<Record<number, HTMLElement>>({});
-  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [form, setForm] = useState<DiaryFormData>({ content: '' });
-  const [formError, setFormError] = useState<string | null>(null);
-  // Manual diary creation picks an in-game day (campaign timeline) instead of a
-  // free title.
-  const [campaignDays, setCampaignDays] = useState<CampaignDay[]>([]);
-  const [nextGameDay, setNextGameDay] = useState<number | null>(null);
-  const [createDayValue, setCreateDayValue] = useState<number | ''>('');
-  const [customDayValue, setCustomDayValue] = useState<number | ''>('');
-  const [skipMode, setSkipMode] = useState(false);
-  const [currentGameDay, setCurrentGameDay] = useState<number | null | undefined>(undefined);
-  const [createArcValue, setCreateArcValue] = useState<number | ''>('');
-  const { arcs: storyArcs, activeArcId, selectedArcId } = useStoryArcs();
+
+  const {
+    entries,
+    entriesRef,
+    loading,
+    aiEnabled,
+    loadEntries,
+    setEntries,
+    replaceEntry,
+    addEntry,
+    removeEntry,
+  } = useDiaryEntries();
+  const { aiStatus, setAiStatus, aiOperation, setAiOperation, sseReadyRef } = useDiaryAiStatus();
+  const { arcs: storyArcs, selectedArcId } = useStoryArcs();
+
   const visibleEntries = useMemo(
     () => entries.filter((entry) => arcMatchesFilter(selectedArcId, entry.arcId)),
     [entries, selectedArcId]
   );
+
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
-  const [draftOriginal, setDraftOriginal] = useState<
-    Record<number, { raw: string; normalized: string }>
-  >({});
-  const [draftRewritten, setDraftRewritten] = useState<
-    Record<number, { raw: string; normalized: string }>
-  >({});
-  const quillRefs = useRef<Record<number, ReactQuill>>({});
-  const highlightTimeouts = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
-  const autoSaveTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const serverSaveTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const draftRawRefs = useRef<{
-    original: Record<number, string>;
-    rewritten: Record<number, string>;
-  }>({
-    original: {},
-    rewritten: {},
-  });
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null);
   const [editingSummaryText, setEditingSummaryText] = useState('');
   const [processingSummaryId, setProcessingSummaryId] = useState<number | null>(null);
   const [processingRewriteId, setProcessingRewriteId] = useState<number | null>(null);
   const [processingCommandId, setProcessingCommandId] = useState<number | null>(null);
   const [rewriteCommands, setRewriteCommands] = useState<Record<number, string>>({});
-  const [aiStatus, setAiStatus] = useState<string | null>(null);
-  const [aiOperation, setAiOperation] = useState(false);
-  const sseReadyRef = useRef(Promise.resolve());
+  const entryRefs = useRef<Record<number, HTMLElement>>({});
+  const quillRefs = useRef<Record<number, ReactQuill>>({});
+  const highlightTimeouts = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
-  useEffect(() => {
-    entriesRef.current = entries;
-  }, [entries]);
+  function quillRefOf(entryId: number): Quill | undefined {
+    return quillRefs.current[entryId]?.getEditor();
+  }
 
-  useEffect(() => {
-    function flushServerSaves() {
-      for (const [id, raw] of Object.entries(draftRawRefs.current.original)) {
-        const content = normalizeDraftHtml(raw);
-        const current = entriesRef.current.find((e) => e.id === Number(id));
-        if (!current || content === normalizeDraftHtml(current.content) || isEmptyHtml(content))
-          continue;
-        try {
-          fetch(`/api/diary/entries/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: ensureHtml(content) }),
-            credentials: 'include',
-            keepalive: true,
-          });
-        } catch {
-          // Best-effort flush on page unload.
-        }
-      }
-    }
+  function scheduleEntityHighlights(quill: Quill, entryId: number) {
+    const existing = highlightTimeouts.current[entryId];
+    if (existing) clearTimeout(existing);
+    highlightTimeouts.current[entryId] = setTimeout(() => {
+      applyEntityHighlights(quill, mappings);
+      delete highlightTimeouts.current[entryId];
+    }, 300);
+  }
 
-    function savePendingDrafts() {
-      for (const kind of ['original', 'rewritten'] as const) {
-        for (const [id, raw] of Object.entries(draftRawRefs.current[kind])) {
-          const key = `${draftKeyPrefix}${id}-${kind}`;
-          if (isEmptyHtml(normalizeDraftHtml(raw))) {
-            localStorage.removeItem(key);
-          } else {
-            try {
-              localStorage.setItem(key, raw);
-            } catch {
-              // ignore quota errors
-            }
-          }
-        }
-      }
-      flushServerSaves();
-    }
-    window.addEventListener('beforeunload', savePendingDrafts);
-    return () => {
-      window.removeEventListener('beforeunload', savePendingDrafts);
-    };
-  }, [draftKeyPrefix]);
+  const {
+    draftOriginal,
+    draftRewritten,
+    draftRawRefs,
+    getDraftKey,
+    getEditingContent,
+    cancelEntryEdit,
+    primeDraftsFromStorage,
+    clearServerSaveTimeout,
+    saveOriginalToServer,
+    handleQuillChange,
+  } = useDiaryDrafts({
+    userId: user?.id,
+    entriesRef,
+    setEntries,
+    viewingRewrittenIds,
+    onUserQuillInput: scheduleEntityHighlights,
+  });
 
-  const loadEntries = useCallback(async () => {
-    const { data, error } = await request<{ entries: DiaryEntry[] }>('/api/diary/entries');
-    if (data) {
-      setEntries(data.entries || []);
-    }
-    if (error) {
-      setLoading(false);
-      return;
-    }
-    setLoading(false);
-  }, [request]);
-
-  useEffect(() => {
-    request<VersionInfo>('/api/version', undefined, false).then(({ data }) => {
-      if (data) setAiEnabled(data.aiEnabled);
-    });
-    loadEntries();
-  }, [request, loadEntries]);
-
+  // Deep link (?entry=<id>): expand, prefer the KI version and scroll into view.
   useEffect(() => {
     const entryIdParam = searchParams.get('entry');
     if (!entryIdParam || entries.length === 0) return;
@@ -249,32 +169,7 @@ export function Diary() {
     return () => clearTimeout(timer);
   }, [searchParams, loading, entries]);
 
-  useEffect(() => {
-    let resolveReady: (() => void) | null = null;
-    sseReadyRef.current = new Promise((resolve) => {
-      resolveReady = resolve;
-    });
-
-    const es = new EventSource('/api/diary/ai-events', { withCredentials: true });
-    es.addEventListener('open', () => {
-      resolveReady?.();
-    });
-    es.addEventListener('log', (event) => {
-      try {
-        const { message } = JSON.parse(event.data);
-        if (typeof message === 'string') {
-          setAiStatus(message);
-        }
-      } catch {
-        // ignore malformed SSE messages
-      }
-    });
-    return () => {
-      resolveReady?.();
-      es.close();
-    };
-  }, []);
-
+  // Re-apply entity highlights when mappings or the expanded set changes.
   useEffect(() => {
     const timer = setTimeout(() => {
       for (const id of expandedIds) {
@@ -287,124 +182,14 @@ export function Diary() {
       }
     }, 100);
     return () => clearTimeout(timer);
-  }, [mappings, expandedIds]);
-
-  function resetForm() {
-    setForm({ content: '' });
-    setFormError(null);
-    setCreateDayValue('');
-    setCustomDayValue('');
-    setSkipMode(false);
-    setCurrentGameDay(undefined);
-    setCreateArcValue(activeArcId ?? '');
-  }
-
-  async function openCreate() {
-    resetForm();
-    setIsModalOpen(true);
-    const { data } = await request<{
-      days: CampaignDay[];
-      currentGameDay: number | null;
-      nextGameDay: number;
-    }>('/api/campaign/days');
-    if (data) {
-      setCampaignDays(data.days);
-      setNextGameDay(data.nextGameDay);
-      setCurrentGameDay(data.currentGameDay);
-    }
-  }
-
-  function closeModal() {
-    if (working) return;
-    setIsModalOpen(false);
-    resetForm();
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-
-    const plainText = stripHtml(form.content).trim();
-    const contentOk = !!plainText;
-    const selectedDay = skipMode ? customDayValue : createDayValue;
-    const dayOk = selectedDay !== '' && Number(selectedDay) > 0;
-    if (!contentOk || !dayOk) {
-      setFormError('Wähle einen Spieltag und erfülle den Inhalt');
-      return;
-    }
-
-    const gameDay = Number(selectedDay);
-    if (!Number.isInteger(gameDay) || gameDay <= 0) {
-      setFormError('Spieltag muss eine positive ganze Zahl sein');
-      return;
-    }
-    if (skipMode && currentGameDay === undefined) {
-      setFormError('Der aktuelle Spieltag wird noch geladen');
-      return;
-    }
-    if (
-      skipMode &&
-      currentGameDay !== null &&
-      currentGameDay !== undefined &&
-      gameDay <= currentGameDay
-    ) {
-      setFormError(
-        `Überspringen nur nach dem höchsten bekannten Spieltag (Tag ${currentGameDay}) möglich`
-      );
-      return;
-    }
-    if (entries.some((e) => e.gameDay === gameDay)) {
-      setFormError(`Spieltag ${gameDay} existiert bereits`);
-      return;
-    }
-
-    const payload = {
-      content: form.content,
-      gameDay,
-      ...(createArcValue !== '' ? { arcId: Number(createArcValue) } : {}),
-    };
-
-    setAiOperation(true);
-    setAiStatus('Eintrag wird erstellt und analysiert...');
-    await Promise.race([
-      sseReadyRef.current,
-      new Promise<void>((resolve) => setTimeout(resolve, 500)),
-    ]);
-    setWorking(true);
-
-    let res;
-    try {
-      res = await request<{ entry: DiaryEntry }>('/api/diary/entries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    } finally {
-      setWorking(false);
-      setAiOperation(false);
-    }
-
-    if (res.error) {
-      setFormError(res.error);
-      return;
-    }
-
-    if (res.data) {
-      showSuccess('Eintrag erstellt.');
-      setAiStatus(null);
-      setEntries((prev) => [res.data!.entry, ...prev]);
-    }
-
-    closeModal();
-    loadEntries();
-  }
+  }, [mappings, expandedIds, entriesRef]);
 
   async function handleDelete(id: number) {
     setWorking(true);
     const { error } = await request(`/api/diary/entries/${id}`, { method: 'DELETE' });
     setWorking(false);
     if (!error) {
-      setEntries((prev) => prev.filter((e) => e.id !== id));
+      removeEntry(id);
       localStorage.removeItem(getDraftKey(id, 'original'));
       localStorage.removeItem(getDraftKey(id, 'rewritten'));
       delete draftRawRefs.current.original[id];
@@ -420,53 +205,65 @@ export function Diary() {
       body: JSON.stringify({ arcId }),
     });
     if (data) {
-      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      replaceEntry(data.entry);
       showSuccess('Story Arc gespeichert.');
     } else if (error) {
       showError(error);
     }
   }
 
-  async function handleRewrite(entry: DiaryEntry) {
-    setProcessingRewriteId(entry.id);
+  /** Shared sequence for AI actions: wait for the SSE stream, flag busy. */
+  async function beginAiAction(status: string) {
     setAiOperation(true);
-    setAiStatus('Text wird von KI umgeschrieben...');
+    setAiStatus(status);
     await Promise.race([
       sseReadyRef.current,
       new Promise<void>((resolve) => setTimeout(resolve, 500)),
     ]);
     setWorking(true);
+  }
+
+  function endAiAction() {
+    setWorking(false);
+    setAiOperation(false);
+  }
+
+  function setViewRewritten(id: number, showRewritten: boolean) {
+    setViewingRewrittenIds((prev) => {
+      const next = new Set(prev);
+      if (showRewritten) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  async function handleRewrite(entry: DiaryEntry) {
+    setProcessingRewriteId(entry.id);
+    await beginAiAction('Text wird von KI umgeschrieben...');
     const { data, error } = await request<{ entry: DiaryEntry }>(
       `/api/diary/entries/${entry.id}/rewrite`,
       {
         method: 'POST',
       }
     );
-    setWorking(false);
-    setAiOperation(false);
+    endAiAction();
     setProcessingRewriteId(null);
     if (data) {
       cancelEntryEdit(entry, 'rewritten');
-      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      replaceEntry(data.entry);
       setViewRewritten(entry.id, true);
       setAiStatus(null);
       showSuccess('KI-Version aktualisiert.');
     } else if (error) {
       setAiStatus(null);
-      setFormError(error);
+      showError(error);
     }
   }
 
   async function handleRewriteCommand(entry: DiaryEntry, command: string) {
     if (!command.trim() || !entry.rewriteSessionId) return;
     setProcessingCommandId(entry.id);
-    setAiOperation(true);
-    setAiStatus('KI führt Befehl aus...');
-    await Promise.race([
-      sseReadyRef.current,
-      new Promise<void>((resolve) => setTimeout(resolve, 500)),
-    ]);
-    setWorking(true);
+    await beginAiAction('KI führt Befehl aus...');
     const { data, error } = await request<{ entry: DiaryEntry }>(
       `/api/diary/entries/${entry.id}/rewrite-command`,
       {
@@ -475,217 +272,39 @@ export function Diary() {
         body: JSON.stringify({ command: command.trim() }),
       }
     );
-    setWorking(false);
-    setAiOperation(false);
+    endAiAction();
     setProcessingCommandId(null);
     if (data) {
       cancelEntryEdit(entry, 'rewritten');
-      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      replaceEntry(data.entry);
       setViewRewritten(entry.id, true);
       setRewriteCommands((prev) => ({ ...prev, [entry.id]: '' }));
       setAiStatus(null);
       showSuccess('KI-Version angepasst.');
     } else if (error) {
       setAiStatus(null);
-      setFormError(error);
+      showError(error);
     }
   }
 
   async function handleGenerateSummary(entry: DiaryEntry) {
     setProcessingSummaryId(entry.id);
-    setAiOperation(true);
-    setAiStatus('Zusammenfassung und Personen werden neu generiert...');
-    await Promise.race([
-      sseReadyRef.current,
-      new Promise<void>((resolve) => setTimeout(resolve, 500)),
-    ]);
-    setWorking(true);
+    await beginAiAction('Zusammenfassung und Personen werden neu generiert...');
     const { data, error } = await request<{ entry: DiaryEntry }>(
       `/api/diary/entries/${entry.id}/summarize`,
       {
         method: 'POST',
       }
     );
-    setWorking(false);
-    setAiOperation(false);
+    endAiAction();
     setProcessingSummaryId(null);
     if (data) {
-      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      replaceEntry(data.entry);
       setAiStatus(null);
       showSuccess('Zusammenfassung erstellt.');
     } else if (error) {
-      setFormError(error);
+      showError(error);
     }
-  }
-
-  function getEditingContent(entry: DiaryEntry): string {
-    if (viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath) {
-      const raw =
-        draftRewritten[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'rewritten'));
-      return raw ?? entry.rewrittenContent ?? '';
-    }
-    const raw =
-      draftOriginal[entry.id]?.raw ?? localStorage.getItem(getDraftKey(entry.id, 'original'));
-    return raw ?? entry.content;
-  }
-
-  function cancelEntryEdit(entry: DiaryEntry, kind?: 'original' | 'rewritten') {
-    const kinds: Array<'original' | 'rewritten'> = kind ? [kind] : ['original', 'rewritten'];
-    for (const k of kinds) {
-      const key = getDraftKey(entry.id, k);
-      localStorage.removeItem(key);
-      const timeoutKey = `${entry.id}-${k}`;
-      clearTimeout(autoSaveTimeouts.current[timeoutKey]);
-      delete autoSaveTimeouts.current[timeoutKey];
-      if (k === 'original') {
-        const serverKey = `${entry.id}-original`;
-        clearTimeout(serverSaveTimeouts.current[serverKey]);
-        delete serverSaveTimeouts.current[serverKey];
-      }
-      delete draftRawRefs.current[k][entry.id];
-      if (k === 'original') {
-        setDraftOriginal((prev) => {
-          if (!prev[entry.id]) return prev;
-          const next = { ...prev };
-          delete next[entry.id];
-          return next;
-        });
-      } else {
-        setDraftRewritten((prev) => {
-          if (!prev[entry.id]) return prev;
-          const next = { ...prev };
-          delete next[entry.id];
-          return next;
-        });
-      }
-    }
-  }
-
-  function scheduleDraftSave(
-    entry: DiaryEntry,
-    kind: 'original' | 'rewritten',
-    raw: string,
-    normalized: string
-  ) {
-    const key = getDraftKey(entry.id, kind);
-    const timeoutKey = `${entry.id}-${kind}`;
-    clearTimeout(autoSaveTimeouts.current[timeoutKey]);
-    const canonical = normalizeDraftHtml(
-      kind === 'original' ? entry.content : (entry.rewrittenContent ?? '')
-    );
-    if (normalized === canonical || isEmptyHtml(normalized)) {
-      localStorage.removeItem(key);
-      delete autoSaveTimeouts.current[timeoutKey];
-      delete draftRawRefs.current[kind][entry.id];
-      return;
-    }
-    autoSaveTimeouts.current[timeoutKey] = setTimeout(() => {
-      try {
-        localStorage.setItem(key, raw);
-      } catch {
-        // ignore quota errors
-      }
-      delete autoSaveTimeouts.current[timeoutKey];
-    }, 500);
-  }
-
-  function handleQuillChange(
-    entry: DiaryEntry,
-    value: string,
-    source: string,
-    kind: 'original' | 'rewritten'
-  ) {
-    const setDraft = kind === 'original' ? setDraftOriginal : setDraftRewritten;
-    const normalized = normalizeDraftHtml(value);
-    setDraft((prev) => {
-      if (prev[entry.id]?.raw === value) return prev;
-      return { ...prev, [entry.id]: { raw: value, normalized } };
-    });
-    if (source === 'user') {
-      draftRawRefs.current[kind][entry.id] = value;
-      scheduleDraftSave(entry, kind, value, normalized);
-      if (kind === 'original') {
-        scheduleServerSave(entry, value);
-      }
-      const reactQuill = quillRefs.current[entry.id];
-      const quill = reactQuill?.getEditor();
-      if (quill) scheduleEntityHighlights(quill, entry.id);
-    }
-  }
-
-  function scheduleEntityHighlights(quill: Quill, entryId: number) {
-    const existing = highlightTimeouts.current[entryId];
-    if (existing) clearTimeout(existing);
-    highlightTimeouts.current[entryId] = setTimeout(() => {
-      applyEntityHighlights(quill, mappings);
-      delete highlightTimeouts.current[entryId];
-    }, 300);
-  }
-
-  function clearServerSaveTimeout(entryId: number) {
-    const timeoutKey = `${entryId}-original`;
-    clearTimeout(serverSaveTimeouts.current[timeoutKey]);
-    delete serverSaveTimeouts.current[timeoutKey];
-  }
-
-  function scheduleServerSave(entry: DiaryEntry, raw: string) {
-    const timeoutKey = `${entry.id}-original`;
-    clearTimeout(serverSaveTimeouts.current[timeoutKey]);
-    serverSaveTimeouts.current[timeoutKey] = setTimeout(() => {
-      delete serverSaveTimeouts.current[timeoutKey];
-      saveOriginalToServer(entry, raw, false);
-    }, SERVER_SAVE_DELAY_MS);
-  }
-
-  async function saveOriginalToServer(
-    entry: DiaryEntry,
-    rawDraft: string,
-    notifyError = true
-  ): Promise<boolean> {
-    const content = normalizeDraftHtml(rawDraft);
-    const currentEntry = entriesRef.current.find((e) => e.id === entry.id) ?? entry;
-    const canonical = normalizeDraftHtml(currentEntry.content);
-    if (content === canonical || isEmptyHtml(content)) return false;
-
-    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: ensureHtml(content) }),
-    });
-
-    if (error) {
-      if (notifyError) showError(error);
-      return false;
-    }
-
-    if (data?.entry) {
-      setEntries((prev) =>
-        prev.map((e) => {
-          if (e.id !== entry.id) return e;
-          if (e.updatedAt && data.entry.updatedAt < e.updatedAt) return e;
-          return data.entry;
-        })
-      );
-      const rawAtSend = draftRawRefs.current.original[entry.id] ?? rawDraft;
-      const noNewerChanges = draftRawRefs.current.original[entry.id] === rawAtSend;
-      const savedMatchesDraft =
-        noNewerChanges && normalizeDraftHtml(rawAtSend) === normalizeDraftHtml(data.entry.content);
-      if (noNewerChanges) {
-        localStorage.removeItem(getDraftKey(entry.id, 'original'));
-        delete draftRawRefs.current.original[entry.id];
-      }
-      if (!savedMatchesDraft) {
-        setDraftOriginal((prev) => {
-          if (!prev[entry.id]) return prev;
-          const next = { ...prev };
-          delete next[entry.id];
-          return next;
-        });
-      }
-      return true;
-    }
-
-    return false;
   }
 
   async function handleAcceptRewritten(entry: DiaryEntry) {
@@ -703,7 +322,7 @@ export function Diary() {
     });
     setWorking(false);
     if (data) {
-      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      replaceEntry(data.entry);
       setViewRewritten(entry.id, false);
       cancelEntryEdit(entry);
       setTimeout(() => {
@@ -713,7 +332,7 @@ export function Diary() {
       }, 50);
       showSuccess('Überarbeitung übernommen.');
     } else if (error) {
-      setFormError(error);
+      showError(error);
     }
   }
 
@@ -730,7 +349,7 @@ export function Diary() {
     });
     setWorking(false);
     if (data) {
-      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      replaceEntry(data.entry);
       setViewRewritten(entry.id, false);
       cancelEntryEdit(entry, 'rewritten');
       setTimeout(() => {
@@ -739,7 +358,7 @@ export function Diary() {
         if (quill) applyEntityHighlights(quill, mappings);
       }, 50);
     } else if (error) {
-      setFormError(error);
+      showError(error);
     }
   }
 
@@ -750,27 +369,16 @@ export function Diary() {
       if (entry?.rewrittenFilePath && !entry.rewrittenContent) {
         const { data } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${id}`);
         if (data) {
-          setEntries((prev) => prev.map((e) => (e.id === id ? data.entry : e)));
+          replaceEntry(data.entry);
         }
       }
-      const currentEntry = entries.find((e) => e.id === id);
+      const currentEntry = entriesRef.current.find((e) => e.id === id);
       if (currentEntry?.sessionDraftFor) {
         setViewRewritten(id, true);
       }
-      setDraftOriginal((prev) => {
-        if (prev[id]) return prev;
-        const saved = localStorage.getItem(getDraftKey(id, 'original'));
-        if (!saved) return prev;
-        return { ...prev, [id]: { raw: saved, normalized: normalizeDraftHtml(saved) } };
-      });
-      setDraftRewritten((prev) => {
-        if (prev[id]) return prev;
-        const saved = localStorage.getItem(getDraftKey(id, 'rewritten'));
-        if (!saved) return prev;
-        return { ...prev, [id]: { raw: saved, normalized: normalizeDraftHtml(saved) } };
-      });
+      primeDraftsFromStorage(id);
     } else {
-      const entry = entries.find((e) => e.id === id);
+      const entry = entriesRef.current.find((e) => e.id === id);
       const rawDraft =
         draftRawRefs.current.original[id] ??
         draftOriginal[id]?.raw ??
@@ -784,15 +392,6 @@ export function Diary() {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      return next;
-    });
-  }
-
-  function setViewRewritten(id: number, showRewritten: boolean) {
-    setViewingRewrittenIds((prev) => {
-      const next = new Set(prev);
-      if (showRewritten) next.add(id);
-      else next.delete(id);
       return next;
     });
   }
@@ -814,7 +413,7 @@ export function Diary() {
     }
 
     setWorking(true);
-    const { data, error } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
+    const { data } = await request<{ entry: DiaryEntry }>(`/api/diary/entries/${entry.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ summary: editingSummaryText.trim() || null }),
@@ -822,40 +421,12 @@ export function Diary() {
     setWorking(false);
 
     if (data) {
-      setEntries((prev) => prev.map((e) => (e.id === entry.id ? data.entry : e)));
+      replaceEntry(data.entry);
       showSuccess('Zusammenfassung aktualisiert.');
       cancelSummaryEdit();
-    } else if (error) {
-      // Error is already displayed by useApi.
     }
+    // Errors are already displayed by useApi.
   }
-
-  const modalActions = (
-    <>
-      <button
-        type="button"
-        onClick={closeModal}
-        disabled={working}
-        className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
-      >
-        Abbrechen
-      </button>
-      <button
-        type="submit"
-        form="diary-form"
-        disabled={
-          working ||
-          !stripHtml(form.content).trim() ||
-          (skipMode
-            ? customDayValue === '' || currentGameDay === undefined
-            : !(createDayValue !== '' && Number(createDayValue) > 0))
-        }
-        className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
-      >
-        {working ? <Loading text="" size="sm" /> : 'Erstellen'}
-      </button>
-    </>
-  );
 
   if (loading) {
     return (
@@ -891,7 +462,7 @@ export function Diary() {
           <div className="p-2">
             <button
               type="button"
-              onClick={openCreate}
+              onClick={() => setIsModalOpen(true)}
               className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition"
             >
               Neuer Eintrag
@@ -983,142 +554,19 @@ export function Diary() {
                   </div>
                 </div>
 
-                <div
-                  className={`mb-3 p-3 rounded-lg border ${entry.aiDirty ? 'bg-amber-900/20 border-amber-500/30' : 'bg-[var(--accent)]/10 border-[var(--accent)]/20'}`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <p
-                      className={`text-sm font-semibold ${entry.aiDirty ? 'text-amber-500' : 'text-[var(--accent)]'}`}
-                    >
-                      Zusammenfassung
-                    </p>
-                    {editingSummaryId !== entry.id && (
-                      <div className="flex items-center gap-2">
-                        {entry.aiDirty || !entry.summary ? (
-                          <button
-                            type="button"
-                            title="Zusammenfassung aktualisieren"
-                            onClick={() => handleGenerateSummary(entry)}
-                            disabled={working || processingSummaryId === entry.id}
-                            className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
-                          >
-                            {processingSummaryId === entry.id
-                              ? 'Wird generiert...'
-                              : entry.summary
-                                ? 'Aktualisieren'
-                                : 'Generieren'}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            title="Zusammenfassung neu generieren"
-                            onClick={() => handleGenerateSummary(entry)}
-                            disabled={working}
-                            className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
-                          >
-                            {processingSummaryId === entry.id ? (
-                              <svg
-                                className="animate-spin"
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                              </svg>
-                            ) : (
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                                <path d="M21 4v6h-6" />
-                              </svg>
-                            )}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          title="Zusammenfassung bearbeiten"
-                          onClick={() => startSummaryEdit(entry)}
-                          disabled={working}
-                          className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {editingSummaryId === entry.id ? (
-                    <div className="space-y-2">
-                      <textarea
-                        value={editingSummaryText}
-                        onChange={(e) => setEditingSummaryText(e.target.value)}
-                        rows={3}
-                        maxLength={SUMMARY_MAX_LENGTH}
-                        disabled={working}
-                        className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-y"
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          variant="accent"
-                          onClick={() => saveSummaryEdit(entry)}
-                          disabled={working}
-                        >
-                          Speichern
-                        </Button>
-                        <Button variant="ghost" onClick={cancelSummaryEdit} disabled={working}>
-                          Abbrechen
-                        </Button>
-                      </div>
-                    </div>
-                  ) : entry.summary ? (
-                    <div className="space-y-1">
-                      <p className="text-slate-300 text-sm whitespace-pre-wrap">
-                        <EntityRichText
-                          content={entry.summary}
-                          mappings={mappings}
-                          isHtml={false}
-                        />
-                      </p>
-                      {entry.aiDirty && (
-                        <p className="text-xs text-amber-500 italic">
-                          Zusammenfassung ist veraltet und sollte aktualisiert werden.
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-slate-500 text-sm italic">
-                      Noch keine Zusammenfassung vorhanden.
-                    </p>
-                  )}
-                </div>
+                <DiarySummaryPanel
+                  entry={entry}
+                  working={working}
+                  processing={processingSummaryId === entry.id}
+                  editing={editingSummaryId === entry.id}
+                  editText={editingSummaryText}
+                  onEditText={setEditingSummaryText}
+                  onGenerate={() => handleGenerateSummary(entry)}
+                  onStartEdit={() => startSummaryEdit(entry)}
+                  onSave={() => saveSummaryEdit(entry)}
+                  onCancel={cancelSummaryEdit}
+                  mappings={mappings}
+                />
 
                 <BadgeList items={entry.persons} variant="person" />
                 <BadgeList items={entry.organizations} variant="organization" />
@@ -1255,7 +703,13 @@ export function Diary() {
                           theme="snow"
                           value={getEditingContent(entry)}
                           onChange={(value, _delta, source) =>
-                            handleQuillChange(entry, value, source, 'rewritten')
+                            handleQuillChange(
+                              entry,
+                              value,
+                              source,
+                              'rewritten',
+                              quillRefOf(entry.id)
+                            )
                           }
                           modules={quillModules}
                           formats={quillFormats}
@@ -1289,7 +743,13 @@ export function Diary() {
                           theme="snow"
                           value={getEditingContent(entry)}
                           onChange={(value, _delta, source) =>
-                            handleQuillChange(entry, value, source, 'original')
+                            handleQuillChange(
+                              entry,
+                              value,
+                              source,
+                              'original',
+                              quillRefOf(entry.id)
+                            )
                           }
                           modules={quillModules}
                           formats={quillFormats}
@@ -1314,133 +774,30 @@ export function Diary() {
         )}
       </div>
 
-      <Modal
+      <DiaryCreateModal
         isOpen={isModalOpen}
-        title="Neuer Eintrag"
-        onClose={closeModal}
-        actions={modalActions}
-        className="h-[85vh] flex flex-col max-w-5xl"
-        contentClassName="flex-1 min-h-0 overflow-hidden flex flex-col"
-      >
-        {formError && (
-          <div className="mb-4 p-3 rounded bg-red-900/30 text-red-400 border border-red-700">
-            {formError}
-          </div>
-        )}
-        <form
-          id="diary-form"
-          onSubmit={handleSubmit}
-          className="flex-1 min-h-0 flex flex-col space-y-4 px-1"
-        >
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Spieltag</label>
-            <select
-              value={skipMode ? '__skip__' : createDayValue}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === '__skip__') {
-                  setSkipMode(true);
-                  setCreateDayValue('');
-                  setCustomDayValue('');
-                } else {
-                  setSkipMode(false);
-                  setCreateDayValue(v === '' ? '' : Number(v));
-                  setCustomDayValue('');
-                }
-              }}
-              disabled={working}
-              required={!skipMode}
-              className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            >
-              {' '}
-              <option value="">Spieltag wählen…</option>
-              <option value="__skip__">Tage überspringen…</option>
-              {nextGameDay !== null && (
-                <option value={nextGameDay}>Spieltag {nextGameDay} – nächster Tag</option>
-              )}
-              {campaignDays
-                .filter((d) => !entries.some((entry) => entry.gameDay === d.day))
-                .sort((a, b) => b.day - a.day)
-                .filter((d) => d.day !== nextGameDay)
-                .map((d) => (
-                  <option key={d.day} value={d.day}>
-                    Spieltag {d.day}
-                  </option>
-                ))}
-            </select>
-            {skipMode && (
-              <div className="mt-3">
-                <label className="block text-xs text-slate-400 mb-1">Tage überspringen</label>
-                <input
-                  type="number"
-                  min={(currentGameDay ?? 0) + 1}
-                  step={1}
-                  placeholder={
-                    currentGameDay !== null && currentGameDay !== undefined
-                      ? `z. B. ${currentGameDay + 7}`
-                      : 'z. B. 50'
-                  }
-                  value={customDayValue}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setCustomDayValue(v === '' ? '' : Number(v));
-                  }}
-                  disabled={working}
-                  required={skipMode}
-                  className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  Legt den Tag direkt an – nur Ziffern, größer als der höchste bekannte Spieltag
-                  {currentGameDay !== null && currentGameDay !== undefined
-                    ? ` (Tag ${currentGameDay})`
-                    : ''}
-                  .
-                </p>
-              </div>
-            )}
-          </div>
-          {storyArcs.length > 0 && (
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Story Arc</label>
-              <select
-                value={createArcValue}
-                onChange={(e) =>
-                  setCreateArcValue(e.target.value === '' ? '' : Number(e.target.value))
-                }
-                disabled={working}
-                className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              >
-                {activeArcId === null && <option value="">Ohne Arc</option>}
-                {storyArcs.map((arc) => (
-                  <option key={arc.id} value={arc.id}>
-                    {arc.name}
-                    {arc.status === 'active' ? ' (aktiv)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="flex-1 min-h-0 flex flex-col">
-            <label className="block text-sm text-slate-400 mb-1">Inhalt</label>
-            <QuillWithEntityMention
-              theme="snow"
-              mappings={mappings}
-              value={form.content}
-              onChange={(value) => setForm((prev) => ({ ...prev, content: value }))}
-              modules={quillModules}
-              formats={quillFormats}
-              readOnly={working}
-              className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)] flex-1 min-h-0"
-            />
-          </div>
-        </form>
-
-        {aiOperation && aiStatus && (
-          <div className="mt-4">
-            <Loading size="sm" text={aiStatus} />
-          </div>
-        )}
-      </Modal>
+        entries={entries}
+        working={working}
+        aiOperation={aiOperation}
+        aiStatus={aiStatus}
+        onClose={() => setIsModalOpen(false)}
+        onCreated={(entry) => {
+          showSuccess('Eintrag erstellt.');
+          setAiStatus(null);
+          addEntry(entry);
+          void loadEntries();
+        }}
+        onWorkingChange={setWorking}
+        onAiStart={(status) => {
+          setAiOperation(true);
+          setAiStatus(status);
+        }}
+        onAiEnd={() => {
+          setAiOperation(false);
+        }}
+        sseReady={sseReadyRef.current}
+        mappings={mappings}
+      />
     </div>
   );
 }

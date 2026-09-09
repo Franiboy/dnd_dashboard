@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
-import type { Server } from 'socket.io';
+import { z } from 'zod';
+import { AppError, parseWith } from '../errors.js';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
-import { broadcastGameState } from '../socket.js';
+import { broadcastGameState, getIoServer } from '../socket.js';
 import { addTask, canManageDmTasks, getGame } from '../game.js';
 import {
   getPendingSuggestions,
@@ -13,11 +14,7 @@ import {
 } from '../repositories/bingoSuggestions.js';
 import { ensureSuggestionPool } from '../ai/bingoSuggestions.js';
 import { getTargetPoolSize } from '../bingoConfig.js';
-import type {
-  ClientToServerEvents,
-  ServerToClientEvents,
-  TaskAudience,
-} from '../../shared/types.js';
+import type { TaskAudience } from '../../shared/types.js';
 
 const router = Router();
 
@@ -43,11 +40,7 @@ const bingoRefreshRateLimit = rateLimit({
 
 router.use(authMiddleware, requireApproved, bingoRateLimit);
 
-type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
-
-function getIo(req: AuthRequest): IoServer | undefined {
-  return (req.app.get('io') as IoServer | undefined) ?? undefined;
-}
+const suggestionIdSchema = z.coerce.number().int().positive({ error: 'Ungültige Vorschlags-ID' });
 
 // Dungeon masters default to their own pool; everyone else sees the player
 // pool. Admins may request either pool explicitly via ?audience=.
@@ -55,18 +48,32 @@ function resolveAudience(req: AuthRequest): TaskAudience {
   const requested = req.query.audience;
   if (
     (requested === 'dm' || requested === 'players') &&
-    canManageDmTasks((req as AuthRequest).user?.role, (req as AuthRequest).user?.isAdmin)
+    canManageDmTasks(req.user?.role, req.user?.isAdmin)
   ) {
     return requested;
   }
-  return (req as AuthRequest).user?.role === 'dungeon_master' ? 'dm' : 'players';
+  return req.user?.role === 'dungeon_master' ? 'dm' : 'players';
 }
 
 function canAccessAudience(req: AuthRequest, audience: TaskAudience): boolean {
-  return (
-    audience === 'players' ||
-    canManageDmTasks((req as AuthRequest).user?.role, (req as AuthRequest).user?.isAdmin)
-  );
+  return audience === 'players' || canManageDmTasks(req.user?.role, req.user?.isAdmin);
+}
+
+function requireSetupPhase(action: 'annehmen' | 'ablehnen' | 'aktualisieren'): void {
+  if (getGame().status !== 'setup') {
+    throw new AppError(400, `Vorschläge können nur während des Setups ${action} werden`);
+  }
+}
+
+function requireAccessibleSuggestion(req: AuthRequest, suggestionId: number, action: string) {
+  const suggestion = getSuggestionById(suggestionId);
+  if (!suggestion) {
+    throw new AppError(404, 'Vorschlag nicht gefunden');
+  }
+  if (!canAccessAudience(req, suggestion.audience ?? 'players')) {
+    throw new AppError(403, `Nur Dungeon Master können DM-Vorschläge ${action}.`);
+  }
+  return suggestion;
 }
 
 router.get('/suggestions', (req: AuthRequest, res) => {
@@ -85,32 +92,15 @@ router.get('/suggestions', (req: AuthRequest, res) => {
 });
 
 router.post('/suggestions/:id/accept', (req: AuthRequest, res) => {
-  if (getGame().status !== 'setup') {
-    res.status(400).json({ error: 'Suggestions can only be accepted during setup' });
-    return;
-  }
+  requireSetupPhase('annehmen');
 
-  const suggestionId = Number(req.params.id);
-  if (!Number.isInteger(suggestionId) || suggestionId <= 0) {
-    res.status(400).json({ error: 'Invalid suggestion id' });
-    return;
-  }
-
-  const suggestion = getSuggestionById(suggestionId);
-  if (!suggestion) {
-    res.status(404).json({ error: 'Suggestion not found' });
-    return;
-  }
-
-  if (!canAccessAudience(req, suggestion.audience ?? 'players')) {
-    res.status(403).json({ error: 'Nur Dungeon Master können DM-Vorschläge annehmen.' });
-    return;
-  }
+  const suggestionId = parseWith(suggestionIdSchema, req.params.id);
+  const suggestion = requireAccessibleSuggestion(req, suggestionId, 'annehmen');
 
   const task = addTask(suggestion.text, { audience: suggestion.audience ?? 'players' });
   markSuggestionAccepted(suggestionId);
 
-  const io = getIo(req);
+  const io = getIoServer();
   if (io) {
     broadcastGameState(io);
   }
@@ -123,27 +113,10 @@ router.post('/suggestions/:id/accept', (req: AuthRequest, res) => {
 });
 
 router.post('/suggestions/:id/reject', (req: AuthRequest, res) => {
-  if (getGame().status !== 'setup') {
-    res.status(400).json({ error: 'Suggestions can only be rejected during setup' });
-    return;
-  }
+  requireSetupPhase('ablehnen');
 
-  const suggestionId = Number(req.params.id);
-  if (!Number.isInteger(suggestionId) || suggestionId <= 0) {
-    res.status(400).json({ error: 'Invalid suggestion id' });
-    return;
-  }
-
-  const suggestion = getSuggestionById(suggestionId);
-  if (!suggestion) {
-    res.status(404).json({ error: 'Suggestion not found' });
-    return;
-  }
-
-  if (!canAccessAudience(req, suggestion.audience ?? 'players')) {
-    res.status(403).json({ error: 'Nur Dungeon Master können DM-Vorschläge ablehnen.' });
-    return;
-  }
+  const suggestionId = parseWith(suggestionIdSchema, req.params.id);
+  const suggestion = requireAccessibleSuggestion(req, suggestionId, 'ablehnen');
 
   markSuggestionRejected(suggestionId);
 
@@ -155,14 +128,10 @@ router.post('/suggestions/:id/reject', (req: AuthRequest, res) => {
 });
 
 router.post('/suggestions/refresh', bingoRefreshRateLimit, (req: AuthRequest, res) => {
-  if (getGame().status !== 'setup') {
-    res.status(400).json({ error: 'Suggestions can only be refreshed during setup' });
-    return;
-  }
+  requireSetupPhase('aktualisieren');
 
   if (!isAiEnabled()) {
-    res.status(503).json({ error: 'AI not enabled' });
-    return;
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
   }
 
   const audience = resolveAudience(req);

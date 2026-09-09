@@ -5,6 +5,25 @@ import type {
   ServerToClientEvents,
   User,
 } from '../shared/types.js';
+
+/** Per-socket server-side data, filled by the connection middleware. */
+export interface SocketData {
+  user: User;
+}
+
+export type TypedIoServer = Server<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  Record<string, never>,
+  SocketData
+>;
+
+let ioServer: TypedIoServer | null = null;
+
+/** The live Socket.io server instance, or null before `setupSocket` ran. */
+export function getIoServer(): TypedIoServer | null {
+  return ioServer;
+}
 import { getAuthenticatedUser } from './auth.js';
 import {
   addTask,
@@ -34,11 +53,10 @@ import {
   broadcastWhiteboardUpsert,
   broadcastWhiteboardZoneChange,
   createElement,
-  getElement,
-  listElementsForUser,
   removeElement,
   updateElement,
 } from './whiteboard.js';
+import { getElement, listElementsForUser } from './repositories/whiteboard.js';
 
 export function getGameForUser(user: User): BingoGame {
   const current = getGame();
@@ -58,15 +76,16 @@ function normalizeAudience(audience: unknown): TaskAudience | undefined {
   return audience === 'dm' ? 'dm' : 'players';
 }
 
-export function broadcastGameState(io: Server<ClientToServerEvents, ServerToClientEvents>): void {
+export function broadcastGameState(io: TypedIoServer): void {
   for (const socket of io.sockets.sockets.values()) {
-    const socketUser = (socket as any).user as User | undefined;
+    const socketUser = socket.data?.user;
     if (!socketUser) continue;
     socket.emit('state', getGameForUser(socketUser));
   }
 }
 
-export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvents>) {
+export function setupSocket(io: TypedIoServer) {
+  ioServer = io;
   const socketPlayerMap = new Map<string, string>();
 
   function broadcastState() {
@@ -78,12 +97,12 @@ export function setupSocket(io: Server<ClientToServerEvents, ServerToClientEvent
       typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined;
     const user = getAuthenticatedUser(socket.handshake as any, authToken ? [authToken] : []);
     if (!user || !user.isApproved) return next(new Error('Unauthorized'));
-    (socket as any).user = user;
+    socket.data.user = user;
     next();
   });
 
   io.on('connection', (socket) => {
-    const user = (socket as any).user as User;
+    const user = socket.data.user;
     socket.emit('state', getGameForUser(user));
     socket.emit('wbElements', listElementsForUser(user));
 

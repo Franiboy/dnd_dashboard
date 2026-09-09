@@ -1,4 +1,5 @@
 import { db } from '../database.js';
+import { AppError } from '../errors.js';
 import type { EntityType, StoryArc, StoryArcStatus } from '../../shared/types.js';
 import type { EntityRef } from './entityRefs.js';
 
@@ -251,12 +252,13 @@ export function deleteStoryArc(id: number): boolean {
   const existing = getStoryArc(id);
   if (!existing) return false;
   if (existing.status === 'active') {
-    throw new Error(
+    throw new AppError(
+      409,
       'Der aktive Story Arc kann nicht gelöscht werden – aktiviere zuerst einen anderen Arc'
     );
   }
   if (existing.status === 'completed') {
-    throw new Error('Abgeschlossene Story Arcs können nicht gelöscht werden');
+    throw new AppError(409, 'Abgeschlossene Story Arcs können nicht gelöscht werden');
   }
 
   // Members keep no dangling reference (arc_id has no FK, so the columns are
@@ -272,7 +274,7 @@ export function deleteStoryArc(id: number): boolean {
 
 export function assignSessionToArc(sessionId: number, arcId: number | null): void {
   if (arcId !== null && !storyArcExists(arcId)) {
-    throw new Error('Story Arc nicht gefunden');
+    throw new AppError(404, 'Story Arc nicht gefunden');
   }
   db.prepare('UPDATE recording_sessions SET arc_id = ?, updated_at = ? WHERE id = ?').run(
     arcId,
@@ -283,7 +285,7 @@ export function assignSessionToArc(sessionId: number, arcId: number | null): voi
 
 export function assignDiaryEntryToArc(entryId: number, arcId: number | null): void {
   if (arcId !== null && !storyArcExists(arcId)) {
-    throw new Error('Story Arc nicht gefunden');
+    throw new AppError(404, 'Story Arc nicht gefunden');
   }
   db.prepare('UPDATE diary_entries SET arc_id = ?, updated_at = ? WHERE id = ?').run(
     arcId,
