@@ -126,9 +126,14 @@ app.use(
     crossOriginEmbedderPolicy: false,
   })
 );
-// Modest default for all API routes; the base64 board image upload route
-// declares its own, larger limit.
-app.use(express.json({ limit: '2mb' }));
+// Modest default for all API routes; the base64 board upload route declares
+// its own, larger limit and must reach that route-level parser first.
+app.use(
+  express.json({
+    limit: '2mb',
+    type: (req) => req.url?.split('?')[0] !== '/api/whiteboard/uploads',
+  })
+);
 app.use(cookieParser());
 
 // Generic request logging
