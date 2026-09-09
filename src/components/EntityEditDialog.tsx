@@ -8,6 +8,7 @@ import { EntityRichText } from './EntityRichText';
 import { Loading } from './Loading';
 import { Modal } from './Modal';
 import { formatEntityLabel, typeLabels } from '../lib/entityLabels';
+import type { EntityDialogTab } from '../contexts/EntityDialogContext';
 import type {
   EntityDetail,
   EntityType,
@@ -20,6 +21,8 @@ interface EntityEditDialogProps {
   name: string;
   /** Disambiguator of the entity to open; '' targets the plain name. */
   qualifier?: string;
+  /** Tab shown on mount (e.g. global search opens knowledge hits there). */
+  initialTab?: EntityDialogTab;
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -142,6 +145,7 @@ export function EntityEditDialog({
   type,
   name,
   qualifier = '',
+  initialTab,
   onClose,
   onSaved,
 }: EntityEditDialogProps) {
@@ -175,7 +179,7 @@ export function EntityEditDialog({
   );
   const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'summary' | 'aliases' | 'knowledge' | 'arcs'>(
-    'summary'
+    initialTab ?? 'summary'
   );
   const [arcLinks, setArcLinks] = useState<number[]>([]);
   const [togglingArcIds, setTogglingArcIds] = useState<Set<number>>(new Set());

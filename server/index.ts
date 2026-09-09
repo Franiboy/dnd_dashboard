@@ -20,6 +20,7 @@ import campaignRouter from './routes/campaign.js';
 import diaryRouter from './routes/diary.js';
 import entitiesRouter from './routes/entities.js';
 import recordingsRouter from './routes/recordings.js';
+import searchRouter from './routes/search.js';
 import storyArcsRouter from './routes/storyArcs.js';
 import whiteboardRouter from './routes/whiteboard.js';
 import { authMiddleware, requireApproved } from './auth.js';
@@ -217,6 +218,7 @@ app.use('/api/campaign', campaignRouter);
 app.use('/api/diary', diaryRouter);
 app.use('/api/entities', entitiesRouter);
 app.use('/api/recordings', recordingsRouter);
+app.use('/api/search', searchRouter);
 app.use('/api/story-arcs', storyArcsRouter);
 app.use('/api/whiteboard', whiteboardRouter);
 

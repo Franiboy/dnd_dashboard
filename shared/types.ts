@@ -469,6 +469,60 @@ export interface EntityKnowledgeEntry {
   updatedAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Global search
+// ---------------------------------------------------------------------------
+
+/** Source tables of the global search index. */
+export type SearchSource = 'diary' | 'session' | 'knowledge';
+
+/**
+ * A diary entry hit. Snippets carry match markers: \u0001 opens and \u0002
+ * closes a highlighted range; clients render them as <mark> or similar.
+ */
+export interface DiarySearchHit {
+  source: 'diary';
+  /** diary_entries.id */
+  id: number;
+  title: string;
+  snippet: string;
+  createdAt: string;
+  gameDay: number | null;
+  arcId: number | null;
+}
+
+export interface SessionSearchHit {
+  source: 'session';
+  /** recording_sessions.id */
+  id: number;
+  title: string;
+  snippet: string;
+  startedAt: string | null;
+  gameDay: number | null;
+  arcId: number | null;
+  /** Timestamp ([MM:SS] / [HH:MM:SS]) of the first match in the transcript. */
+  transcriptTime: string | null;
+}
+
+export interface KnowledgeSearchHit {
+  source: 'knowledge';
+  /** entity_knowledge_entries.id */
+  id: number;
+  title: string;
+  snippet: string;
+  entityType: EntityType;
+  entityName: string;
+  entityQualifier: string;
+  validFrom: number | null;
+  validUntil: number | null;
+}
+
+export type SearchResult = DiarySearchHit | SessionSearchHit | KnowledgeSearchHit;
+
+export interface SearchResponse {
+  results: SearchResult[];
+}
+
 export interface BingoSuggestion {
   id: number;
   text: string;

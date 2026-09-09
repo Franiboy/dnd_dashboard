@@ -35,6 +35,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | `diary.ts`      | CRUD for diary entries, AI rewrite, summary, entities; SSE for AI status                |
 | `entities.ts`   | Entity list, details, aliases, blacklist, knowledge and summary CRUD                    |
 | `recordings.ts` | Discord recording sessions, transcripts, trimming and AI session-to-diary draft         |
+| `search.ts`     | `GET /api/search` – global FTS5 full-text search across diary, sessions and knowledge   |
 | `storyArcs.ts`  | Story arcs: list/create/update/activate/delete (admin mutations)                        |
 
 ### Repositories (`server/repositories/`)
@@ -48,6 +49,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | `entitySummaries.ts`  | AI-generated entity summaries                                                           |
 | `gameTimeline.ts`     | Central `campaign_days` timeline, current/next day helpers, session & diary day setters |
 | `recordings.ts`       | Recording sessions and files                                                            |
+| `search.ts`           | FTS5 global search (`search_index` documents, safe query building, snippet hydration)   |
 | `storyArcs.ts`        | Story arcs: CRUD, single-active invariant, arc entity links (m:n), derived day ranges   |
 
 ### AI / MCP (`server/ai/` & `server/mcp/`)
