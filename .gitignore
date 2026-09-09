@@ -18,6 +18,7 @@ recordings
 data/diary
 data/sessions
 data/bingo
+data/keys
 .venv
 *.db-*
 opencode.json

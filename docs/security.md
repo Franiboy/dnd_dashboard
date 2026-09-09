@@ -1,6 +1,7 @@
 # Security
 
 - Secret values (`JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `ADMIN_PASSWORD`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, `MCP_TOKEN_SECRET`) belong in `.env` and must **never** be committed.
+- Dashboard session JWTs are signed with RS256 (`jsonwebtoken`, algorithms pinned on sign and verify). The RSA key pair lives in the gitignored `data/keys/` directory (private key `0600`); `JWT_SECRET` is only the fallback secret for MCP session tokens.
 - Discord OAuth access and refresh tokens are encrypted at rest with `TOKEN_ENCRYPTION_KEY` (AES-256-GCM) before being stored in SQLite.
 - The Discord OAuth `state` parameter is verified against a short-lived `httpOnly` cookie.
 - `.env`, `*.db`, `dist/`, `dist-server/`, `rewritten/` and `recordings/` are in `.gitignore`.

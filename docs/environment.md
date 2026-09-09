@@ -7,6 +7,10 @@ PORT=3001
 JWT_SECRET=change-me-in-production
 # Number of days until the dashboard login session expires (default: 7)
 JWT_EXPIRES_IN_DAYS=7
+# Dashboard login sessions are RS256-signed JWTs. The RSA key pair is
+# generated automatically on first start under data/keys/ (gitignored).
+# To bring your own keys, place them as data/keys/jwt-private.pem and
+# data/keys/jwt-public.pem (or mount/symlink the directory).
 # Required if Discord OAuth is configured. Must be a base64-encoded 32-byte key.
 # Generate with: openssl rand -base64 32
 TOKEN_ENCRYPTION_KEY=
@@ -74,7 +78,7 @@ AI_MODEL=opencode/deepseek-v4-flash-free
 > All variables validated at server startup against the `zod` schema in `server/env.ts`. Invalid values abort startup with a descriptive error. When unset, variables below use their documented defaults.
 
 - `PORT` is optional, default is `3001`.
-- `JWT_SECRET` must be set, otherwise the server will not start.
+- `JWT_SECRET` is only the fallback secret for MCP session tokens (see `MCP_TOKEN_SECRET`); setting `MCP_TOKEN_SECRET` explicitly is recommended. Dashboard login sessions do not use it: they are RS256-signed JWTs backed by the RSA key pair under `data/keys/`, which is generated automatically on first start (private key with `0600` permissions). Deleting the key pair logs everyone out; mount or back it up in production.
 - `JWT_EXPIRES_IN_DAYS` controls how long a dashboard login session remains valid (default: 7).
 - `TOKEN_ENCRYPTION_KEY` is required when Discord OAuth is configured. It is used to encrypt stored Discord access/refresh tokens at rest. It must be a base64-encoded 32-byte key (e.g. the output of `openssl rand -base64 32`).
 - `ADMIN_PASSWORD` must be set, otherwise `ensureAdminUser()` will not start.
