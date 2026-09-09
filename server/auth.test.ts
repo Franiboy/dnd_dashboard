@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createToken, verifyToken } from './auth.js';
+import jwt from 'jsonwebtoken';
+import { createToken, getSessionPublicKey, verifyToken } from './auth.js';
 
 const baseUser = {
   id: 'user-123',
@@ -40,5 +41,13 @@ describe('auth tokens', () => {
     const token = createToken(user);
     const tampered = token.slice(0, -3) + 'xxx';
     expect(verifyToken(tampered)).toBeNull();
+  });
+
+  it('rejects HS256 algorithm-confusion tokens', () => {
+    // Classic RS256 confusion attack: an HS256 token signed with the public
+    // key as the HMAC secret must not verify.
+    const confusionOptions: jwt.SignOptions = { algorithm: 'HS256' };
+    const confused = jwt.sign({ userId: baseUser.id }, getSessionPublicKey(), confusionOptions);
+    expect(verifyToken(confused)).toBeNull();
   });
 });

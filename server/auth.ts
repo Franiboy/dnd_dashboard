@@ -1,3 +1,13 @@
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { generateKeyPairSync } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 import type { User } from '../shared/types.js';
@@ -6,7 +16,9 @@ import { createLogger } from './logger.js';
 
 const log = createLogger('auth');
 
-const JWT_SECRET = process.env.JWT_SECRET || '';
+// Session tokens are signed with RS256. The key pair lives under data/keys/
+// (mount or symlink this directory to relocate it) and is generated once on
+// first start. Existing HS256 tokens become invalid after the migration.
 const COOKIE_NAME = 'dnd_token';
 const OAUTH_STATE_COOKIE_NAME = 'dnd_oauth_state';
 const OAUTH_STATE_MAX_AGE_MS = 5 * 60 * 1000;
@@ -20,11 +32,92 @@ const JWT_EXPIRES_IN_DAYS =
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 const TOKEN_MAX_AGE_MS = JWT_EXPIRES_IN_DAYS * MS_PER_DAY;
 
-if (!JWT_SECRET) {
-  log.error(
-    'Fehler: JWT_SECRET ist nicht gesetzt. Bitte .env.example nach .env kopieren und anpassen.'
-  );
-  process.exit(1);
+function generateRsaKeyPair(): { privateKey: string; publicKey: string } {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  return { privateKey, publicKey };
+}
+
+function loadKeyPair(): { privateKey: string; publicKey: string } {
+  // Tests get an ephemeral in-memory pair: no filesystem writes and no
+  // cross-process races between parallel test forks.
+  if (process.env.NODE_ENV === 'test') {
+    return generateRsaKeyPair();
+  }
+  const privatePath = 'data/keys/jwt-private.pem';
+  const publicPath = 'data/keys/jwt-public.pem';
+  if (existsSync(privatePath) !== existsSync(publicPath)) {
+    log.error(
+      'Fehler: Nur einer der JWT-Schlüssel liegt unter data/keys. Bitte beide Dateien löschen oder ergänzen.'
+    );
+    process.exit(1);
+  }
+  if (existsSync(privatePath) && existsSync(publicPath)) {
+    try {
+      return {
+        privateKey: readFileSync(privatePath, 'utf8'),
+        publicKey: readFileSync(publicPath, 'utf8'),
+      };
+    } catch (err) {
+      log.error(`Fehler: JWT-Schlüsseldateien konnten nicht gelesen werden: ${err}`);
+      process.exit(1);
+    }
+  }
+  mkdirSync('data/keys', { recursive: true, mode: 0o700 });
+  const lockPath = 'data/keys/.jwt-key-pair.lock';
+
+  // Lock the pair creation as the two PEM renames are not one atomic operation.
+  while (true) {
+    try {
+      mkdirSync(lockPath);
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      try {
+        // Recover if a process was terminated while holding the initialization lock.
+        if (Date.now() - statSync(lockPath).mtimeMs > 30_000) {
+          rmSync(lockPath, { recursive: true, force: true });
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+
+  try {
+    // Another process may have completed generation while this process waited.
+    if (existsSync(privatePath) && existsSync(publicPath)) {
+      return {
+        privateKey: readFileSync(privatePath, 'utf8'),
+        publicKey: readFileSync(publicPath, 'utf8'),
+      };
+    }
+
+    log.info('Keine JWT-Schlüssel vorhanden – erzeuge neues RSA-Schlüsselpaar unter data/keys/.');
+    const { publicKey, privateKey } = generateRsaKeyPair();
+    // Write to temp files and rename, so a concurrent start never reads a half-written PEM.
+    const privateTmp = `${privatePath}.${process.pid}.tmp`;
+    const publicTmp = `${publicPath}.${process.pid}.tmp`;
+    writeFileSync(privateTmp, privateKey, { mode: 0o600 });
+    writeFileSync(publicTmp, publicKey, { mode: 0o644 });
+    renameSync(privateTmp, privatePath);
+    renameSync(publicTmp, publicPath);
+    return { privateKey, publicKey };
+  } finally {
+    rmSync(lockPath, { recursive: true, force: true });
+  }
+}
+
+const JWT_KEY_PAIR = loadKeyPair();
+
+/** Public half of the session key pair; exposed for tests and Socket.io auth. */
+export function getSessionPublicKey(): string {
+  return JWT_KEY_PAIR.publicKey;
 }
 
 import { AppError } from './errors.js';
@@ -45,16 +138,21 @@ export function requireUser(req: AuthRequest): User {
   return req.user;
 }
 
+const JWT_SIGN_OPTIONS: jwt.SignOptions = {
+  algorithm: 'RS256',
+  expiresIn: `${JWT_EXPIRES_IN_DAYS}d`,
+};
+const JWT_VERIFY_OPTIONS: jwt.VerifyOptions = { algorithms: ['RS256'] };
+
 export function createToken(user: User): string {
-  return jwt.sign({ userId: user.id }, JWT_SECRET, {
-    algorithm: 'HS256',
-    expiresIn: `${JWT_EXPIRES_IN_DAYS}d`,
-  });
+  return jwt.sign({ userId: user.id }, JWT_KEY_PAIR.privateKey, JWT_SIGN_OPTIONS);
 }
 
 export function verifyToken(token: string): { userId: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { userId: string };
+    return jwt.verify(token, JWT_KEY_PAIR.publicKey, JWT_VERIFY_OPTIONS) as {
+      userId: string;
+    };
   } catch {
     return null;
   }
