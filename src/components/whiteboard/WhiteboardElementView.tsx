@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import DOMPurify from 'dompurify';
+import DOMPurify from 'isomorphic-dompurify';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
 import { TASK_STATUS_META, isBoardImageUrl, nextTaskStatus } from './whiteboardShared';
 import { ensureHtml } from '../quillConfig';

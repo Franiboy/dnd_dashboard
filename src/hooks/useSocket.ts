@@ -12,7 +12,11 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL || '';
 
 export function useSocket(user: SafeUser | null) {
   const { showError } = useError();
-  const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
+  // Held in state (not a ref) so callers see the socket on the render where
+  // it connects instead of a stale/null ref value.
+  const [socket, setSocket] = useState<Socket<ServerToClientEvents, ClientToServerEvents> | null>(
+    null
+  );
   const [game, setGame] = useState<BingoGame | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [bingo, setBingo] = useState<string | null>(null);
@@ -26,7 +30,7 @@ export function useSocket(user: SafeUser | null) {
       reconnection: true,
     });
 
-    socketRef.current = socket;
+    setSocket(socket);
 
     socket.on('connect', () => {
       if (user && !joinedRef.current) {
@@ -54,12 +58,13 @@ export function useSocket(user: SafeUser | null) {
 
     return () => {
       joinedRef.current = false;
+      setSocket(null);
       socket.disconnect();
     };
   }, [user, showError]);
 
   return {
-    socket: socketRef.current,
+    socket,
     game,
     playerId,
     bingo,

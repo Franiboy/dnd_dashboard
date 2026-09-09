@@ -5,7 +5,7 @@ import { getDiaryEntryBySessionDraftFor } from '../repositories/diary.js';
 import { getSessionById } from '../repositories/recordings.js';
 import type { DiaryEntry } from '../../shared/types.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
-import { getAllUsers } from '../users.js';
+import { getAllUsers } from '../repositories/users.js';
 import { annotateTranscriptSpeakers } from './transcriptSpeakers.js';
 import { getModel } from './modelConfig.js';
 import { deleteOpenCodeSession, runOpenCode } from './opencode.js';

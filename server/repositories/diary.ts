@@ -2,6 +2,7 @@ import type { DiaryEntry } from '../../shared/types.js';
 import type { DiaryEntities } from '../ai/rewrite.js';
 import { stripHtml } from '../ai/rewrite.js';
 import { db } from '../database.js';
+import { AppError } from '../errors.js';
 import { getRewrittenFilePath, readRewrittenFile, writeRewrittenFile } from '../diaryFiles.js';
 import { sanitizeHtml, sanitizePlainText } from '../utils/sanitizeHtml.js';
 import { mergeEntityKnowledge, renameEntityKnowledge } from './entityKnowledge.js';
@@ -153,7 +154,11 @@ function entityNameRegex(name: string): RegExp {
 }
 
 function getEntityRefs(table: string): EntityRef[] {
-  const rows = db.prepare(`SELECT name, qualifier FROM ${table}`).all() as {
+  const rows = db
+    .prepare(
+      `SELECT name, qualifier FROM ${table} ORDER BY name COLLATE NOCASE, qualifier COLLATE NOCASE`
+    )
+    .all() as {
     name: string;
     qualifier: string;
   }[];
@@ -634,6 +639,26 @@ export function createDiaryEntry(
       now
     );
   return getDiaryEntryById(Number(result.lastInsertRowid))!;
+}
+
+/**
+ * Creates the user's single diary entry for one game day inside one
+ * transaction, or returns null when an entry for that day already exists.
+ */
+export function createDiaryEntryOncePerDay(
+  userId: string,
+  content: string,
+  day: number,
+  arcId?: number
+): DiaryEntry | null {
+  return db.transaction(() => {
+    const existing = db
+      .prepare('SELECT 1 FROM diary_entries WHERE user_id = ? AND game_day = ?')
+      .get(userId, day) as { '1': number } | undefined;
+    if (existing) return null;
+
+    return createDiaryEntry(userId, `Spieltag ${day}`, content, undefined, day, arcId);
+  })();
 }
 
 export function getDiaryEntryById(id: number): DiaryEntry | null {
@@ -1183,7 +1208,7 @@ export function updateEntity(
   const newNormalized = newName.trim();
 
   if (!oldNormalized || !newNormalized) {
-    throw new Error('Name ist erforderlich');
+    throw new AppError(400, 'Name ist erforderlich');
   }
 
   const { table } = entityConfig[type];
@@ -1201,13 +1226,13 @@ export function updateEntity(
   const tx = db.transaction(() => {
     const oldRow = findEntityRow(type, { name: oldNormalized, qualifier: oldQualifier });
     if (!oldRow) {
-      throw new Error('Entität nicht gefunden');
+      throw new AppError(404, 'Entität nicht gefunden');
     }
 
     if (newNormalized !== oldRow.name || newQualifier !== (oldRow.qualifier ?? '')) {
       const clash = findEntityRow(type, { name: newNormalized, qualifier: newQualifier });
       if (clash && clash.id !== oldRow.id) {
-        throw new Error('Name existiert bereits');
+        throw new AppError(409, 'Name existiert bereits');
       }
       db.prepare(`UPDATE ${table} SET name = ?, qualifier = ? WHERE id = ?`).run(
         newNormalized,
@@ -1242,7 +1267,7 @@ export function updateEntity(
 
     for (const alias of wantedAliases) {
       if (entityExistsInAnyType(alias)) {
-        throw new Error(`„${alias}“ ist bereits ein Hauptname`);
+        throw new AppError(409, `„${alias}“ ist bereits ein Hauptname`);
       }
       // A bare-name alias of a qualified homonym would hijack every plain
       // mention of that name; only allow it when it targets the plain name.
@@ -1252,7 +1277,7 @@ export function updateEntity(
         parsedAlias.qualifier &&
         parsedAlias.qualifier !== newQualifier
       ) {
-        throw new Error(`„${alias}“ kollidiert mit dem Hauptnamen`);
+        throw new AppError(409, `„${alias}“ kollidiert mit dem Hauptnamen`);
       }
 
       deleteAlias.run(type, alias);
@@ -1327,4 +1352,11 @@ export function listActiveRewriteSessionIds(): string[] {
     )
     .all() as { id: string }[];
   return rows.map((r) => r.id).filter((id): id is string => !!id);
+}
+
+/** Whether a person with this (case-insensitive) name exists in the world. */
+export function personExists(name: string): boolean {
+  const row = db.prepare('SELECT 1 FROM persons WHERE name = ? COLLATE NOCASE').get(name) as
+    { '1': number } | undefined;
+  return row !== undefined;
 }

@@ -6,10 +6,12 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type { ClientToServerEvents, ServerToClientEvents } from '../shared/types.js';
-import { ensureAdminUser } from './users.js';
+import type { TypedIoServer } from './socket.js';
+import { ensureAdminUser } from './repositories/users.js';
 import adminRouter from './routes/admin.js';
 import authRouter from './routes/auth.js';
 import aiRouter from './routes/ai.js';
@@ -21,7 +23,7 @@ import recordingsRouter from './routes/recordings.js';
 import storyArcsRouter from './routes/storyArcs.js';
 import whiteboardRouter from './routes/whiteboard.js';
 import { authMiddleware, requireApproved } from './auth.js';
-import { setupSocket } from './socket.js';
+import { setupSocket, type SocketData } from './socket.js';
 import { getVersion } from './version.js';
 import { runMigrations } from './migrations.js';
 import {
@@ -71,19 +73,67 @@ function getCorsOrigin(): string[] | boolean {
 
 const corsOrigin = getCorsOrigin();
 
+// Validate environment configuration before anything else at runtime.
+try {
+  validateEnv();
+} catch (err) {
+  logger.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+
 const app = express();
-app.set('trust proxy', process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1');
+const trustProxy = process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1';
+app.set('trust proxy', trustProxy);
+if (process.env.NODE_ENV === 'production' && !trustProxy) {
+  logger.warn(
+    'TRUST_PROXY is not enabled: behind a TLS-terminating proxy the auth cookie ' +
+      'is sent without the Secure flag. Set TRUST_PROXY=true in production.'
+  );
+}
 const http = createServer(app);
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
+const io: TypedIoServer = new Server<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  Record<string, never>,
+  SocketData
+>(http, {
   cors: { origin: corsOrigin, credentials: true },
 });
-app.set('io', io);
 
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({ origin: corsOrigin, credentials: true }));
-// Large enough for base64 board image uploads (handled by their own route).
-app.use(express.json({ limit: '15mb' }));
+// Security headers incl. CSP. The SPA is served from this origin; Quill and
+// the whiteboard need inline styles and data:/blob: images.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'blob:'],
+        connectSrc: [
+          "'self'",
+          ...(process.env.VITE_SERVER_URL ? [process.env.VITE_SERVER_URL] : []),
+        ],
+        fontSrc: ["'self'", 'data:'],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'self'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  })
+);
+// Modest default for all API routes; the base64 board upload route declares
+// its own, larger limit and must reach that route-level parser first.
+app.use(
+  express.json({
+    limit: '2mb',
+    type: (req) => req.url?.split('?')[0] !== '/api/whiteboard/uploads',
+  })
+);
 app.use(cookieParser());
 
 // Generic request logging
@@ -104,14 +154,6 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Validate environment configuration before anything else at runtime.
-try {
-  validateEnv();
-} catch (err) {
-  logger.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
-}
-
 // Run schema migrations and ensure admin user exists at startup
 runMigrations();
 
@@ -123,7 +165,7 @@ if (isDiscordOAuthConfigured() && !isEncryptionConfigured()) {
   process.exit(1);
 }
 
-ensureAdminUser();
+await ensureAdminUser();
 
 try {
   await recoverAllRecordings();
@@ -212,11 +254,11 @@ setupSocket(io);
 // (LISTEN_FDS=1); fall back to binding PORT directly in dev/tests.
 if (Number(process.env.LISTEN_FDS || 0) > 0) {
   http.listen({ fd: 3 }, () => {
-    console.log(`Server running on http://localhost:${PORT} (systemd socket activation)`);
+    logger.info(`Server running on http://localhost:${PORT} (systemd socket activation)`);
   });
 } else {
   http.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    logger.info(`Server running on http://localhost:${PORT}`);
   });
 }
 
@@ -225,7 +267,7 @@ let isShuttingDown = false;
 async function shutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  console.log(`\n${signal} received, shutting down gracefully...`);
+  logger.info(`${signal} received, shutting down gracefully...`);
 
   // Close the server immediately so no new connections come in while we
   // finish active work. Keep the process alive until cleanup is done.
@@ -237,7 +279,7 @@ async function shutdown(signal: string) {
 
   // Safety net covering the entire shutdown sequence (cleanup, recovery, server close).
   const forceExit = setTimeout(() => {
-    console.log('Forcing shutdown...');
+    logger.warn('Forcing shutdown...');
     process.exit(0);
   }, 30000);
 

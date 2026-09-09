@@ -4,9 +4,14 @@ import { BingoDashboard } from '../components/BingoDashboard';
 import type { SafeUser } from '../../shared/types';
 import { useSocket } from '../hooks/useSocket';
 
+interface WindowWithWebkitAudio extends Window {
+  webkitAudioContext?: typeof AudioContext;
+}
+
 function playBingoSound() {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const w = window as WindowWithWebkitAudio;
+    const ctx = new (window.AudioContext || w.webkitAudioContext)();
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();
     oscillator.type = 'sine';
