@@ -62,6 +62,14 @@ function parseTimestamp(ts: string): number | null {
   return parseInt(a, 10) * 60 + parseInt(b, 10);
 }
 
+/** Parses a bare transcript timestamp ("02:31" / "1:02:03") into seconds. */
+function parseTimeParam(ts: string): number | null {
+  const match = ts.match(/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const [, h, m, s] = match;
+  return (h ? parseInt(h, 10) : 0) * 3600 + parseInt(m, 10) * 60 + parseInt(s, 10);
+}
+
 const SESSION_DELETE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 function isDeletableSession(session: RecordingSession): boolean {
@@ -247,11 +255,45 @@ export function Sessions({ user }: SessionsProps) {
     };
   }, [request]);
 
+  // Deep link support (?session=<id>&t=<mm:ss>): opens the transcript and
+  // scrolls to the line carrying the timestamp. Transcript opening is
+  // add-only, so a stale call can never collapse an open transcript.
+  async function openTranscriptAndJump(sessionId: number, targetSeconds: number) {
+    if (!(sessionId in loadedTranscripts)) {
+      setLoadingTranscript((prev) => new Set(prev).add(sessionId));
+      const { data } = await request<{ session: RecordingSession }>(`/api/recordings/${sessionId}`);
+      if (data) {
+        setLoadedTranscripts((prev) => ({ ...prev, [sessionId]: data.session.transcript }));
+      }
+      setLoadingTranscript((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+    }
+    setVisibleTranscripts((prev) => new Set(prev).add(sessionId));
+    // Give React a moment to render the transcript lines before scrolling.
+    setTimeout(() => {
+      const card = sessionRefs.current[sessionId];
+      if (!card) return;
+      const lines = card.querySelectorAll<HTMLElement>('[data-ts-seconds]');
+      for (const line of lines) {
+        if (Number(line.dataset.tsSeconds) === targetSeconds) {
+          line.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          line.classList.add('bg-[var(--accent)]/15');
+          setTimeout(() => line.classList.remove('bg-[var(--accent)]/15'), 2500);
+          return;
+        }
+      }
+    }, 150);
+  }
+
   useEffect(() => {
     const sessionIdParam = searchParams.get('session');
     if (!sessionIdParam || sessions.length === 0) return;
     const sessionId = Number(sessionIdParam);
     if (!Number.isFinite(sessionId)) return;
+    const timeParam = searchParams.get('t');
 
     const timer = setTimeout(() => {
       const element = sessionRefs.current[sessionId];
@@ -260,8 +302,14 @@ export function Sessions({ user }: SessionsProps) {
         element.classList.add('ring-2', 'ring-[var(--accent)]');
         setTimeout(() => element.classList.remove('ring-2', 'ring-[var(--accent)]'), 2000);
       }
+
+      if (!timeParam) return;
+      const targetSeconds = parseTimeParam(timeParam);
+      if (targetSeconds === null) return;
+      void openTranscriptAndJump(sessionId, targetSeconds);
     }, 300);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, loading, sessions]);
 
   async function startTranscriptionNow(sessionId: number) {
@@ -1189,6 +1237,7 @@ export function Sessions({ user }: SessionsProps) {
                       return (
                         <div
                           key={`${session.id}-${index}`}
+                          data-ts-seconds={seconds ?? undefined}
                           className="flex items-start gap-2 px-2 py-1 rounded hover:bg-slate-800/50 group"
                         >
                           {hasTimestamp && (

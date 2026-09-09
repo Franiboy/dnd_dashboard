@@ -198,6 +198,11 @@ export const schema: Record<string, TableDef> = {
       user_id: { type: 'TEXT', notNull: true },
       title: { type: 'TEXT', notNull: true },
       content: { type: 'TEXT', notNull: true },
+      // HTML-stripped plain text copy of content, maintained by the diary
+      // repository on every write so the search index can index plain text
+      // (SQL triggers cannot strip HTML). NULL on legacy rows until the
+      // migration backfill fills it.
+      content_text: { type: 'TEXT' },
       summary: { type: 'TEXT' },
       rewritten_content: { type: 'TEXT' },
       created_at: { type: 'TEXT', notNull: true },

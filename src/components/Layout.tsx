@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AppSwitcher } from './AppSwitcher';
+import { GlobalSearch } from './GlobalSearch';
 import { HeaderAction } from './HeaderAction';
 import { Loading } from './Loading';
 import { StoryArcFilter } from './StoryArcFilter';
@@ -165,8 +166,9 @@ export function Layout({ user, realUser, version, onLogout, onUserChange, childr
             </div>
           </div>
 
-          {/* Right: story-arc filter (on affected routes) + logout */}
+          {/* Right: global search + story-arc filter (on affected routes) + logout */}
           <div className="flex shrink-0 items-center gap-2">
+            <GlobalSearch user={user} version={version} />
             {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
             <HeaderAction onClick={onLogout} icon={logoutIcon} variant="danger">
               Logout

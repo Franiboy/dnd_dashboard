@@ -21,7 +21,6 @@ Das Dashboard ist eine interne Web-App für eine D&D-Gruppe: Discord-Login, Bing
 - **Starke Kopplung an `opencode run` CLI** als einziger KI-Provider.
 - **SQLite ist Single-Instance-gebunden**; ein späterer Umzug auf Postgres/Redis sollte vorbereitet werden.
 - **Keine zentrale Fehlerbehandlung/Logging-Middleware** im Express-Stack; viel duplizierter `if (!req.user)`-Code.
-- **Keine Volltextsuche** für Tagebuch/Welt – wichtig, wenn die Datenmenge wächst.
 
 ---
 
@@ -66,7 +65,7 @@ Fokus: Die KI-Verarbeitung robuster machen und das Wissen besser nutzbar machen.
 | --- | ---------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2.1 | **Persistente KI-Job-Queue**             | Lange KI-Jobs überleben Server-Neustarts            | SQLite- oder Redis-basierte Queue; Jobs für Diary-Rewrite, Summary, Session-Transkript, Bingo-Vorschläge; Fortschritt und Retry-Logik im Admin-Panel sichtbar |
 | 2.2 | **KI-Provider-Abstraktion**              | Nicht mehr ausschließlich von `opencode` abhängig   | `AiProvider`-Interface; Implementierungen für `opencode` und mindestens eine direkte API (z. B. OpenAI/Anthropic); `AI_PROVIDER` unterstützt mehrere Werte    |
-| 2.3 | **Volltextsuche**                        | Tagebuch und Welt schnell durchsuchbar              | SQLite `FTS5` für Titel/Inhalt/Wissen; API-Endpunkte `GET /api/diary/search`, `GET /api/entities/search`; Frontend-Suchfeld                                   |
+| 2.3 | **Volltextsuche** ✅ erledigt            | Tagebuch, Sessions und Welt schnell durchsuchbar    | SQLite `FTS5`-Index (`search_index`) mit Triggern für Tagebuch/Transkripte/Wissen; Endpunkt `GET /api/search`; Ctrl+K-Suchpalette im Header mit Deep-Links    |
 | 2.4 | **Entity-Beziehungen & Knowledge-Graph** | Welt wird vernetzt statt nur listenartig            | Beziehungen zwischen Personen/Organisationen/Orten modellieren; einfache Graph-Visualisierung in `/welt`                                                      |
 | 2.5 | **Tagebuch-Versionierung**               | KI-Rewrites und manuelle Änderungen nachvollziehbar | Pro Eintrag Historie der letzten N Versionen; Diff-View; Restore                                                                                              |
 | 2.6 | **Frontend-State verbessern**            | Weniger manuelles Fetching, bessere UX              | `useApi` durch SWR/React Query ersetzen oder ein React-Query-ähnliches Caching einführen; optimistische Updates                                               |

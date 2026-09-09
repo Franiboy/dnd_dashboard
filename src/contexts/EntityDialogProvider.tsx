@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
-import { EntityDialogContext } from './EntityDialogContext';
+import { EntityDialogContext, type EntityDialogTab } from './EntityDialogContext';
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
 import type { EntityType } from '../../shared/types';
@@ -17,13 +17,20 @@ interface EntityDialogState {
   type: EntityType;
   qualifier: string;
   onSaved?: () => void;
+  initialTab?: EntityDialogTab;
 }
 
 export function EntityDialogProvider({ children }: EntityDialogProviderProps) {
   const [entity, setEntity] = useState<EntityDialogState | null>(null);
 
   const openEntity = useCallback(
-    (name: string, type: EntityType, onSaved?: () => void, qualifier = '') => {
+    (
+      name: string,
+      type: EntityType,
+      onSaved?: () => void,
+      qualifier = '',
+      initialTab?: EntityDialogTab
+    ) => {
       setEntity((prev) => {
         if (
           prev &&
@@ -31,10 +38,16 @@ export function EntityDialogProvider({ children }: EntityDialogProviderProps) {
           prev.type === type &&
           prev.qualifier === (qualifier ?? '')
         ) {
-          if (onSaved === undefined || prev.onSaved === onSaved) return prev;
-          return { ...prev, onSaved };
+          if (onSaved === undefined && initialTab === undefined) return prev;
+          return { ...prev, onSaved: onSaved ?? prev.onSaved, initialTab };
         }
-        return { name, type, qualifier: qualifier ?? '', onSaved: onSaved ?? prev?.onSaved };
+        return {
+          name,
+          type,
+          qualifier: qualifier ?? '',
+          onSaved: onSaved ?? prev?.onSaved,
+          initialTab,
+        };
       });
     },
     []
@@ -60,10 +73,11 @@ export function EntityDialogProvider({ children }: EntityDialogProviderProps) {
           }
         >
           <EntityEditDialog
-            key={`${entity.type}-${entity.name}-${entity.qualifier}`}
+            key={`${entity.type}-${entity.name}-${entity.qualifier}-${entity.initialTab ?? 'default'}`}
             type={entity.type}
             name={entity.name}
             qualifier={entity.qualifier}
+            initialTab={entity.initialTab}
             onClose={closeEntity}
             onSaved={entity.onSaved}
           />
