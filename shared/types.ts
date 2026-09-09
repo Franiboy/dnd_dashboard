@@ -267,6 +267,12 @@ export interface StoryArc {
   name: string;
   description: string | null;
   status: StoryArcStatus;
+  /**
+   * Campaign chapter number shown on the chapter chips/timeline. NULL =
+   * unnumbered (e.g. special or one-shot arcs); numbers must be unique,
+   * unnumbered arcs can coexist.
+   */
+  chapterNumber: number | null;
   sessionCount: number;
   diaryEntryCount: number;
   /** Number of world entities assigned to this arc (many-to-many). */

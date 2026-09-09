@@ -18,6 +18,7 @@ import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { QuillWithEntityMention } from '../components/QuillWithEntityMention';
+import { ArcAssignPicker } from '../components/storyArcs/ArcAssignPicker';
 import { DiaryCreateModal } from '../components/diary/DiaryCreateModal';
 import { DiarySummaryPanel } from '../components/diary/DiarySummaryPanel';
 import { isEmptyHtml, normalizeDraftHtml } from '../lib/diaryDraft';
@@ -523,7 +524,7 @@ export function Diary() {
           </div>
         ) : visibleEntries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <p className="text-slate-400">Keine Einträge im gewählten Story Arc vorhanden.</p>
+            <p className="text-slate-400">Keine Einträge im gewählten Kapitel vorhanden.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -541,26 +542,13 @@ export function Diary() {
                       Spieltag {entry.gameDay ?? '—'}
                     </h3>
                     {storyArcs.length > 0 && (
-                      <select
-                        value={entry.arcId ?? ''}
-                        onChange={(e) =>
-                          void handleArcChange(
-                            entry,
-                            e.target.value === '' ? null : Number(e.target.value)
-                          )
-                        }
-                        title="Story Arc zuweisen"
-                        aria-label="Story-Arc-Zuweisung"
-                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-900 border border-[var(--border)] text-slate-300 focus:outline-none focus:border-[var(--accent)] max-w-[12rem] cursor-pointer"
-                      >
-                        <option value="">Ohne Arc</option>
-                        {storyArcs.map((arc) => (
-                          <option key={arc.id} value={arc.id}>
-                            {arc.name}
-                            {arc.status === 'active' ? ' ▶' : ''}
-                          </option>
-                        ))}
-                      </select>
+                      <ArcAssignPicker
+                        arcs={storyArcs}
+                        value={entry.arcId ?? null}
+                        onChange={(arcId) => void handleArcChange(entry, arcId)}
+                        disabled={working}
+                        className="align-middle"
+                      />
                     )}
                     {entry.sessionDraftFor && (
                       <Link

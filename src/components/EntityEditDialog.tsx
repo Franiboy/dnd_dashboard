@@ -7,6 +7,7 @@ import { arcStatusLabel } from '../lib/storyArcs';
 import { EntityRichText } from './EntityRichText';
 import { Loading } from './Loading';
 import { Modal } from './Modal';
+import { ChapterStatusDot } from './storyArcs/ChapterStatusDot';
 import { formatEntityLabel, typeLabels } from '../lib/entityLabels';
 import type { EntityDialogTab } from '../contexts/EntityDialogContext';
 import type {
@@ -1311,11 +1312,14 @@ export function EntityEditDialog({
                             onChange={(e) => void toggleArcLink(arc.id, e.target.checked)}
                             className="accent-[var(--accent)]"
                           />
+                          <ChapterStatusDot status={arc.status} />
                           <span className="flex-1 min-w-0 truncate">
-                            {arc.status === 'active' && (
-                              <span className="text-[var(--accent)] mr-1">▶</span>
+                            {arc.chapterNumber !== null && (
+                              <span className="chapter-caps mr-1.5 text-[9.5px] text-amber-200/60">
+                                Kapitel {arc.chapterNumber} ·
+                              </span>
                             )}
-                            {arc.name}
+                            <span className="chapter-serif">{arc.name}</span>
                             <span className="ml-2 text-xs text-slate-500">
                               {arcStatusLabel(arc)}
                               {arc.gameDayStart !== null

@@ -402,3 +402,16 @@ button {
 .wb-flyout-in {
   animation: wb-flyout-in 130ms ease-out;
 }
+
+/* Story-arc chapter typography ("Abenteuer-Look"): serif display names and
+   small-caps chapter labels. System serif stack on purpose — external web
+   fonts are blocked by the app's CSP. */
+.chapter-serif {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.chapter-caps {
+  font-family: Georgia, 'Times New Roman', serif;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}

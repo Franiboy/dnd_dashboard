@@ -4,6 +4,7 @@ import { useStoryArcs } from '../../hooks/useStoryArcs';
 import { Loading } from '../Loading';
 import { Modal } from '../Modal';
 import { QuillWithEntityMention } from '../QuillWithEntityMention';
+import { ArcAssignPicker } from '../storyArcs/ArcAssignPicker';
 import { stripHtml, quillFormats, quillModules } from '../quillConfig';
 import type { CampaignDay, DiaryEntry } from '../../../shared/types';
 
@@ -278,23 +279,13 @@ export function DiaryCreateModal({
         </div>
         {storyArcs.length > 0 && (
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Story Arc</label>
-            <select
-              value={createArcValue}
-              onChange={(e) =>
-                setCreateArcValue(e.target.value === '' ? '' : Number(e.target.value))
-              }
+            <label className="block text-sm text-slate-400 mb-1">Kapitel</label>
+            <ArcAssignPicker
+              arcs={storyArcs}
+              value={createArcValue === '' ? null : Number(createArcValue)}
+              onChange={(arcId) => setCreateArcValue(arcId ?? '')}
               disabled={working}
-              className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            >
-              {activeArcId === null && <option value="">Ohne Arc</option>}
-              {storyArcs.map((arc) => (
-                <option key={arc.id} value={arc.id}>
-                  {arc.name}
-                  {arc.status === 'active' ? ' (aktiv)' : ''}
-                </option>
-              ))}
-            </select>
+            />
           </div>
         )}
         <div className="flex-1 min-h-0 flex flex-col">
