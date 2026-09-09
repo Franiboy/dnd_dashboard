@@ -74,6 +74,10 @@ def preprocess_audio(input_path: str) -> str:
 _FILENAME_UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 
 
+def _get_segments_path(transcript_path: str) -> str:
+    return transcript_path.replace(".txt", ".segments.json")
+
+
 def _parse_timestamp_to_seconds(ts: str) -> float | None:
     parts = ts.split(":")
     if len(parts) == 2:
