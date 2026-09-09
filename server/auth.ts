@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 import type { User } from '../shared/types.js';
-import { findUserById } from './users.js';
+import { findUserById } from './repositories/users.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('auth');

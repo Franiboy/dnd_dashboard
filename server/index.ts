@@ -11,7 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import type { ClientToServerEvents, ServerToClientEvents } from '../shared/types.js';
 import type { TypedIoServer } from './socket.js';
-import { ensureAdminUser } from './users.js';
+import { ensureAdminUser } from './repositories/users.js';
 import adminRouter from './routes/admin.js';
 import authRouter from './routes/auth.js';
 import aiRouter from './routes/ai.js';

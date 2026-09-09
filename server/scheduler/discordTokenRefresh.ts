@@ -1,4 +1,4 @@
-import { getUsersWithDiscordTokens } from '../users.js';
+import { getUsersWithDiscordTokens } from '../repositories/users.js';
 import { createLogger } from '../logger.js';
 import { isDiscordOAuthConfigured, syncDiscordUser } from '../discord/oauth.js';
 import { isEncryptionConfigured } from '../encryption.js';

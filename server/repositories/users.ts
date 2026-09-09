@@ -1,9 +1,9 @@
 import bcrypt from 'bcrypt';
 import crypto from 'node:crypto';
-import { USER_ROLES, type SafeUser, type User, type UserRole } from '../shared/types.js';
-import { db } from './database.js';
-import { createLogger } from './logger.js';
-import { decrypt, encrypt, isEncryptionConfigured } from './encryption.js';
+import { USER_ROLES, type SafeUser, type User, type UserRole } from '../../shared/types.js';
+import { db } from '../database.js';
+import { createLogger } from '../logger.js';
+import { decrypt, encrypt, isEncryptionConfigured } from '../encryption.js';
 
 const SALT_ROUNDS = 10;
 const log = createLogger('users');

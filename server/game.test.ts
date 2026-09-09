@@ -18,7 +18,7 @@ import {
   updateTask,
 } from './game.js';
 import { getGameForUser } from './socket.js';
-import { createAdminUser, setUserRole } from './users.js';
+import { createAdminUser, setUserRole } from './repositories/users.js';
 import type { Cell, User } from '../shared/types.js';
 
 function fullBoard(taskIds: string[], size = 3): Cell[][] {

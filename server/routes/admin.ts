@@ -16,7 +16,7 @@ import {
   setUserApproved,
   setUserDisabledApps,
   setUserRole,
-} from '../users.js';
+} from '../repositories/users.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 import { syncPlayersFromUsers } from '../game.js';
 import { isNightlyJobRunning, runNightlyJobNow } from '../scheduler/summaryScheduler.js';

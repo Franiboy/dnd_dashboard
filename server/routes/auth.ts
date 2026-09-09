@@ -39,7 +39,7 @@ import {
   toSafeUser,
   updateDiscordProfile,
   verifyPassword,
-} from '../users.js';
+} from '../repositories/users.js';
 import { personExists } from '../repositories/diary.js';
 
 const log = createLogger('auth-routes');

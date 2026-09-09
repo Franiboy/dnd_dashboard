@@ -21,7 +21,7 @@ import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
 import { generateSessionDiaryDraft } from '../ai/sessionToDiary.js';
 import { detectSessionGameDay } from '../ai/sessionGameDay.js';
 import { annotateTranscriptSpeakers } from '../ai/transcriptSpeakers.js';
-import { getAllUsers } from '../users.js';
+import { getAllUsers } from '../repositories/users.js';
 import {
   onSessionsUpdated,
   onStatusUpdated,
