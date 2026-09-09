@@ -101,6 +101,8 @@ export function Diary() {
 
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [viewingRewrittenIds, setViewingRewrittenIds] = useState<Set<number>>(new Set());
+  const [deepLinkCollapsedIds, setDeepLinkCollapsedIds] = useState<Set<number>>(new Set());
+  const [deepLinkOriginalIds, setDeepLinkOriginalIds] = useState<Set<number>>(new Set());
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null);
   const [editingSummaryText, setEditingSummaryText] = useState('');
   const [processingSummaryId, setProcessingSummaryId] = useState<number | null>(null);
@@ -124,6 +126,35 @@ export function Diary() {
     }, 300);
   }
 
+  // Deep link (?entry=<id>): expand, prefer the KI version and scroll into view.
+  // Both adjustments are derived during render instead of syncing state in an
+  // effect, so no cascading render is needed.
+  const deepLinkEntryId = useMemo(() => {
+    const raw = searchParams.get('entry');
+    const id = raw === null ? NaN : Number(raw);
+    return Number.isFinite(id) ? id : null;
+  }, [searchParams]);
+
+  const effectiveExpandedIds = useMemo(() => {
+    if (
+      deepLinkEntryId === null ||
+      deepLinkCollapsedIds.has(deepLinkEntryId) ||
+      !entries.some((e) => e.id === deepLinkEntryId)
+    ) {
+      return expandedIds;
+    }
+    return new Set(expandedIds).add(deepLinkEntryId);
+  }, [expandedIds, deepLinkEntryId, deepLinkCollapsedIds, entries]);
+
+  const effectiveViewingRewrittenIds = useMemo(() => {
+    if (deepLinkEntryId === null || deepLinkOriginalIds.has(deepLinkEntryId)) {
+      return viewingRewrittenIds;
+    }
+    const entry = entries.find((e) => e.id === deepLinkEntryId);
+    if (!entry || !(entry.rewrittenContent || entry.rewrittenFilePath)) return viewingRewrittenIds;
+    return new Set(viewingRewrittenIds).add(deepLinkEntryId);
+  }, [viewingRewrittenIds, deepLinkEntryId, deepLinkOriginalIds, entries]);
+
   const {
     draftOriginal,
     draftRewritten,
@@ -132,6 +163,7 @@ export function Diary() {
     getEditingContent,
     cancelEntryEdit,
     primeDraftsFromStorage,
+    purgeDrafts,
     clearServerSaveTimeout,
     saveOriginalToServer,
     handleQuillChange,
@@ -139,25 +171,15 @@ export function Diary() {
     userId: user?.id,
     entriesRef,
     setEntries,
-    viewingRewrittenIds,
+    viewingRewrittenIds: effectiveViewingRewrittenIds,
     onUserQuillInput: scheduleEntityHighlights,
   });
 
-  // Deep link (?entry=<id>): expand, prefer the KI version and scroll into view.
   useEffect(() => {
-    const entryIdParam = searchParams.get('entry');
-    if (!entryIdParam || entries.length === 0) return;
-    const entryId = Number(entryIdParam);
-    if (!Number.isFinite(entryId)) return;
+    if (deepLinkEntryId === null || entries.length === 0) return;
+    if (!entries.some((e) => e.id === deepLinkEntryId)) return;
 
-    const entry = entries.find((e) => e.id === entryId);
-    if (!entry) return;
-
-    setExpandedIds((prev) => new Set(prev).add(entryId));
-    if (entry.rewrittenContent || entry.rewrittenFilePath) {
-      setViewingRewrittenIds((prev) => new Set(prev).add(entryId));
-    }
-
+    const entryId = deepLinkEntryId;
     const timer = setTimeout(() => {
       const element = entryRefs.current[entryId];
       if (element) {
@@ -167,7 +189,7 @@ export function Diary() {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchParams, loading, entries]);
+  }, [deepLinkEntryId, loading, entries]);
 
   // Re-apply entity highlights when mappings or the expanded set changes.
   useEffect(() => {
@@ -190,10 +212,7 @@ export function Diary() {
     setWorking(false);
     if (!error) {
       removeEntry(id);
-      localStorage.removeItem(getDraftKey(id, 'original'));
-      localStorage.removeItem(getDraftKey(id, 'rewritten'));
-      delete draftRawRefs.current.original[id];
-      delete draftRawRefs.current.rewritten[id];
+      purgeDrafts(id);
       showSuccess('Eintrag gelöscht.');
     }
   }
@@ -235,6 +254,14 @@ export function Diary() {
       else next.delete(id);
       return next;
     });
+    if (id === deepLinkEntryId) {
+      setDeepLinkOriginalIds((prev) => {
+        const next = new Set(prev);
+        if (showRewritten) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
   }
 
   async function handleRewrite(entry: DiaryEntry) {
@@ -363,7 +390,7 @@ export function Diary() {
   }
 
   async function toggleExpanded(id: number) {
-    const isExpanding = !expandedIds.has(id);
+    const isExpanding = !effectiveExpandedIds.has(id);
     if (isExpanding) {
       const entry = entries.find((e) => e.id === id);
       if (entry?.rewrittenFilePath && !entry.rewrittenContent) {
@@ -390,10 +417,18 @@ export function Diary() {
     }
     setExpandedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (isExpanding) next.add(id);
+      else next.delete(id);
       return next;
     });
+    if (id === deepLinkEntryId) {
+      setDeepLinkCollapsedIds((prev) => {
+        const next = new Set(prev);
+        if (isExpanding) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
   }
 
   function startSummaryEdit(entry: DiaryEntry) {
@@ -573,7 +608,7 @@ export function Diary() {
                 <BadgeList items={entry.locations} variant="location" />
                 <BadgeList items={entry.items} variant="item" />
 
-                {expandedIds.has(entry.id) ? (
+                {effectiveExpandedIds.has(entry.id) ? (
                   <>
                     <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                       {entry.rewrittenFilePath ? (
@@ -582,7 +617,7 @@ export function Diary() {
                             type="button"
                             onClick={() => setViewRewritten(entry.id, false)}
                             className={`px-3 py-1 rounded-md text-sm font-medium transition ${
-                              !viewingRewrittenIds.has(entry.id)
+                              !effectiveViewingRewrittenIds.has(entry.id)
                                 ? 'bg-[var(--accent)] text-slate-900'
                                 : 'text-slate-300 hover:text-[var(--text-h)]'
                             }`}
@@ -594,7 +629,7 @@ export function Diary() {
                             onClick={() => setViewRewritten(entry.id, true)}
                             disabled={working}
                             className={`px-3 py-1 rounded-md text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                              viewingRewrittenIds.has(entry.id)
+                              effectiveViewingRewrittenIds.has(entry.id)
                                 ? 'bg-[var(--accent)] text-slate-900'
                                 : 'text-slate-300 hover:text-[var(--text-h)]'
                             }`}
@@ -660,7 +695,7 @@ export function Diary() {
                       </div>
                     </div>
 
-                    {viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath ? (
+                    {effectiveViewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath ? (
                       <div className="rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 p-4 mb-4">
                         <form
                           className="flex items-center gap-2 mb-3"
@@ -795,7 +830,7 @@ export function Diary() {
         onAiEnd={() => {
           setAiOperation(false);
         }}
-        sseReady={sseReadyRef.current}
+        sseReadyRef={sseReadyRef}
         mappings={mappings}
       />
     </div>

@@ -137,14 +137,13 @@ export function WhiteboardToolbar({
   const [drawingToolsOpen, setDrawingToolsOpen] = useState(false);
   const [flyoutPosition, setFlyoutPosition] = useState<{ left: number; top: number } | null>(null);
   const drawingActive = tool === 'draw' || isShapeTool(tool);
-
-  useEffect(() => {
-    if (!drawingActive) setDrawingToolsOpen(false);
-  }, [drawingActive]);
+  // The flyout only exists while a drawing/shape tool is active; deriving the
+  // visibility avoids a cascading reset effect on tool switches.
+  const toolsOpen = drawingToolsOpen && drawingActive;
 
   // Clicks outside the toolbar close the flyout.
   useEffect(() => {
-    if (!drawingToolsOpen) return;
+    if (!toolsOpen) return;
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as Node;
       if (!rootRef.current?.contains(target) && !flyoutRef.current?.contains(target)) {
@@ -153,12 +152,12 @@ export function WhiteboardToolbar({
     };
     window.addEventListener('pointerdown', onPointerDown);
     return () => window.removeEventListener('pointerdown', onPointerDown);
-  }, [drawingToolsOpen]);
+  }, [toolsOpen]);
 
   // The flyout must escape the toolbar's scroll/clip container, so track the
   // pen button in viewport coordinates while it is open.
   useLayoutEffect(() => {
-    if (!drawingToolsOpen || !penButtonRef.current) {
+    if (!toolsOpen || !penButtonRef.current) {
       setFlyoutPosition(null);
       return;
     }
@@ -175,7 +174,7 @@ export function WhiteboardToolbar({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [drawingToolsOpen]);
+  }, [toolsOpen]);
 
   const selectedType = selectedElement?.type ?? null;
   // Which control clusters are relevant: driven either by the active tool
@@ -435,7 +434,7 @@ export function WhiteboardToolbar({
           </div>
         )}
       </div>
-      {drawingToolsOpen &&
+      {toolsOpen &&
         flyoutPosition &&
         createPortal(
           <div

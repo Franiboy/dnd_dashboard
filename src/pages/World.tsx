@@ -432,27 +432,29 @@ export function World() {
   const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(
-    async (arcParam?: number | 'none') => {
+    (arcParam?: number | 'none') => {
       const query = arcParam !== undefined ? `?arcId=${arcParam}` : '';
-      const { data } = await request<EntitiesResponse>(`/api/entities${query}`);
-      if (data) {
-        setEntities(data);
-      }
-      setLoading(false);
+      return request<EntitiesResponse>(`/api/entities${query}`).then(({ data }) => {
+        if (data) {
+          setEntities(data);
+        }
+        setLoading(false);
+      });
     },
     [request]
   );
 
-  const loadBlacklists = useCallback(async () => {
-    const { data } = await request<{
+  const loadBlacklists = useCallback(() => {
+    return request<{
       persons: string[];
       organizations: string[];
       locations: string[];
       items: string[];
-    }>('/api/entities/blacklist');
-    if (data) {
-      setBlacklists(data);
-    }
+    }>('/api/entities/blacklist').then(({ data }) => {
+      if (data) {
+        setBlacklists(data);
+      }
+    });
   }, [request]);
 
   useEffect(() => {

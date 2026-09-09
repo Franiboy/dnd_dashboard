@@ -43,7 +43,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.2",
     "helmet": "^8.3.0",
-    "isomorphic-dompurify": "^3.22.0",
+    "isomorphic-dompurify": "^4.2.0",
     "jsonwebtoken": "^9.0.3",
     "libsodium-wrappers": "^0.8.4",
     "quill": "2.0.2",
@@ -74,13 +74,13 @@
     "husky": "^9.1.7",
     "jsdom": "^30.0.1",
     "lint-staged": "^17.3.0",
-    "oxlint": "1.78.0",
+    "oxlint": "^1.82.0",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.0"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
@@ -91,6 +91,7 @@
     "*.{json,md,yml,yaml,css,html}": "prettier --write"
   },
   "overrides": {
-    "quill": "2.0.2"
+    "quill": "2.0.2",
+    "tar": "7.5.22"
   }
 }

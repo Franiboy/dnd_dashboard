@@ -112,9 +112,12 @@ function useFocusOnMount<T extends HTMLElement & { select: () => void }>() {
 const BLUR_GRACE_MS = 150;
 
 function useBlurGuard(ref: RefObject<HTMLElement | null>) {
-  const mountedAt = useRef(performance.now());
+  const mountedAt = useRef<number | null>(null);
+  useEffect(() => {
+    mountedAt.current = performance.now();
+  }, []);
   return () => {
-    if (performance.now() - mountedAt.current < BLUR_GRACE_MS) {
+    if (mountedAt.current !== null && performance.now() - mountedAt.current < BLUR_GRACE_MS) {
       ref.current?.focus();
       return true;
     }
@@ -404,14 +407,14 @@ export function WhiteboardElementView({
   );
   const uiScale = Math.max(contentScale, MIN_UI_SCREEN_PX / (BASE_CONTROL_SIZE * cameraScale));
   // Notes auto-fit their text into this box (design units minus padding).
-  const noteFit = useFitFontSize(
+  const { ref: noteFitRef, fontSize: noteFitFontSize } = useFitFontSize(
     element.text,
     designWidth - 16,
     element.height / contentScale - 16,
     isNote && !!element.text.trim()
   );
   // Plain text elements auto-fit the same way while staying transparent.
-  const textFit = useFitFontSize(
+  const { ref: textFitRef, fontSize: textFitFontSize } = useFitFontSize(
     element.text,
     designWidth - 16,
     element.height / contentScale - 16,
@@ -437,9 +440,9 @@ export function WhiteboardElementView({
           <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
         ) : (
           <div
-            ref={noteFit.ref as RefObject<HTMLDivElement>}
+            ref={noteFitRef as RefObject<HTMLDivElement>}
             className="w-full break-words leading-[1.15] text-slate-900"
-            style={{ fontSize: noteFit.fontSize }}
+            style={{ fontSize: noteFitFontSize }}
           >
             {/* ql-snow mirrors the editor's theme context so saved notes
                 render with identical heading, quote, code and list styles. */}
@@ -465,9 +468,9 @@ export function WhiteboardElementView({
           <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
         ) : (
           <div
-            ref={textFit.ref as RefObject<HTMLDivElement>}
+            ref={textFitRef as RefObject<HTMLDivElement>}
             className="w-full whitespace-pre-wrap break-words text-center leading-[1.15]"
-            style={{ fontSize: textFit.fontSize, color: element.color }}
+            style={{ fontSize: textFitFontSize, color: element.color }}
           >
             {element.text}
           </div>
