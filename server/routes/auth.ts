@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
+import { z } from 'zod';
 import { rateLimit } from 'express-rate-limit';
+import { AppError, parseWith } from '../errors.js';
 import {
   authMiddleware,
   clearAuthCookie,
@@ -14,7 +16,6 @@ import {
 } from '../auth.js';
 import { getGame } from '../game.js';
 import { createLogger } from '../logger.js';
-import { db } from '../database.js';
 import { isDevAutoLoginEnabled } from '../env.js';
 import {
   DISCORD_REDIRECT_URI,
@@ -39,6 +40,7 @@ import {
   updateDiscordProfile,
   verifyPassword,
 } from '../users.js';
+import { personExists } from '../repositories/diary.js';
 
 const log = createLogger('auth-routes');
 
@@ -56,14 +58,48 @@ const authRateLimit = rateLimit({
 
 const router = Router();
 
-router.get('/auth/discord', (req, res) => {
-  if (!isDiscordOAuthConfigured()) {
-    return res.status(500).json({ error: 'Discord OAuth ist nicht konfiguriert' });
-  }
+const callbackSchema = z.object({
+  code: z.string({ error: 'Code oder State fehlt' }).min(1, 'Code oder State fehlt'),
+  state: z.string({ error: 'Code oder State fehlt' }),
+});
+
+const booleanFlag = z.preprocess((v) => (typeof v === 'boolean' ? v : false), z.boolean());
+
+const sessionDiarySettingsSchema = z.object({
+  autoSessionToDiary: booleanFlag,
+  autoAcceptSessionDiary: booleanFlag,
+});
+
+const loginSchema = z.object({
+  username: z.string({ error: 'Benutzername und Passwort sind erforderlich' }),
+  password: z.string({ error: 'Benutzername und Passwort sind erforderlich' }),
+});
+
+function requireOAuthConfigured(): string {
   const clientId = process.env.DISCORD_CLIENT_ID;
-  if (!clientId) {
-    return res.status(500).json({ error: 'Discord OAuth ist nicht konfiguriert' });
+  if (!isDiscordOAuthConfigured() || !clientId) {
+    throw new AppError(500, 'Discord OAuth ist nicht konfiguriert');
   }
+  return clientId;
+}
+
+function isValidState(expected: string, actual: string): boolean {
+  const expectedBuf = Buffer.from(expected);
+  const actualBuf = Buffer.from(actual);
+  if (expectedBuf.length !== actualBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, actualBuf);
+}
+
+function requireInitialAdmin() {
+  const user = findUserByUsername('admin');
+  if (!user || !user.isAdmin || !isInitialAdmin(user)) {
+    throw new AppError(500, 'Admin-Konto fehlt');
+  }
+  return user;
+}
+
+router.get('/auth/discord', (req, res) => {
+  const clientId = requireOAuthConfigured();
   const state = crypto.randomUUID();
   const url = new URL('https://discord.com/oauth2/authorize');
   url.searchParams.set('client_id', clientId);
@@ -75,26 +111,14 @@ router.get('/auth/discord', (req, res) => {
   res.json({ url: url.toString() });
 });
 
-function isValidState(expected: string, actual: string): boolean {
-  const expectedBuf = Buffer.from(expected);
-  const actualBuf = Buffer.from(actual);
-  if (expectedBuf.length !== actualBuf.length) return false;
-  return crypto.timingSafeEqual(expectedBuf, actualBuf);
-}
-
 router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
-  const { code, state } = req.body;
-  if (typeof code !== 'string' || !code || typeof state !== 'string') {
-    return res.status(400).json({ error: 'Code oder State fehlt' });
-  }
-  if (!isDiscordOAuthConfigured()) {
-    return res.status(500).json({ error: 'Discord OAuth ist nicht konfiguriert' });
-  }
+  const { code, state } = parseWith(callbackSchema, req.body);
+  requireOAuthConfigured();
 
   const expectedState = getOAuthStateCookie(req);
   if (!expectedState || !isValidState(expectedState, state)) {
     clearOAuthStateCookie(res);
-    return res.status(401).json({ error: 'Ungültiger OAuth State' });
+    throw new AppError(401, 'Ungültiger OAuth State');
   }
   clearOAuthStateCookie(res);
 
@@ -105,7 +129,7 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     if (!user) {
       const existingByUsername = findUserByUsername(discordAuth.username);
       if (existingByUsername) {
-        return res.status(400).json({ error: 'Ein Account mit diesem Username existiert bereits' });
+        throw new AppError(400, 'Ein Account mit diesem Username existiert bereits');
       }
       const created = createDiscordUser(
         discordAuth.discordId,
@@ -123,7 +147,7 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     }
 
     if (!user) {
-      return res.status(500).json({ error: 'Benutzer konnte nicht erstellt werden' });
+      throw new AppError(500, 'Benutzer konnte nicht erstellt werden');
     }
 
     if (!user.isApproved) {
@@ -135,14 +159,15 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
         discordAuth.refreshToken,
         discordAuth.expiresAt
       );
-      return res
+      res
         .status(403)
         .json({ error: 'Account wurde noch nicht freigegeben', user: toSafeUser(user) });
+      return;
     }
 
     const allowed = checkLoginAllowed(user);
     if (!allowed.allowed) {
-      return res.status(403).json({ error: allowed.reason });
+      throw new AppError(403, allowed.reason);
     }
 
     resetFailedLogins(user);
@@ -156,6 +181,7 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     setAuthCookie(res, token);
     res.json({ ok: true, user: toSafeUser(user) });
   } catch (err) {
+    if (err instanceof AppError) throw err;
     if (err instanceof DiscordOAuthError) {
       log.warn('Discord OAuth callback failed:', {
         status: err.status,
@@ -163,32 +189,29 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
         discordErrorDescription: err.discordErrorDescription,
       });
       const status = err.status >= 400 && err.status < 500 ? err.status : 400;
-      return res.status(status).json({ error: 'Discord Authentifizierung fehlgeschlagen' });
+      throw new AppError(status, 'Discord Authentifizierung fehlgeschlagen');
     }
     log.error('Discord callback error:', err);
-    res.status(500).json({ error: 'Interner Fehler' });
+    throw new AppError(500, 'Interner Fehler', { cause: err });
   }
 });
 
-router.post('/admin/login', authRateLimit, (req, res) => {
-  const { username, password } = req.body;
-  if (typeof username !== 'string' || typeof password !== 'string') {
-    return res.status(400).json({ error: 'Benutzername und Passwort sind erforderlich' });
-  }
+router.post('/admin/login', authRateLimit, async (req, res) => {
+  const { username, password } = parseWith(loginSchema, req.body);
 
   const user = findUserByUsername(username);
   if (!user || !user.isAdmin || !isInitialAdmin(user)) {
-    return res.status(401).json({ error: 'Falsche Anmeldedaten' });
+    throw new AppError(401, 'Falsche Anmeldedaten');
   }
 
   const allowed = checkLoginAllowed(user);
   if (!allowed.allowed) {
-    return res.status(403).json({ error: allowed.reason });
+    throw new AppError(403, allowed.reason);
   }
 
-  if (!password || !verifyPassword(user, password)) {
+  if (!password || !(await verifyPassword(user, password))) {
     recordFailedLogin(user);
-    return res.status(401).json({ error: 'Falsche Anmeldedaten' });
+    throw new AppError(401, 'Falsche Anmeldedaten');
   }
 
   resetFailedLogins(user);
@@ -199,12 +222,9 @@ router.post('/admin/login', authRateLimit, (req, res) => {
 
 router.post('/auth/dev-session', (req, res) => {
   if (!isDevAutoLoginEnabled()) {
-    return res.status(404).json({ error: 'Nicht verfügbar' });
+    throw new AppError(404, 'Nicht verfügbar');
   }
-  const user = findUserByUsername('admin');
-  if (!user || !user.isAdmin || !isInitialAdmin(user)) {
-    return res.status(500).json({ error: 'Admin-Konto fehlt' });
-  }
+  const user = requireInitialAdmin();
   resetFailedLogins(user);
   setAuthCookie(res, createToken(user));
   res.json({ ok: true, user: toSafeUser(user) });
@@ -223,45 +243,42 @@ router.put('/me/active-person', authMiddleware, (req: AuthRequest, res) => {
   const { name } = req.body;
   const personName = typeof name === 'string' && name.trim() ? name.trim() : null;
 
-  if (personName) {
-    const row = db
-      .prepare('SELECT 1 FROM persons WHERE name = ? COLLATE NOCASE')
-      .get(personName) as { '1': number } | undefined;
-    if (!row) {
-      res.status(400).json({ error: 'Person existiert nicht' });
-      return;
-    }
+  if (personName && !personExists(personName)) {
+    throw new AppError(400, 'Person existiert nicht');
   }
 
   const user = setUserActivePerson(req.user!.id, personName);
   if (!user) {
-    res.status(500).json({ error: 'Speichern fehlgeschlagen' });
-    return;
+    throw new AppError(500, 'Speichern fehlgeschlagen');
   }
   res.json({ ok: true, user });
 });
 
 router.put('/me/session-diary-settings', authMiddleware, (req: AuthRequest, res) => {
-  const { autoSessionToDiary, autoAcceptSessionDiary } = req.body;
-  const autoTransfer = typeof autoSessionToDiary === 'boolean' ? autoSessionToDiary : false;
-  const autoAccept = typeof autoAcceptSessionDiary === 'boolean' ? autoAcceptSessionDiary : false;
+  const { autoSessionToDiary, autoAcceptSessionDiary } = parseWith(
+    sessionDiarySettingsSchema,
+    req.body
+  );
 
-  const user = setUserSessionDiarySettings(req.user!.id, autoTransfer, autoAccept);
+  const user = setUserSessionDiarySettings(
+    req.user!.id,
+    autoSessionToDiary,
+    autoAcceptSessionDiary
+  );
   if (!user) {
-    res.status(500).json({ error: 'Speichern fehlgeschlagen' });
-    return;
+    throw new AppError(500, 'Speichern fehlgeschlagen');
   }
   res.json({ ok: true, user });
 });
 
 router.get('/state', authMiddleware, (req: AuthRequest, res) => {
   if (!req.user!.isApproved) {
-    return res.status(403).json({ error: 'Account wurde noch nicht freigegeben' });
+    throw new AppError(403, 'Account wurde noch nicht freigegeben');
   }
   res.json(getGame());
 });
 
-router.get('/users', authMiddleware, requireApproved, (req: AuthRequest, res) => {
+router.get('/users', authMiddleware, requireApproved, (_req: AuthRequest, res) => {
   res.json(getAllUsers());
 });
 

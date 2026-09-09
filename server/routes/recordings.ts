@@ -1,6 +1,9 @@
-import { Router, type Response, type NextFunction } from 'express';
+import { Router } from 'express';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { z } from 'zod';
+import { AppError, parseWith } from '../errors.js';
+import { aiRateLimit } from '../utils/rateLimits.js';
 import { authMiddleware, requireAdmin, requireApproved, type AuthRequest } from '../auth.js';
 import {
   getBotStatus,
@@ -41,14 +44,29 @@ import {
 import { assignSessionToArc } from '../repositories/storyArcs.js';
 import { createLogger } from '../logger.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
+import type { RecordingSession } from '../../shared/types.js';
 
 const log = createLogger('recordings-routes');
 const SESSION_DELETE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
-function withAnnotatedTranscript(
-  session: import('../../shared/types.js').RecordingSession,
-  viewerId?: string
-): import('../../shared/types.js').RecordingSession {
+const router = Router();
+const sseClients = new SseBroadcaster();
+
+const idParamSchema = z.coerce.number().int().positive({ error: 'Ungültige ID' });
+
+const optionalSeconds = (message: string) =>
+  z.preprocess(
+    (v) => (v === undefined ? undefined : v),
+    z.union([z.null(), z.number({ error: message })], { error: message }).optional()
+  );
+
+const nullableInt = (message: string) =>
+  z.preprocess(
+    (v) => (v === null || v === undefined ? null : Number(v)),
+    z.number({ error: message }).int(message).positive(message)
+  );
+
+function withAnnotatedTranscript(session: RecordingSession, viewerId?: string): RecordingSession {
   if (!session.transcript) return session;
   try {
     const users = getAllUsers();
@@ -59,9 +77,6 @@ function withAnnotatedTranscript(
     return session;
   }
 }
-
-const router = Router();
-const sseClients = new SseBroadcaster();
 
 function getStatusData(): string {
   return JSON.stringify({ bot: getBotStatus(), active: getActiveRecording() });
@@ -142,7 +157,11 @@ onStatusUpdated(() => broadcastStatus());
 onSessionsUpdated(() => broadcastSessions());
 onProgressUpdated((sessionId, progress) => broadcastProgress(sessionId, progress));
 
-function requireRecordingFeature(_req: AuthRequest, res: Response, next: NextFunction): void {
+function requireRecordingFeature(
+  _req: AuthRequest,
+  res: import('express').Response,
+  next: import('express').NextFunction
+): void {
   if (!isRecordingFeatureEnabled()) {
     res.status(503).json({ error: 'Aufnahme-Feature ist nicht konfiguriert' });
     return;
@@ -151,6 +170,29 @@ function requireRecordingFeature(_req: AuthRequest, res: Response, next: NextFun
 }
 
 router.use(authMiddleware, requireApproved, requireRecordingFeature);
+
+function requireSession(id: number) {
+  const session = getSessionById(id);
+  if (!session) {
+    throw new AppError(404, 'Aufnahme nicht gefunden');
+  }
+  return session;
+}
+
+/** Sessions must be fully transcribed before any AI post-processing runs. */
+function requireCompletedTranscript(id: number) {
+  const session = requireSession(id);
+  if (session.status !== 'completed' || !session.transcript) {
+    throw new AppError(400, 'Kein Transkript vorhanden');
+  }
+  return session;
+}
+
+function requireAiEnabled(): void {
+  if (!isAiEnabled()) {
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
+  }
+}
 
 router.get('/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -184,7 +226,7 @@ router.get('/channels', requireAdmin, async (_req, res) => {
     const channels = await getAllVoiceChannels();
     res.json({ channels });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    throw new AppError(500, err instanceof Error ? err.message : String(err), { cause: err });
   }
 });
 
@@ -204,7 +246,7 @@ router.get('/session-diary-entries', (req: AuthRequest, res) => {
 });
 
 router.get('/:id/diary-transfer', (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
+  const id = parseWith(idParamSchema, req.params.id);
   const transfer = getSessionToDiaryTransfer(id, req.user!.id);
   res.json({ transfer });
 });
@@ -213,23 +255,22 @@ router.get('/config', requireAdmin, (_req, res) => {
   res.json(getRecordingConfig());
 });
 
+const configSchema = z.object({
+  channelId: z.preprocess(
+    (v) => (v === undefined || v === null || v === '' ? null : v),
+    z.union([z.null(), z.string()], { error: 'channelId muss ein String oder null sein' })
+  ),
+});
+
 router.post('/config', requireAdmin, (req: AuthRequest, res) => {
-  const { channelId } = req.body;
-  if (channelId !== undefined && channelId !== null && typeof channelId !== 'string') {
-    res.status(400).json({ error: 'channelId muss ein String oder null sein' });
-    return;
-  }
+  const { channelId } = parseWith(configSchema, req.body);
   setRecordingConfig(channelId || null);
   res.json(getRecordingConfig());
 });
 
 router.get('/:id', (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
+  const session = requireSession(id);
   const files = getFilesBySessionId(id);
   const wantRaw = req.query.raw === 'true' || req.query.raw === '1';
   const outSession = wantRaw ? session : withAnnotatedTranscript(session, req.user?.id);
@@ -237,43 +278,27 @@ router.get('/:id', (req: AuthRequest, res) => {
 });
 
 router.post('/:id/stop', requireAdmin, async (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
+  const id = parseWith(idParamSchema, req.params.id);
   try {
     const session = await finishRecording(id);
     res.json({ session: withAnnotatedTranscript(session, req.user?.id) });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    throw new AppError(500, err instanceof Error ? err.message : String(err), { cause: err });
   }
 });
 
-router.put('/:id/trim', requireAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
+const trimSchema = z.object({
+  trimStartSeconds: optionalSeconds('Trim-Werte müssen Zahlen oder null sein'),
+  trimEndSeconds: optionalSeconds('Trim-Werte müssen Zahlen oder null sein'),
+});
 
-  const { trimStartSeconds, trimEndSeconds } = req.body;
-  if (
-    (trimStartSeconds !== undefined &&
-      trimStartSeconds !== null &&
-      typeof trimStartSeconds !== 'number') ||
-    (trimEndSeconds !== undefined && trimEndSeconds !== null && typeof trimEndSeconds !== 'number')
-  ) {
-    res.status(400).json({ error: 'Trim-Werte müssen Zahlen oder null sein' });
-    return;
-  }
+router.put('/:id/trim', requireAdmin, (req: AuthRequest, res) => {
+  const id = parseWith(idParamSchema, req.params.id);
+  requireSession(id);
 
-  if (
-    trimStartSeconds !== undefined &&
-    trimEndSeconds !== undefined &&
-    trimStartSeconds !== null &&
-    trimEndSeconds !== null &&
-    trimStartSeconds >= trimEndSeconds
-  ) {
-    res.status(400).json({ error: 'Start muss vor Ende liegen' });
-    return;
+  const { trimStartSeconds, trimEndSeconds } = parseWith(trimSchema, req.body);
+  if (trimStartSeconds != null && trimEndSeconds != null && trimStartSeconds >= trimEndSeconds) {
+    throw new AppError(400, 'Start muss vor Ende liegen');
   }
 
   updateSession(id, {
@@ -284,7 +309,7 @@ router.put('/:id/trim', requireAdmin, (req, res) => {
   emitSessionsUpdated();
   const updated = getSessionById(id);
   res.json({
-    session: updated ? withAnnotatedTranscript(updated, (req as AuthRequest).user?.id) : updated,
+    session: updated ? withAnnotatedTranscript(updated, req.user?.id) : updated,
   });
 });
 
@@ -298,40 +323,36 @@ function parseTimestamp(ts: string): number | null {
   return parseInt(a, 10) * 60 + parseInt(b, 10);
 }
 
+const trimTranscriptSchema = z.object({
+  startSeconds: optionalSeconds('Werte müssen Zahlen oder null sein'),
+  endSeconds: optionalSeconds('Werte müssen Zahlen oder null sein'),
+});
+
 router.post('/:id/trim-transcript', requireAdmin, async (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
+  const session = requireSession(id);
 
-  const { startSeconds, endSeconds } = req.body;
-  if (
-    (startSeconds !== undefined && startSeconds !== null && typeof startSeconds !== 'number') ||
-    (endSeconds !== undefined && endSeconds !== null && typeof endSeconds !== 'number')
-  ) {
-    res.status(400).json({ error: 'Werte müssen Zahlen oder null sein' });
-    return;
-  }
-
+  const { startSeconds, endSeconds } = parseWith(trimTranscriptSchema, req.body);
   if (!session.transcript) {
-    res.status(400).json({ error: 'Kein Transkript vorhanden' });
-    return;
+    throw new AppError(400, 'Kein Transkript vorhanden');
   }
 
   const lines = session.transcript.split('\n');
   const trimmed = lines.filter((line) => {
     const ts = parseTimestamp(line);
     if (ts === null) return true;
-    if (startSeconds !== undefined && startSeconds !== null && ts < startSeconds) return false;
-    if (endSeconds !== undefined && endSeconds !== null && ts > endSeconds) return false;
+    if (startSeconds != null && ts < startSeconds) return false;
+    if (endSeconds != null && ts > endSeconds) return false;
     return true;
   });
 
   const newTranscript = trimmed.join('\n');
   const transcriptPath = join(session.directory, 'transcript.txt');
-  await writeFile(transcriptPath, newTranscript);
+  try {
+    await writeFile(transcriptPath, newTranscript);
+  } catch (err) {
+    throw new AppError(500, 'Transkript konnte nicht gespeichert werden', { cause: err });
+  }
 
   updateSession(id, {
     transcript: newTranscript,
@@ -346,30 +367,24 @@ router.post('/:id/trim-transcript', requireAdmin, async (req: AuthRequest, res) 
 
   const updated = getSessionById(id);
   res.json({
-    session: updated ? withAnnotatedTranscript(updated, (req as AuthRequest).user?.id) : updated,
+    session: updated ? withAnnotatedTranscript(updated, req.user?.id) : updated,
   });
 });
 
-router.post('/:id/transcribe', requireAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
+router.post('/:id/transcribe', requireAdmin, aiRateLimit, (req, res) => {
+  const id = parseWith(idParamSchema, req.params.id);
+  const session = requireSession(id);
   if (
     session.status !== 'pending_transcription' &&
     session.status !== 'error' &&
     session.status !== 'completed'
   ) {
-    res.status(400).json({ error: 'Session kann aktuell nicht transkribiert werden' });
-    return;
+    throw new AppError(400, 'Session kann aktuell nicht transkribiert werden');
   }
 
   const files = getFilesBySessionId(id).filter((f) => f.wavPath);
   if (files.length === 0) {
-    res.status(400).json({ error: 'Keine Audio-Dateien für diese Session vorhanden' });
-    return;
+    throw new AppError(400, 'Keine Audio-Dateien für diese Session vorhanden');
   }
 
   runTranscription(id, files, { force: true }).catch((err) => {
@@ -380,74 +395,45 @@ router.post('/:id/transcribe', requireAdmin, (req, res) => {
 });
 
 router.post('/:id/delete-audio', requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
+  const session = requireSession(id);
   if (session.status === 'recording' || session.status === 'processing') {
-    res
-      .status(409)
-      .json({ error: 'Audiodateien können während der Verarbeitung nicht gelöscht werden' });
-    return;
+    throw new AppError(409, 'Audiodateien können während der Verarbeitung nicht gelöscht werden');
   }
 
   const deleted = await deleteSessionAudioFiles(id);
   res.json({ message: `${deleted} Audiodatei(en) gelöscht`, deleted });
 });
 
-router.post('/:id/improve-transcript', requireAdmin, async (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
-  if (session.status !== 'completed' || !session.transcript) {
-    res.status(400).json({ error: 'Kein Transkript vorhanden' });
-    return;
-  }
-  if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
-  }
+router.post('/:id/improve-transcript', requireAdmin, aiRateLimit, async (req: AuthRequest, res) => {
+  const id = parseWith(idParamSchema, req.params.id);
+  requireCompletedTranscript(id);
+  requireAiEnabled();
 
   const stopProgress = startProgressMessages('KI verbessert das Transkript...');
   try {
     const result = await improveSessionTranscriptWithAi(id, req.user!, undefined, notifyAiLog);
     if (result.transcript === null) {
       log.error(`improveSessionTranscriptWithAi returned null for session ${id}`);
-      res.status(500).json({ error: 'KI-Verbesserung ist fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'KI-Verbesserung ist fehlgeschlagen');
     }
     broadcastAiLog('Transkript verbessert.');
     emitSessionsUpdated();
     const updated = getSessionById(id);
     res.json({ session: updated ? withAnnotatedTranscript(updated, req.user!.id) : updated });
   } catch (err) {
+    if (err instanceof AppError) throw err;
     log.error(`Unexpected error during transcript improvement of session ${id}:`, err);
-    res.status(500).json({ error: 'KI-Verbesserung ist fehlgeschlagen' });
+    throw new AppError(500, 'KI-Verbesserung ist fehlgeschlagen', { cause: err });
   } finally {
     stopProgress();
   }
 });
 
-router.post('/:id/summary', requireAdmin, async (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
-  if (session.status !== 'completed' || !session.transcript) {
-    res.status(400).json({ error: 'Kein Transkript vorhanden' });
-    return;
-  }
-  if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
-  }
+router.post('/:id/summary', requireAdmin, aiRateLimit, async (req: AuthRequest, res) => {
+  const id = parseWith(idParamSchema, req.params.id);
+  requireCompletedTranscript(id);
+  requireAiEnabled();
 
   const stopProgress = startProgressMessages('KI erstellt die Zusammenfassung...', [
     'KI prüft vorherige Sessions, Entitäten und Tagebücher...',
@@ -472,8 +458,7 @@ router.post('/:id/summary', requireAdmin, async (req: AuthRequest, res) => {
     const result = await processSessionSummaryEntities(id, req.user!, undefined, notifyAiLog);
     if (!result.longSummary || !result.summary) {
       log.error(`processSessionSummaryEntities returned incomplete result for session ${id}`);
-      res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'KI-Zusammenfassung ist fehlgeschlagen');
     }
 
     broadcastAiLog('Zusammenfassung erstellt.');
@@ -481,28 +466,18 @@ router.post('/:id/summary', requireAdmin, async (req: AuthRequest, res) => {
     const updated = getSessionById(id);
     res.json({ session: updated ? withAnnotatedTranscript(updated, req.user!.id) : updated });
   } catch (err) {
+    if (err instanceof AppError) throw err;
     log.error(`Unexpected error during session summary of session ${id}:`, err);
-    res.status(500).json({ error: 'KI-Zusammenfassung ist fehlgeschlagen' });
+    throw new AppError(500, 'KI-Zusammenfassung ist fehlgeschlagen', { cause: err });
   } finally {
     stopProgress();
   }
 });
 
-router.post('/:id/diary-draft', async (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
-  if (session.status !== 'completed' || !session.transcript) {
-    res.status(400).json({ error: 'Kein Transkript vorhanden' });
-    return;
-  }
-  if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
-  }
+router.post('/:id/diary-draft', aiRateLimit, async (req: AuthRequest, res) => {
+  const id = parseWith(idParamSchema, req.params.id);
+  requireCompletedTranscript(id);
+  requireAiEnabled();
 
   const stopProgress = startProgressMessages('KI überführt Session ins Tagebuch...', [
     'KI prüft Session und bestehende Tagebucheinträge...',
@@ -514,8 +489,7 @@ router.post('/:id/diary-draft', async (req: AuthRequest, res) => {
     const entry = await generateSessionDiaryDraft(id, req.user!, undefined, notifyAiLog);
     if (!entry) {
       log.error(`generateSessionDiaryDraft returned null for session ${id}`);
-      res.status(500).json({ error: 'KI-Überführung ins Tagebuch ist fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'KI-Überführung ins Tagebuch ist fehlgeschlagen');
     }
 
     broadcastAiLog('Tagebucheintrag-Entwurf erstellt.');
@@ -523,28 +497,18 @@ router.post('/:id/diary-draft', async (req: AuthRequest, res) => {
     const transfer = getSessionToDiaryTransfer(id, req.user!.id);
     res.json({ entry, transfer });
   } catch (err) {
+    if (err instanceof AppError) throw err;
     log.error(`Unexpected error during session-to-diary draft of session ${id}:`, err);
-    res.status(500).json({ error: 'KI-Überführung ins Tagebuch ist fehlgeschlagen' });
+    throw new AppError(500, 'KI-Überführung ins Tagebuch ist fehlgeschlagen', { cause: err });
   } finally {
     stopProgress();
   }
 });
 
-router.post('/:id/detect-game-day', requireAdmin, async (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
-  if (session.status !== 'completed' || !session.transcript) {
-    res.status(400).json({ error: 'Kein Transkript vorhanden' });
-    return;
-  }
-  if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
-  }
+router.post('/:id/detect-game-day', requireAdmin, aiRateLimit, async (req: AuthRequest, res) => {
+  const id = parseWith(idParamSchema, req.params.id);
+  const session = requireCompletedTranscript(id);
+  requireAiEnabled();
 
   const force =
     req.query.force === 'true' ||
@@ -571,63 +535,51 @@ router.post('/:id/detect-game-day', requireAdmin, async (req: AuthRequest, res) 
     });
     if (result.gameDay === null) {
       log.error(`detectSessionGameDay returned null for session ${id}`);
-      res.status(500).json({ error: 'KI-Ermittlung des Spieltags ist fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'KI-Ermittlung des Spieltags ist fehlgeschlagen');
     }
     broadcastAiLog(`Spieltag ermittelt: ${result.gameDay}–${result.gameDayEnd ?? result.gameDay}.`);
     emitSessionsUpdated();
     const updated = getSessionById(id);
     res.json({ session: updated ? withAnnotatedTranscript(updated, req.user!.id) : updated });
   } catch (err) {
+    if (err instanceof AppError) throw err;
     log.error(`Unexpected error during game day detection of session ${id}:`, err);
-    res.status(500).json({ error: 'KI-Ermittlung des Spieltags ist fehlgeschlagen' });
+    throw new AppError(500, 'KI-Ermittlung des Spieltags ist fehlgeschlagen', { cause: err });
   } finally {
     stopProgress();
   }
 });
 
 router.get('/:id/progress', (req, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
+  const session = requireSession(id);
 
   const progress = getTranscriptionProgress(id);
   res.json({ sessionId: id, status: session.status, progress });
 });
 
+const gameDaySchema = z.object({
+  gameDay: nullableInt('Spieltag muss eine positive ganze Zahl oder null sein'),
+  gameDayEnd: nullableInt('Spieltag-Ende muss eine positive ganze Zahl oder null sein'),
+});
+
 router.put('/:id/game-day', requireAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
+  requireSession(id);
 
-  const { gameDay, gameDayEnd } = req.body;
-  const start = gameDay === null || gameDay === undefined ? null : Number(gameDay);
-  const endRaw = gameDayEnd === null || gameDayEnd === undefined ? null : Number(gameDayEnd);
-  const end = start === null ? null : (endRaw ?? start);
-  if (start !== null && (!Number.isInteger(start) || start <= 0)) {
-    res.status(400).json({ error: 'Spieltag muss eine positive ganze Zahl oder null sein' });
-    return;
-  }
+  const { gameDay, gameDayEnd } = parseWith(gameDaySchema, req.body);
+  const end = gameDay === null ? null : (gameDayEnd ?? gameDay);
   if (end !== null && (!Number.isInteger(end) || end <= 0)) {
-    res.status(400).json({ error: 'Spieltag-Ende muss eine positive ganze Zahl oder null sein' });
-    return;
+    throw new AppError(400, 'Spieltag-Ende muss eine positive ganze Zahl oder null sein');
   }
-  if (start !== null && end !== null && end < start) {
-    res.status(400).json({ error: 'Endtag darf nicht vor Starttag liegen' });
-    return;
+  if (gameDay !== null && end !== null && end < gameDay) {
+    throw new AppError(400, 'Endtag darf nicht vor Starttag liegen');
   }
-  if (start !== null && end !== null && end - start > 30) {
-    res.status(400).json({ error: 'Zeitraum zu groß (max 30 Tage)' });
-    return;
+  if (gameDay !== null && end !== null && end - gameDay > 30) {
+    throw new AppError(400, 'Zeitraum zu groß (max 30 Tage)');
   }
 
-  updateSession(id, { gameDay: start, gameDayEnd: end });
+  updateSession(id, { gameDay, gameDayEnd: end });
   emitSessionsUpdated();
   const updated = getSessionById(id);
   res.json({
@@ -635,29 +587,22 @@ router.put('/:id/game-day', requireAdmin, (req, res) => {
   });
 });
 
+const arcSchema = z.object({
+  arcId: z.preprocess(
+    (v) => (v === null || v === undefined ? null : Number(v)),
+    z.union([z.null(), z.number().int().positive()], {
+      error: 'arcId muss eine positive ganze Zahl oder null sein',
+    })
+  ),
+});
+
 router.put('/:id/arc', requireAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
+  requireSession(id);
 
-  const { arcId } = req.body;
-  const resolvedArcId = arcId === null || arcId === undefined ? null : Number(arcId);
-  if (resolvedArcId !== null && (!Number.isInteger(resolvedArcId) || resolvedArcId <= 0)) {
-    res.status(400).json({ error: 'arcId muss eine positive ganze Zahl oder null sein' });
-    return;
-  }
-
-  try {
-    assignSessionToArc(id, resolvedArcId);
-  } catch (err) {
-    res.status(400).json({
-      error: err instanceof Error ? err.message : 'Zuordnung fehlgeschlagen',
-    });
-    return;
-  }
+  const { arcId } = parseWith(arcSchema, req.body);
+  // assignSessionToArc throws an AppError for unknown arcs.
+  assignSessionToArc(id, arcId);
   emitSessionsUpdated();
   const updated = getSessionById(id);
   res.json({
@@ -666,15 +611,10 @@ router.put('/:id/arc', requireAdmin, (req, res) => {
 });
 
 router.delete('/:id', requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  const session = getSessionById(id);
-  if (!session) {
-    res.status(404).json({ error: 'Aufnahme nicht gefunden' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
+  const session = requireSession(id);
   if (Date.now() - new Date(session.startedAt).getTime() >= SESSION_DELETE_WINDOW_MS) {
-    res.status(403).json({ error: 'Aufnahmen älter als 14 Tage können nicht gelöscht werden' });
-    return;
+    throw new AppError(403, 'Aufnahmen älter als 14 Tage können nicht gelöscht werden');
   }
 
   const { directory } = deleteSession(id);
