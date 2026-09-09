@@ -947,14 +947,16 @@ export function Sessions({ user }: SessionsProps) {
               <div>
                 <h3 className="text-lg font-semibold text-[var(--text-h)]">
                   {session.name}
-                  {session.arcId != null && arcById.get(session.arcId) && (
+                  {/* Admins see the chapter chip in the assignment row below;
+                      a second badge here would show the same chapter twice. */}
+                  {!user.isAdmin && session.arcId != null && arcById.get(session.arcId) && (
                     <ChapterChip
                       arc={arcById.get(session.arcId)!}
                       className="ml-2 align-middle"
                       title={formatArcLabel(arcById.get(session.arcId)!)}
                     />
                   )}
-                  {session.arcId == null && (
+                  {!user.isAdmin && session.arcId == null && (
                     <ChapterChip arc={null} className="ml-2 align-middle" />
                   )}
                 </h3>
