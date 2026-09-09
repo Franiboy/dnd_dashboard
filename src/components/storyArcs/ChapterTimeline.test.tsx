@@ -48,4 +48,15 @@ describe('ChapterTimeline', () => {
     screen.getByText('One-Shots').click();
     expect(onSelect).toHaveBeenCalledWith('none');
   });
+
+  it('stacks chapters as full-width cards in vertical layout', () => {
+    render(<ChapterTimeline arcs={arcs} selected={null} layout="vertical" onSelect={() => {}} />);
+    const group = screen.getByRole('group', { name: 'Kapitel wählen' });
+    expect(group.className).toContain('flex-col');
+
+    const text = group.textContent ?? '';
+    expect(text.indexOf('Erstes Kapitel')).toBeLessThan(text.indexOf('Zweites Kapitel'));
+    expect(text.indexOf('Zweites Kapitel')).toBeLessThan(text.indexOf('Sonderarc'));
+    expect(screen.getByText('Alle Kapitel')).toBeDefined();
+  });
 });

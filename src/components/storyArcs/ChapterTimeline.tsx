@@ -9,6 +9,8 @@ interface ChapterTimelineProps {
   onSelect: (value: number | 'none' | null) => void;
   /** 'filter' shows the leading "Alle Kapitel" segment, 'assign' does not. */
   mode?: 'filter' | 'assign';
+  /** 'horizontal' scrolls a row of segments, 'vertical' stacks full-width cards. */
+  layout?: 'horizontal' | 'vertical';
   className?: string;
 }
 
@@ -34,32 +36,38 @@ const segmentNameStyles = {
 const pickedStyles = 'outline outline-2 outline-offset-2 outline-[var(--accent)]/60';
 
 /**
- * The campaign as a horizontal chapter timeline. Used as the header filter
- * panel (mode="filter", with "Alle Kapitel") and as the inline assignment
- * picker (mode="assign").
+ * The campaign as a chapter timeline. Used as the global chapter filter
+ * (mode="filter", with "Alle Kapitel") and as the inline assignment picker
+ * (mode="assign"); horizontal segments or, via layout="vertical", stacked
+ * full-width cards for narrow containers like the SideDrawer.
  */
 export function ChapterTimeline({
   arcs,
   selected,
   onSelect,
   mode = 'filter',
+  layout = 'horizontal',
   className = '',
 }: ChapterTimelineProps) {
   const sorted = sortArcsChronologically(arcs);
   const nonePicked = mode === 'assign' ? selected === null : selected === 'none';
+  const vertical = layout === 'vertical';
+
+  const containerStyles = vertical
+    ? 'flex flex-col gap-2'
+    : 'flex items-stretch gap-2 overflow-x-auto pb-1';
+  const allStyles = vertical ? 'w-full' : 'min-w-[7.5rem] flex-none';
+  const segmentWidthStyles = vertical ? 'w-full' : 'min-w-[9rem] flex-1';
+  const noneWidthStyles = vertical ? 'w-full' : 'min-w-[8.5rem] flex-1';
 
   return (
-    <div
-      role="group"
-      aria-label="Kapitel wählen"
-      className={`flex items-stretch gap-2 overflow-x-auto pb-1 ${className}`}
-    >
+    <div role="group" aria-label="Kapitel wählen" className={`${containerStyles} ${className}`}>
       {mode === 'filter' && (
         <button
           type="button"
           onClick={() => onSelect(null)}
           aria-pressed={selected === null}
-          className={`flex min-w-[7.5rem] flex-none items-center justify-center rounded-md border border-[var(--border)] bg-slate-800/50 px-3 py-2 text-[12.5px] font-semibold text-slate-300 transition hover:brightness-110 ${
+          className={`flex ${allStyles} items-center justify-center rounded-md border border-[var(--border)] bg-slate-800/50 px-3 py-2 text-[12.5px] font-semibold text-slate-300 transition hover:brightness-110 ${
             selected === null ? pickedStyles : ''
           }`}
         >
@@ -72,7 +80,7 @@ export function ChapterTimeline({
           type="button"
           onClick={() => onSelect(arc.id)}
           aria-pressed={selected === arc.id}
-          className={`relative min-w-[9rem] flex-1 rounded-md border px-3 pb-2.5 pt-2 text-left transition hover:brightness-110 ${
+          className={`relative ${segmentWidthStyles} rounded-md border px-3 pb-2.5 pt-2 text-left transition hover:brightness-110 ${
             segmentStyles[arc.status]
           } ${selected === arc.id ? pickedStyles : ''}`}
         >
@@ -98,7 +106,7 @@ export function ChapterTimeline({
         onClick={() => onSelect('none')}
         aria-pressed={nonePicked}
         title="Einträge und Sessions ohne Kapitelzuordnung (One-Shots)"
-        className={`relative min-w-[8.5rem] flex-1 rounded-md border border-dashed border-[var(--border)] bg-transparent px-3 pb-2.5 pt-2 text-left transition hover:brightness-110 ${
+        className={`relative ${noneWidthStyles} rounded-md border border-dashed border-[var(--border)] bg-transparent px-3 pb-2.5 pt-2 text-left transition hover:brightness-110 ${
           nonePicked ? pickedStyles : ''
         }`}
       >

@@ -1,14 +1,9 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
 import { AppSwitcher } from './AppSwitcher';
 import { GlobalSearch } from './GlobalSearch';
-import { StoryArcFilter } from './StoryArcFilter';
 import { UserMenu } from './UserMenu';
 import { useAuth } from '../hooks/useAuth';
 import type { SafeUser, VersionInfo } from '../../shared/types';
-
-// Routes the global story-arc filter applies to; shown in the header there.
-const STORY_ARC_FILTER_PATHS = ['/sessions', '/tagebuch', '/welt'];
 
 interface LayoutProps {
   user: SafeUser;
@@ -21,7 +16,6 @@ interface LayoutProps {
 export function Layout({ user, realUser, version, onLogout, children }: LayoutProps) {
   const isSimulating = realUser !== undefined && realUser !== null && realUser.id !== user.id;
   const { clearViewAsUser } = useAuth();
-  const location = useLocation();
   const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -60,10 +54,9 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
             </div>
           </div>
 
-          {/* Right: global search + story-arc filter (on affected routes) */}
+          {/* Right: global search */}
           <div className="flex shrink-0 items-center gap-2">
             <GlobalSearch user={user} version={version} />
-            {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
           </div>
         </div>
         {isSimulating && (

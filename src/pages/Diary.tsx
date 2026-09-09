@@ -19,6 +19,7 @@ import { Loading } from '../components/Loading';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { QuillWithEntityMention } from '../components/QuillWithEntityMention';
 import { ArcAssignPicker } from '../components/storyArcs/ArcAssignPicker';
+import { ChapterFilterIcon, ChapterFilterPanel } from '../components/storyArcs/ChapterFilterPanel';
 import { DiaryCreateModal } from '../components/diary/DiaryCreateModal';
 import { DiarySummaryPanel } from '../components/diary/DiarySummaryPanel';
 import { isEmptyHtml, normalizeDraftHtml } from '../lib/diaryDraft';
@@ -475,6 +476,9 @@ export function Diary() {
   return (
     <div className="h-full flex flex-col p-6">
       <SideDrawer side="right">
+        <SideDrawerItem id="kapitel" label="Kapitel" icon={<ChapterFilterIcon />}>
+          <ChapterFilterPanel />
+        </SideDrawerItem>
         <SideDrawerItem
           id="create"
           label="Neuer Eintrag"
