@@ -252,14 +252,14 @@ function runTranscriptionScript(
   files: { id: number; userId: string; transcriptPath: string }[];
   errors: string[];
 }> {
-  const filesArg = JSON.stringify(
-    files
+  // Recording metadata (user ids, display names, paths) stays out of argv
+  // and is passed as a JSON manifest on stdin instead.
+  const manifest = JSON.stringify({
+    outputDir,
+    files: files
       .filter((f) => f.wavPath)
-      .map((f) => ({ id: f.id, userId: f.userId, wavPath: f.wavPath, displayName: f.displayName }))
-  );
-
-  const completedFilesArg = JSON.stringify(
-    completedFiles
+      .map((f) => ({ id: f.id, userId: f.userId, wavPath: f.wavPath, displayName: f.displayName })),
+    completedFiles: completedFiles
       .filter((f) => f.wavPath && f.transcriptPath)
       .map((f) => ({
         id: f.id,
@@ -267,11 +267,14 @@ function runTranscriptionScript(
         wavPath: f.wavPath,
         displayName: f.displayName,
         transcriptPath: f.transcriptPath,
-      }))
-  );
+      })),
+  });
 
   const args = [
+    '--',
     TRANSCRIBE_SCRIPT,
+    '--manifest',
+    '-',
     '--model',
     WHISPER_MODEL,
     '--language',
@@ -280,12 +283,6 @@ function runTranscriptionScript(
     String(WHISPER_FP16),
     '--trim-start',
     String(trimStart),
-    '--output-dir',
-    outputDir,
-    '--files',
-    filesArg,
-    '--completed-files',
-    completedFilesArg,
     '--noise-reduce',
     String(WHISPER_NOISE_REDUCE),
     '--vad-min-silence',
@@ -321,6 +318,9 @@ function runTranscriptionScript(
 
     const child = spawn(PYTHON_COMMAND, args, { stdio: 'pipe' });
     activeChildren.add(child);
+    // The child may exit before draining stdin; ignore the resulting EPIPE.
+    child.stdin.on('error', () => undefined);
+    child.stdin.end(manifest);
     let stderrBuffer = '';
     let stdoutBuffer = '';
 
