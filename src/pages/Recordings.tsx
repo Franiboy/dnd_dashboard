@@ -9,7 +9,12 @@ import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
 import { useStoryArcs } from '../hooks/useStoryArcs';
-import { arcMatchesFilter, arcStatusLabel, formatArcLabel } from '../lib/storyArcs';
+import {
+  arcMatchesFilter,
+  arcStatusLabel,
+  formatArcLabel,
+  sortArcsChronologically,
+} from '../lib/storyArcs';
 import { EntityRichText } from '../components/EntityRichText';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
 import { EntityChooserModal, type EntityCandidate } from '../components/EntityChooserModal';
@@ -778,7 +783,7 @@ export function Sessions({ user }: SessionsProps) {
                 {storyArcs.length === 0 && (
                   <p className="text-sm text-slate-400">Noch keine Story Arcs vorhanden.</p>
                 )}
-                {storyArcs.map((arc) => (
+                {sortArcsChronologically(storyArcs).map((arc) => (
                   <div
                     key={arc.id}
                     className="border border-amber-500/25 rounded-xl p-3 space-y-2 bg-slate-900/40"
