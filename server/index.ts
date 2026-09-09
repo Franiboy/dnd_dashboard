@@ -105,7 +105,8 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors({ origin: corsOrigin, credentials: true }));
 // Security headers incl. CSP. The SPA is served from this origin; Quill and
-// the whiteboard need inline styles and data:/blob: images.
+// the whiteboard need inline styles and data:/blob: images, and user avatars
+// are hot-linked from the Discord CDN.
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -113,7 +114,7 @@ app.use(
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'blob:'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https://cdn.discordapp.com'],
         connectSrc: [
           "'self'",
           ...(process.env.VITE_SERVER_URL ? [process.env.VITE_SERVER_URL] : []),

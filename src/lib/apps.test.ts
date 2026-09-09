@@ -55,4 +55,25 @@ describe('isAppVisible', () => {
     expect(isAppVisible(sessions, makeUser(), { ...VERSION, recordingEnabled: true })).toBe(true);
     expect(isAppVisible(sessions, makeUser({ isAdmin: true }), VERSION)).toBe(true);
   });
+
+  it('hides the diary for players without an assigned character', () => {
+    const notes = getAppByPath('/tagebuch')!;
+    expect(isAppVisible(notes, makeUser({ activePerson: null }), VERSION)).toBe(false);
+  });
+
+  it('shows the diary for players with an assigned character', () => {
+    const notes = getAppByPath('/tagebuch')!;
+    expect(isAppVisible(notes, makeUser({ activePerson: 'Vimak' }), VERSION)).toBe(true);
+  });
+
+  it('exempts dungeon masters and admins from the character requirement', () => {
+    const notes = getAppByPath('/tagebuch')!;
+    expect(isAppVisible(notes, makeUser({ role: 'dungeon_master' }), VERSION)).toBe(true);
+    expect(isAppVisible(notes, makeUser({ isAdmin: true }), VERSION)).toBe(true);
+  });
+
+  it('does not require a character for apps without the flag', () => {
+    const bingo = getAppByPath('/bingo')!;
+    expect(isAppVisible(bingo, makeUser({ activePerson: null }), VERSION)).toBe(true);
+  });
 });

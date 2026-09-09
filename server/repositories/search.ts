@@ -154,6 +154,8 @@ function hydrateKnowledge(rows: IndexRow[]): KnowledgeSearchHit[] {
 export interface GlobalSearchOptions {
   /** Acting user; diary hits are restricted to their own entries. */
   userId: string;
+  /** Whether diary hits are available to the acting user. */
+  includeDiary?: boolean;
   /** Maximum hits per source (already capped by the route schema). */
   limitPerSource?: number;
 }
@@ -169,9 +171,17 @@ export function globalSearch(query: string, options: GlobalSearchOptions): Searc
   const limit = Math.min(Math.max(options.limitPerSource ?? 8, 1), 20);
 
   // Diary is strictly private: the index row carries the author's user id.
-  const diary = hydrateDiary(
-    searchIndex(match, " AND source_type = 'diary' AND owner_user_id = ?", [options.userId], limit)
-  );
+  const diary =
+    options.includeDiary === false
+      ? []
+      : hydrateDiary(
+          searchIndex(
+            match,
+            " AND source_type = 'diary' AND owner_user_id = ?",
+            [options.userId],
+            limit
+          )
+        );
   const sessions = hydrateSessions(
     searchIndex(match, " AND source_type = 'session'", [], limit),
     query

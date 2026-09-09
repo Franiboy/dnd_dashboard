@@ -61,7 +61,7 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 ### Diary (`/tagebuch`)
 
 - Users can create, edit and delete HTML-based diary entries.
-- Users select an active person (a `persons` entity) in the header. The selection is stored per user (`users.active_person`, endpoint `PUT /api/me/active-person`); the diary page forces a selection if none is set.
+- The active person (a `persons` entity, stored as `users.active_person`) is assigned by an admin per user in the admin dashboard (`POST /api/admin/users/:id/active-person`); users cannot pick it themselves. Players without an assigned character cannot use the diary (API returns 403 via `requireActivePerson`, the app tile and search group are hidden); dungeon masters and admins are exempt.
 - AI can rewrite entries (`rewriteTextWithAi`) and refine them with a command (`improveRewrittenWithCommand`). Prompts write from the perspective of the user's active person (Ich-Perspektive).
 - AI generates a short summary (`summarizeTextWithAi`, max. 500 characters).
 - AI extracts people, organizations and places (`extractEntitiesFromDiary`).
@@ -154,7 +154,7 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
   reclassifications and blacklisting keep the links in sync. Re-running AI on an old entry re-adds
   removed links (documented behavior).
 - **Main characters are seeded on creation:** creating an arc automatically links every approved
-  user's `active_person` (the character selected in the app header) as a person to the new arc.
+  user's `active_person` (the admin-assigned character) as a person to the new arc.
   Duplicate/case-variant selections collapse into one link; names without a world entity row are
   skipped (link rows only ever reference real entities).
 - **Derived metadata:** an arc's game-day range and member counts (`sessionCount`,

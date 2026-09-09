@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { createToken, getSessionPublicKey, verifyToken } from './auth.js';
+import { createToken, getSessionPublicKey, requireActivePerson, verifyToken } from './auth.js';
+import type { AuthRequest } from './auth.js';
+import type { User } from '../shared/types.js';
 
 const baseUser = {
   id: 'user-123',
@@ -49,5 +52,38 @@ describe('auth tokens', () => {
     const confusionOptions: jwt.SignOptions = { algorithm: 'HS256' };
     const confused = jwt.sign({ userId: baseUser.id }, getSessionPublicKey(), confusionOptions);
     expect(verifyToken(confused)).toBeNull();
+  });
+});
+
+describe('requireActivePerson', () => {
+  function authed(user: User): AuthRequest {
+    return { user } as AuthRequest;
+  }
+
+  function mockRes(): Response {
+    return { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
+  }
+
+  it('blocks players without an assigned character', () => {
+    const res = mockRes();
+    const next = vi.fn();
+    requireActivePerson(authed({ ...baseUser, role: 'player' }), res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('lets players with an assigned character pass', () => {
+    const res = mockRes();
+    const next = vi.fn();
+    requireActivePerson(authed({ ...baseUser, role: 'player', activePerson: 'Vimak' }), res, next);
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('exempts dungeon masters and admins', () => {
+    const res = mockRes();
+    const next = vi.fn();
+    requireActivePerson(authed({ ...baseUser, role: 'dungeon_master' }), res, next);
+    requireActivePerson(authed({ ...baseUser, role: 'player', isAdmin: true }), res, next);
+    expect(next).toHaveBeenCalledTimes(2);
   });
 });
