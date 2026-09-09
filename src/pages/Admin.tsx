@@ -67,6 +67,7 @@ export function Admin({ currentUser }: AdminProps) {
   const { setViewAsUser } = useAuth();
   const { showError } = useError();
   const [users, setUsers] = useState<SafeUser[]>([]);
+  const [persons, setPersons] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<{ id: string; endpoint: string } | null>(null);
@@ -108,6 +109,17 @@ export function Admin({ currentUser }: AdminProps) {
     });
     return () => source.close();
   }, []);
+
+  useEffect(() => {
+    // World persons for the per-user character dropdown.
+    request<{ persons: { name: string; qualifier: string }[] }>(
+      '/api/entities',
+      undefined,
+      false
+    ).then(({ data }) => {
+      if (data) setPersons([...new Set((data.persons ?? []).map((p) => p.name))]);
+    });
+  }, [request]);
 
   useEffect(() => {
     if (error) showError(error);
@@ -686,6 +698,7 @@ export function Admin({ currentUser }: AdminProps) {
                     <th className="p-3">Anzeigename</th>
                     <th className="p-3">Status</th>
                     <th className="p-3">Rolle</th>
+                    <th className="p-3">Charakter</th>
                     <th className="p-3">Admin</th>
                     <th className="p-3">Aktionen</th>
                   </tr>
@@ -730,6 +743,28 @@ export function Admin({ currentUser }: AdminProps) {
                             </option>
                           ))}
                         </select>
+                      </td>
+                      <td className="p-3">
+                        {u.role === 'player' ? (
+                          <select
+                            value={u.activePerson ?? ''}
+                            onChange={(e) =>
+                              action(u.id, '/active-person', { name: e.target.value || null })
+                            }
+                            disabled={isActionLoading(u.id, '/active-person')}
+                            aria-label={`Charakter von ${u.displayName}`}
+                            className="bg-slate-800 border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50 max-w-[10rem]"
+                          >
+                            <option value="">Kein Charakter</option>
+                            {persons.map((p) => (
+                              <option key={p} value={p}>
+                                {p}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-slate-500 text-xs">–</span>
+                        )}
                       </td>
                       <td className="p-3">{u.isAdmin ? 'Ja' : 'Nein'}</td>
                       <td className="p-3 flex flex-wrap gap-2">

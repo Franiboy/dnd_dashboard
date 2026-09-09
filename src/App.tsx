@@ -80,7 +80,6 @@ function App() {
     startDiscordLogin,
     logout,
     checkApproved,
-    updateUser,
   } = useAuth();
   const [version, setVersion] = useState<VersionInfo | null | undefined>(undefined);
 
@@ -140,13 +139,7 @@ function App() {
       <MappingsProvider>
         <StoryArcProvider>
           <EntityDialogProvider>
-            <Layout
-              user={effectiveUser}
-              version={version}
-              realUser={currentUser}
-              onLogout={logout}
-              onUserChange={updateUser}
-            >
+            <Layout user={effectiveUser} version={version} realUser={currentUser} onLogout={logout}>
               <Suspense fallback={pageLoader}>
                 <Routes>
                   <Route

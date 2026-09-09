@@ -317,3 +317,16 @@ export function requireApproved(req: AuthRequest, res: Response, next: NextFunct
   }
   next();
 }
+
+/**
+ * Blocks players without an admin-assigned character. Dungeon masters and
+ * admins always pass.
+ */
+export function requireActivePerson(req: AuthRequest, res: Response, next: NextFunction): void {
+  const user = req.user;
+  if (user && user.role === 'player' && !user.activePerson && !user.isAdmin) {
+    res.status(403).json({ error: 'Forbidden: Kein Charakter zugewiesen' });
+    return;
+  }
+  next();
+}

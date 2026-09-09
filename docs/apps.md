@@ -1,18 +1,18 @@
 # App Navigator
 
-Visible apps are maintained centrally in `src/lib/apps.ts`. **Admins have unrestricted access**: app visibility rules (`disabledApps`, `adminOnly`, feature flags) never apply to them. For regular users, `disabledApps` hides individual apps and the `sessions` module requires `recordingEnabled=true` (`requiresFeature`).
+Visible apps are maintained centrally in `src/lib/apps.ts`. **Admins have unrestricted access**: app visibility rules (`disabledApps`, `adminOnly`, feature flags, character requirement) never apply to them. For regular users, `disabledApps` hides individual apps, the `sessions` module requires `recordingEnabled=true` (`requiresFeature`), and the Tagebuch requires an admin-assigned character for players (`requiresCharacter`; dungeon masters are exempt).
 
 The `label` values in the table below are taken directly from `src/lib/apps.ts` and are currently German because the application UI is in German.
 
-| ID           | Label      | Route         | Admin only | Disableable | Requires feature   | Icon ID    |
-| ------------ | ---------- | ------------- | ---------- | ----------- | ------------------ | ---------- |
-| `dashboard`  | Dashboard  | `/`           | no         | no          | -                  | -          |
-| `notes`      | Tagebuch   | `/tagebuch`   | no         | yes         | -                  | -          |
-| `bingo`      | Bingo      | `/bingo`      | no         | yes         | -                  | -          |
-| `world`      | Welt       | `/welt`       | no         | yes         | -                  | -          |
-| `sessions`   | Sessions   | `/sessions`   | no         | yes         | `recordingEnabled` | `sessions` |
-| `whiteboard` | Whiteboard | `/whiteboard` | no         | yes         | -                  | -          |
-| `admin`      | Admin      | `/admin`      | yes        | no          | -                  | `admin`    |
+| ID           | Label      | Route         | Admin only | Disableable | Requires feature   | Requires character | Icon ID    |
+| ------------ | ---------- | ------------- | ---------- | ----------- | ------------------ | ------------------ | ---------- |
+| `dashboard`  | Dashboard  | `/`           | no         | no          | -                  | no                 | -          |
+| `notes`      | Tagebuch   | `/tagebuch`   | no         | yes         | -                  | yes (players)      | -          |
+| `bingo`      | Bingo      | `/bingo`      | no         | yes         | -                  | no                 | -          |
+| `world`      | Welt       | `/welt`       | no         | yes         | -                  | no                 | -          |
+| `sessions`   | Sessions   | `/sessions`   | no         | yes         | `recordingEnabled` | no                 | `sessions` |
+| `whiteboard` | Whiteboard | `/whiteboard` | no         | yes         | -                  | no                 | -          |
+| `admin`      | Admin      | `/admin`      | yes        | no          | -                  | no                 | `admin`    |
 
 ## Admin & User Rules
 
@@ -24,5 +24,6 @@ The `label` values in the table below are taken directly from `src/lib/apps.ts` 
 - Promoted admins can participate in Bingo like normal players.
 - The initial admin `admin` may not join Bingo as a player.
 - Admins can approve/lock users, grant/revoke admin rights, delete users and disable individual apps per user (`disabledApps`).
+- Admins assign each player a character (a world person) in the user table; players without a character cannot open the Tagebuch.
 - `/admin` is admin-only and shows user management and logs.
 - `/bingo`, `/tagebuch`, `/welt`, `/whiteboard` can be locked for regular users via `disabledApps`.
