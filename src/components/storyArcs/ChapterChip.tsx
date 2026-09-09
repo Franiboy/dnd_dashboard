@@ -23,7 +23,7 @@ const statusChipStyles = {
 /** Chapter display chip ("medallion"): serif arc name + chapter number. */
 export function ChapterChip({ arc, onClick, className = '', title, disabled }: ChapterChipProps) {
   const base =
-    'chapter-serif inline-flex max-w-[16rem] items-center gap-2 rounded-[4px] border px-3 py-1 text-[13px] font-semibold tracking-[0.04em] outline outline-1 outline-offset-[3px] transition hover:brightness-110';
+    'chapter-serif inline-flex max-w-full items-center gap-2 whitespace-nowrap rounded-[4px] border px-3 py-1 text-[13px] font-semibold tracking-[0.04em] outline outline-1 outline-offset-[3px] transition hover:brightness-110';
   const style = arc
     ? statusChipStyles[arc.status]
     : 'border-dashed border-[var(--border)] bg-slate-800/40 text-slate-400 outline-transparent font-sans font-medium tracking-normal';
@@ -32,14 +32,16 @@ export function ChapterChip({ arc, onClick, className = '', title, disabled }: C
     <>
       <ChapterStatusDot status={arc.status} />
       {arc.chapterNumber !== null && (
-        <span className="chapter-caps text-[9.5px] opacity-70">Kapitel {arc.chapterNumber} ·</span>
+        <span className="chapter-caps whitespace-nowrap text-[9.5px] opacity-70">
+          Kapitel {arc.chapterNumber} ·
+        </span>
       )}
-      <span className="truncate uppercase">{arc.name}</span>
+      <span className="min-w-0 truncate uppercase">{arc.name}</span>
     </>
   ) : (
     <>
       <span className="h-[7px] w-[7px] shrink-0 rounded-full border border-dashed border-slate-400" />
-      <span className="truncate">Ohne Kapitel</span>
+      <span className="min-w-0 truncate">Ohne Kapitel</span>
     </>
   );
 

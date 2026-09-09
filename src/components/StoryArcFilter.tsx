@@ -40,7 +40,7 @@ export function StoryArcFilter() {
           <>
             <ChapterStatusDot status={selectedArc.status} />
             {selectedArc.chapterNumber !== null && (
-              <span className="chapter-caps text-[9.5px] text-amber-200/70">
+              <span className="chapter-caps whitespace-nowrap text-[9.5px] text-amber-200/70">
                 Kapitel {selectedArc.chapterNumber} ·
               </span>
             )}
