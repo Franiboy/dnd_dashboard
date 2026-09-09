@@ -19,7 +19,6 @@ import type {
   WhiteboardPatch,
   WhiteboardShapeKind,
   WhiteboardTaskStatus,
-  WhiteboardZone,
 } from '../shared/types.js';
 import { getEnv } from './env.js';
 import type { SocketData } from './socket.js';

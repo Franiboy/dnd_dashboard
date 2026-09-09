@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AppError, parseWith } from '../errors.js';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getRecentLogs, getLogsPaginated, subscribeLogs } from '../logger.js';
-import type { LogEntry, LogLevel, UserRole } from '../../shared/types.js';
+import type { LogEntry, UserRole } from '../../shared/types.js';
 import { USER_ROLES } from '../../shared/types.js';
 import { getModel, isValidModel, listAvailableModels } from '../ai/modelConfig.js';
 import { getAiModelSettings, setAiModelSettings } from '../repositories/aiSettings.js';
