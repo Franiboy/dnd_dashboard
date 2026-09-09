@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { generateKeyPairSync } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
@@ -58,17 +66,51 @@ function loadKeyPair(): { privateKey: string; publicKey: string } {
       process.exit(1);
     }
   }
-  log.info('Keine JWT-Schlüssel vorhanden – erzeuge neues RSA-Schlüsselpaar unter data/keys/.');
-  const { publicKey, privateKey } = generateRsaKeyPair();
   mkdirSync('data/keys', { recursive: true, mode: 0o700 });
-  // Write to temp files and rename, so a concurrent start never reads a half-written PEM.
-  const privateTmp = `${privatePath}.${process.pid}.tmp`;
-  const publicTmp = `${publicPath}.${process.pid}.tmp`;
-  writeFileSync(privateTmp, privateKey, { mode: 0o600 });
-  writeFileSync(publicTmp, publicKey, { mode: 0o644 });
-  renameSync(privateTmp, privatePath);
-  renameSync(publicTmp, publicPath);
-  return { privateKey, publicKey };
+  const lockPath = 'data/keys/.jwt-key-pair.lock';
+
+  // Lock the pair creation as the two PEM renames are not one atomic operation.
+  while (true) {
+    try {
+      mkdirSync(lockPath);
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      try {
+        // Recover if a process was terminated while holding the initialization lock.
+        if (Date.now() - statSync(lockPath).mtimeMs > 30_000) {
+          rmSync(lockPath, { recursive: true, force: true });
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+
+  try {
+    // Another process may have completed generation while this process waited.
+    if (existsSync(privatePath) && existsSync(publicPath)) {
+      return {
+        privateKey: readFileSync(privatePath, 'utf8'),
+        publicKey: readFileSync(publicPath, 'utf8'),
+      };
+    }
+
+    log.info('Keine JWT-Schlüssel vorhanden – erzeuge neues RSA-Schlüsselpaar unter data/keys/.');
+    const { publicKey, privateKey } = generateRsaKeyPair();
+    // Write to temp files and rename, so a concurrent start never reads a half-written PEM.
+    const privateTmp = `${privatePath}.${process.pid}.tmp`;
+    const publicTmp = `${publicPath}.${process.pid}.tmp`;
+    writeFileSync(privateTmp, privateKey, { mode: 0o600 });
+    writeFileSync(publicTmp, publicKey, { mode: 0o644 });
+    renameSync(privateTmp, privatePath);
+    renameSync(publicTmp, publicPath);
+    return { privateKey, publicKey };
+  } finally {
+    rmSync(lockPath, { recursive: true, force: true });
+  }
 }
 
 const JWT_KEY_PAIR = loadKeyPair();
