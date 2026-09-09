@@ -64,6 +64,8 @@ DISCORD_CLIENT_SECRET=your-client-secret
 DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
 ```
 
+Dashboard login sessions use RS256-signed JWTs. The RSA key pair is generated automatically on the first start under `data/keys/` (gitignored) — mount or back it up in production, and deleting it simply logs everyone out.
+
 ## Development
 
 Start server and client together:

@@ -13,4 +13,4 @@
 
 - `.gitignore` contains sensitive files (`.env`, `*.db`, `dist`, `dist-server`, `rewritten`, `recordings`).
 - `server/users.ts` contains `INITIAL_ADMIN_USERNAME` and reads `ADMIN_PASSWORD` from `.env`.
-- Security-relevant configurations (`rateLimit`, `JWT_SECRET`, `ADMIN_PASSWORD`, `trust proxy`, `MCP_TOKEN_SECRET`) must not be loosened.
+- Security-relevant configurations (`rateLimit`, `JWT_SECRET`, `MCP_TOKEN_SECRET`, `ADMIN_PASSWORD`, `trust proxy`, RS256 session keys under `data/keys/`) must not be loosened.
