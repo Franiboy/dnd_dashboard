@@ -26,7 +26,11 @@ router.get('/', (req: AuthRequest, res) => {
   const user = requireUser(req);
   const { q, limit } = parseWith(searchQuerySchema, req.query);
   const results = orFail('Suche ist fehlgeschlagen', () =>
-    globalSearch(q, { userId: user.id, limitPerSource: limit })
+    globalSearch(q, {
+      userId: user.id,
+      includeDiary: user.role !== 'player' || user.isAdmin || !!user.activePerson,
+      limitPerSource: limit,
+    })
   );
   res.json({ results });
 });
