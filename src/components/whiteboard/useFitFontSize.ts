@@ -16,6 +16,8 @@ export function useFitFontSize(
   const [padTop, setPadTop] = useState(0);
 
   useLayoutEffect(() => {
+    // oxlint-disable react/set-state-in-effect -- the measured DOM node is an
+    // external system: font size derives from live scrollHeight/scrollWidth.
     const el = ref.current;
     if (!el || !enabled) {
       setPadTop(0);
@@ -48,6 +50,7 @@ export function useFitFontSize(
     setFontSize((prev) => (Math.abs(prev - fitted) > 0.3 ? fitted : prev));
     setPadTop(0);
   }, [text, availableWidth, availableHeight, enabled]);
+  // oxlint-enable react/set-state-in-effect
 
   return { ref, fontSize, padTop };
 }

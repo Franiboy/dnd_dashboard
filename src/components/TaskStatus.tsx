@@ -20,11 +20,10 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
   } | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [users, setUsers] = useState<SafeUser[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(true);
   const taskMap = new Map(game.tasks.map((t) => [t.id, t]));
 
   useEffect(() => {
-    setUsersLoading(true);
     request<SafeUser[]>('/api/admin/users').then(({ data }) => {
       setUsers(data ?? []);
       setUsersLoading(false);

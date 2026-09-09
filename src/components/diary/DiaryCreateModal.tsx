@@ -19,8 +19,8 @@ interface DiaryCreateModalProps {
   onWorkingChange: (working: boolean) => void;
   onAiStart: (status: string) => void;
   onAiEnd: () => void;
-  /** Resolves once the AI status SSE stream is connected. */
-  sseReady: Promise<void>;
+  /** Ref to the promise resolving once the AI status SSE stream is connected. */
+  sseReadyRef: { readonly current: Promise<void> };
   mappings: Parameters<typeof QuillWithEntityMention>[0]['mappings'];
 }
 
@@ -40,7 +40,7 @@ export function DiaryCreateModal({
   onWorkingChange,
   onAiStart,
   onAiEnd,
-  sseReady,
+  sseReadyRef,
   mappings,
 }: DiaryCreateModalProps) {
   const { request } = useApi();
@@ -134,7 +134,10 @@ export function DiaryCreateModal({
     };
 
     onAiStart('Eintrag wird erstellt und analysiert...');
-    await Promise.race([sseReady, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
+    await Promise.race([
+      sseReadyRef.current,
+      new Promise<void>((resolve) => setTimeout(resolve, 500)),
+    ]);
     onWorkingChange(true);
 
     let res;

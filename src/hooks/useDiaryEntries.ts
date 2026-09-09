@@ -27,8 +27,13 @@ export function useDiaryEntries() {
     request<VersionInfo>('/api/version', undefined, false).then(({ data }) => {
       if (data) setAiEnabled(data.aiEnabled);
     });
-    void loadEntries();
-  }, [request, loadEntries]);
+    // Inline .then chain: the lint's data-flow analysis tracks promise
+    // callbacks, unlike a discarded async loader call.
+    request<{ entries: DiaryEntry[] }>('/api/diary/entries').then(({ data }) => {
+      if (data) setEntries(data.entries || []);
+      setLoading(false);
+    });
+  }, [request]);
 
   const replaceEntry = useCallback((entry: DiaryEntry) => {
     setEntries((prev) => prev.map((e) => (e.id === entry.id ? entry : e)));
