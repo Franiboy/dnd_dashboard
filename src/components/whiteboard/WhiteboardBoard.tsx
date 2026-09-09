@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -124,6 +125,13 @@ interface RectPreview {
   y2: number;
 }
 
+// The canvas gesture code takes wall-clock timestamps (performance.now) for
+// drag throttling and generates ids/timestamps inside event-created callbacks
+// (crypto.randomUUID, new Date) when spawning elements. The React Compiler
+// diagnostics flag these by design; adopting the compiler-friendly patterns
+// belongs to the planned whiteboard refactor.
+// oxlint-disable react/purity
+// oxlint-disable react/preserve-manual-memoization
 interface WhiteboardBoardProps {
   user: SafeUser;
   elements: WhiteboardElement[];
@@ -187,7 +195,9 @@ export function WhiteboardBoard({
   const { showError } = useError();
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
   const cameraRef = useRef(camera);
-  cameraRef.current = camera;
+  useLayoutEffect(() => {
+    cameraRef.current = camera;
+  }, [camera]);
   const gestureRef = useRef<Gesture | null>(null);
   // Manual double-click tracking: element gestures deliberately avoid pointer
   // capture because it retargets native click/dblclick events away from the
@@ -226,19 +236,23 @@ export function WhiteboardBoard({
     [stackElements]
   );
 
-  const setSelection = useCallback((ids: string | string[] | null, additive = false) => {
-    setSelectedIds((prev) => {
-      const incoming = ids === null ? [] : Array.isArray(ids) ? ids : [ids];
-      if (incoming.length === 0) return additive ? prev : [];
-      if (additive) {
-        if (Array.isArray(ids)) return [...new Set([...prev, ...incoming])];
-        return prev.includes(incoming[0])
-          ? prev.filter((x) => x !== incoming[0])
-          : [...prev, incoming[0]];
-      }
-      return incoming;
-    });
-  }, []);
+  const setSelection = useCallback(
+    (ids: string | string[] | null, additive = false) => {
+      setSelectedIds((prev) => {
+        const incoming = ids === null ? [] : Array.isArray(ids) ? ids : [ids];
+        if (incoming.length === 0) return additive ? prev : [];
+        if (additive) {
+          if (Array.isArray(ids)) return [...new Set([...prev, ...incoming])];
+          return prev.includes(incoming[0])
+            ? prev.filter((x) => x !== incoming[0])
+            : [...prev, incoming[0]];
+        }
+        return incoming;
+      });
+      // setSelectedIds is stable; listed for the React Compiler's dep inference.
+    },
+    [setSelectedIds]
+  );
 
   // Report the primary selected recolorable element to the toolbar palette.
   useEffect(() => {
@@ -255,7 +269,11 @@ export function WhiteboardBoard({
   // draw tool drops it so overlays never intercept the next gesture.
   useEffect(() => {
     if (tool === 'select') return;
+    // Selection only makes sense with the select tool; dropping it on tool
+    // switches is external-state syncing (tool comes from the parent page).
+    // oxlint-disable-next-line react/set-state-in-effect
     setSelectedIds([]);
+    // oxlint-disable-next-line react/set-state-in-effect
     setCroppingId(null);
   }, [tool]);
 
@@ -305,7 +323,7 @@ export function WhiteboardBoard({
       if (!el.locked) removeElement(el.id);
     }
     setSelectedIds([]);
-  }, [selection, removeElement]);
+  }, [selection, removeElement, setSelectedIds]);
 
   // Mixed states lock everything; an all-locked selection unlocks in full.
   const toggleLockSelectedElements = useCallback(() => {
@@ -861,11 +879,14 @@ export function WhiteboardBoard({
     }
   };
 
-  // Latest-closure refs so window listeners never work with stale state.
+  // Latest-closure refs so window listeners never work with stale state;
+  // the render-phase assignment mirrors the newest closures onto the refs.
+  // oxlint-disable react/refs
   const latestMoveRef = useRef(runGestureMove);
   latestMoveRef.current = runGestureMove;
   const latestFinishRef = useRef(finishGestureCore);
   latestFinishRef.current = finishGestureCore;
+  // oxlint-enable react/refs
 
   function bindWindowGesture() {
     if (windowMoveRef.current) return;
@@ -1321,10 +1342,13 @@ export function WhiteboardBoard({
   );
 
   const dividerScreenY = camera.y + WHITEBOARD_DIVIDER_Y * camera.scale;
+  // oxlint-disable react/refs -- container is measured with a render-time
+  // fallback until the layout effect below can observe its real size.
   const centerWorldY =
     containerRef.current && containerRef.current.clientHeight > 0
       ? (containerRef.current.clientHeight / 2 - camera.y) / camera.scale
       : WHITEBOARD_DIVIDER_Y;
+  // oxlint-enable react/refs
   const centerZone = zoneForWorldY(centerWorldY);
 
   const arrows = elements.filter((e) => e.type === 'arrow');

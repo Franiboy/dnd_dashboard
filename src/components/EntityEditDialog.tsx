@@ -205,6 +205,8 @@ export function EntityEditDialog({
   }, [name, type, qualifier]);
 
   useEffect(() => {
+    // oxlint-disable react/set-state-in-effect -- editor state resets when the
+    // edited entity identity (name/type/qualifier) changes.
     setDetail(null);
     setCanonical(name);
     setQualifierValue(qualifier);
@@ -212,6 +214,7 @@ export function EntityEditDialog({
     setKnowledge([]);
     setSummary(null);
     setMiniSummary(null);
+    // oxlint-enable react/set-state-in-effect
     setSummaryDirty(true);
     setLoading(true);
     setAutoSaveStatus('idle');
@@ -332,7 +335,10 @@ export function EntityEditDialog({
 
     // Don't auto-save while canonical is empty — show inline error instead.
     if (!normalizedCanonical) {
+      // Autosave validation reacts to identity changes above.
+      // oxlint-disable-next-line react/set-state-in-effect
       setAutoSaveStatus('error');
+      // oxlint-disable-next-line react/set-state-in-effect
       setAutoSaveError('Hauptname ist erforderlich.');
       return;
     }

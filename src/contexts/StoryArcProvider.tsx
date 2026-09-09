@@ -59,6 +59,8 @@ export function StoryArcProvider({ children }: StoryArcProviderProps) {
   useEffect(() => {
     if (arcs.length === 0) return;
     if (typeof selectedArcId === 'number' && !arcs.some((a) => a.id === selectedArcId)) {
+      // The persisted selection must be cleaned up when the arc vanishes.
+      // oxlint-disable-next-line react/set-state-in-effect
       setSelectedArcId(null);
     }
   }, [arcs, selectedArcId, setSelectedArcId]);

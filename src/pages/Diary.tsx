@@ -132,6 +132,7 @@ export function Diary() {
     getEditingContent,
     cancelEntryEdit,
     primeDraftsFromStorage,
+    purgeDrafts,
     clearServerSaveTimeout,
     saveOriginalToServer,
     handleQuillChange,
@@ -144,20 +145,33 @@ export function Diary() {
   });
 
   // Deep link (?entry=<id>): expand, prefer the KI version and scroll into view.
-  useEffect(() => {
-    const entryIdParam = searchParams.get('entry');
-    if (!entryIdParam || entries.length === 0) return;
-    const entryId = Number(entryIdParam);
-    if (!Number.isFinite(entryId)) return;
+  // Both adjustments are derived during render instead of syncing state in an
+  // effect, so no cascading render is needed.
+  const deepLinkEntryId = useMemo(() => {
+    const raw = searchParams.get('entry');
+    const id = raw === null ? NaN : Number(raw);
+    return Number.isFinite(id) ? id : null;
+  }, [searchParams]);
 
-    const entry = entries.find((e) => e.id === entryId);
-    if (!entry) return;
-
-    setExpandedIds((prev) => new Set(prev).add(entryId));
-    if (entry.rewrittenContent || entry.rewrittenFilePath) {
-      setViewingRewrittenIds((prev) => new Set(prev).add(entryId));
+  const effectiveExpandedIds = useMemo(() => {
+    if (deepLinkEntryId === null || !entries.some((e) => e.id === deepLinkEntryId)) {
+      return expandedIds;
     }
+    return new Set(expandedIds).add(deepLinkEntryId);
+  }, [expandedIds, deepLinkEntryId, entries]);
 
+  const effectiveViewingRewrittenIds = useMemo(() => {
+    if (deepLinkEntryId === null) return viewingRewrittenIds;
+    const entry = entries.find((e) => e.id === deepLinkEntryId);
+    if (!entry || !(entry.rewrittenContent || entry.rewrittenFilePath)) return viewingRewrittenIds;
+    return new Set(viewingRewrittenIds).add(deepLinkEntryId);
+  }, [viewingRewrittenIds, deepLinkEntryId, entries]);
+
+  useEffect(() => {
+    if (deepLinkEntryId === null || entries.length === 0) return;
+    if (!entries.some((e) => e.id === deepLinkEntryId)) return;
+
+    const entryId = deepLinkEntryId;
     const timer = setTimeout(() => {
       const element = entryRefs.current[entryId];
       if (element) {
@@ -167,7 +181,7 @@ export function Diary() {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchParams, loading, entries]);
+  }, [deepLinkEntryId, loading, entries]);
 
   // Re-apply entity highlights when mappings or the expanded set changes.
   useEffect(() => {
@@ -190,10 +204,7 @@ export function Diary() {
     setWorking(false);
     if (!error) {
       removeEntry(id);
-      localStorage.removeItem(getDraftKey(id, 'original'));
-      localStorage.removeItem(getDraftKey(id, 'rewritten'));
-      delete draftRawRefs.current.original[id];
-      delete draftRawRefs.current.rewritten[id];
+      purgeDrafts(id);
       showSuccess('Eintrag gelöscht.');
     }
   }
@@ -573,7 +584,7 @@ export function Diary() {
                 <BadgeList items={entry.locations} variant="location" />
                 <BadgeList items={entry.items} variant="item" />
 
-                {expandedIds.has(entry.id) ? (
+                {effectiveExpandedIds.has(entry.id) ? (
                   <>
                     <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                       {entry.rewrittenFilePath ? (
@@ -582,7 +593,7 @@ export function Diary() {
                             type="button"
                             onClick={() => setViewRewritten(entry.id, false)}
                             className={`px-3 py-1 rounded-md text-sm font-medium transition ${
-                              !viewingRewrittenIds.has(entry.id)
+                              !effectiveViewingRewrittenIds.has(entry.id)
                                 ? 'bg-[var(--accent)] text-slate-900'
                                 : 'text-slate-300 hover:text-[var(--text-h)]'
                             }`}
@@ -660,7 +671,7 @@ export function Diary() {
                       </div>
                     </div>
 
-                    {viewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath ? (
+                    {effectiveViewingRewrittenIds.has(entry.id) && entry.rewrittenFilePath ? (
                       <div className="rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 p-4 mb-4">
                         <form
                           className="flex items-center gap-2 mb-3"
@@ -795,7 +806,7 @@ export function Diary() {
         onAiEnd={() => {
           setAiOperation(false);
         }}
-        sseReady={sseReadyRef.current}
+        sseReadyRef={sseReadyRef}
         mappings={mappings}
       />
     </div>

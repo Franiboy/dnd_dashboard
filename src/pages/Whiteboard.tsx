@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { WhiteboardBoard } from '../components/whiteboard/WhiteboardBoard';
 import { WhiteboardToolbar } from '../components/whiteboard/WhiteboardToolbar';
 import {
@@ -30,24 +30,22 @@ export function Whiteboard({ user }: WhiteboardProps) {
     endLocalEdit,
   } = useWhiteboard(user);
 
-  // Deselect when the element disappears (e.g. removed by another user).
-  useEffect(() => {
-    if (selectedId && !elements.some((e) => e.id === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [elements, selectedId]);
+  // The selection is only meaningful while the element still exists
+  // (e.g. it may be removed by another user); derive instead of resetting.
+  const effectiveSelectedId =
+    selectedId !== null && elements.some((e) => e.id === selectedId) ? selectedId : null;
 
   const applyToSelected = useCallback(
     (patch: WhiteboardPatch) => {
-      if (selectedId) updateElement(selectedId, patch);
+      if (effectiveSelectedId) updateElement(effectiveSelectedId, patch);
     },
-    [selectedId, updateElement]
+    [effectiveSelectedId, updateElement]
   );
 
   const selectedElement =
     elements.find(
       (e) =>
-        e.id === selectedId &&
+        e.id === effectiveSelectedId &&
         (e.type === 'note' || e.type === 'text' || e.type === 'shape' || e.type === 'stroke')
     ) ?? null;
 

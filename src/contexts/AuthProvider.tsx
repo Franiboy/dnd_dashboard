@@ -163,6 +163,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   useEffect(() => {
+    // Session bootstrap from cookies/dev-session; fetchMe owns its state
+    // transitions along the async flow.
+    // oxlint-disable-next-line react/set-state-in-effect
     fetchMe();
   }, [fetchMe]);
 
