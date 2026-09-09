@@ -100,6 +100,7 @@ function rowToStoryArc(row: Record<string, unknown>, stats: StoryArcStats): Stor
     name: row.name as string,
     description: (row.description as string | null) ?? null,
     status: row.status as StoryArcStatus,
+    chapterNumber: (row.chapter_number as number | null) ?? null,
     sessionCount: stats.sessionCount,
     diaryEntryCount: stats.diaryEntryCount,
     entityCount: stats.entityCount,
@@ -113,7 +114,7 @@ function rowToStoryArc(row: Record<string, unknown>, stats: StoryArcStats): Stor
 export function listStoryArcs(): StoryArc[] {
   const rows = db
     .prepare(
-      `SELECT id, name, description, status, created_at, updated_at FROM story_arcs
+      `SELECT id, name, description, status, chapter_number, created_at, updated_at FROM story_arcs
        ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'planned' THEN 1 ELSE 2 END, created_at ASC`
     )
     .all() as Record<string, unknown>[];
@@ -134,7 +135,7 @@ function loadEmptyStats(): StoryArcStats {
 export function getStoryArc(id: number): StoryArc | null {
   const row = db
     .prepare(
-      'SELECT id, name, description, status, created_at, updated_at FROM story_arcs WHERE id = ?'
+      'SELECT id, name, description, status, chapter_number, created_at, updated_at FROM story_arcs WHERE id = ?'
     )
     .get(id) as Record<string, unknown> | undefined;
   if (!row) return null;
@@ -169,6 +170,24 @@ export function getArcIdForDiaryEntry(entryId: number): number | null {
 export interface CreateStoryArcInput {
   name: string;
   description?: string | null;
+  chapterNumber?: number | null;
+}
+
+/** Validates an incoming chapter number (NULL = unnumbered arc). */
+function assertValidChapterNumber(chapterNumber: number | null): void {
+  if (chapterNumber !== null && (!Number.isInteger(chapterNumber) || chapterNumber < 1)) {
+    throw new AppError(400, 'Kapitelnummer muss eine positive ganze Zahl sein');
+  }
+}
+
+/** Chapter numbers are unique; NULL is exempt (SQLite treats NULLs as distinct). */
+function assertChapterNumberFree(chapterNumber: number, excludeId?: number): void {
+  const row = db
+    .prepare('SELECT 1 FROM story_arcs WHERE chapter_number = ? AND id != ? LIMIT 1')
+    .get(chapterNumber, excludeId ?? -1);
+  if (row) {
+    throw new AppError(409, `Kapitelnummer ${chapterNumber} ist bereits vergeben`);
+  }
 }
 
 /**
@@ -189,13 +208,16 @@ function linkUserActivePersons(arcId: number): void {
 }
 
 export function createStoryArc(input: CreateStoryArcInput): StoryArc {
+  const chapterNumber = input.chapterNumber ?? null;
+  assertValidChapterNumber(chapterNumber);
   const now = new Date().toISOString();
   const tx = db.transaction(() => {
+    if (chapterNumber !== null) assertChapterNumberFree(chapterNumber);
     const result = db
       .prepare(
-        "INSERT INTO story_arcs (name, description, status, created_at, updated_at) VALUES (?, ?, 'planned', ?, ?)"
+        "INSERT INTO story_arcs (name, description, status, chapter_number, created_at, updated_at) VALUES (?, ?, 'planned', ?, ?, ?)"
       )
-      .run(input.name.trim(), input.description?.trim() || null, now, now);
+      .run(input.name.trim(), input.description?.trim() || null, chapterNumber, now, now);
     const arcId = Number(result.lastInsertRowid);
     linkUserActivePersons(arcId);
     return arcId;
@@ -205,7 +227,7 @@ export function createStoryArc(input: CreateStoryArcInput): StoryArc {
 
 export function updateStoryArc(
   id: number,
-  updates: { name?: string; description?: string | null }
+  updates: { name?: string; description?: string | null; chapterNumber?: number | null }
 ): StoryArc | null {
   const existing = getStoryArc(id);
   if (!existing) return null;
@@ -219,6 +241,12 @@ export function updateStoryArc(
   if (updates.description !== undefined) {
     fields.push('description = ?');
     values.push(updates.description?.trim() || null);
+  }
+  if (updates.chapterNumber !== undefined) {
+    assertValidChapterNumber(updates.chapterNumber);
+    if (updates.chapterNumber !== null) assertChapterNumberFree(updates.chapterNumber, id);
+    fields.push('chapter_number = ?');
+    values.push(updates.chapterNumber);
   }
   if (fields.length === 0) return existing;
 

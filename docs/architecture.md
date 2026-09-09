@@ -36,21 +36,21 @@ This document describes the high-level structure of the D&D Dashboard.
 | `entities.ts`   | Entity list, details, aliases, blacklist, knowledge and summary CRUD                    |
 | `recordings.ts` | Discord recording sessions, transcripts, trimming and AI session-to-diary draft         |
 | `search.ts`     | `GET /api/search` – global FTS5 full-text search across diary, sessions and knowledge   |
-| `storyArcs.ts`  | Story arcs: list/create/update/activate/delete (admin mutations)                        |
+| `storyArcs.ts`  | Story arcs: list/create/update/activate/delete incl. chapter numbers (admin mutations)  |
 
 ### Repositories (`server/repositories/`)
 
-| File                  | Purpose                                                                                 |
-| --------------------- | --------------------------------------------------------------------------------------- |
-| `games.ts`            | SQLite game state storage (JSON in `games` table)                                       |
-| `bingoSuggestions.ts` | Pending, accepted and rejected AI bingo suggestions                                     |
-| `diary.ts`            | Diary entries, entities, aliases, search, canonical name resolution                     |
-| `entityKnowledge.ts`  | Knowledge entries for entities (CRUD, soft-delete, in-game validity windows)            |
-| `entitySummaries.ts`  | AI-generated entity summaries                                                           |
-| `gameTimeline.ts`     | Central `campaign_days` timeline, current/next day helpers, session & diary day setters |
-| `recordings.ts`       | Recording sessions and files                                                            |
-| `search.ts`           | FTS5 global search (`search_index` documents, safe query building, snippet hydration)   |
-| `storyArcs.ts`        | Story arcs: CRUD, single-active invariant, arc entity links (m:n), derived day ranges   |
+| File                  | Purpose                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| `games.ts`            | SQLite game state storage (JSON in `games` table)                                                      |
+| `bingoSuggestions.ts` | Pending, accepted and rejected AI bingo suggestions                                                    |
+| `diary.ts`            | Diary entries, entities, aliases, search, canonical name resolution                                    |
+| `entityKnowledge.ts`  | Knowledge entries for entities (CRUD, soft-delete, in-game validity windows)                           |
+| `entitySummaries.ts`  | AI-generated entity summaries                                                                          |
+| `gameTimeline.ts`     | Central `campaign_days` timeline, current/next day helpers, session & diary day setters                |
+| `recordings.ts`       | Recording sessions and files                                                                           |
+| `search.ts`           | FTS5 global search (`search_index` documents, safe query building, snippet hydration)                  |
+| `storyArcs.ts`        | Story arcs: CRUD, chapter numbers, single-active invariant, arc entity links (m:n), derived day ranges |
 
 ### AI / MCP (`server/ai/` & `server/mcp/`)
 

@@ -17,9 +17,21 @@ const router = Router();
 
 const idParamSchema = z.coerce.number().int().positive({ error: 'Ungültige ID' });
 
+const chapterNumberSchema = z.union(
+  [
+    z.null(),
+    z.coerce
+      .number()
+      .int({ error: 'Kapitelnummer muss eine ganze Zahl sein' })
+      .positive({ error: 'Kapitelnummer muss positiv sein' }),
+  ],
+  { error: 'Kapitelnummer muss eine positive Zahl sein' }
+);
+
 const createArcSchema = z.object({
   name: z.string({ error: 'Name ist erforderlich' }).trim().min(1, 'Name ist erforderlich'),
   description: z.preprocess((v) => (typeof v === 'string' ? v : null), z.string().nullable()),
+  chapterNumber: chapterNumberSchema.optional(),
 });
 
 const updateArcSchema = z
@@ -29,6 +41,7 @@ const updateArcSchema = z
       .trim()
       .min(1, 'Name darf nicht leer sein'),
     description: z.union([z.null(), z.string()], { error: 'Beschreibung muss ein Text sein' }),
+    chapterNumber: chapterNumberSchema,
   })
   .partial();
 
@@ -39,9 +52,9 @@ router.get('/', (_req: AuthRequest, res) => {
 });
 
 router.post('/', requireAdmin, (req: AuthRequest, res) => {
-  const { name, description } = parseWith(createArcSchema, req.body);
+  const { name, description, chapterNumber } = parseWith(createArcSchema, req.body);
   const arc = orFail('Story Arc konnte nicht angelegt werden', () =>
-    createStoryArc({ name, description })
+    createStoryArc({ name, description, chapterNumber: chapterNumber ?? null })
   );
   log.info(`Created story arc ${arc.id} (${arc.name})`);
   res.status(201).json({ arc });

@@ -286,6 +286,33 @@ describe('knowledge arc-range overlap', () => {
   });
 });
 
+describe('story arc chapter numbers', () => {
+  it('creates, reads and clears chapter numbers', () => {
+    const arc = createStoryArc({ name: 'Kapitel-Arc', chapterNumber: 2 });
+    expect(getStoryArc(arc.id)?.chapterNumber).toBe(2);
+    const updated = updateStoryArc(arc.id, { chapterNumber: 3 });
+    expect(updated?.chapterNumber).toBe(3);
+    expect(updateStoryArc(arc.id, { chapterNumber: null })?.chapterNumber).toBeNull();
+  });
+
+  it('rejects invalid and duplicate numbers but allows several unnumbered arcs', () => {
+    const numbered = createStoryArc({ name: 'Kapitel Eins', chapterNumber: 1 });
+    expect(() => createStoryArc({ name: 'Nochmal Eins', chapterNumber: 1 })).toThrow();
+    expect(() => createStoryArc({ name: 'Null', chapterNumber: 0 })).toThrow();
+
+    const unnumberedA = createStoryArc({ name: 'Ohne Nummer 1' });
+    const unnumberedB = createStoryArc({ name: 'Ohne Nummer 2' });
+    expect(unnumberedA.chapterNumber).toBeNull();
+    expect(unnumberedB.chapterNumber).toBeNull();
+
+    // Updating onto a taken number fails; keeping the arc's own number works.
+    const other = createStoryArc({ name: 'Kapitel Zwei', chapterNumber: 2 });
+    expect(() => updateStoryArc(other.id, { chapterNumber: 1 })).toThrow();
+    expect(updateStoryArc(other.id, { chapterNumber: 2 })?.chapterNumber).toBe(2);
+    expect(getStoryArc(numbered.id)?.chapterNumber).toBe(1);
+  });
+});
+
 describe('story arcs list ordering', () => {
   it('sorts the active arc first', () => {
     const arcs = listStoryArcs();

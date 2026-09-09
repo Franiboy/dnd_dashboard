@@ -118,9 +118,14 @@ export const schema: Record<string, TableDef> = {
       name: { type: 'TEXT', notNull: true },
       description: { type: 'TEXT' },
       status: { type: 'TEXT', notNull: true, default: "'planned'" },
+      // Campaign chapter number shown on the chapter chips/timeline. NULL =
+      // unnumbered (special/one-shot arcs). SQLite unique indexes treat NULLs
+      // as distinct, so several unnumbered arcs can coexist.
+      chapter_number: { type: 'INTEGER' },
       created_at: { type: 'TEXT', notNull: true },
       updated_at: { type: 'TEXT', notNull: true },
     },
+    indexes: [{ name: 'idx_story_arcs_chapter_number', columns: ['chapter_number'], unique: true }],
     check: "status IN ('planned', 'active', 'completed')",
   },
 
