@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import DOMPurify from 'dompurify';
+import DOMPurify from 'isomorphic-dompurify';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { typeLabels } from '../lib/entityLabels';
 import { Tooltip } from './Tooltip';

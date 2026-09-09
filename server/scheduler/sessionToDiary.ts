@@ -5,7 +5,7 @@ import {
   listPendingSessionToDiaryTransfers,
   recordSessionToDiaryTransfer,
 } from '../repositories/recordings.js';
-import { getUsersWithAutoSessionToDiary } from '../users.js';
+import { getUsersWithAutoSessionToDiary } from '../repositories/users.js';
 import type { McpSessionUser } from '../mcp/tokens.js';
 import type { SafeUser } from '../../shared/types.js';
 

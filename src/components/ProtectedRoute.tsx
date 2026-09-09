@@ -14,23 +14,23 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ user, adminOnly, appId, version, children }: ProtectedRouteProps) {
   if (!user.isApproved && !user.isAdmin) {
-    return <Navigate to="/" />;
+    return <Navigate to="/" replace />;
   }
 
   if (adminOnly && !user.isAdmin) {
-    return <Navigate to="/" />;
+    return <Navigate to="/" replace />;
   }
 
   if (appId) {
     const app = APPS.find((a) => a.id === appId);
     if (!app) {
-      return <Navigate to="/" />;
+      return <Navigate to="/" replace />;
     }
     if (app.requiresFeature && version === undefined) {
       return <Loading size="sm" />;
     }
     if (!isAppVisible(app, user, version)) {
-      return <Navigate to="/" />;
+      return <Navigate to="/" replace />;
     }
   }
 

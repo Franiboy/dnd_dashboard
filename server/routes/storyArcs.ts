@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { z } from 'zod';
+import { AppError, orFail, parseWith } from '../errors.js';
 import { authMiddleware, requireAdmin, requireApproved, type AuthRequest } from '../auth.js';
 import { createLogger } from '../logger.js';
 import {
@@ -13,111 +15,73 @@ const log = createLogger('storyArcRoutes');
 
 const router = Router();
 
+const idParamSchema = z.coerce.number().int().positive({ error: 'Ungültige ID' });
+
+const createArcSchema = z.object({
+  name: z.string({ error: 'Name ist erforderlich' }).trim().min(1, 'Name ist erforderlich'),
+  description: z.preprocess((v) => (typeof v === 'string' ? v : null), z.string().nullable()),
+});
+
+const updateArcSchema = z
+  .object({
+    name: z
+      .string({ error: 'Name darf nicht leer sein' })
+      .trim()
+      .min(1, 'Name darf nicht leer sein'),
+    description: z.union([z.null(), z.string()], { error: 'Beschreibung muss ein Text sein' }),
+  })
+  .partial();
+
 router.use(authMiddleware, requireApproved);
 
 router.get('/', (_req: AuthRequest, res) => {
-  try {
-    res.json({ arcs: listStoryArcs() });
-  } catch {
-    res.status(500).json({ error: 'Story Arcs konnten nicht geladen werden' });
-  }
+  res.json({ arcs: orFail('Story Arcs konnten nicht geladen werden', () => listStoryArcs()) });
 });
 
 router.post('/', requireAdmin, (req: AuthRequest, res) => {
-  const { name, description } = req.body;
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Name ist erforderlich' });
-    return;
-  }
-
-  try {
-    const arc = createStoryArc({
-      name: name.trim(),
-      description: typeof description === 'string' ? description : null,
-    });
-    log.info(`Created story arc ${arc.id} (${arc.name})`);
-    res.status(201).json({ arc });
-  } catch {
-    res.status(500).json({ error: 'Story Arc konnte nicht angelegt werden' });
-  }
+  const { name, description } = parseWith(createArcSchema, req.body);
+  const arc = orFail('Story Arc konnte nicht angelegt werden', () =>
+    createStoryArc({ name, description })
+  );
+  log.info(`Created story arc ${arc.id} (${arc.name})`);
+  res.status(201).json({ arc });
 });
 
 router.put('/:id', requireAdmin, (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) {
-    res.status(400).json({ error: 'Ungültige ID' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
+  const updates = parseWith(updateArcSchema, req.body);
 
-  const { name, description } = req.body;
-  const updates: { name?: string; description?: string | null } = {};
-  if (name !== undefined) {
-    if (typeof name !== 'string' || !name.trim()) {
-      res.status(400).json({ error: 'Name darf nicht leer sein' });
-      return;
-    }
-    updates.name = name;
+  const arc = orFail('Story Arc konnte nicht gespeichert werden', () =>
+    updateStoryArc(id, updates)
+  );
+  if (!arc) {
+    throw new AppError(404, 'Story Arc nicht gefunden');
   }
-  if (description !== undefined) {
-    if (description !== null && typeof description !== 'string') {
-      res.status(400).json({ error: 'Beschreibung muss ein Text sein' });
-      return;
-    }
-    updates.description = description;
-  }
-
-  try {
-    const arc = updateStoryArc(id, updates);
-    if (!arc) {
-      res.status(404).json({ error: 'Story Arc nicht gefunden' });
-      return;
-    }
-    res.json({ arc });
-  } catch {
-    res.status(500).json({ error: 'Story Arc konnte nicht gespeichert werden' });
-  }
+  res.json({ arc });
 });
 
 router.post('/:id/activate', requireAdmin, (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) {
-    res.status(400).json({ error: 'Ungültige ID' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
 
-  try {
-    const arc = activateStoryArc(id);
-    if (!arc) {
-      res.status(404).json({ error: 'Story Arc nicht gefunden' });
-      return;
-    }
-    log.info(`Activated story arc ${arc.id} (${arc.name})`);
-    res.json({ arc });
-  } catch {
-    res.status(500).json({ error: 'Story Arc konnte nicht aktiviert werden' });
+  const arc = orFail('Story Arc konnte nicht aktiviert werden', () => activateStoryArc(id));
+  if (!arc) {
+    throw new AppError(404, 'Story Arc nicht gefunden');
   }
+  log.info(`Activated story arc ${arc.id} (${arc.name})`);
+  res.json({ arc });
 });
 
 router.delete('/:id', requireAdmin, (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) {
-    res.status(400).json({ error: 'Ungültige ID' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
 
-  try {
-    const deleted = deleteStoryArc(id);
-    if (!deleted) {
-      res.status(404).json({ error: 'Story Arc nicht gefunden' });
-      return;
-    }
-    log.info(`Deleted story arc ${id}`);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({
-      error: err instanceof Error ? err.message : 'Story Arc konnte nicht gelöscht werden',
-    });
+  // deleteStoryArc throws AppErrors with user-facing guard messages
+  // (active/completed arcs are protected from deletion).
+  const deleted = deleteStoryArc(id);
+  if (!deleted) {
+    throw new AppError(404, 'Story Arc nicht gefunden');
   }
+  log.info(`Deleted story arc ${id}`);
+  res.json({ ok: true });
 });
 
 export default router;

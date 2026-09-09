@@ -5,7 +5,7 @@ import {
   getDiscordTokens,
   storeDiscordTokens,
   updateDiscordProfile,
-} from '../users.js';
+} from '../repositories/users.js';
 
 const log = createLogger('discord-oauth');
 

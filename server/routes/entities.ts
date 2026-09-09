@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import { z } from 'zod';
+import { AppError, orFail, parseWith } from '../errors.js';
+import { aiRateLimit } from '../utils/rateLimits.js';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
-import { db } from '../database.js';
-import type { DiaryEntities } from '../ai/rewrite.js';
 import { isAiEnabled } from '../ai/config.js';
 import {
   distributeKnowledgeFromText,
@@ -16,6 +17,7 @@ import {
   getBlacklistedEntities,
   getEntityDetail,
   getEntityMappings,
+  listAllEntityRefs,
   reclassifyEntity,
   unblacklistEntity,
   updateEntity,
@@ -43,335 +45,249 @@ import {
 
 const router = Router();
 
-const ENTITY_TYPES: Array<keyof DiaryEntities> = ['persons', 'organizations', 'locations', 'items'];
+const entityTypes = ['persons', 'organizations', 'locations', 'items'] as const;
+type EntityType = (typeof entityTypes)[number];
 
-/**
- * Parses an optional arcId query/body value: `undefined` when absent, `'none'`
- * for the "Ohne Arc" sentinel, a positive integer arc id, or `'invalid'`.
- */
-function parseArcId(value: unknown): number | 'none' | undefined | 'invalid' {
-  if (value === undefined || value === null || value === '') return undefined;
-  if (value === 'none') return 'none';
-  const num = Number(value);
-  if (!Number.isInteger(num) || num <= 0) return 'invalid';
-  return num;
+// ---------------------------------------------------------------------------
+// Validation schemas
+// ---------------------------------------------------------------------------
+
+const entityTypeSchema = z.enum(entityTypes, { error: 'Gültiger Typ ist erforderlich' });
+
+/** Non-empty trimmed string; message shared by combined type+name validators. */
+function requiredNameSchema(message: string) {
+  return z.string({ error: message }).trim().min(1, message);
 }
 
-/** Resolves an arcId param to an existing arc, the 'none' sentinel, or absent. */
-function resolveArcIdParam(
-  value: unknown
-): { arcId: number | 'none' | undefined } | { error: string } {
-  const parsed = parseArcId(value);
-  if (parsed === 'invalid')
-    return { error: 'arcId muss eine positive ganze Zahl oder "none" sein' };
-  if (parsed === undefined) return { arcId: undefined };
-  if (parsed === 'none') return { arcId: 'none' };
-  if (!storyArcExists(parsed)) return { error: 'Story Arc nicht gefunden' };
-  return { arcId: parsed };
+/** Coerces anything that is not a string (incl. null/undefined) to '' and trims. */
+const looseTrimmed = z.preprocess(
+  (v) => (typeof v === 'string' ? v : ''),
+  z.string().transform((v) => v.trim())
+);
+
+const entityQuerySchema = z.object({
+  type: z.enum(entityTypes, { error: 'Gültiger Typ und Name sind erforderlich' }),
+  name: requiredNameSchema('Gültiger Typ und Name sind erforderlich'),
+  qualifier: looseTrimmed,
+});
+
+/** Optional arcId filter: absent, 'none' ("Ohne Arc") or an existing arc id. */
+const arcIdFilterSchema = z.preprocess(
+  (v) => (v === '' || v === null ? undefined : v),
+  z
+    .union([z.literal('none'), z.coerce.number().int().positive()], {
+      error: 'arcId muss eine positive ganze Zahl oder "none" sein',
+    })
+    .optional()
+);
+
+/** arcId for AI runs: absent or an existing arc id ('none' is rejected). */
+const aiArcIdSchema = z.preprocess(
+  (v) => (v === '' || v === null ? undefined : v),
+  z.coerce.number().int().positive({ error: 'arcId muss eine positive ganze Zahl sein' }).optional()
+);
+
+const arcLinkArcIdSchema = z.coerce
+  .number()
+  .int()
+  .positive({ error: 'Gültige arcId ist erforderlich' });
+
+const nameTypeSchema = z.object({
+  name: requiredNameSchema('Name ist erforderlich'),
+  type: entityTypeSchema,
+});
+
+const reclassifySchema = z.object({
+  name: requiredNameSchema('Name ist erforderlich'),
+  qualifier: looseTrimmed,
+  fromType: z.enum(entityTypes, { error: 'Gültige Typen sind erforderlich' }),
+  toType: z.enum(entityTypes, { error: 'Gültige Typen sind erforderlich' }),
+});
+
+const aliasSchema = z.object({
+  type: entityTypeSchema,
+  alias: requiredNameSchema('Alias und Zielname sind erforderlich'),
+  canonical: requiredNameSchema('Alias und Zielname sind erforderlich'),
+  canonicalQualifier: looseTrimmed,
+});
+
+const updateEntitySchema = z.object({
+  type: z.enum(entityTypes, { error: 'Gültige Daten sind erforderlich' }),
+  oldName: requiredNameSchema('Gültige Daten sind erforderlich'),
+  newName: requiredNameSchema('Gültige Daten sind erforderlich'),
+  oldQualifier: looseTrimmed,
+  newQualifier: looseTrimmed,
+  aliases: z
+    .array(z.coerce.string(), { error: 'Gültige Daten sind erforderlich' })
+    .transform((list) => list.map((a) => a.trim()).filter(Boolean)),
+});
+
+const createKnowledgeSchema = z.object({
+  type: z.enum(entityTypes, { error: 'Gültiger Typ und Name sind erforderlich' }),
+  name: requiredNameSchema('Gültiger Typ und Name sind erforderlich'),
+  qualifier: looseTrimmed,
+  title: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() ? v.trim() : null),
+    z.string().nullable()
+  ),
+  content: requiredNameSchema('Inhalt ist erforderlich'),
+  validFrom: z.unknown().transform(normGameDayOrNull),
+  validUntil: z.unknown().transform(normGameDayOrNull),
+});
+
+const idParamSchema = z.coerce.number().int().positive({ error: 'Ungültige ID' });
+
+const knowledgeEndSchema = z.object({
+  until: z.coerce
+    .number()
+    .int()
+    .positive({ error: 'Gültiger "until" (Spieltag) ist erforderlich' }),
+  reason: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined),
+    z.string().optional()
+  ),
+});
+
+const textSchema = z.preprocess(
+  (v) => (typeof v === 'string' ? v : ''),
+  z.string().trim().min(1, 'Text ist erforderlich')
+);
+
+const miniSummarySchema = z.object({
+  type: z.enum(entityTypes, { error: 'Gültiger Typ und Name sind erforderlich' }),
+  name: requiredNameSchema('Gültiger Typ und Name sind erforderlich'),
+  qualifier: looseTrimmed,
+  miniSummary: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() : null),
+    z.string().nullable()
+  ),
+});
+
+/** Normalizes a game-day reference: absent/invalid becomes null. */
+function normGameDayOrNull(v: unknown): number | null {
+  if (v === undefined || v === null) return null;
+  return Number.isInteger(Number(v)) ? Number(v) : null;
 }
 
-/** Resolves an arcId body value for AI runs: only real arcs are allowed. */
-function resolveAiArcIdParam(value: unknown): { arcId: number | undefined } | { error: string } {
-  const parsed = parseArcId(value);
-  if (parsed === 'invalid' || parsed === 'none') {
-    return { error: 'arcId muss eine positive ganze Zahl sein' };
+/** Validates that a numeric arc filter references an existing arc. */
+function requireExistingArc(value: number, status = 400): number {
+  if (!storyArcExists(value)) {
+    throw new AppError(status, 'Story Arc nicht gefunden');
   }
-  if (parsed === undefined) return { arcId: undefined };
-  if (!storyArcExists(parsed)) return { error: 'Story Arc nicht gefunden' };
-  return { arcId: parsed };
+  return value;
 }
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
 
 router.use(authMiddleware, requireApproved);
 
 router.get('/mappings', (_req: AuthRequest, res) => {
-  try {
-    res.json({ mappings: getEntityMappings() });
-  } catch {
-    res.status(500).json({ error: 'Mappings konnten nicht geladen werden' });
-  }
+  res.json({
+    mappings: orFail('Mappings konnten nicht geladen werden', () => getEntityMappings()),
+  });
 });
 
 router.get('/', (req: AuthRequest, res) => {
-  const arc = resolveArcIdParam(req.query.arcId);
-  if ('error' in arc) {
-    res.status(400).json({ error: arc.error });
+  const arc = parseWith(arcIdFilterSchema, req.query.arcId);
+  if (typeof arc === 'number') requireExistingArc(arc);
+
+  if (arc === 'none') {
+    // "Ohne Arc": only entities that are assigned to no story arc at all.
+    res.json({ ...listEntitiesOutsideArcs(), currentGameDay: getCurrentGameDay() });
+    return;
+  }
+  if (arc !== undefined) {
+    // Arc-filtered world view: only entities assigned to this story arc.
+    const filtered = listEntitiesForArc(arc);
+    res.json({ ...filtered, currentGameDay: getCurrentGameDay() });
     return;
   }
 
-  try {
-    if (arc.arcId === 'none') {
-      // "Ohne Arc": only entities that are assigned to no story arc at all.
-      res.json({ ...listEntitiesOutsideArcs(), currentGameDay: getCurrentGameDay() });
-      return;
-    }
-    if (arc.arcId !== undefined) {
-      // Arc-filtered world view: only entities assigned to this story arc.
-      const filtered = listEntitiesForArc(arc.arcId);
-      res.json({ ...filtered, currentGameDay: getCurrentGameDay() });
-      return;
-    }
-
-    const fetchRefs = (table: string) => {
-      const rows = db
-        .prepare(
-          `SELECT name, qualifier FROM ${table} ORDER BY name COLLATE NOCASE, qualifier COLLATE NOCASE`
-        )
-        .all() as { name: string; qualifier?: string }[];
-      return rows.map((row) => ({ name: row.name, qualifier: row.qualifier ?? '' }));
-    };
-
-    const entities = {
-      persons: fetchRefs('persons'),
-      organizations: fetchRefs('organizations'),
-      locations: fetchRefs('locations'),
-      items: fetchRefs('items'),
-    };
-
-    res.json({ ...entities, currentGameDay: getCurrentGameDay() });
-  } catch {
-    res.status(500).json({ error: 'Entitäten konnten nicht geladen werden' });
-  }
+  const refs = orFail('Entitäten konnten nicht geladen werden', () => listAllEntityRefs());
+  res.json({ ...refs, currentGameDay: getCurrentGameDay() });
 });
 
 router.get('/blacklist', (_req: AuthRequest, res) => {
-  try {
-    res.json(getBlacklistedEntities());
-  } catch {
-    res.status(500).json({ error: 'Blacklist konnte nicht geladen werden' });
-  }
+  res.json(orFail('Blacklist konnte nicht geladen werden', () => getBlacklistedEntities()));
 });
 
 router.post('/blacklist', (req: AuthRequest, res) => {
-  const { name, type } = req.body;
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Name ist erforderlich' });
-    return;
-  }
-  if (!type || !ENTITY_TYPES.includes(type)) {
-    res.status(400).json({ error: 'Gültiger Typ ist erforderlich' });
-    return;
-  }
-
-  try {
-    blacklistEntity(name.trim(), type);
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: 'Blacklisten fehlgeschlagen' });
-  }
+  const { name, type } = parseWith(nameTypeSchema, req.body);
+  orFail('Blacklisten fehlgeschlagen', () => blacklistEntity(name, type));
+  res.json({ ok: true });
 });
 
 router.post('/unblacklist', (req: AuthRequest, res) => {
-  const { name, type } = req.body;
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Name ist erforderlich' });
-    return;
-  }
-  if (!type || !ENTITY_TYPES.includes(type)) {
-    res.status(400).json({ error: 'Gültiger Typ ist erforderlich' });
-    return;
-  }
-
-  try {
-    unblacklistEntity(name.trim(), type);
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: 'Entfernen fehlgeschlagen' });
-  }
+  const { name, type } = parseWith(nameTypeSchema, req.body);
+  orFail('Entfernen fehlgeschlagen', () => unblacklistEntity(name, type));
+  res.json({ ok: true });
 });
 
 router.post('/reclassify', (req: AuthRequest, res) => {
-  const { name, qualifier, fromType, toType } = req.body;
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Name ist erforderlich' });
-    return;
-  }
-  if (!fromType || !ENTITY_TYPES.includes(fromType) || !toType || !ENTITY_TYPES.includes(toType)) {
-    res.status(400).json({ error: 'Gültige Typen sind erforderlich' });
-    return;
-  }
-
-  try {
-    reclassifyEntity(
-      name.trim(),
-      fromType,
-      toType,
-      typeof qualifier === 'string' ? qualifier.trim() : ''
-    );
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: 'Reklassifizierung fehlgeschlagen' });
-  }
+  const { name, qualifier, fromType, toType } = parseWith(reclassifySchema, req.body);
+  orFail('Reklassifizierung fehlgeschlagen', () =>
+    reclassifyEntity(name, fromType, toType, qualifier)
+  );
+  res.json({ ok: true });
 });
 
 router.post('/alias', (req: AuthRequest, res) => {
-  const { type, alias, canonical, canonicalQualifier } = req.body;
-  if (
-    !alias ||
-    typeof alias !== 'string' ||
-    !alias.trim() ||
-    !canonical ||
-    typeof canonical !== 'string' ||
-    !canonical.trim()
-  ) {
-    res.status(400).json({ error: 'Alias und Zielname sind erforderlich' });
-    return;
-  }
-  if (!type || !ENTITY_TYPES.includes(type)) {
-    res.status(400).json({ error: 'Gültiger Typ ist erforderlich' });
-    return;
-  }
-
-  try {
-    addEntityAlias(
-      type,
-      alias.trim(),
-      canonical.trim(),
-      typeof canonicalQualifier === 'string' ? canonicalQualifier.trim() : ''
-    );
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: 'Verknüpfen fehlgeschlagen' });
-  }
+  const { type, alias, canonical, canonicalQualifier } = parseWith(aliasSchema, req.body);
+  orFail('Verknüpfen fehlgeschlagen', () =>
+    addEntityAlias(type, alias, canonical, canonicalQualifier)
+  );
+  res.json({ ok: true });
 });
 
 router.get('/detail', (req: AuthRequest, res) => {
-  const { type, name, qualifier } = req.query;
-  if (
-    !type ||
-    typeof type !== 'string' ||
-    !ENTITY_TYPES.includes(type as keyof DiaryEntities) ||
-    !name ||
-    typeof name !== 'string' ||
-    !name.trim()
-  ) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
+  const { type, name, qualifier } = parseWith(entityQuerySchema, req.query);
+  const detail = orFail('Laden fehlgeschlagen', () => getEntityDetail(type, name, qualifier));
+  if (!detail) {
+    throw new AppError(404, 'Entität nicht gefunden');
   }
-
-  try {
-    const detail = getEntityDetail(
-      type as keyof DiaryEntities,
-      name.trim(),
-      typeof qualifier === 'string' ? qualifier : ''
-    );
-    if (!detail) {
-      res.status(404).json({ error: 'Entität nicht gefunden' });
-      return;
-    }
-    res.json(detail);
-  } catch {
-    res.status(500).json({ error: 'Laden fehlgeschlagen' });
-  }
+  res.json(detail);
 });
 
 router.put('/detail', (req: AuthRequest, res) => {
-  const { type, oldName, oldQualifier, newName, newQualifier, aliases } = req.body;
-  if (
-    !type ||
-    !ENTITY_TYPES.includes(type) ||
-    !oldName ||
-    typeof oldName !== 'string' ||
-    !oldName.trim() ||
-    !newName ||
-    typeof newName !== 'string' ||
-    !newName.trim() ||
-    !Array.isArray(aliases)
-  ) {
-    res.status(400).json({ error: 'Gültige Daten sind erforderlich' });
-    return;
-  }
-
-  try {
-    updateEntity(
-      type,
-      oldName.trim(),
-      newName.trim(),
-      aliases.map((a: unknown) => String(a).trim()).filter(Boolean),
-      typeof oldQualifier === 'string' ? oldQualifier.trim() : '',
-      typeof newQualifier === 'string' ? newQualifier.trim() : ''
-    );
-    res.json({ ok: true });
-  } catch (err) {
-    res
-      .status(500)
-      .json({ error: err instanceof Error ? err.message : 'Speichern fehlgeschlagen' });
-  }
+  const { type, oldName, oldQualifier, newName, newQualifier, aliases } = parseWith(
+    updateEntitySchema,
+    req.body
+  );
+  // updateEntity throws AppErrors with user-facing conflict messages.
+  updateEntity(type, oldName, newName, aliases, oldQualifier, newQualifier);
+  res.json({ ok: true });
 });
 
 router.get('/knowledge', (req: AuthRequest, res) => {
-  const { type, name, qualifier } = req.query;
-  if (
-    !type ||
-    typeof type !== 'string' ||
-    !ENTITY_TYPES.includes(type as keyof DiaryEntities) ||
-    !name ||
-    typeof name !== 'string' ||
-    !name.trim()
-  ) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
-  }
-  const arc = resolveArcIdParam(req.query.arcId);
-  if ('error' in arc) {
-    res.status(400).json({ error: arc.error });
-    return;
-  }
+  const { type, name, qualifier } = parseWith(entityQuerySchema, req.query);
+  const arc = parseWith(arcIdFilterSchema, req.query.arcId);
+  if (typeof arc === 'number') requireExistingArc(arc);
 
-  try {
-    let entries = listEntityKnowledge(
-      type as keyof DiaryEntities,
-      name.trim(),
-      typeof qualifier === 'string' ? qualifier : ''
-    );
-    if (typeof arc.arcId === 'number') {
-      // Arc-filtered view: only facts whose validity window overlaps the arc.
-      // ('none' has no day range, so it shows the entity's full knowledge.)
-      const range = getStoryArcDayRange(arc.arcId);
-      entries = entries.filter((entry) => knowledgeOverlapsArcRange(entry, range));
-    }
-    res.json({ entries, currentGameDay: getCurrentGameDay() });
-  } catch {
-    res.status(500).json({ error: 'Laden fehlgeschlagen' });
+  let entries = orFail('Laden fehlgeschlagen', () => listEntityKnowledge(type, name, qualifier));
+  if (typeof arc === 'number') {
+    // Arc-filtered view: only facts whose validity window overlaps the arc.
+    // ('none' has no day range, so it shows the entity's full knowledge.)
+    const range = getStoryArcDayRange(arc);
+    entries = entries.filter((entry) => knowledgeOverlapsArcRange(entry, range));
   }
+  res.json({ entries, currentGameDay: getCurrentGameDay() });
 });
 
 router.post('/knowledge', (req: AuthRequest, res) => {
-  const { type, name, qualifier, title, content, validFrom, validUntil } = req.body;
-  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
-  }
-  if (!content || typeof content !== 'string' || !content.trim()) {
-    res.status(400).json({ error: 'Inhalt ist erforderlich' });
-    return;
-  }
-
-  const normInt = (v: unknown): number | null =>
-    v === undefined || v === null ? null : Number.isInteger(Number(v)) ? Number(v) : null;
-
-  try {
-    const entry = createEntityKnowledge(
-      type,
-      name.trim(),
-      title && typeof title === 'string' ? title.trim() : null,
-      content.trim(),
-      'manual',
-      typeof qualifier === 'string' ? qualifier.trim() : '',
-      normInt(validFrom),
-      normInt(validUntil)
-    );
-    res.status(201).json({ entry });
-  } catch {
-    res.status(500).json({ error: 'Speichern fehlgeschlagen' });
-  }
+  const { type, name, qualifier, title, content, validFrom, validUntil } = parseWith(
+    createKnowledgeSchema,
+    req.body
+  );
+  const entry = orFail('Speichern fehlgeschlagen', () =>
+    createEntityKnowledge(type, name, title, content, 'manual', qualifier, validFrom, validUntil)
+  );
+  res.status(201).json({ entry });
 });
 
 router.put('/knowledge/:id', (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  if (!id) {
-    res.status(400).json({ error: 'Ungültige ID' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
 
   const { title, content, validFrom, validUntil } = req.body;
   const updates: {
@@ -385,375 +301,213 @@ router.put('/knowledge/:id', (req: AuthRequest, res) => {
   }
   if (content !== undefined) {
     if (typeof content !== 'string' || !content.trim()) {
-      res.status(400).json({ error: 'Inhalt ist erforderlich' });
-      return;
+      throw new AppError(400, 'Inhalt ist erforderlich');
     }
     updates.content = content.trim();
   }
   if (validFrom !== undefined) {
-    updates.validFrom =
-      validFrom === null ? null : Number.isInteger(Number(validFrom)) ? Number(validFrom) : null;
+    updates.validFrom = normGameDayOrNull(validFrom);
   }
   if (validUntil !== undefined) {
-    updates.validUntil =
-      validUntil === null ? null : Number.isInteger(Number(validUntil)) ? Number(validUntil) : null;
+    updates.validUntil = normGameDayOrNull(validUntil);
   }
 
-  try {
-    const existing = getEntityKnowledgeEntry(id);
-    if (!existing) {
-      res.status(404).json({ error: 'Eintrag nicht gefunden' });
-      return;
-    }
-    const entry = updateEntityKnowledge(id, updates);
-    if (!entry) {
-      res.status(500).json({ error: 'Aktualisieren fehlgeschlagen' });
-      return;
-    }
-    res.json({ entry });
-  } catch {
-    res.status(500).json({ error: 'Aktualisieren fehlgeschlagen' });
+  if (!orFail('Aktualisieren fehlgeschlagen', () => getEntityKnowledgeEntry(id))) {
+    throw new AppError(404, 'Eintrag nicht gefunden');
   }
+  const entry = orFail('Aktualisieren fehlgeschlagen', () => updateEntityKnowledge(id, updates));
+  if (!entry) {
+    throw new AppError(500, 'Aktualisieren fehlgeschlagen');
+  }
+  res.json({ entry });
 });
 
 router.delete('/knowledge/:id', (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  if (!id) {
-    res.status(400).json({ error: 'Ungültige ID' });
-    return;
-  }
-
+  const id = parseWith(idParamSchema, req.params.id);
   const { reason } = req.body;
   const deleteReason =
     typeof reason === 'string' && reason.trim() ? reason.trim() : 'Manuell als gelöscht markiert';
 
-  try {
-    const existing = getEntityKnowledgeEntry(id);
-    if (!existing) {
-      res.status(404).json({ error: 'Eintrag nicht gefunden' });
-      return;
-    }
-    const entry = markEntityKnowledgeDeleted(id, deleteReason);
-    res.json({ entry });
-  } catch {
-    res.status(500).json({ error: 'Löschen fehlgeschlagen' });
+  if (!orFail('Löschen fehlgeschlagen', () => getEntityKnowledgeEntry(id))) {
+    throw new AppError(404, 'Eintrag nicht gefunden');
   }
+  const entry = orFail('Löschen fehlgeschlagen', () =>
+    markEntityKnowledgeDeleted(id, deleteReason)
+  );
+  res.json({ entry });
 });
 
 router.post('/knowledge/:id/end', (req: AuthRequest, res) => {
-  const id = Number(req.params.id);
-  if (!id) {
-    res.status(400).json({ error: 'Ungültige ID' });
-    return;
-  }
+  const id = parseWith(idParamSchema, req.params.id);
+  const { until, reason } = parseWith(knowledgeEndSchema, req.body);
+  const endReason = reason ?? 'Gilt ab diesem Spieltag nicht mehr';
 
-  const { until, reason } = req.body;
-  const untilNum = Number(until);
-  if (!Number.isInteger(untilNum) || untilNum <= 0) {
-    res.status(400).json({ error: 'Gültiger "until" (Spieltag) ist erforderlich' });
-    return;
+  const existing = orFail('Beenden fehlgeschlagen', () => getEntityKnowledgeEntry(id));
+  if (!existing) {
+    throw new AppError(404, 'Eintrag nicht gefunden');
   }
-  const endReason =
-    typeof reason === 'string' && reason.trim()
-      ? reason.trim()
-      : 'Gilt ab diesem Spieltag nicht mehr';
-
-  try {
-    const existing = getEntityKnowledgeEntry(id);
-    if (!existing) {
-      res.status(404).json({ error: 'Eintrag nicht gefunden' });
-      return;
-    }
-    if (existing.status !== 'active') {
-      res.status(400).json({ error: 'Nur aktive Einträge können beendet werden' });
-      return;
-    }
-    const entry = markEntityKnowledgeTimelineEnd(id, untilNum, endReason);
-    res.json({ entry });
-  } catch {
-    res.status(500).json({ error: 'Beenden fehlgeschlagen' });
+  if (existing.status !== 'active') {
+    throw new AppError(400, 'Nur aktive Einträge können beendet werden');
   }
+  const entry = orFail('Beenden fehlgeschlagen', () =>
+    markEntityKnowledgeTimelineEnd(id, until, endReason)
+  );
+  res.json({ entry });
 });
 
 router.get('/arc-links', (req: AuthRequest, res) => {
-  const { type, name, qualifier } = req.query;
-  if (
-    !type ||
-    typeof type !== 'string' ||
-    !ENTITY_TYPES.includes(type as keyof DiaryEntities) ||
-    !name ||
-    typeof name !== 'string' ||
-    !name.trim()
-  ) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
+  const { type, name, qualifier } = parseWith(entityQuerySchema, req.query);
+  const resolved = orFail('Laden fehlgeschlagen', () => findEntityCanonical(type, name, qualifier));
+  if (!resolved) {
+    throw new AppError(404, 'Entität nicht gefunden');
   }
-
-  try {
-    const resolved = findEntityCanonical(
-      type as keyof DiaryEntities,
-      name.trim(),
-      typeof qualifier === 'string' ? qualifier : ''
-    );
-    if (!resolved) {
-      res.status(404).json({ error: 'Entität nicht gefunden' });
-      return;
-    }
-    const arcIds = listArcIdsForEntity(
-      type as keyof DiaryEntities,
-      resolved.name,
-      resolved.qualifier
-    );
-    res.json({ arcIds });
-  } catch {
-    res.status(500).json({ error: 'Laden fehlgeschlagen' });
-  }
+  const arcIds = orFail('Laden fehlgeschlagen', () =>
+    listArcIdsForEntity(type, resolved.name, resolved.qualifier)
+  );
+  res.json({ arcIds });
 });
 
 router.post('/arc-links', (req: AuthRequest, res) => {
-  const { type, name, qualifier, arcId } = req.body;
-  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
-  }
-  if (!Number.isInteger(Number(arcId)) || Number(arcId) <= 0 || !storyArcExists(Number(arcId))) {
-    res.status(404).json({ error: 'Gültige arcId ist erforderlich' });
-    return;
-  }
+  const { type, name, qualifier } = parseWith(
+    nameTypeSchema.extend({ qualifier: looseTrimmed }),
+    req.body
+  );
+  const arcId = requireExistingArc(parseWith(arcLinkArcIdSchema, req.body.arcId), 404);
 
-  try {
-    // Canonical resolution keeps the identity-based link table clean even
-    // when the client sends an alias or a differently cased spelling.
-    const resolved = findEntityCanonical(
-      type,
-      name.trim(),
-      typeof qualifier === 'string' ? qualifier.trim() : ''
-    );
-    if (!resolved) {
-      res.status(404).json({ error: 'Entität nicht gefunden' });
-      return;
-    }
-    linkStoryArcEntity(Number(arcId), type, resolved);
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: 'Zuordnen fehlgeschlagen' });
+  // Canonical resolution keeps the identity-based link table clean even
+  // when the client sends an alias or a differently cased spelling.
+  const resolved = orFail('Zuordnen fehlgeschlagen', () =>
+    findEntityCanonical(type, name, qualifier)
+  );
+  if (!resolved) {
+    throw new AppError(404, 'Entität nicht gefunden');
   }
+  orFail('Zuordnen fehlgeschlagen', () => linkStoryArcEntity(arcId, type, resolved));
+  res.json({ ok: true });
 });
 
 // POST instead of a DELETE-with-body: some proxies/clients drop DELETE bodies.
 router.post('/arc-links/unlink', (req: AuthRequest, res) => {
-  const { type, name, qualifier, arcId } = req.body;
-  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
-  }
-  if (!Number.isInteger(Number(arcId)) || Number(arcId) <= 0 || !storyArcExists(Number(arcId))) {
-    res.status(404).json({ error: 'Gültige arcId ist erforderlich' });
-    return;
-  }
+  const { type, name, qualifier } = parseWith(
+    nameTypeSchema.extend({ qualifier: looseTrimmed }),
+    req.body
+  );
+  const arcId = requireExistingArc(parseWith(arcLinkArcIdSchema, req.body.arcId), 404);
 
-  try {
-    const resolved = findEntityCanonical(
-      type,
-      name.trim(),
-      typeof qualifier === 'string' ? qualifier.trim() : ''
-    );
-    if (!resolved) {
-      res.status(404).json({ error: 'Entität nicht gefunden' });
-      return;
-    }
-    unlinkStoryArcEntity(Number(arcId), type, resolved.name, resolved.qualifier);
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: 'Lösen fehlgeschlagen' });
+  const resolved = orFail('Lösen fehlgeschlagen', () => findEntityCanonical(type, name, qualifier));
+  if (!resolved) {
+    throw new AppError(404, 'Entität nicht gefunden');
   }
+  orFail('Lösen fehlgeschlagen', () =>
+    unlinkStoryArcEntity(arcId, type, resolved.name, resolved.qualifier)
+  );
+  res.json({ ok: true });
 });
 
-router.post('/knowledge/distribute', async (req: AuthRequest, res) => {
+router.post('/knowledge/distribute', aiRateLimit, async (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
   }
-
-  const { text, arcId } = req.body;
-  if (!text || typeof text !== 'string' || !text.trim()) {
-    res.status(400).json({ error: 'Text ist erforderlich' });
-    return;
-  }
-  const arc = resolveAiArcIdParam(arcId);
-  if ('error' in arc) {
-    res.status(400).json({ error: arc.error });
-    return;
-  }
+  const text = parseWith(textSchema, req.body.text);
+  const arc = parseWith(aiArcIdSchema, req.body.arcId);
+  if (arc !== undefined) requireExistingArc(arc);
 
   try {
-    const result = await distributeKnowledgeFromText(text.trim(), {
-      user: req.user,
-      arcId: arc.arcId,
-    });
+    const result = await distributeKnowledgeFromText(text, { user: req.user, arcId: arc });
     res.json(result);
-  } catch {
-    res.status(500).json({ error: 'KI-Einordnung fehlgeschlagen' });
+  } catch (err) {
+    throw new AppError(500, 'KI-Einordnung fehlgeschlagen', { cause: err });
   }
 });
 
-router.post('/knowledge/correct', async (req: AuthRequest, res) => {
+router.post('/knowledge/correct', aiRateLimit, async (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
   }
+  const text = parseWith(textSchema, req.body.text);
+  const arc = parseWith(aiArcIdSchema, req.body.arcId);
+  if (arc !== undefined) requireExistingArc(arc);
 
-  const { text, type, name, qualifier, arcId } = req.body;
-  if (!text || typeof text !== 'string' || !text.trim()) {
-    res.status(400).json({ error: 'Text ist erforderlich' });
-    return;
-  }
-  const arc = resolveAiArcIdParam(arcId);
-  if ('error' in arc) {
-    res.status(400).json({ error: arc.error });
-    return;
-  }
-
-  let focus:
-    | { entityType: (typeof ENTITY_TYPES)[number]; entityName: string; entityQualifier: string }
-    | undefined;
+  const { type, name, qualifier } = req.body;
+  let focus: { entityType: EntityType; entityName: string; entityQualifier: string } | undefined;
   if (type !== undefined || name !== undefined) {
-    if (
-      !type ||
-      !ENTITY_TYPES.includes(type) ||
-      !name ||
-      typeof name !== 'string' ||
-      !name.trim()
-    ) {
-      res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-      return;
-    }
-    focus = {
-      entityType: type,
-      entityName: name.trim(),
-      entityQualifier: typeof qualifier === 'string' ? qualifier.trim() : '',
-    };
+    const parsed = parseWith(entityQuerySchema, { type, name, qualifier });
+    focus = { entityType: parsed.type, entityName: parsed.name, entityQualifier: parsed.qualifier };
   }
 
   try {
-    const result = await correctKnowledgeFromText(text.trim(), focus, {
-      user: req.user,
-      arcId: arc.arcId,
-    });
+    const result = await correctKnowledgeFromText(text, focus, { user: req.user, arcId: arc });
     res.json(result);
-  } catch {
-    res.status(500).json({ error: 'KI-Berichtigung fehlgeschlagen' });
+  } catch (err) {
+    throw new AppError(500, 'KI-Berichtigung fehlgeschlagen', { cause: err });
   }
 });
 
-router.post('/knowledge/review', async (req: AuthRequest, res) => {
+router.post('/knowledge/review', aiRateLimit, async (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
   }
-
-  const { type, name, qualifier, arcId } = req.body;
-  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
-  }
-  const arc = resolveAiArcIdParam(arcId);
-  if ('error' in arc) {
-    res.status(400).json({ error: arc.error });
-    return;
-  }
+  const { type, name, qualifier } = parseWith(entityQuerySchema, req.body);
+  const arc = parseWith(aiArcIdSchema, req.body.arcId);
+  if (arc !== undefined) requireExistingArc(arc);
 
   try {
-    const result = await reviewEntityKnowledge(type, name.trim(), {
-      qualifier: typeof qualifier === 'string' ? qualifier.trim() : '',
+    const result = await reviewEntityKnowledge(type, name, {
+      qualifier,
       user: req.user,
-      arcId: arc.arcId,
+      arcId: arc,
     });
     res.json(result);
-  } catch {
-    res.status(500).json({ error: 'KI-Prüfung fehlgeschlagen' });
+  } catch (err) {
+    throw new AppError(500, 'KI-Prüfung fehlgeschlagen', { cause: err });
   }
 });
 
 router.get('/summary', (req: AuthRequest, res) => {
-  const { type, name, qualifier } = req.query;
-  if (
-    !type ||
-    !ENTITY_TYPES.includes(type as keyof DiaryEntities) ||
-    !name ||
-    typeof name !== 'string' ||
-    !name.trim()
-  ) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
-  }
-
-  try {
-    const summaryQualifier = typeof qualifier === 'string' ? qualifier : '';
-    const summary = getEntitySummary(type as keyof DiaryEntities, name.trim(), summaryQualifier);
-    res.json(
-      summary ?? {
-        entityType: type,
-        entityName: name.trim(),
-        entityQualifier: summaryQualifier,
-        summary: null,
-        miniSummary: null,
-        isDirty: true,
-        updatedAt: null,
-      }
-    );
-  } catch {
-    res.status(500).json({ error: 'Zusammenfassung konnte nicht geladen werden' });
-  }
+  const { type, name, qualifier } = parseWith(entityQuerySchema, req.query);
+  const summary = orFail('Zusammenfassung konnte nicht geladen werden', () =>
+    getEntitySummary(type, name, qualifier)
+  );
+  res.json(
+    summary ?? {
+      entityType: type,
+      entityName: name,
+      entityQualifier: qualifier,
+      summary: null,
+      miniSummary: null,
+      isDirty: true,
+      updatedAt: null,
+    }
+  );
 });
 
-router.post('/summary/generate', async (req: AuthRequest, res) => {
+router.post('/summary/generate', aiRateLimit, async (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
-    res.status(503).json({ error: 'KI-Feature ist nicht konfiguriert' });
-    return;
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
   }
-
-  const { type, name, qualifier } = req.body;
-  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
-  }
+  const { type, name, qualifier } = parseWith(entityQuerySchema, req.body);
 
   try {
-    const result = await generateEntitySummary(type, name.trim(), {
+    const result = await generateEntitySummary(type, name, {
       user: req.user,
-      qualifier: typeof qualifier === 'string' ? qualifier.trim() : '',
+      qualifier,
     });
     if (result === null) {
-      res.status(500).json({ error: 'KI-Zusammenfassung fehlgeschlagen' });
-      return;
+      throw new AppError(500, 'KI-Zusammenfassung fehlgeschlagen');
     }
     res.json({ summary: result.summary, miniSummary: result.miniSummary });
-  } catch {
-    res.status(500).json({ error: 'KI-Zusammenfassung fehlgeschlagen' });
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    throw new AppError(500, 'KI-Zusammenfassung fehlgeschlagen', { cause: err });
   }
 });
 
 router.put('/mini-summary', (req: AuthRequest, res) => {
-  const { type, name, qualifier, miniSummary } = req.body;
-  if (!type || !ENTITY_TYPES.includes(type) || !name || typeof name !== 'string' || !name.trim()) {
-    res.status(400).json({ error: 'Gültiger Typ und Name sind erforderlich' });
-    return;
-  }
-
-  const normalizedMini = typeof miniSummary === 'string' ? miniSummary.trim() : null;
-
-  try {
-    const entry = setEntityMiniSummary(
-      type,
-      name.trim(),
-      normalizedMini,
-      typeof qualifier === 'string' ? qualifier.trim() : ''
-    );
-    res.json({ miniSummary: entry.miniSummary });
-  } catch {
-    res.status(500).json({ error: 'Mini-Zusammenfassung konnte nicht gespeichert werden' });
-  }
+  const { type, name, qualifier, miniSummary } = parseWith(miniSummarySchema, req.body);
+  const entry = orFail('Mini-Zusammenfassung konnte nicht gespeichert werden', () =>
+    setEntityMiniSummary(type, name, miniSummary, qualifier)
+  );
+  res.json({ miniSummary: entry.miniSummary });
 });
 
 export default router;

@@ -1,7 +1,10 @@
 import { Router, type Response } from 'express';
+import { z } from 'zod';
+import { AppError, parseWith } from '../errors.js';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getRecentLogs, getLogsPaginated, subscribeLogs } from '../logger.js';
-import type { LogEntry, LogLevel } from '../../shared/types.js';
+import type { LogEntry, UserRole } from '../../shared/types.js';
+import { USER_ROLES } from '../../shared/types.js';
 import { getModel, isValidModel, listAvailableModels } from '../ai/modelConfig.js';
 import { getAiModelSettings, setAiModelSettings } from '../repositories/aiSettings.js';
 import {
@@ -13,8 +16,7 @@ import {
   setUserApproved,
   setUserDisabledApps,
   setUserRole,
-} from '../users.js';
-import { USER_ROLES, type UserRole } from '../../shared/types.js';
+} from '../repositories/users.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
 import { syncPlayersFromUsers } from '../game.js';
 import { isNightlyJobRunning, runNightlyJobNow } from '../scheduler/summaryScheduler.js';
@@ -79,17 +81,23 @@ function notifyLogUpdate(entry: LogEntry) {
 
 subscribeLogs(notifyLogUpdate);
 
-function checkAdminAction(
-  req: AuthRequest,
-  targetId: string
-): { ok: true } | { ok: false; error: string } {
+/** Guards destructive admin actions against self-modification and the initial admin. */
+function requireAdminActionTarget(req: AuthRequest, targetId: string) {
   const target = findUserById(targetId);
-  if (!target) return { ok: false, error: 'User nicht gefunden' };
-  if (isInitialAdmin(target))
-    return { ok: false, error: 'Der Ursprungsadmin kann nicht verändert werden' };
-  if (target.id === req.user!.id)
-    return { ok: false, error: 'Du kannst deinen eigenen Account nicht verändern' };
-  return { ok: true };
+  if (!target) throw new AppError(403, 'User nicht gefunden');
+  if (isInitialAdmin(target)) {
+    throw new AppError(403, 'Der Ursprungsadmin kann nicht verändert werden');
+  }
+  if (target.id === req.user!.id) {
+    throw new AppError(403, 'Du kannst deinen eigenen Account nicht verändern');
+  }
+  return target;
+}
+
+function requireExistingUser(targetId: string) {
+  const user = findUserById(targetId);
+  if (!user) throw new AppError(404, 'User nicht gefunden');
+  return user;
 }
 
 function attachSseCleanup(req: AuthRequest, res: Response, cleanup: () => void) {
@@ -98,109 +106,114 @@ function attachSseCleanup(req: AuthRequest, res: Response, cleanup: () => void) 
   res.on('error', cleanup);
 }
 
+function startSse(res: Response, event: string, payload: unknown): boolean {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  return writeSse(res, event, JSON.stringify(payload));
+}
+
 const router = Router();
 
-router.get('/users', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+const logsQuerySchema = z.object({
+  level: z.preprocess(
+    (v) => (typeof v === 'string' && v ? v : undefined),
+    z
+      .enum(['debug', 'info', 'warn', 'error'] as const, { error: 'Ungültiger level-Wert' })
+      .optional()
+  ),
+  before: z.preprocess(
+    (v) => (typeof v === 'string' ? Number.parseInt(v, 10) : undefined),
+    z.number({ error: 'Ungültiger before-Wert' }).int().min(0, 'Ungültiger before-Wert').optional()
+  ),
+  limit: z.preprocess(
+    (v) => (typeof v === 'string' ? Number.parseInt(v, 10) : undefined),
+    z.number({ error: 'Ungültiger limit-Wert' }).int().optional()
+  ),
+});
+
+const roleSchema = z.object({
+  role: z.enum(USER_ROLES as readonly [UserRole, ...UserRole[]], { error: 'Ungültige Rolle' }),
+});
+
+const adminFlagSchema = z.object({
+  isAdmin: z.boolean({ error: 'isAdmin muss ein Boolean sein' }),
+});
+
+const disabledAppsSchema = z.object({
+  disabledApps: z.array(z.string(), { error: 'disabledApps muss ein Array von Strings sein' }),
+});
+
+const modelSchema = z.object({
+  model: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() ? v.trim() : null),
+    z.string().nullable()
+  ),
+});
+
+router.get('/users', authMiddleware, requireAdmin, (_req: AuthRequest, res) => {
   res.json(getAllUsers());
 });
 
 router.get('/users/events', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders();
-
   // Send initial list
-  if (!writeSse(res, 'users', JSON.stringify(getAllUsers()))) {
+  if (!startSse(res, 'users', getAllUsers())) {
     return;
   }
-
-  const cleanup = userEvents.add(res);
-  attachSseCleanup(req, res, cleanup);
+  attachSseCleanup(req, res, userEvents.add(res));
 });
 
 router.get('/logs/events', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders();
-
   // Send recent logs
-  if (!writeSse(res, 'logs', JSON.stringify(getRecentLogs()))) {
+  if (!startSse(res, 'logs', getRecentLogs())) {
     return;
   }
-
-  const cleanup = logEvents.add(res);
-  attachSseCleanup(req, res, cleanup);
+  attachSseCleanup(req, res, logEvents.add(res));
 });
 
-const VALID_LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
-
 router.get('/logs', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
-  const rawLevel = req.query.level;
-  const level =
-    typeof rawLevel === 'string' && VALID_LOG_LEVELS.includes(rawLevel as LogLevel)
-      ? (rawLevel as LogLevel)
-      : undefined;
-
-  if (rawLevel !== undefined && rawLevel !== '' && !level) {
-    return res.status(400).json({ error: 'Ungültiger level-Wert' });
-  }
-
-  const before = typeof req.query.before === 'string' ? parseInt(req.query.before, 10) : undefined;
-  const limit = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : undefined;
-
-  if (before !== undefined && (!Number.isFinite(before) || before < 0)) {
-    return res.status(400).json({ error: 'Ungültiger before-Wert' });
-  }
-
+  const { level, before, limit } = parseWith(logsQuerySchema, req.query);
   res.json(getLogsPaginated({ level, before, limit }));
 });
 
 router.post('/users/:id/approve', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const targetId = req.params.id as string;
-  const check = checkAdminAction(req, targetId);
-  if (!check.ok) return res.status(403).json({ error: check.error });
+  requireAdminActionTarget(req, targetId);
   const user = setUserApproved(targetId, true);
-  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  if (!user) throw new AppError(404, 'User nicht gefunden');
   notifyUserUpdate();
   res.json(user);
 });
 
 router.post('/users/:id/reject', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const targetId = req.params.id as string;
-  const check = checkAdminAction(req, targetId);
-  if (!check.ok) return res.status(403).json({ error: check.error });
+  requireAdminActionTarget(req, targetId);
   const user = setUserApproved(targetId, false);
-  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  if (!user) throw new AppError(404, 'User nicht gefunden');
   notifyUserUpdate();
   res.json(user);
 });
 
 router.post('/users/:id/admin', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const targetId = req.params.id as string;
-  const check = checkAdminAction(req, targetId);
-  if (!check.ok) return res.status(403).json({ error: check.error });
-  const { isAdmin } = req.body;
+  requireAdminActionTarget(req, targetId);
+  const { isAdmin } = parseWith(adminFlagSchema, req.body);
   const user = setUserAdmin(targetId, isAdmin);
-  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  if (!user) throw new AppError(404, 'User nicht gefunden');
   notifyUserUpdate();
   res.json(user);
 });
 
 router.post('/users/:id/role', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const targetId = req.params.id as string;
-  const { role } = req.body;
-  if (typeof role !== 'string' || !USER_ROLES.includes(role as UserRole)) {
-    return res.status(400).json({ error: 'Ungültige Rolle' });
-  }
+  const { role } = parseWith(roleSchema, req.body);
   // Unlike other admin actions, the role may also be changed on the own
   // account and the initial admin - it does not affect admin permissions.
-  if (!findUserById(targetId)) return res.status(404).json({ error: 'User nicht gefunden' });
-  const user = setUserRole(targetId, role as UserRole);
-  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  requireExistingUser(targetId);
+  const user = setUserRole(targetId, role);
+  if (!user) throw new AppError(404, 'User nicht gefunden');
   // Players and dungeon masters are permanent bingo participants; reflect the
   // role change in the bingo player list immediately.
   syncPlayersFromUsers();
@@ -210,29 +223,23 @@ router.post('/users/:id/role', authMiddleware, requireAdmin, (req: AuthRequest, 
 
 router.post('/users/:id/disabled-apps', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const targetId = req.params.id as string;
-  const check = checkAdminAction(req, targetId);
-  if (!check.ok) return res.status(403).json({ error: check.error });
-  const { disabledApps } = req.body;
-  if (!Array.isArray(disabledApps) || disabledApps.some((app) => typeof app !== 'string')) {
-    return res.status(400).json({ error: 'disabledApps muss ein Array von Strings sein' });
-  }
-  const user = setUserDisabledApps(targetId, disabledApps as string[]);
-  if (!user) return res.status(404).json({ error: 'User nicht gefunden' });
+  requireAdminActionTarget(req, targetId);
+  const { disabledApps } = parseWith(disabledAppsSchema, req.body);
+  const user = setUserDisabledApps(targetId, disabledApps);
+  if (!user) throw new AppError(404, 'User nicht gefunden');
   notifyUserUpdate();
   res.json(user);
 });
 
 router.delete('/users/:id', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const targetId = req.params.id as string;
-  const check = checkAdminAction(req, targetId);
-  if (!check.ok) return res.status(403).json({ error: check.error });
-  const success = deleteUser(targetId);
-  if (!success) return res.status(404).json({ error: 'User nicht gefunden' });
+  requireAdminActionTarget(req, targetId);
+  if (!deleteUser(targetId)) throw new AppError(404, 'User nicht gefunden');
   notifyUserUpdate();
   res.json({ ok: true });
 });
 
-router.get('/ai/models', authMiddleware, requireAdmin, async (req: AuthRequest, res) => {
+router.get('/ai/models', authMiddleware, requireAdmin, async (_req: AuthRequest, res) => {
   try {
     const models = await listAvailableModels();
     const settings = getAiModelSettings();
@@ -241,32 +248,24 @@ router.get('/ai/models', authMiddleware, requireAdmin, async (req: AuthRequest, 
       model: getModel(),
       modelOverridden: isValidModel(settings.model),
     });
-  } catch {
-    res.status(500).json({ error: 'Modelle konnten nicht geladen werden' });
+  } catch (err) {
+    throw new AppError(500, 'Modelle konnten nicht geladen werden', { cause: err });
   }
 });
 
-router.get('/jobs/status', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+router.get('/jobs/status', authMiddleware, requireAdmin, (_req: AuthRequest, res) => {
   res.json(getJobStatus());
 });
 
 router.get('/jobs/events', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders();
-
   // Send initial status
-  if (!writeSse(res, 'jobs', JSON.stringify(getJobStatus()))) {
+  if (!startSse(res, 'jobs', getJobStatus())) {
     return;
   }
-
-  const cleanup = jobEvents.add(res);
-  attachSseCleanup(req, res, cleanup);
+  attachSseCleanup(req, res, jobEvents.add(res));
 });
 
-router.post('/nightly-job', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+router.post('/nightly-job', authMiddleware, requireAdmin, (_req: AuthRequest, res) => {
   const started = runNightlyJobNow();
   if (started) {
     notifyJobUpdate();
@@ -280,7 +279,7 @@ router.post('/nightly-job', authMiddleware, requireAdmin, (req: AuthRequest, res
   }
 });
 
-router.post('/transcription-jobs', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+router.post('/transcription-jobs', authMiddleware, requireAdmin, (_req: AuthRequest, res) => {
   const started = runTranscriptionJobsNow();
   if (started) {
     notifyJobUpdate();
@@ -295,7 +294,7 @@ router.post('/transcription-jobs', authMiddleware, requireAdmin, (req: AuthReque
   }
 });
 
-router.post('/bingo-suggestion-refill', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+router.post('/bingo-suggestion-refill', authMiddleware, requireAdmin, (_req: AuthRequest, res) => {
   const started = runBingoSuggestionRefillNow();
   if (started) {
     notifyJobUpdate();
@@ -311,15 +310,11 @@ router.post('/bingo-suggestion-refill', authMiddleware, requireAdmin, (req: Auth
 });
 
 router.put('/ai/models', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
-  const { model } = req.body;
-  const normalized = typeof model === 'string' && model.trim() ? model.trim() : null;
-
-  if (normalized && !isValidModel(normalized)) {
-    res.status(400).json({ error: 'Ungültiges Modell' });
-    return;
+  const { model } = parseWith(modelSchema, req.body);
+  if (model && !isValidModel(model)) {
+    throw new AppError(400, 'Ungültiges Modell');
   }
-
-  const settings = setAiModelSettings(normalized);
+  const settings = setAiModelSettings(model);
   res.json({
     model: getModel(),
     modelOverridden: isValidModel(settings.model),

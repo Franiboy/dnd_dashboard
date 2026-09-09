@@ -18,7 +18,7 @@ import {
   updateTask,
 } from './game.js';
 import { getGameForUser } from './socket.js';
-import { createAdminUser, setUserRole } from './users.js';
+import { createAdminUser, setUserRole } from './repositories/users.js';
 import type { Cell, User } from '../shared/types.js';
 
 function fullBoard(taskIds: string[], size = 3): Cell[][] {
@@ -35,10 +35,16 @@ function fullBoard(taskIds: string[], size = 3): Cell[][] {
 }
 
 describe('bingo game with roles', () => {
-  it('adds players and dungeon masters permanently to the player list', () => {
-    const dm = setUserRole(createAdminUser('dm-user', 'DM User', 'password').id, 'dungeon_master')!;
-    const player = setUserRole(createAdminUser('pl-user', 'PL User', 'password').id, 'player')!;
-    createAdminUser('guest-user', 'Guest User', 'password');
+  it('adds players and dungeon masters permanently to the player list', async () => {
+    const dm = setUserRole(
+      (await createAdminUser('dm-user', 'DM User', 'password')).id,
+      'dungeon_master'
+    )!;
+    const player = setUserRole(
+      (await createAdminUser('pl-user', 'PL User', 'password')).id,
+      'player'
+    )!;
+    await createAdminUser('guest-user', 'Guest User', 'password');
 
     syncPlayersFromUsers();
 

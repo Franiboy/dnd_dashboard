@@ -1,9 +1,9 @@
 import bcrypt from 'bcrypt';
 import crypto from 'node:crypto';
-import { USER_ROLES, type SafeUser, type User, type UserRole } from '../shared/types.js';
-import { db } from './database.js';
-import { createLogger } from './logger.js';
-import { decrypt, encrypt, isEncryptionConfigured } from './encryption.js';
+import { USER_ROLES, type SafeUser, type User, type UserRole } from '../../shared/types.js';
+import { db } from '../database.js';
+import { createLogger } from '../logger.js';
+import { decrypt, encrypt, isEncryptionConfigured } from '../encryption.js';
 
 const SALT_ROUNDS = 10;
 const log = createLogger('users');
@@ -108,9 +108,13 @@ export function createDiscordUser(
   );
 }
 
-export function createAdminUser(username: string, displayName: string, password: string): SafeUser {
+export async function createAdminUser(
+  username: string,
+  displayName: string,
+  password: string
+): Promise<SafeUser> {
   const id = crypto.randomUUID();
-  const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   db.prepare(
     'INSERT INTO users (id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, disabled_apps, failed_login_attempts, locked_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(
@@ -132,10 +136,10 @@ export function createAdminUser(username: string, displayName: string, password:
   );
 }
 
-export function updateUserPassword(id: string, password: string): SafeUser | null {
+export async function updateUserPassword(id: string, password: string): Promise<SafeUser | null> {
   const user = findUserById(id);
   if (!user) return null;
-  const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
   return toSafeUser(
     rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!
@@ -161,9 +165,9 @@ export function findUserById(id: string): User | null {
   return row ? rowToUser(row) : null;
 }
 
-export function verifyPassword(user: User, password: string): boolean {
+export async function verifyPassword(user: User, password: string): Promise<boolean> {
   if (!user.passwordHash) return false;
-  return bcrypt.compareSync(password, user.passwordHash);
+  return bcrypt.compare(password, user.passwordHash);
 }
 
 export function getAllUsers(): SafeUser[] {
@@ -383,7 +387,7 @@ export function checkLoginAllowed(
   return { allowed: true };
 }
 
-export function ensureAdminUser(): SafeUser | null {
+export async function ensureAdminUser(): Promise<SafeUser | null> {
   if (!ADMIN_PASSWORD) {
     log.error(
       'Fehler: ADMIN_PASSWORD ist nicht gesetzt. Bitte .env.example nach .env kopieren und anpassen.'
@@ -394,14 +398,14 @@ export function ensureAdminUser(): SafeUser | null {
   const existing = findUserByUsername(INITIAL_ADMIN_USERNAME);
   if (!existing) {
     log.info('Creating default admin user:', INITIAL_ADMIN_USERNAME);
-    const created = createAdminUser(INITIAL_ADMIN_USERNAME, 'Admin', ADMIN_PASSWORD);
+    const created = await createAdminUser(INITIAL_ADMIN_USERNAME, 'Admin', ADMIN_PASSWORD);
     return created;
   }
 
-  const valid = verifyPassword(existing, ADMIN_PASSWORD);
+  const valid = await verifyPassword(existing, ADMIN_PASSWORD);
   if (!valid) {
     log.info('Resetting admin password for:', INITIAL_ADMIN_USERNAME);
-    updateUserPassword(existing.id, ADMIN_PASSWORD);
+    await updateUserPassword(existing.id, ADMIN_PASSWORD);
   }
 
   if (!existing.isApproved || !existing.isAdmin) {

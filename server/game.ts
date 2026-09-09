@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'crypto';
 import type { BingoGame, Cell, Player, Task, TaskAudience, UserRole } from '../shared/types.js';
 import { loadGame, saveGame } from './repositories/games.js';
-import { getAllUsers } from './users.js';
+import { getAllUsers } from './repositories/users.js';
 import { runMigrations } from './migrations.js';
 
 function createId(): string {
@@ -20,6 +20,8 @@ function defaultGame(): BingoGame {
   };
 }
 
+// This module loads the persisted game during import, before index.ts can run
+// its startup migrations. Ensure a fresh database has the required schema.
 runMigrations();
 
 let game: BingoGame = loadGame() || defaultGame();

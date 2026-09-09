@@ -8,12 +8,12 @@ import {
   canEditElement,
   createElement,
   ensureWhiteboardUploadDir,
-  listElementsForUser,
   removeElement,
   sanitizePatch,
   updateElement,
   visibleTo,
 } from './whiteboard.js';
+import { listElementsForUser } from './repositories/whiteboard.js';
 
 // The test database persists between runs, so every run marks its rows with
 // an exclusive prefix before asserting on filtered lists.
