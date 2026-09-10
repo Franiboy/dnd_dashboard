@@ -81,7 +81,7 @@ export function ChapterTimeline({
     <div
       role="group"
       aria-label="Kapitel wählen"
-      className={`flex items-stretch gap-2 overflow-x-auto pb-1 ${className}`}
+      className={`flex items-stretch gap-2 overflow-x-auto p-1.5 ${className}`}
     >
       {mode === 'filter' && (
         <button
