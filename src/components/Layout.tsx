@@ -43,7 +43,7 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
     <div className="h-screen flex flex-col overflow-hidden">
       <header
         ref={headerRef}
-        className="relative z-10 flex flex-col border-b border-[var(--border)] bg-[var(--panel)]"
+        className="relative z-50 flex flex-col border-b border-[var(--border)] bg-[var(--panel)]"
       >
         <div className="flex items-center gap-2 px-3 sm:px-6 py-2">
           {/* Left: user menu (Discord avatar, role, logout) */}
@@ -53,10 +53,10 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
             onExitSimulation={isSimulating ? clearViewAsUser : undefined}
           />
 
-          {/* Middle: chapter filter and the app switcher share the free space */}
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+          {/* Middle: chapter filter and the app switcher, centered as a group */}
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-3">
             {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
-            <div className="flex min-w-0 flex-1 items-center overflow-x-auto">
+            <div className="flex min-w-0 max-w-full items-center overflow-x-auto">
               <AppSwitcher user={user} version={version} />
             </div>
           </div>
