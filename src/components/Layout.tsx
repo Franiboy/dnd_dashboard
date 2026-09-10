@@ -1,9 +1,14 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AppSwitcher } from './AppSwitcher';
 import { GlobalSearch } from './GlobalSearch';
+import { StoryArcFilter } from './StoryArcFilter';
 import { UserMenu } from './UserMenu';
 import { useAuth } from '../hooks/useAuth';
 import type { SafeUser, VersionInfo } from '../../shared/types';
+
+// Routes the global story-arc filter applies to; shown in the header there.
+const STORY_ARC_FILTER_PATHS = ['/sessions', '/tagebuch', '/welt'];
 
 interface LayoutProps {
   user: SafeUser;
@@ -16,6 +21,7 @@ interface LayoutProps {
 export function Layout({ user, realUser, version, onLogout, children }: LayoutProps) {
   const isSimulating = realUser !== undefined && realUser !== null && realUser.id !== user.id;
   const { clearViewAsUser } = useAuth();
+  const location = useLocation();
   const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -47,9 +53,10 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
             onExitSimulation={isSimulating ? clearViewAsUser : undefined}
           />
 
-          {/* Center: app switcher, scrollable on narrow screens */}
-          <div className="flex min-w-0 flex-1 justify-center">
-            <div className="flex min-w-0 max-w-full overflow-x-auto">
+          {/* Middle: chapter filter and the app switcher share the free space */}
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
+            <div className="flex min-w-0 flex-1 items-center overflow-x-auto">
               <AppSwitcher user={user} version={version} />
             </div>
           </div>
