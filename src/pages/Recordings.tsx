@@ -21,7 +21,6 @@ import { EntityChooserModal, type EntityCandidate } from '../components/EntityCh
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { ArcAssignPicker } from '../components/storyArcs/ArcAssignPicker';
 import { ChapterChip } from '../components/storyArcs/ChapterChip';
-import { ChapterFilterIcon, ChapterFilterPanel } from '../components/storyArcs/ChapterFilterPanel';
 import { ChapterStatusDot } from '../components/storyArcs/ChapterStatusDot';
 import { Toggle } from '../components/Toggle';
 import { quillModules } from '../components/quillConfig';
@@ -705,9 +704,6 @@ export function Sessions({ user }: SessionsProps) {
   return (
     <div className="min-h-full p-6">
       <SideDrawer side="right">
-        <SideDrawerItem id="kapitel" label="Kapitel" icon={<ChapterFilterIcon />}>
-          <ChapterFilterPanel />
-        </SideDrawerItem>
         <SideDrawerItem
           id="config"
           label="Einstellungen"
