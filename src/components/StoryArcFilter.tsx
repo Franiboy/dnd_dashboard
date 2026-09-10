@@ -80,7 +80,7 @@ export function StoryArcFilter() {
       </button>
 
       {open && (
-        <div className="menu-pop-in absolute left-3 right-3 top-full z-30 mt-1 rounded-xl border border-amber-500/30 bg-gradient-to-b from-[#101a2e] to-[#0b1220] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.5)] sm:left-6 sm:right-6">
+        <div className="menu-pop-in absolute left-3 right-3 top-full z-50 mt-1 rounded-xl border border-amber-500/30 bg-gradient-to-b from-[#101a2e] to-[#0b1220] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.5)] sm:left-6 sm:right-6">
           <div className="mb-3 flex items-center justify-between gap-3">
             <span className="chapter-caps text-[12px] text-amber-200/75">✦ Die Kampagne</span>
             <span className="hidden text-xs text-slate-500 sm:inline">
