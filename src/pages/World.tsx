@@ -8,8 +8,6 @@ import { DashboardHeader } from '../components/DashboardHeader';
 import { Loading } from '../components/Loading';
 import { Panel } from '../components/Panel';
 import { Modal } from '../components/Modal';
-import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
-import { ChapterFilterIcon, ChapterFilterPanel } from '../components/storyArcs/ChapterFilterPanel';
 import { typeLabels, typeAccusative, formatEntityLabel } from '../lib/entityLabels';
 import type {
   EntitiesResponse,
@@ -665,12 +663,6 @@ export function World() {
 
   return (
     <div className="h-full flex flex-col p-6">
-      <SideDrawer side="right">
-        <SideDrawerItem id="kapitel" label="Kapitel" icon={<ChapterFilterIcon />}>
-          <ChapterFilterPanel />
-        </SideDrawerItem>
-      </SideDrawer>
-
       <DashboardHeader>
         {filterArcLabel && (
           <span className="mr-auto text-sm text-slate-400">

@@ -165,11 +165,14 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
   skipped (link rows only ever reference real entities).
 - **Derived metadata:** an arc's game-day range and member counts (`sessionCount`,
   `diaryEntryCount`, `entityCount`) are computed from its members on read, never stored.
-- **Global filter:** the Sessions, Diary and World pages each have a "Kapitel" item in their
-  SideDrawer that lists the campaign timeline as stacked full-width cards (state in
-  `StoryArcProvider`, persisted in `localStorage`; options "Alle Kapitel" and "Ohne Kapitel";
-  `ChapterTimeline` with `mode="filter"`, serif/brass "Abenteuer-Look" styling shared by
-  `ChapterChip`: active glowing green, planned dashed blue, completed dimmed).
+- **Global filter:** the header shows a "Kapitel" trigger (between the user menu and the app
+  switcher, on Sessions/Diary/World routes) that opens the campaign timeline as a full-width
+  panel directly below the header (state in `StoryArcProvider`, persisted in `localStorage`;
+  options "Alle Kapitel" and "Ohne Kapitel"; `ChapterTimeline` with `mode="filter"`, serif/brass
+  "Abenteuer-Look" styling shared by `ChapterChip`). In the timeline a **picked** chapter wears a
+  gold frame with a check mark while the **running** chapter is marked by a green "Aktiv" badge
+  with a soft glow; `ChapterChip` keeps the status colors: active glowing green, planned dashed
+  blue, completed dimmed.
   Sessions/Diary filter their lists client-side; World passes `?arcId=` (a number or
   the `none` sentinel) to `GET /api/entities` (arc-linked entities, or for `none` entities
   assigned to no arc) and to the entity knowledge endpoint, where only

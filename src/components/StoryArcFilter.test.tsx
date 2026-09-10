@@ -1,9 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { SideDrawer, SideDrawerItem } from '../SideDrawer';
-import { StoryArcContext, type StoryArcContextValue } from '../../contexts/StoryArcContext';
-import type { StoryArc } from '../../../shared/types';
-import { ChapterFilterIcon, ChapterFilterPanel } from './ChapterFilterPanel';
+import { StoryArcContext, type StoryArcContextValue } from '../contexts/StoryArcContext';
+import type { StoryArc } from '../../shared/types';
+import { StoryArcFilter } from './StoryArcFilter';
 
 function arc(partial: Partial<StoryArc>): StoryArc {
   return {
@@ -39,46 +38,53 @@ function contextValue(overrides: Partial<StoryArcContextValue> = {}): StoryArcCo
   };
 }
 
-/** Same composition as on the Sessions, Diary and World pages. */
-function renderDrawer(overrides: Partial<StoryArcContextValue> = {}) {
+function renderFilter(overrides: Partial<StoryArcContextValue> = {}) {
   return render(
     <StoryArcContext.Provider value={contextValue(overrides)}>
-      <SideDrawer side="right">
-        <SideDrawerItem id="kapitel" label="Kapitel" icon={<ChapterFilterIcon />}>
-          <ChapterFilterPanel />
-        </SideDrawerItem>
-      </SideDrawer>
+      <StoryArcFilter />
     </StoryArcContext.Provider>
   );
 }
 
-describe('ChapterFilterPanel', () => {
-  it('shows a rail button and opens the vertical chapter list on click', () => {
-    renderDrawer();
-
-    const railButton = screen.getByText('Kapitel').closest('button');
-    expect(railButton).not.toBeNull();
+describe('StoryArcFilter', () => {
+  it('shows the current selection in the trigger and opens the timeline below the header', () => {
+    const { container } = renderFilter();
+    expect(screen.getByText('Alle Kapitel')).toBeDefined();
     expect(screen.queryByText('✦ Die Kampagne')).toBeNull();
 
-    fireEvent.click(railButton!);
+    fireEvent.click(screen.getByText('Alle Kapitel'));
     expect(screen.getByText('✦ Die Kampagne')).toBeDefined();
-    expect(screen.getByText('Alle Kapitel')).toBeDefined();
     expect(screen.getByText('Erstes Kapitel')).toBeDefined();
     expect(screen.getByText('Ohne Kapitel')).toBeDefined();
+    // The panel is an absolute full-width strip anchored below the header.
+    expect(container.querySelector('.absolute.top-full')).not.toBeNull();
   });
 
-  it('reports chapter selections through the story-arc context', () => {
+  it('reports a chapter selection through the story-arc context and closes', () => {
     const setSelectedArcId = vi.fn();
-    renderDrawer({ selectedArcId: 1, setSelectedArcId });
+    renderFilter({ selectedArcId: 1, setSelectedArcId });
+    expect(screen.getByText('Erstes Kapitel')).toBeDefined();
 
-    fireEvent.click(screen.getByText('Kapitel'));
-
+    fireEvent.click(screen.getByText('Erstes Kapitel'));
     fireEvent.click(screen.getByText('Zweites Kapitel'));
     expect(setSelectedArcId).toHaveBeenCalledWith(2);
+    expect(screen.queryByText('✦ Die Kampagne')).toBeNull();
+  });
 
+  it('reports "Alle Kapitel" and "Ohne Kapitel" selections through the context', () => {
+    const setSelectedArcId = vi.fn();
+    const { rerender } = renderFilter({ selectedArcId: 1, setSelectedArcId });
+
+    fireEvent.click(screen.getByText('Erstes Kapitel'));
     fireEvent.click(screen.getByText('Alle Kapitel'));
     expect(setSelectedArcId).toHaveBeenCalledWith(null);
 
+    rerender(
+      <StoryArcContext.Provider value={contextValue({ selectedArcId: 1, setSelectedArcId })}>
+        <StoryArcFilter />
+      </StoryArcContext.Provider>
+    );
+    fireEvent.click(screen.getByText('Erstes Kapitel'));
     fireEvent.click(screen.getByText('One-Shots'));
     expect(setSelectedArcId).toHaveBeenCalledWith('none');
   });
