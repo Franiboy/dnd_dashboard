@@ -9,8 +9,6 @@ interface ChapterTimelineProps {
   onSelect: (value: number | 'none' | null) => void;
   /** 'filter' shows the leading "Alle Kapitel" segment, 'assign' does not. */
   mode?: 'filter' | 'assign';
-  /** 'horizontal' scrolls a row of segments, 'vertical' stacks full-width cards. */
-  layout?: 'horizontal' | 'vertical';
   className?: string;
 }
 
@@ -22,7 +20,9 @@ function rangeLabel(arc: StoryArc): string {
 }
 
 const segmentStyles = {
-  active: 'border-[var(--accent)]/55 bg-[#22c55e]/10 shadow-[0_0_18px_rgba(34,197,94,0.18)]',
+  // The running chapter is marked by the green "Aktiv" badge and a soft glow,
+  // not by a green frame — green is reserved for "currently running".
+  active: 'border-[var(--border)] bg-[var(--accent)]/5 shadow-[0_0_16px_rgba(34,197,94,0.14)]',
   planned: 'border-sky-400/40 border-dashed bg-transparent',
   completed: 'border-amber-500/30 bg-amber-500/5 opacity-60',
 } as const;
@@ -33,45 +33,67 @@ const segmentNameStyles = {
   completed: 'text-amber-100/90',
 } as const;
 
-const pickedStyles = 'outline outline-2 outline-offset-2 outline-[var(--accent)]/60';
+// A filtered chapter wears a gold frame with a corner check mark, clearly
+// separate from the green "Aktiv" badge of the running chapter.
+const pickedStyles = 'outline outline-2 outline-offset-2 outline-amber-400/90';
+
+/** Green pill marking the currently running chapter. */
+function ActiveBadge() {
+  return (
+    <span
+      className="chapter-caps inline-flex items-center gap-1 rounded-full border border-[var(--accent)]/50 bg-[var(--accent)]/15 px-1.5 py-px text-[9px] font-semibold text-[var(--accent)]"
+      title="Dieses Kapitel läuft gerade"
+    >
+      <span className="h-[5px] w-[5px] rounded-full bg-[var(--accent)] shadow-[0_0_6px_rgba(34,197,94,0.9)]" />
+      Aktiv
+    </span>
+  );
+}
+
+/** Gold corner check mark marking the picked segment. */
+function PickedBadge() {
+  return (
+    <span
+      aria-hidden="true"
+      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full border border-amber-300/70 bg-amber-400 text-[9px] font-bold leading-none text-slate-900 shadow-md"
+    >
+      ✓
+    </span>
+  );
+}
 
 /**
- * The campaign as a chapter timeline. Used as the global chapter filter
- * (mode="filter", with "Alle Kapitel") and as the inline assignment picker
- * (mode="assign"); horizontal segments or, via layout="vertical", stacked
- * full-width cards for narrow containers like the SideDrawer.
+ * The campaign as a horizontal chapter timeline. Used as the header filter
+ * panel (mode="filter", with "Alle Kapitel") and as the inline assignment
+ * picker (mode="assign").
  */
 export function ChapterTimeline({
   arcs,
   selected,
   onSelect,
   mode = 'filter',
-  layout = 'horizontal',
   className = '',
 }: ChapterTimelineProps) {
   const sorted = sortArcsChronologically(arcs);
   const nonePicked = mode === 'assign' ? selected === null : selected === 'none';
-  const vertical = layout === 'vertical';
-
-  const containerStyles = vertical
-    ? 'flex flex-col gap-2'
-    : 'flex items-stretch gap-2 overflow-x-auto pb-1';
-  const allStyles = vertical ? 'w-full' : 'min-w-[7.5rem] flex-none';
-  const segmentWidthStyles = vertical ? 'w-full' : 'min-w-[9rem] flex-1';
-  const noneWidthStyles = vertical ? 'w-full' : 'min-w-[8.5rem] flex-1';
 
   return (
-    <div role="group" aria-label="Kapitel wählen" className={`${containerStyles} ${className}`}>
+    <div
+      role="group"
+      aria-label="Kapitel wählen"
+      className={`flex items-stretch gap-2 overflow-x-auto pb-1 ${className}`}
+    >
       {mode === 'filter' && (
         <button
           type="button"
           onClick={() => onSelect(null)}
           aria-pressed={selected === null}
-          className={`flex ${allStyles} items-center justify-center rounded-md border border-[var(--border)] bg-slate-800/50 px-3 py-2 text-[12.5px] font-semibold text-slate-300 transition hover:brightness-110 ${
+          className={`relative flex min-w-[7.5rem] flex-none items-center justify-center rounded-md border border-[var(--border)] bg-slate-800/50 px-3 py-2 text-[12.5px] font-semibold text-slate-300 transition hover:brightness-110 ${
             selected === null ? pickedStyles : ''
           }`}
         >
           Alle Kapitel
+          {selected === null && <PickedBadge />}
         </button>
       )}
       {sorted.map((arc) => (
@@ -80,7 +102,7 @@ export function ChapterTimeline({
           type="button"
           onClick={() => onSelect(arc.id)}
           aria-pressed={selected === arc.id}
-          className={`relative ${segmentWidthStyles} rounded-md border px-3 pb-2.5 pt-2 text-left transition hover:brightness-110 ${
+          className={`relative min-w-[9rem] flex-1 rounded-md border px-3 pb-2.5 pt-2 text-left transition hover:brightness-110 ${
             segmentStyles[arc.status]
           } ${selected === arc.id ? pickedStyles : ''}`}
         >
@@ -92,13 +114,16 @@ export function ChapterTimeline({
           >
             {arc.name}
           </span>
-          <span className="mt-0.5 block text-[10.5px] text-slate-500">
-            {arcStatusLabel(arc)}
+          <span className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-slate-500">
+            {arc.status === 'active' ? <ActiveBadge /> : arcStatusLabel(arc)}
             {rangeLabel(arc) ? ` · ${rangeLabel(arc)}` : ''}
           </span>
-          <span className="absolute right-2.5 top-3">
-            <ChapterStatusDot status={arc.status} />
-          </span>
+          {arc.status !== 'active' && (
+            <span className="absolute right-2.5 top-3">
+              <ChapterStatusDot status={arc.status} />
+            </span>
+          )}
+          {selected === arc.id && <PickedBadge />}
         </button>
       ))}
       <button
@@ -106,7 +131,7 @@ export function ChapterTimeline({
         onClick={() => onSelect('none')}
         aria-pressed={nonePicked}
         title="Einträge und Sessions ohne Kapitelzuordnung (One-Shots)"
-        className={`relative ${noneWidthStyles} rounded-md border border-dashed border-[var(--border)] bg-transparent px-3 pb-2.5 pt-2 text-left transition hover:brightness-110 ${
+        className={`relative min-w-[8.5rem] flex-1 rounded-md border border-dashed border-[var(--border)] bg-transparent px-3 pb-2.5 pt-2 text-left transition hover:brightness-110 ${
           nonePicked ? pickedStyles : ''
         }`}
       >
@@ -115,6 +140,7 @@ export function ChapterTimeline({
           One-Shots
         </span>
         <span className="mt-0.5 block text-[10.5px] text-slate-600">Sonderabende</span>
+        {nonePicked && <PickedBadge />}
       </button>
     </div>
   );
