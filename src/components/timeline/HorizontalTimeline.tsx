@@ -16,6 +16,8 @@ import { EntityRichText } from '../EntityRichText';
 
 const PAD = 46;
 const CARD_W = 176;
+/** Widened slot of the opened card so the description has room. */
+const OPEN_CARD_W = 340;
 /** Visible days per detail level; zooming shows fewer days -> more room. */
 const WINDOW_DAYS: Record<number, number> = { 1: 10, 2: 5, 3: 2 };
 const ARC_COLORS: Record<StoryArc['status'], string> = {
@@ -62,13 +64,14 @@ function ChipLink({
 export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
   const { mappings } = useEntityMappings();
   const stageRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
+  const [size, setSize] = useState({ w: 0, h: 0 });
   const [level, setLevel] = useState(1);
   const [start, setStart] = useState(1);
   const [openEventId, setOpenEventId] = useState<number | null>(null);
   const dragRef = useRef({ active: false, moved: false, lastX: 0 });
   const startRef = useRef(start);
   startRef.current = start;
+  const width = size.w;
 
   const dayRange = useMemo(() => {
     if (events.length === 0) return { min: 1, max: 10 };
@@ -85,9 +88,11 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
-    const ro = new ResizeObserver(() => setWidth(stage.clientWidth));
+    const ro = new ResizeObserver(() => {
+      setSize({ w: stage.clientWidth, h: stage.clientHeight });
+    });
     ro.observe(stage);
-    setWidth(stage.clientWidth);
+    setSize({ w: stage.clientWidth, h: stage.clientHeight });
     return () => ro.disconnect();
   }, []);
 
@@ -183,14 +188,16 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
     for (const side of ['up', 'down'] as const) {
       let prevRight = -Infinity;
       let prevFrameRight = -Infinity;
-      byDay.forEach(([day], i) => {
+      byDay.forEach(([day, group], i) => {
         if (evtOffsets[i] !== side) return;
         // Hidden events must not consume slots and push visible events offstage.
         if (!inWindow(day)) return;
         const x = xOf(day);
-        const cardLeft = Math.max(x - CARD_W / 2, prevRight + 8);
+        // The opened card gets a wider slot so the description has room.
+        const cardW = group[0].id === openEventId ? OPEN_CARD_W : CARD_W;
+        const cardLeft = Math.max(x - cardW / 2, prevRight + 8);
         cards.set(day, cardLeft);
-        prevRight = cardLeft + CARD_W;
+        prevRight = cardLeft + cardW;
         const frameLeft = Math.max(x - frameW / 2, prevFrameRight + 8);
         frames.set(day, frameLeft);
         prevFrameRight = frameLeft + frameW;
@@ -198,7 +205,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
     }
     return { cards, frames };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [byDay, evtOffsets, start, width, level, pxD]);
+  }, [byDay, evtOffsets, start, width, level, pxD, openEventId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -333,7 +340,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                 className={`tl-evt absolute ${posTransition}`}
                 style={{
                   left: layoutLefts.cards.get(day) ?? x - CARD_W / 2,
-                  width: CARD_W,
+                  width: open ? OPEN_CARD_W : CARD_W,
                   ...(side === 'up' ? { bottom: markerOffset } : { top: markerOffset }),
                   opacity: visible ? 1 : 0,
                   pointerEvents: visible ? 'auto' : 'none',
@@ -398,9 +405,11 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                     // marker card stays collapsed until clicked (level 1 only).
                     opacity: level >= 2 ? (open ? 1 : 0) : 1,
                     pointerEvents: level >= 2 ? (open ? 'auto' : 'none') : 'auto',
-                    // Never clip at the stage edge: the open card scrolls
-                    // internally instead of overflowing the half-stage.
-                    maxHeight: open ? 'calc(50% - 44px)' : undefined,
+                    // Never clip at the stage edge: the open card caps at the
+                    // half-stage height (pixel-based - a CSS percentage would
+                    // not resolve against the auto-height parent) and scrolls
+                    // internally instead of overflowing the stage.
+                    maxHeight: open ? `${Math.max(160, Math.round(size.h / 2 - 48))}px` : undefined,
                     overflowY: open ? 'auto' : undefined,
                   }}
                 >
