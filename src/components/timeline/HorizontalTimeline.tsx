@@ -218,7 +218,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
   }, [byDay, evtOffsets, start, width, level, pxD]);
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <ToolbarButton
           label="＜ zurück"
@@ -251,7 +251,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
           if (dragRef.current.moved) return;
           if (!(e.target as HTMLElement).closest('.tl-evt')) setOpenEventId(null);
         }}
-        className="relative h-[500px] cursor-grab overflow-hidden rounded-2xl border border-violet-500/30 active:cursor-grabbing"
+        className="relative min-h-[340px] flex-1 cursor-grab overflow-hidden rounded-2xl border border-violet-500/30 active:cursor-grabbing"
         style={{
           backgroundImage:
             'radial-gradient(ellipse at 15% 20%, rgba(139,92,246,.12), transparent 55%), radial-gradient(ellipse at 85% 80%, rgba(45,212,191,.10), transparent 55%), linear-gradient(180deg, #171232 0%, #0e0b21 100%)',
