@@ -202,6 +202,13 @@ export interface TimelineSessionWrite {
 }
 
 /**
+ * Version of the generation prompt that produced an event. Bump this when the
+ * prompt changes meaningfully; migrations.ts deletes events with an older
+ * version so the scheduler regenerates them with the current prompt.
+ */
+export const TIMELINE_PROMPT_VERSION = 2;
+
+/**
  * Replaces every event of the session with the given generation result in one
  * transaction. Arc and display day are captured from the session so the AI
  * cannot pin events to a foreign arc. Sessions without events end up empty.
@@ -218,8 +225,8 @@ export function replaceSessionEvents(sessionId: number, events: TimelineEventInp
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM timeline_events WHERE session_id = ?').run(sessionId);
     const insertEvent = db.prepare(
-      `INSERT INTO timeline_events (game_day, arc_id, session_id, title, description, generated_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO timeline_events (game_day, arc_id, session_id, title, description, prompt_version, generated_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const insertScene = db.prepare(
       `INSERT INTO timeline_scenes (event_id, game_day, position, title, description)
@@ -235,6 +242,7 @@ export function replaceSessionEvents(sessionId: number, events: TimelineEventInp
         sessionId,
         event.title.trim(),
         event.description?.trim() || null,
+        TIMELINE_PROMPT_VERSION,
         now,
         now
       );
