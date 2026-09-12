@@ -940,10 +940,9 @@ if (requireScope('timeline:write')) {
               .describe('Szenen/Zwischenereignisse des Spieltags für den Mini-Zeitstrahl.'),
           })
         )
-        .min(1)
         .max(30)
         .describe(
-          'Nur nennenswerte Ereignisse (Kämpfe, Entscheidungen, Treffen, Funde, Wendepunkte) - kein Ereignis pro Spieltag.'
+          'Nur nennenswerte Ereignisse (Kämpfe, Entscheidungen, Treffen, Funde, Wendepunkte) - kein Ereignis pro Spieltag. Bei keinem nennenswerten Geschehen ein leeres Array senden.'
         ),
     },
     async ({ sessionId, events }) => {

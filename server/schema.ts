@@ -188,6 +188,10 @@ export const schema: Record<string, TableDef> = {
       title: { type: 'TEXT', notNull: true },
       // Short HTML description; sanitized on write like the session summaries.
       description: { type: 'TEXT' },
+      // Version of the generation prompt that produced this event. NULL marks
+      // legacy rows; migrations.ts deletes events older than the current
+      // version so the scheduler regenerates them with the current prompt.
+      prompt_version: { type: 'INTEGER' },
       generated_at: { type: 'TEXT', notNull: true },
       updated_at: { type: 'TEXT', notNull: true },
     },

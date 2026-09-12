@@ -5,6 +5,7 @@ import {
   listSessionsPendingTimeline,
   listTimelineEvents,
   replaceSessionEvents,
+  TIMELINE_PROMPT_VERSION,
 } from './timeline.js';
 import { createStoryArc, activateStoryArc } from './storyArcs.js';
 
@@ -175,5 +176,25 @@ describe('timeline repository', () => {
     )!;
     expect(asAdmin.diaryLinks.map((l) => l.entryId)).toEqual([ownEntry, otherEntry]);
     expect(asAdmin.diaryLinks[0].displayName).toBe('tester');
+  });
+
+  it('wrote the current prompt version and the migration resets outdated events', () => {
+    runMigrations();
+    const sessionId = insertSession({ gameDay: 11 });
+    replaceSessionEvents(sessionId, [
+      { gameDay: 11, title: 'Aktuelles Event', description: null, scenes: [] },
+    ]);
+    // Legacy row without a version marker (prompt v1 data).
+    db.prepare(
+      `INSERT INTO timeline_events (game_day, session_id, title, generated_at, updated_at)
+       VALUES (12, ?, 'Altes Event', ?, ?)`
+    ).run(sessionId, new Date().toISOString(), new Date().toISOString());
+
+    runMigrations();
+    const events = listTimelineEvents({ userId: 'tester', isAdmin: false }).filter(
+      (e) => e.sessionId === sessionId
+    );
+    expect(events.map((e) => e.title)).toEqual(['Aktuelles Event']);
+    expect(TIMELINE_PROMPT_VERSION).toBeGreaterThanOrEqual(2);
   });
 });
