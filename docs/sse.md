@@ -16,6 +16,7 @@ Besides Socket.io for Bingo, state updates are delivered via **Server-Sent Event
 | `GET /api/admin/jobs/events`  | `jobs`                             | `{ nightly, transcription, bingoSuggestion }` | Background job running states (admin), also available as `GET /api/admin/jobs/status` |
 | `GET /api/recordings/events`  | `status` / `sessions` / `progress` | Recording status and lists (admin)            |
 | `GET /api/diary/ai-events`    | `log` / `connected`                | `{ message: string }`                         | AI progress in diary                                                                  |
+| `GET /api/timeline/ai-events` | `log` / `connected`                | `{ message: string }`                         | Timeline generation progress (global stream, all open timeline pages)                 |
 
 ## Conventions for New SSE Streams
 

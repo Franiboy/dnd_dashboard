@@ -63,6 +63,15 @@ export function AppIcon({ id, size = 20, className }: AppIconProps) {
           <path d="M22 10v3" />
         </svg>
       );
+    case 'timeline':
+      return (
+        <svg {...COMMON_PROPS} width={size} height={size} className={className}>
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <circle cx="7" cy="12" r="2" />
+          <circle cx="13" cy="12" r="2" />
+          <circle cx="19" cy="12" r="2" />
+        </svg>
+      );
     case 'whiteboard':
       return (
         <svg {...COMMON_PROPS} width={size} height={size} className={className}>

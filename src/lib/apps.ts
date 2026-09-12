@@ -59,6 +59,14 @@ export const APPS: AppMeta[] = [
     disableable: true,
   },
   {
+    id: 'timeline',
+    label: 'Zeitleiste',
+    path: '/zeitleiste',
+    description:
+      'Zeitstrahl der wichtigsten Kampagnenereignisse mit Sprung in Tagebuch und Session.',
+    disableable: true,
+  },
+  {
     id: 'sessions',
     label: 'Sessions',
     path: '/sessions',
