@@ -21,6 +21,7 @@ const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin
 const Diary = lazy(() => import('./pages/Diary').then((m) => ({ default: m.Diary })));
 const Sessions = lazy(() => import('./pages/Recordings').then((m) => ({ default: m.Sessions })));
 const World = lazy(() => import('./pages/World').then((m) => ({ default: m.World })));
+const Timeline = lazy(() => import('./pages/Timeline').then((m) => ({ default: m.Timeline })));
 const Whiteboard = lazy(() =>
   import('./pages/Whiteboard').then((m) => ({ default: m.Whiteboard }))
 );
@@ -164,6 +165,14 @@ function App() {
                     element={
                       <ProtectedRoute user={effectiveUser} appId="world" version={version}>
                         <World />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/zeitleiste"
+                    element={
+                      <ProtectedRoute user={effectiveUser} appId="timeline" version={version}>
+                        <Timeline />
                       </ProtectedRoute>
                     }
                   />

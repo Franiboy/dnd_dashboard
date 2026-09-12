@@ -37,20 +37,22 @@ This document describes the high-level structure of the D&D Dashboard.
 | `recordings.ts` | Discord recording sessions, transcripts, trimming and AI session-to-diary draft         |
 | `search.ts`     | `GET /api/search` – global FTS5 full-text search across diary, sessions and knowledge   |
 | `storyArcs.ts`  | Story arcs: list/create/update/activate/delete incl. chapter numbers (admin mutations)  |
+| `timeline.ts`   | Campaign timeline events: list with diary links, SSE AI progress, admin regeneration    |
 
 ### Repositories (`server/repositories/`)
 
-| File                  | Purpose                                                                                                |
-| --------------------- | ------------------------------------------------------------------------------------------------------ |
-| `games.ts`            | SQLite game state storage (JSON in `games` table)                                                      |
-| `bingoSuggestions.ts` | Pending, accepted and rejected AI bingo suggestions                                                    |
-| `diary.ts`            | Diary entries, entities, aliases, search, canonical name resolution                                    |
-| `entityKnowledge.ts`  | Knowledge entries for entities (CRUD, soft-delete, in-game validity windows)                           |
-| `entitySummaries.ts`  | AI-generated entity summaries                                                                          |
-| `gameTimeline.ts`     | Central `campaign_days` timeline, current/next day helpers, session & diary day setters                |
-| `recordings.ts`       | Recording sessions and files                                                                           |
-| `search.ts`           | FTS5 global search (`search_index` documents, safe query building, snippet hydration)                  |
-| `storyArcs.ts`        | Story arcs: CRUD, chapter numbers, single-active invariant, arc entity links (m:n), derived day ranges |
+| File                  | Purpose                                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `games.ts`            | SQLite game state storage (JSON in `games` table)                                                               |
+| `bingoSuggestions.ts` | Pending, accepted and rejected AI bingo suggestions                                                             |
+| `diary.ts`            | Diary entries, entities, aliases, search, canonical name resolution                                             |
+| `entityKnowledge.ts`  | Knowledge entries for entities (CRUD, soft-delete, in-game validity windows)                                    |
+| `entitySummaries.ts`  | AI-generated entity summaries                                                                                   |
+| `gameTimeline.ts`     | Central `campaign_days` timeline, current/next day helpers, session & diary day setters                         |
+| `recordings.ts`       | Recording sessions and files                                                                                    |
+| `search.ts`           | FTS5 global search (`search_index` documents, safe query building, snippet hydration)                           |
+| `storyArcs.ts`        | Story arcs: CRUD, chapter numbers, single-active invariant, arc entity links (m:n), derived day ranges          |
+| `timeline.ts`         | AI-generated timeline events + scenes per session, pending/stale detection, read with viewer-scoped diary links |
 
 ### AI / MCP (`server/ai/` & `server/mcp/`)
 
@@ -64,6 +66,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | `ai/knowledge.ts`        | Prompts for knowledge distribution and entity summaries                                                                                         |
 | `ai/sessionBoundary.ts`  | AI boundary detection (recording timeline)                                                                                                      |
 | `ai/sessionGameDay.ts`   | AI game-day range detection (transcript + previous sessions + campaign timeline)                                                                |
+| `ai/timeline.ts`         | AI timeline-event extraction per session (notable events + scenes, written via MCP)                                                             |
 | `ai/actions.ts`          | Parser and executor for direct AI tool actions                                                                                                  |
 | `mcp/index.ts`           | MCP server with tools (`set_diary_*`, `get_entity`, `create_knowledge`, `set_session_game_day`, …)                                              |
 | `mcp/tokens.ts`          | JWT-based MCP session tokens with scopes (plus optional `arcId` claim for arc-scoped context)                                                   |
@@ -73,6 +76,7 @@ This document describes the high-level structure of the D&D Dashboard.
 | File                                                    | Purpose                                                                                        |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `scheduler/sessionAi.ts`                                | Nightly AI pipeline: transcript improvement → game boundaries → game-day detection → summaries |
+| `scheduler/timeline.ts`                                 | Timeline generation for pending/stale sessions (nightly job + manual admin trigger)            |
 | `scheduler/bingoSuggestions.ts`                         | Keeps the AI bingo suggestion pool filled in the background                                    |
 | `scheduler/entitySummaries.ts`                          | Starts AI-generated entity summaries in the background                                         |
 | `scheduler/sessionToDiary.ts`                           | Nightly auto-transfer of completed sessions to user diaries                                    |
@@ -90,8 +94,8 @@ This document describes the high-level structure of the D&D Dashboard.
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `src/App.tsx`                                        | React app entry with router                                                                         |
 | `src/main.tsx`                                       | Root render                                                                                         |
-| `src/lib/apps.ts`                                    | App metadata (Dashboard, Diary, Bingo, World, Recordings, Admin)                                    |
-| `src/pages/`                                         | Pages: Login, AdminLogin, AuthCallback, Home, Bingo, Diary, World, Recordings, Admin                |
+| `src/lib/apps.ts`                                    | App metadata (Dashboard, Diary, Bingo, World, Timeline, Recordings, Admin)                          |
+| `src/pages/`                                         | Pages: Login, AdminLogin, AuthCallback, Home, Bingo, Diary, World, Timeline, Recordings, Admin      |
 | `src/components/`                                    | Reusable components (Layout, ProtectedRoute, ConfirmDialog, Toast, LogPanel, BingoAiSuggestions, …) |
 | `src/hooks/useAuth.ts`                               | Auth hook                                                                                           |
 | `src/hooks/useSocket.ts`                             | Socket.io hook                                                                                      |

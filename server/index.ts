@@ -22,6 +22,7 @@ import entitiesRouter from './routes/entities.js';
 import recordingsRouter from './routes/recordings.js';
 import searchRouter from './routes/search.js';
 import storyArcsRouter from './routes/storyArcs.js';
+import timelineRouter from './routes/timeline.js';
 import whiteboardRouter from './routes/whiteboard.js';
 import { authMiddleware, requireApproved } from './auth.js';
 import { setupSocket, type SocketData } from './socket.js';
@@ -221,6 +222,7 @@ app.use('/api/entities', entitiesRouter);
 app.use('/api/recordings', recordingsRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/story-arcs', storyArcsRouter);
+app.use('/api/timeline', timelineRouter);
 app.use('/api/whiteboard', whiteboardRouter);
 
 // Board image uploads: authenticated and served only to approved users.

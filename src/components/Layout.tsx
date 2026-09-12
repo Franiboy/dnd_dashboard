@@ -8,7 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 
 // Routes the global story-arc filter applies to; shown in the header there.
-const STORY_ARC_FILTER_PATHS = ['/sessions', '/tagebuch', '/welt'];
+const STORY_ARC_FILTER_PATHS = ['/sessions', '/tagebuch', '/welt', '/zeitleiste'];
 
 interface LayoutProps {
   user: SafeUser;
