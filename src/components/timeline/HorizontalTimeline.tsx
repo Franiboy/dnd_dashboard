@@ -202,6 +202,8 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
       let prevFrameRight = -Infinity;
       byDay.forEach(([day], i) => {
         if (evtOffsets[i] !== side) return;
+        // Hidden events must not consume slots and push visible events offstage.
+        if (!inWindow(day)) return;
         const x = xOf(day);
         const cardLeft = Math.max(x - CARD_W / 2, prevRight + 8);
         cards.set(day, cardLeft);
