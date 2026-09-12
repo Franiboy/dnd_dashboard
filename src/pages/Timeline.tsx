@@ -7,6 +7,7 @@ import { useTimelineAiStatus } from '../hooks/useTimelineAiStatus';
 import { arcMatchesFilter } from '../lib/storyArcs';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
+import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { HorizontalTimeline } from '../components/timeline/HorizontalTimeline';
 
 export function Timeline() {
@@ -68,65 +69,85 @@ export function Timeline() {
         </div>
       )}
 
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <h2 className="text-xl font-bold text-[var(--text-h)]">Zeitleiste der Kampagne</h2>
-          <p className="text-sm text-slate-400 mt-0.5">
-            Nennenswerte Ereignisse aller Spieltage – KI-generiert aus den
-            Session-Zusammenfassungen. Ziehen oder Mausrad bewegt den Ausschnitt, Hineinzoomen (Strg
-            + Mausrad) öffnet die Unter-Ereignisse im Gruppenrahmen.
-          </p>
-        </div>
-        {isAdmin && aiEnabled && (
-          <div className="flex flex-col items-end gap-1">
-            <Button
-              variant="secondary"
-              onClick={() => void handleRegenerate()}
-              disabled={generating || running}
-              icon={
-                generating || running ? (
-                  <svg
-                    className="animate-spin"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                  </svg>
-                ) : (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                    <path d="M21 4v6h-6" />
-                  </svg>
-                )
-              }
-            >
-              {generating || running ? 'Wird aktualisiert...' : 'Zeitleiste aktualisieren'}
-            </Button>
-            {pendingCount > 0 && !generating && !running && (
-              <span className="text-[11px] text-amber-300/80">
-                {pendingCount} Session{pendingCount === 1 ? '' : 's'} ohne/veraltete Ereignisse
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+      {isAdmin && aiEnabled && (
+        <SideDrawer side="right">
+          <SideDrawerItem
+            id="aktualisieren"
+            label="Aktualisieren"
+            icon={
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                <path d="M21 4v6h-6" />
+              </svg>
+            }
+          >
+            <div className="w-72 space-y-3 p-2">
+              <p className="text-xs leading-relaxed text-slate-400">
+                Die Zeitleiste zeigt nennenswerte Ereignisse aller Spieltage – KI-generiert aus den
+                Session-Zusammenfassungen. Neu abgeschlossene Sessions werden nachts automatisch
+                ergänzt; hier kannst du zusätzlich von Hand aktualisieren (auch für ältere
+                Sessions).
+              </p>
+              <Button
+                variant="accent"
+                onClick={() => void handleRegenerate()}
+                disabled={generating || running}
+                icon={
+                  generating || running ? (
+                    <svg
+                      className="animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                  ) : (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                      <path d="M21 4v6h-6" />
+                    </svg>
+                  )
+                }
+              >
+                {generating || running ? 'Wird aktualisiert...' : 'Zeitleiste aktualisieren'}
+              </Button>
+              {pendingCount > 0 && !generating && !running && (
+                <p className="text-[11px] text-amber-300/80">
+                  {pendingCount} Session{pendingCount === 1 ? '' : 's'} ohne/veraltete Ereignisse
+                </p>
+              )}
+              {aiStatus && <p className="break-words text-[11px] text-slate-500">{aiStatus}</p>}
+            </div>
+          </SideDrawerItem>
+        </SideDrawer>
+      )}
 
       <div className="flex-1 min-h-0">
         {events.length === 0 ? (
@@ -134,7 +155,7 @@ export function Timeline() {
             <p className="text-slate-400">Noch keine Zeitleisten-Ereignisse vorhanden.</p>
             {isAdmin && aiEnabled && (
               <p className="text-sm text-slate-500 mt-2">
-                Nutze „Zeitleiste aktualisieren“, um die Ereignisse der bisherigen Sessions zu
+                Öffne „Aktualisieren“ im SideDrawer, um die Ereignisse der bisherigen Sessions zu
                 generieren.
               </p>
             )}

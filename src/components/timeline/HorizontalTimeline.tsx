@@ -18,11 +18,6 @@ const PAD = 46;
 const CARD_W = 176;
 /** Visible days per detail level; zooming shows fewer days -> more room. */
 const WINDOW_DAYS: Record<number, number> = { 1: 10, 2: 5, 3: 2 };
-const LEVEL_NAMES: Record<number, string> = {
-  1: '1 · 10 Tage · Hauptevents',
-  2: '2 · 5 Tage · Unter-Ereignisse',
-  3: '3 · 2 Tage · Gruppen',
-};
 const ARC_COLORS: Record<StoryArc['status'], string> = {
   active: 'rgba(74,222,128,.45)',
   planned: 'rgba(96,165,250,.45)',
@@ -61,18 +56,6 @@ function ChipLink({
     >
       {children}
     </Link>
-  );
-}
-
-function ToolbarButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="cursor-pointer rounded-lg border border-[var(--border)] bg-slate-800/70 px-3 py-1 text-xs font-medium text-slate-200 transition hover:bg-slate-700"
-    >
-      {label}
-    </button>
   );
 }
 
@@ -219,31 +202,6 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <ToolbarButton
-          label="＜ zurück"
-          onClick={() => setStart(clampStart(startRef.current - windowDays / 2))}
-        />
-        <ToolbarButton
-          label="weiter ＞"
-          onClick={() => setStart(clampStart(startRef.current + windowDays / 2))}
-        />
-        <ToolbarButton
-          label="⏵ Heute"
-          onClick={() => setStart(clampStart(dayRange.max - windowDays + 2))}
-        />
-        <ToolbarButton label="＋ Hineinzoomen" onClick={() => zoomBy(1)} />
-        <ToolbarButton label="－ Herauszoomen" onClick={() => zoomBy(-1)} />
-        <span className="ml-auto text-xs text-slate-500">
-          Ansicht:{' '}
-          <b className="text-amber-300">
-            Spieltag {Math.round(start)}–{Math.round(start) + windowDays - 1}
-          </b>
-          {' · '}
-          Stufe: <b className="text-amber-300">{LEVEL_NAMES[level]}</b>
-        </span>
-      </div>
-
       <div
         ref={stageRef}
         onPointerDown={onPointerDown}
@@ -257,6 +215,18 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
             'radial-gradient(ellipse at 15% 20%, rgba(139,92,246,.12), transparent 55%), radial-gradient(ellipse at 85% 80%, rgba(45,212,191,.10), transparent 55%), linear-gradient(180deg, #171232 0%, #0e0b21 100%)',
         }}
       >
+        {/* Interaction legend (bottom-right corner) */}
+        <div className="pointer-events-none absolute bottom-2 right-3 z-30 rounded-lg border border-[var(--border)] bg-[#0e0b21]/85 px-2.5 py-1.5 text-[10px] leading-relaxed text-slate-400 backdrop-blur-sm">
+          <p>
+            <b className="text-slate-300">Mausrad</b> · Ausschnitt bewegen
+          </p>
+          <p>
+            <b className="text-slate-300">Strg + Mausrad</b> · Zoom: Unter-Ereignisse aufklappen
+          </p>
+          <p>
+            <b className="text-slate-300">Klick</b> · Details öffnen
+          </p>
+        </div>
         {/* Leyline */}
         <div
           className="absolute top-1/2 h-[4px] -translate-y-1/2 rounded-full"
