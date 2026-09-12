@@ -409,7 +409,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                     // half-stage height (pixel-based - a CSS percentage would
                     // not resolve against the auto-height parent) and scrolls
                     // internally instead of overflowing the stage.
-                    maxHeight: open ? `${Math.max(160, Math.round(size.h / 2 - 48))}px` : undefined,
+                    maxHeight: open ? `${Math.max(0, Math.round(size.h / 2 - 48))}px` : undefined,
                     overflowY: open ? 'auto' : undefined,
                   }}
                 >
