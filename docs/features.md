@@ -195,6 +195,43 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
   creates one active arc ("Erster Arc") and files all existing sessions/entries into it; it never
   re-runs afterwards.
 
+### Timeline (`/zeitleiste`)
+
+A first-class app (like World/Diary, `disableable`) showing the **notable events of all played
+sessions** on a vertical timeline:
+
+- **Data model:** `timeline_events` (one row per notable happening: `game_day` on the campaign
+  axis, `arc_id` captured from the source session at write time, provenance `session_id`, title +
+  short sanitized HTML description) and `timeline_scenes` (sub-events per event, `position`-ordered
+  mini timeline). Deleting a session cascades its events; deleting an arc nulls `timeline_events.arc_id`.
+  Diary entries are **not stored per event** – links to diary entries are resolved at read time by
+  the shared `game_day`, scoped to the viewer (players only see their own entries, admins see all
+  authors).
+- **Only notable events, not one per day:** the AI prompt (`server/ai/timeline.ts`) explicitly
+  restricts extraction to battles, important decisions, encounters, discoveries and plot
+  turning points (typically 2–6 per session) plus 3–8 chronologically ordered scenes per event
+  (the zoom level). Results are written by the MCP tool `set_timeline_events` (scope
+  `timeline:write`, session-bound like `set_session_game_day`), which transactionally replaces
+  the session's events/scenes and sanitizes the HTML.
+- **Automatic generation:** the nightly pipeline (`server/scheduler/timeline.ts`, called from
+  `summaryScheduler.ts` after the summary steps) processes every session pending timeline
+  generation: no events yet, or **stale** (events older than the current long summary, or the
+  session's arc changed). This keeps events in sync with re-summarized sessions and arc moves.
+- **Manual update:** the "Zeitleiste aktualisieren" button (admin-only, `POST /api/timeline/generate`)
+  refreshes/extends the timeline for all pending sessions – this is the catch-up path for
+  pre-existing data. Progress is streamed to every open timeline page via the global SSE stream
+  `GET /api/timeline/ai-events` (`server/timelineAiEvents.ts`). A per-session variant
+  (`{ sessionId }`) regenerates one session inline. Without events the page offers the button as
+  the manual catch-up.
+- **UI:** `src/pages/Timeline.tsx` groups events by chapter (headers with chapter number/name,
+  sorted via `sortArcsChronologically`, unassigned events last as "Ohne Kapitel") and orders them
+  by in-game day. Each event card shows a "Spieltag N" badge, title, description (with entity
+  highlighting via `EntityRichText`), the source session and links: "Session" jumps to
+  `/sessions?session=<id>`, diary links jump to `/tagebuch?entry=<id>` (deep-link expand + scroll,
+  existing behavior). "Hineinzoomen" expands the event's scene mini timeline. Filtering uses the
+  global header chapter filter (`arcMatchesFilter`); the app participates in
+  `STORY_ARC_FILTER_PATHS`. Events are AI-generated only and cannot be edited manually.
+
 ### AI Workflow
 
 1. Prompts in `server/ai/rewrite.ts` / `server/ai/knowledge.ts` instruct the AI to query background information via MCP tools before storing data.
@@ -218,6 +255,7 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
 | `recording:summarize`  | `set_session_summary`, `set_session_long_summary`                                                  |
 | `recording:boundaries` | `set_session_boundaries`                                                                           |
 | `recording:game-day`   | `set_session_game_day`                                                                             |
+| `timeline:write`       | `set_timeline_events`                                                                              |
 | `bingo:read`           | `get_bingo_state`                                                                                  |
 
 ## Global Search (Ctrl+K)

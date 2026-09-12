@@ -53,7 +53,8 @@ import {
   submitBingoSuggestionBatch,
 } from '../repositories/bingoSuggestions.js';
 import { getGame } from '../game.js';
-import type { DiaryEntry } from '../../shared/types.js';
+import { replaceSessionEvents } from '../repositories/timeline.js';
+import type { DiaryEntry, TimelineEventInput } from '../../shared/types.js';
 
 const log = createLogger('mcp-server');
 
@@ -898,6 +899,76 @@ if (requireScope('recording:summarize')) {
       } catch (err) {
         return error(
           err instanceof Error ? err.message : 'Fehler beim Setzen der langen Zusammenfassung'
+        );
+      }
+    }
+  );
+}
+
+if (requireScope('timeline:write')) {
+  // The campaign timeline: notable events extracted from a session's
+  // summaries. Like the session summaries, results are written by the MCP
+  // handler into the database, not parsed from the AI's text output.
+  loggedTool(
+    'set_timeline_events',
+    'Speichert die nennenswerten Ereignisse (Hauptevents) einer Session für die Kampagnen-Zeitleiste. Ersetzt alle bisherigen Ereignisse dieser Session. Die Spieltage (gameDay) beziehen sich auf die Ingame-Kampagnen-Chronologie.',
+    {
+      sessionId: z.number().int().positive(),
+      events: z
+        .array(
+          z.object({
+            gameDay: z.number().int().positive().describe('Ingame-Spieltag des Ereignisses.'),
+            title: z
+              .string()
+              .min(1)
+              .max(200)
+              .describe('Prägnanter Titel des Ereignisses (ein Satz, Deutsch).'),
+            description: z
+              .string()
+              .max(2000)
+              .optional()
+              .describe('Knappe HTML-Beschreibung (<p>…), was geschah und warum es wichtig war.'),
+            scenes: z
+              .array(
+                z.object({
+                  gameDay: z.number().int().positive().optional(),
+                  title: z.string().min(1).max(200),
+                  description: z.string().max(2000).optional(),
+                })
+              )
+              .max(12)
+              .describe('Szenen/Zwischenereignisse des Spieltags für den Mini-Zeitstrahl.'),
+          })
+        )
+        .max(30)
+        .describe(
+          'Nur nennenswerte Ereignisse (Kämpfe, Entscheidungen, Treffen, Funde, Wendepunkte) - kein Ereignis pro Spieltag.'
+        ),
+    },
+    async ({ sessionId, events }) => {
+      try {
+        if (payload?.recordingSessionId !== sessionId) {
+          return error('Der MCP-Token ist nicht für diese Session autorisiert.');
+        }
+        const session = getSessionById(sessionId);
+        if (!session) return error(`Session ${sessionId} nicht gefunden.`);
+        const sanitized = events.map((event): TimelineEventInput => ({
+          gameDay: event.gameDay,
+          title: event.title.trim(),
+          description: event.description ? sanitizeHtml(event.description).trim() : null,
+          scenes: event.scenes.map((scene) => ({
+            gameDay: scene.gameDay ?? event.gameDay,
+            title: scene.title.trim(),
+            description: scene.description ? sanitizeHtml(scene.description).trim() : null,
+          })),
+        }));
+        replaceSessionEvents(sessionId, sanitized);
+        return success(
+          `${sanitized.length} Zeitleisten-Ereignisse für Session ${sessionId} gespeichert.`
+        );
+      } catch (err) {
+        return error(
+          err instanceof Error ? err.message : 'Fehler beim Speichern der Zeitleisten-Ereignisse'
         );
       }
     }

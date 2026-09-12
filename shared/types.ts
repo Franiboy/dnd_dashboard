@@ -283,6 +283,70 @@ export interface StoryArc {
   updatedAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Timeline
+// ---------------------------------------------------------------------------
+
+/**
+ * One notable campaign happening on the in-game day axis, AI-generated from a
+ * session's summaries. Only events worth remembering are extracted - not one
+ * per game day.
+ */
+export interface TimelineEvent {
+  id: number;
+  /** Campaign day the event happened on (recording_sessions.game_day). */
+  gameDay: number;
+  /** Story arc of the source session at generation time; NULL when unassigned. */
+  arcId: number | null;
+  /** Session the event was extracted from. */
+  sessionId: number;
+  sessionName: string | null;
+  title: string;
+  /** Short sanitized HTML description. */
+  description: string | null;
+  generatedAt: string;
+  updatedAt: string;
+  /** Sub-events ("zoom level") of the source game day, in display order. */
+  scenes: TimelineScene[];
+  /**
+   * Diary entries of the viewing user on the same game day (all entries for
+   * admins), resolved at read time because diaries are private per author.
+   */
+  diaryLinks: TimelineDiaryLink[];
+}
+
+/** Sub-event of a timeline event, shown in the event's zoomed mini timeline. */
+export interface TimelineScene {
+  id: number;
+  eventId: number;
+  gameDay: number;
+  position: number;
+  title: string;
+  description: string | null;
+}
+
+/** Diary entry linked to an event via the shared game day. */
+export interface TimelineDiaryLink {
+  entryId: number;
+  title: string;
+  /** Author display name; only set for admins. */
+  displayName: string | null;
+}
+
+/** Input shape used by the AI write path to replace one session's events. */
+export interface TimelineEventInput {
+  gameDay: number;
+  title: string;
+  description: string | null;
+  scenes: TimelineSceneInput[];
+}
+
+export interface TimelineSceneInput {
+  gameDay: number;
+  title: string;
+  description: string | null;
+}
+
 export interface RecordingFile {
   id: number;
   sessionId: number;

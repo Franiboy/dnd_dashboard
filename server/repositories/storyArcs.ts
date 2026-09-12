@@ -294,6 +294,7 @@ export function deleteStoryArc(id: number): boolean {
   const tx = db.transaction(() => {
     db.prepare('UPDATE recording_sessions SET arc_id = NULL WHERE arc_id = ?').run(id);
     db.prepare('UPDATE diary_entries SET arc_id = NULL WHERE arc_id = ?').run(id);
+    db.prepare('UPDATE timeline_events SET arc_id = NULL WHERE arc_id = ?').run(id);
     db.prepare('DELETE FROM story_arcs WHERE id = ?').run(id);
   });
   tx();
