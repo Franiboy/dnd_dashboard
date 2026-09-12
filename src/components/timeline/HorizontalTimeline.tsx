@@ -344,6 +344,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (level >= 2) return; // the group frame carries the details
                     setOpenEventId(open ? null : primary.id);
                   }}
                   title={primary.title}
@@ -364,65 +365,113 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                 </button>
 
                 <div
-                  className={`rounded-xl border p-2.5 text-[12px] transition ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenEventId(open ? null : primary.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setOpenEventId(open ? null : primary.id);
+                    }
+                  }}
+                  className={`cursor-pointer rounded-xl border p-2.5 text-[12px] transition ${
                     open
                       ? 'border-violet-300/70 shadow-[0_0_22px_rgba(168,85,247,.35)]'
-                      : 'border-violet-400/35 shadow-[0_10px_26px_rgba(0,0,0,.45)]'
+                      : 'border-violet-400/35 shadow-[0_10px_26px_rgba(0,0,0,.45)] hover:border-violet-300/60'
                   }`}
-                  style={{ background: 'linear-gradient(170deg, #1e1743 0%, #140f2e 100%)' }}
+                  style={{
+                    background: 'linear-gradient(170deg, #1e1743 0%, #140f2e 100%)',
+                    // From level 2 on the group frame carries the content; the
+                    // marker card stays collapsed until clicked (level 1 only).
+                    opacity: level >= 2 ? (open ? 1 : 0) : 1,
+                    pointerEvents: level >= 2 ? (open ? 'auto' : 'none') : 'auto',
+                  }}
                 >
-                  <p className="chapter-caps text-[10px] text-violet-300">
-                    Spieltag {day}
-                    {isLatest ? ' · aktuell' : ''}
+                  <p className="chapter-caps flex items-center justify-between gap-2 text-[10px] text-violet-300">
+                    <span>
+                      Spieltag {day}
+                      {isLatest ? ' · aktuell' : ''}
+                    </span>
+                    {!open && (
+                      <span
+                        title="Klicken für Details"
+                        className="flex shrink-0 items-center text-violet-300/70"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 16v-4" />
+                          <path d="M12 8h.01" />
+                        </svg>
+                      </span>
+                    )}
                   </p>
                   <h4 className="chapter-serif mt-0.5 text-[13px] font-semibold leading-snug text-slate-100">
                     {primary.title}
                   </h4>
-                  {primary.description && (
-                    <EntityRichText
-                      content={primary.description}
-                      mappings={mappings}
-                      className="mt-1.5 text-[11px] leading-relaxed text-slate-400"
-                    />
-                  )}
-                  <div className="mt-2 flex flex-wrap items-center gap-1">
-                    <ChipLink kind="session" to={`/sessions?session=${primary.sessionId}`}>
-                      Session
-                    </ChipLink>
-                    {primary.diaryLinks.map((link) => (
-                      <ChipLink
-                        key={link.entryId}
-                        kind="diary"
-                        to={`/tagebuch?entry=${link.entryId}`}
-                        title={
-                          link.displayName ? `Tagebuch von ${link.displayName}` : 'Tagebuch öffnen'
-                        }
-                      >
-                        Tagebuch
-                      </ChipLink>
-                    ))}
-                  </div>
-                  {open && primary.scenes.length > 0 && (
-                    <div className="mt-2 border-t border-dashed border-violet-400/30 pt-2">
-                      {primary.scenes.map((scene, index) => (
-                        <div
-                          key={scene.id}
-                          className="flex gap-2 py-0.5 text-[11px] text-slate-400"
-                        >
-                          <b className="shrink-0 text-slate-200">{index + 1}</b>
-                          <span>
-                            <span className="font-semibold text-slate-200">{scene.title}</span>
-                            {scene.description && (
-                              <EntityRichText
-                                content={scene.description}
-                                mappings={mappings}
-                                className="inline"
-                              />
-                            )}
-                          </span>
+                  {open && (
+                    <>
+                      {primary.description && (
+                        <EntityRichText
+                          content={primary.description}
+                          mappings={mappings}
+                          className="mt-1.5 text-[11px] leading-relaxed text-slate-400"
+                        />
+                      )}
+                      <div className="mt-2 flex flex-wrap items-center gap-1">
+                        <ChipLink kind="session" to={`/sessions?session=${primary.sessionId}`}>
+                          Session
+                        </ChipLink>
+                        {primary.diaryLinks.map((link) => (
+                          <ChipLink
+                            key={link.entryId}
+                            kind="diary"
+                            to={`/tagebuch?entry=${link.entryId}`}
+                            title={
+                              link.displayName
+                                ? `Tagebuch von ${link.displayName}`
+                                : 'Tagebuch öffnen'
+                            }
+                          >
+                            Tagebuch
+                          </ChipLink>
+                        ))}
+                      </div>
+                      {primary.scenes.length > 0 && (
+                        <div className="mt-2 border-t border-dashed border-violet-400/30 pt-2">
+                          {primary.scenes.map((scene, index) => (
+                            <div
+                              key={scene.id}
+                              className="flex gap-2 py-0.5 text-[11px] text-slate-400"
+                            >
+                              <b className="shrink-0 text-slate-200">{index + 1}</b>
+                              <span>
+                                <span className="font-semibold text-slate-200">{scene.title}</span>
+                                {scene.description && (
+                                  <EntityRichText
+                                    content={scene.description}
+                                    mappings={mappings}
+                                    className="inline"
+                                  />
+                                )}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
