@@ -3,6 +3,7 @@ import { processPendingSessions } from './sessionAi.js';
 import { processSessionToDiary } from './sessionToDiary.js';
 import { processDirtyDiaryEntries } from './diarySummaries.js';
 import { processDirtySummaries } from './entitySummaries.js';
+import { processPendingTimelineSessions } from './timeline.js';
 
 const log = createLogger('summary-scheduler');
 
@@ -32,6 +33,13 @@ async function processNightlySummaries() {
     await processSessionToDiary();
   } catch (err) {
     log.error(`Session-to-diary transfer failed: ${err}`);
+  }
+  try {
+    // Timeline events follow the summaries: fresh sessions get their events
+    // and stale ones (newer summary / moved arc) are refreshed.
+    await processPendingTimelineSessions();
+  } catch (err) {
+    log.error(`Timeline generation failed: ${err}`);
   }
   try {
     await processDirtyDiaryEntries();
