@@ -198,21 +198,27 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
 ### Timeline (`/zeitleiste`)
 
 A first-class app (like World/Diary, `disableable`) showing the **notable events of all played
-sessions** on a vertical timeline:
+sessions** on a horizontal timeline ("Arkan-Chronik" look: violet leyline, amethyst pins, arcane
+group frames):
 
 - **Data model:** `timeline_events` (one row per notable happening: `game_day` on the campaign
   axis, `arc_id` captured from the source session at write time, provenance `session_id`, title +
-  short sanitized HTML description) and `timeline_scenes` (sub-events per event, `position`-ordered
-  mini timeline). Deleting a session cascades its events; deleting an arc nulls `timeline_events.arc_id`.
-  Diary entries are **not stored per event** – links to diary entries are resolved at read time by
-  the shared `game_day`, scoped to the viewer (players only see their own entries, admins see all
-  authors).
-- **Only notable events, not one per day:** the AI prompt (`server/ai/timeline.ts`) explicitly
-  restricts extraction to battles, important decisions, encounters, discoveries and plot
-  turning points (typically 2–6 per session) plus 3–8 chronologically ordered scenes per event
-  (the zoom level). Results are written by the MCP tool `set_timeline_events` (scope
-  `timeline:write`, session-bound like `set_session_game_day`), which transactionally replaces
-  the session's events/scenes and sanitizes the HTML.
+  short sanitized HTML description, `prompt_version` marker) and `timeline_scenes` (sub-events per
+  event, `position`-ordered). Deleting a session cascades its events; deleting an arc nulls
+  `timeline_events.arc_id`. Diary entries are **not stored per event** – links to diary entries are
+  resolved at read time by the shared `game_day`, scoped to the viewer (players only see their own
+  entries, admins see all authors).
+- **One main event per notable game day (grouping prompt):** the AI prompt (`server/ai/timeline.ts`)
+  consolidates every notable game day into **exactly one main event** – related happenings of the
+  same day (arrival → interrogation → escape) belong into one event, and its day-by-day details
+  become the 3–8 chronologically ordered **scenes** (the sub-events shown when zooming in). Days
+  without anything notable get no event. Results are written by the MCP tool `set_timeline_events`
+  (scope `timeline:write`, session-bound like `set_session_game_day`), which transactionally
+  replaces the session's events/scenes, sanitizes the HTML and stamps `prompt_version`.
+- **Prompt-version reset:** `resetTimelineEventsForPrompt` (server/migrations.ts) deletes events
+  with an outdated `prompt_version` on startup, so the nightly scheduler regenerates them with the
+  current grouping prompt – bump `TIMELINE_PROMPT_VERSION` (server/repositories/timeline.ts) when
+  the prompt changes meaningfully.
 - **Automatic generation:** the nightly pipeline (`server/scheduler/timeline.ts`, called from
   `summaryScheduler.ts` after the summary steps) processes every session pending timeline
   generation: no events yet, or **stale** (events older than the current long summary, or the
@@ -223,14 +229,21 @@ sessions** on a vertical timeline:
   `GET /api/timeline/ai-events` (`server/timelineAiEvents.ts`). A per-session variant
   (`{ sessionId }`) regenerates one session inline. Without events the page offers the button as
   the manual catch-up.
-- **UI:** `src/pages/Timeline.tsx` groups events by chapter (headers with chapter number/name,
-  sorted via `sortArcsChronologically`, unassigned events last as "Ohne Kapitel") and orders them
-  by in-game day. Each event card shows a "Spieltag N" badge, title, description (with entity
-  highlighting via `EntityRichText`), the source session and links: "Session" jumps to
-  `/sessions?session=<id>`, diary links jump to `/tagebuch?entry=<id>` (deep-link expand + scroll,
-  existing behavior). "Hineinzoomen" expands the event's scene mini timeline. Filtering uses the
-  global header chapter filter (`arcMatchesFilter`); the app participates in
-  `STORY_ARC_FILTER_PATHS`. Events are AI-generated only and cannot be edited manually.
+- **UI (`src/components/timeline/HorizontalTimeline.tsx`):** a fixed-height diagram with a violet
+  **leyline axis**; the page is **never scaled**. The view is a **window over the day axis**
+  (initially 10 days, ruler with every day); **dragging or the mouse wheel** moves the window,
+  ＜/＞ buttons page and "Heute" jumps to the current day. **Zooming (Ctrl+wheel / ＋/－) shrinks
+  the visible day range 10 → 5 → 2 days** with the window center anchored, which gives each event
+  room to **unfold into a bordered group frame**: the frame header carries the main event
+  (day · title · links) and beneath it the sub-events appear as **standalone cards** (number,
+  title, description) – making visible which sub-events belong to the same main event. The main
+  pin stays on the axis and connects the frame via a stem; a teal pulsing pin marks the current
+  game day. Chapter segments (chapter-colored bands like the chapter chips) are clipped to the
+  window. Level-1 cards additionally open a scene list popover on click. Events link to
+  `/sessions?session=<id>` and `/tagebuch?entry=<id>` (deep-link expand + scroll, existing
+  behavior). Filtering uses the global header chapter filter (`arcMatchesFilter`); the app
+  participates in `STORY_ARC_FILTER_PATHS`. Events are AI-generated only and cannot be edited
+  manually. Legacy multi-event days (pre-grouping data) collapse into a "+N" badge.
 
 ### AI Workflow
 

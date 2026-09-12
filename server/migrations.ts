@@ -487,6 +487,25 @@ function seedStoryArcs(tableIsNew: boolean): void {
   log.info(`Seeded story arc ${arcId} ("Erster Arc") and assigned all existing sessions/entries`);
 }
 
+/**
+ * Prompt-version reset for the campaign timeline: events generated with an
+ * older prompt (or without a version marker) are deleted so the scheduler
+ * regenerates them with the current grouping prompt (one main event per
+ * notable game day, details in the scenes). Idempotent: once every row
+ * carries the current version, this is a no-op.
+ */
+function resetTimelineEventsForPrompt(): void {
+  if (!tableExists('timeline_events')) return;
+  const deleted = db
+    .prepare('DELETE FROM timeline_events WHERE prompt_version IS NULL OR prompt_version < 2')
+    .run();
+  if (deleted.changes > 0) {
+    log.info(
+      `Reset ${deleted.changes} timeline event(s) generated with an outdated prompt; they will be regenerated automatically`
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Global search index (FTS5)
 //
@@ -709,5 +728,6 @@ export function runMigrations(): void {
     seedCampaignDays();
     backfillKnowledgeValidity();
     seedStoryArcs(storyArcsTableIsNew);
+    resetTimelineEventsForPrompt();
   })();
 }
