@@ -190,6 +190,31 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
     [byDay]
   );
 
+  // Sequential overlap resolution per side: cards and frames of same-side
+  // events never overlap horizontally (the pin keeps its true axis position;
+  // only the card/frame and its stem shift to the next free slot).
+  const layoutLefts = useMemo(() => {
+    const cards = new Map<number, number>();
+    const frames = new Map<number, number>();
+    if (pxD === 0) return { cards, frames };
+    for (const side of ['up', 'down'] as const) {
+      let prevRight = -Infinity;
+      let prevFrameRight = -Infinity;
+      byDay.forEach(([day], i) => {
+        if (evtOffsets[i] !== side) return;
+        const x = xOf(day);
+        const cardLeft = Math.max(x - CARD_W / 2, prevRight + 8);
+        cards.set(day, cardLeft);
+        prevRight = cardLeft + CARD_W;
+        const frameLeft = Math.max(x - frameW / 2, prevFrameRight + 8);
+        frames.set(day, frameLeft);
+        prevFrameRight = frameLeft + frameW;
+      });
+    }
+    return { cards, frames };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [byDay, evtOffsets, start, width, level, pxD]);
+
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -264,10 +289,13 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                 }}
               />
               <div
-                className={`absolute top-1/2 text-center ${posTransition}`}
+                className={`absolute text-center ${posTransition}`}
                 style={{
+                  // Pinned to the bottom edge so labels never collide with
+                  // group frames or cards near the axis.
                   left: Math.max(90, Math.min(width - 90, (x1 + x2) / 2)),
-                  transform: 'translate(-50%, 24px)',
+                  bottom: 14,
+                  transform: 'translate(-50%, 0)',
                   opacity: visible && x2 - x1 > 130 ? 1 : 0,
                 }}
               >
@@ -283,7 +311,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
           );
         })}
 
-        {/* Day ruler: every day of the window */}
+        {/* Day ruler: ticks on the axis, labels pinned to the top edge */}
         {(() => {
           const ticks = [];
           const from = Math.max(1, Math.floor(start) - 1);
@@ -295,11 +323,21 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                 key={day}
                 className={`absolute top-1/2 w-px ${posTransition} ${major ? 'h-4 bg-violet-300/60' : 'h-3 bg-violet-300/25'}`}
                 style={{ left: xOf(day), transform: 'translateY(calc(-50% + 4px))' }}
+              />
+            );
+            ticks.push(
+              <b
+                key={`lbl-${day}`}
+                className={`absolute whitespace-nowrap text-[10px] font-normal text-slate-500 ${posTransition}`}
+                style={{
+                  left: xOf(day),
+                  top: 10,
+                  transform: 'translate(-50%, 0)',
+                  opacity: day >= Math.round(start) && day <= windowEnd ? 1 : 0,
+                }}
               >
-                <b className="absolute left-1/2 top-5 -translate-x-1/2 whitespace-nowrap text-[10px] font-normal text-slate-500">
-                  Tag {day}
-                </b>
-              </div>
+                Tag {day}
+              </b>
             );
           }
           return ticks;
@@ -322,7 +360,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
               <div
                 className={`tl-evt absolute ${posTransition}`}
                 style={{
-                  left: x - CARD_W / 2,
+                  left: layoutLefts.cards.get(day) ?? x - CARD_W / 2,
                   width: CARD_W,
                   ...(side === 'up' ? { bottom: markerOffset } : { top: markerOffset }),
                   opacity: visible ? 1 : 0,
@@ -388,6 +426,10 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                     // marker card stays collapsed until clicked (level 1 only).
                     opacity: level >= 2 ? (open ? 1 : 0) : 1,
                     pointerEvents: level >= 2 ? (open ? 'auto' : 'none') : 'auto',
+                    // Never clip at the stage edge: the open card scrolls
+                    // internally instead of overflowing the half-stage.
+                    maxHeight: open ? 'calc(50% - 44px)' : undefined,
+                    overflowY: open ? 'auto' : undefined,
                   }}
                 >
                   <p className="chapter-caps flex items-center justify-between gap-2 text-[10px] text-violet-300">
@@ -480,7 +522,10 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
               <div
                 className={`absolute rounded-xl border border-violet-400/55 p-2.5 shadow-[0_14px_34px_rgba(0,0,0,.5),0_0_22px_rgba(168,85,247,.2)] ${posTransition}`}
                 style={{
-                  left: Math.max(10, Math.min(width - frameW - 10, x)),
+                  left: Math.max(
+                    10,
+                    Math.min(width - frameW - 10, layoutLefts.frames.get(day) ?? x - frameW / 2)
+                  ),
                   width: frameW,
                   ...(side === 'up' ? { bottom: frameOffset } : { top: frameOffset }),
                   background:
@@ -488,6 +533,8 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                   opacity: level >= 2 && visible ? 1 : 0,
                   pointerEvents: level >= 2 && visible ? 'auto' : 'none',
                   zIndex: 8,
+                  maxHeight: 'calc(50% - 48px)',
+                  overflowY: 'auto',
                 }}
               >
                 <div
@@ -521,11 +568,11 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                     ))}
                   </span>
                 </div>
-                <div className="flex items-stretch gap-2">
+                <div className="flex flex-wrap items-stretch gap-2">
                   {primary.scenes.map((scene, index) => (
                     <div
                       key={scene.id}
-                      className="min-w-0 flex-1 rounded-lg border border-violet-400/30 border-l-2 border-l-violet-500 bg-violet-100/[.04] p-2 transition hover:border-l-violet-300 hover:bg-violet-100/[.08]"
+                      className="min-w-[140px] flex-1 rounded-lg border border-violet-400/30 border-l-2 border-l-violet-500 bg-violet-100/[.04] p-2 transition hover:border-l-violet-300 hover:bg-violet-100/[.08]"
                     >
                       <p className="text-[11px] font-semibold leading-snug text-slate-100">
                         <small className="mr-1 font-normal text-slate-500">{index + 1}</small>
