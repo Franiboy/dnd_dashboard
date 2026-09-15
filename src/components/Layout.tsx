@@ -45,7 +45,7 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
         ref={headerRef}
         className="relative z-50 flex flex-col border-b border-[var(--border)] bg-[var(--panel)]"
       >
-        <div className="flex items-center gap-2 px-3 sm:px-6 py-2">
+        <div className="flex flex-wrap items-center gap-2 px-3 sm:px-6 py-2">
           {/* Left: user menu (Discord avatar, role, logout) */}
           <UserMenu
             user={user}
@@ -53,8 +53,10 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
             onExitSimulation={isSimulating ? clearViewAsUser : undefined}
           />
 
-          {/* Middle: chapter filter and the app switcher, centered as a group */}
-          <div className="flex min-w-0 flex-1 items-center justify-center gap-3">
+          {/* Middle: chapter filter and the app switcher, centered as a group.
+              On phones it moves to its own full-width row below so it is not
+              squeezed between avatar and search. */}
+          <div className="order-last flex min-w-0 flex-1 basis-full items-center justify-center gap-3 sm:order-none sm:basis-auto">
             {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
             <div className="flex min-w-0 max-w-full items-center overflow-x-auto">
               <AppSwitcher user={user} version={version} />
@@ -62,7 +64,7 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
           </div>
 
           {/* Right: global search */}
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <GlobalSearch user={user} version={version} />
           </div>
         </div>

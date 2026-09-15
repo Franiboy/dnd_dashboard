@@ -28,7 +28,7 @@ export function Home({ version }: HomeProps) {
 
   return (
     <div className="min-h-full p-6 flex flex-col items-center justify-center">
-      <h1 className="text-5xl font-bold text-[var(--text-h)] mb-4">DnD Dashboard</h1>
+      <h1 className="text-4xl sm:text-5xl font-bold text-[var(--text-h)] mb-4">DnD Dashboard</h1>
       <p className="text-xl text-slate-400 mb-12">Wähle einen Bereich</p>
       {needsCharacter && (
         <div className="mb-12 w-full max-w-4xl bg-[var(--warning)]/10 border border-[var(--warning)]/40 rounded-xl px-4 py-3 text-sm text-[var(--text-h)]">
@@ -41,7 +41,7 @@ export function Home({ version }: HomeProps) {
           <Link
             key={app.id}
             to={app.path}
-            className="group block bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 hover:border-[var(--accent)] transition"
+            className="group block bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 sm:p-8 hover:border-[var(--accent)] transition"
           >
             <h2 className="text-2xl font-semibold text-[var(--text-h)] group-hover:text-[var(--accent)] transition">
               {app.label}

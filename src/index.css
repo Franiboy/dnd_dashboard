@@ -420,6 +420,23 @@ button {
   transform-origin: top left;
 }
 
+/* Toast: gentle slide-in instead of bouncing (a tall toast bounced above the
+   viewport top and got clipped, especially on small screens). */
+@keyframes toast-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toast-pop-in {
+  animation: toast-pop-in 160ms ease-out;
+}
+
 /* Story-arc chapter typography ("Abenteuer-Look"): serif display names and
    small-caps chapter labels. System serif stack on purpose — external web
    fonts are blocked by the app's CSP. */

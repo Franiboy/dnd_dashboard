@@ -70,7 +70,7 @@ export function Timeline() {
   }
 
   return (
-    <div className="h-full flex flex-col p-6">
+    <div className="h-full flex flex-col p-4 sm:p-6">
       {aiStatus && (
         <div className="fixed bottom-4 right-4 bg-[var(--panel)] border border-[var(--border)] rounded-xl p-3 shadow-lg z-50 max-w-md">
           {generating || running ? (
