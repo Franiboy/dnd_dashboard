@@ -30,6 +30,11 @@ interface HorizontalTimelineProps {
   /** Filtered, gameDay-ascending events of the campaign. */
   events: TimelineEvent[];
   arcs: StoryArc[];
+  /**
+   * Deep link (?event=<id>, e.g. from the global search): opens the event's
+   * card, centers its day in the window and highlights it briefly.
+   */
+  focusEventId?: number | null;
 }
 
 const posTransition = 'transition-[left,top,bottom,width,opacity] duration-300 ease-out';
@@ -61,7 +66,7 @@ function ChipLink({
   );
 }
 
-export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
+export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTimelineProps) {
   const { mappings } = useEntityMappings();
   const stageRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -104,6 +109,26 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
     setStart(clampStart(dayRange.max - windowDays + 2));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [width, dayRange]);
+
+  // Deep link (?event=): open the event's card and center its day once the
+  // stage is measured. Declared after the latest-day jump so it wins on first
+  // mount; the highlight mirrors the diary deep link.
+  useEffect(() => {
+    if (focusEventId == null || width === 0) return;
+    const event = events.find((e) => e.id === focusEventId);
+    if (!event) return;
+    setOpenEventId(event.id);
+    setStart(clampStart(event.gameDay - windowDays / 2 + 0.5));
+    const timer = setTimeout(() => {
+      const element = stageRef.current?.querySelector(`[data-event-id="${event.id}"]`);
+      if (element) {
+        element.classList.add('ring-2', 'ring-[var(--accent)]');
+        setTimeout(() => element.classList.remove('ring-2', 'ring-[var(--accent)]'), 2000);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusEventId, width, events]);
 
   function zoomBy(dir: 1 | -1) {
     // Keep the window center anchored: zooming changes only the day count.
@@ -337,6 +362,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
             <div key={primary.id}>
               {/* Level-1 marker card */}
               <div
+                data-event-id={primary.id}
                 className={`tl-evt absolute ${posTransition}`}
                 style={{
                   left: layoutLefts.cards.get(day) ?? x - CARD_W / 2,

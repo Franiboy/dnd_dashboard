@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useError } from '../hooks/useError';
 import { useStoryArcs } from '../hooks/useStoryArcs';
@@ -18,6 +19,15 @@ export function Timeline() {
     useTimeline();
 
   const [generating, setGenerating] = useState(false);
+
+  // Deep link (?event=<id>, e.g. from the global search): the timeline opens
+  // and highlights that event; see HorizontalTimeline.
+  const [searchParams] = useSearchParams();
+  const focusEventId = useMemo(() => {
+    const raw = searchParams.get('event');
+    const id = raw === null ? NaN : Number(raw);
+    return Number.isFinite(id) ? id : null;
+  }, [searchParams]);
 
   const { aiStatus, sseReadyRef } = useTimelineAiStatus(() => {
     setGenerating(false);
@@ -165,7 +175,7 @@ export function Timeline() {
             <p className="text-slate-400">Keine Ereignisse im gewählten Kapitel vorhanden.</p>
           </div>
         ) : (
-          <HorizontalTimeline events={visibleEvents} arcs={arcs} />
+          <HorizontalTimeline events={visibleEvents} arcs={arcs} focusEventId={focusEventId} />
         )}
       </div>
     </div>
