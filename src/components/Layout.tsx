@@ -58,9 +58,7 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
               squeezed between avatar and search. */}
           <div className="order-last flex min-w-0 flex-1 basis-full items-center justify-center gap-3 sm:order-none sm:basis-auto">
             {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
-            <div className="flex min-w-0 max-w-full items-center overflow-x-auto">
-              <AppSwitcher user={user} version={version} />
-            </div>
+            <AppSwitcher user={user} version={version} />
           </div>
 
           {/* Right: global search */}
