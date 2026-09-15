@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import type ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
 import { useApi } from '../hooks/useApi';
@@ -14,6 +14,7 @@ import { useDiaryAiStatus } from '../hooks/useDiaryAiStatus';
 import { arcMatchesFilter } from '../lib/storyArcs';
 import { splitEntityLabel } from '../lib/entityLabels';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
+import { BadgeLink } from '../components/BadgeLink';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
@@ -551,9 +552,10 @@ export function Diary() {
                       />
                     )}
                     {entry.sessionDraftFor && (
-                      <Link
+                      <BadgeLink
+                        size="sm"
+                        variant="session"
                         to={`/sessions?session=${entry.sessionDraftFor}`}
-                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/30 hover:bg-[var(--accent)]/30 transition"
                         title={
                           entry.sessionDraftForName
                             ? `Springe zu Session „${entry.sessionDraftForName}“`
@@ -563,7 +565,7 @@ export function Diary() {
                         {entry.sessionDraftForName
                           ? `Session: ${entry.sessionDraftForName}`
                           : 'Session-Vorschlag'}
-                      </Link>
+                      </BadgeLink>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2 justify-end">
