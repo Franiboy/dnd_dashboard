@@ -208,6 +208,9 @@ group frames):
   `timeline_events.arc_id`. Diary entries are **not stored per event** – links to diary entries are
   resolved at read time by the shared `game_day`, scoped to the viewer (players only see their own
   entries, admins see all authors).
+- **Search:** every event is indexed in the global search (FTS5 `search_index`) as **one document
+  including all its scene texts**; HTML descriptions are mirrored into plain-text `description_text`
+  columns maintained by the timeline repository (see "Global Search" below).
 - **One main event per notable game day (grouping prompt):** the AI prompt (`server/ai/timeline.ts`)
   consolidates every notable game day into **exactly one main event** – related happenings of the
   same day (arrival → interrogation → escape) belong into one event, and its day-by-day details
@@ -277,26 +280,34 @@ group frames):
   (`src/components/GlobalSearch.tsx`) available on every page. Arrow keys select,
   Enter opens, Esc closes.
 - **Sources:** diary entries (title, plain text, AI summary), recording sessions
-  (name, summaries, Whisper transcript) and world knowledge facts
-  (`entity_knowledge_entries`). Entity names, qualifiers and aliases are matched
+  (name, summaries, Whisper transcript), world knowledge facts
+  (`entity_knowledge_entries`) and timeline events (title, plain-text
+  description, all scene titles/descriptions folded into the event's document).
+  Entity names, qualifiers and aliases are matched
   instantly client-side from the already-loaded mappings cache
   (`filterEntityMappings` in `src/hooks/useGlobalSearch.ts`).
 - **Index:** an SQLite FTS5 virtual table `search_index` holds one document per
-  source row, kept in sync by triggers on `diary_entries`, `recording_sessions`
-  and `entity_knowledge_entries` (soft-deleted facts leave the index). Because
-  the declarative schema engine cannot express virtual tables, the index is
+  source row, kept in sync by triggers on `diary_entries`, `recording_sessions`,
+  `entity_knowledge_entries` and `timeline_events` (soft-deleted facts leave the
+  index). Timeline scenes are not separate documents: scene triggers re-sync
+  the parent event's document whenever a scene row changes. Because the
+  declarative schema engine cannot express virtual tables, the index is
   created and backfilled idempotently by the `setupSearchIndex` hook in
   `server/migrations.ts`. Legacy diary rows get an HTML-stripped `content_text`
-  copy that the diary repository maintains on every write.
+  copy and legacy timeline rows an HTML-stripped `description_text` copy
+  (per table) that the repositories maintain on every write.
 - **Privacy:** diary hits are filtered by the author (`owner_user_id` in the
-  index) — users only ever see their own entries. Sessions and world knowledge
-  are visible to all approved users, matching the modules' existing behaviour.
+  index) — users only ever see their own entries. Sessions, world knowledge and
+  timeline events are visible to all approved users, matching the modules'
+  existing behaviour.
 - **API:** `GET /api/search?q=<min. 2 Zeichen>&limit=<1–20, default 8>` returns
   bm25-ranked hits per source with snippets whose match ranges are wrapped in
   `\u0001`/`\u0002` markers for client-side highlighting.
 - **Deep links:** diary hits navigate to `/tagebuch?entry=<id>`, session hits to
   `/sessions?session=<id>&t=<mm:ss>` — the transcript opens automatically and
-  the matched timestamp line is scrolled into view and highlighted. Knowledge
+  the matched timestamp line is scrolled into view and highlighted. Timeline
+  hits navigate to `/zeitleiste?event=<id>` — the event's card opens, its day
+  is centered in the window and the card is highlighted briefly. Knowledge
   hits open the entity dialog directly on the "Wissen" tab (`initialTab`
   parameter), entity hits open it on the summary tab.
 - Groups belonging to apps the user has disabled are hidden from the results.
