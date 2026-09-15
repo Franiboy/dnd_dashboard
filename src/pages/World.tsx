@@ -662,7 +662,7 @@ export function World() {
   }
 
   return (
-    <div className="h-full flex flex-col p-6">
+    <div className="h-full flex flex-col p-4 sm:p-6">
       <DashboardHeader>
         {filterArcLabel && (
           <span className="mr-auto text-sm text-slate-400">
@@ -679,7 +679,7 @@ export function World() {
         </button>
       </DashboardHeader>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 min-h-0">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 min-h-0">
         {renderPanel('persons', 'Personen', 'Noch keine Personen vorhanden.')}
         {renderPanel('organizations', 'Organisationen', 'Noch keine Organisationen vorhanden.')}
         {renderPanel('locations', 'Orte', 'Noch keine Orte vorhanden.')}

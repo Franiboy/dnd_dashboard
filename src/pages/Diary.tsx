@@ -474,7 +474,7 @@ export function Diary() {
   }
 
   return (
-    <div className="h-full flex flex-col p-6">
+    <div className="h-full flex flex-col p-4 sm:p-6">
       <SideDrawer side="right">
         <SideDrawerItem
           id="create"
@@ -518,7 +518,7 @@ export function Diary() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-auto -mx-6 px-6">
+      <div className="flex-1 min-h-0 overflow-auto -mx-4 px-4 sm:-mx-6 sm:px-6">
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <p className="text-slate-400">Noch keine Tagebucheinträge vorhanden.</p>
