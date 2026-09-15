@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import type { StoryArc, TimelineEvent } from '../../../shared/types';
 import { useEntityMappings } from '../../hooks/useEntityMappings';
 import { EntityRichText } from '../EntityRichText';
+import { BadgeLink } from '../BadgeLink';
 
 // ---------------------------------------------------------------------------
 // Horizontal campaign timeline ("Arkan-Chronik").
@@ -38,33 +38,6 @@ interface HorizontalTimelineProps {
 }
 
 const posTransition = 'transition-[left,top,bottom,width,opacity] duration-300 ease-out';
-
-function ChipLink({
-  kind,
-  to,
-  title,
-  children,
-}: {
-  kind: 'session' | 'diary';
-  to: string;
-  title?: string;
-  children: React.ReactNode;
-}) {
-  const cls =
-    kind === 'session'
-      ? 'border-violet-400/50 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20'
-      : 'border-teal-400/35 bg-teal-400/10 text-teal-200 hover:bg-teal-400/20';
-  return (
-    <Link
-      to={to}
-      title={title}
-      onClick={(e) => e.stopPropagation()}
-      className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] transition ${cls}`}
-    >
-      {children}
-    </Link>
-  );
-}
 
 export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTimelineProps) {
   const { mappings } = useEntityMappings();
@@ -480,22 +453,29 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
                         />
                       )}
                       <div className="mt-2 flex flex-wrap items-center gap-1">
-                        <ChipLink kind="session" to={`/sessions?session=${primary.sessionId}`}>
+                        <BadgeLink
+                          size="sm"
+                          variant="session"
+                          to={`/sessions?session=${primary.sessionId}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           Session
-                        </ChipLink>
+                        </BadgeLink>
                         {primary.diaryLinks.map((link) => (
-                          <ChipLink
+                          <BadgeLink
                             key={link.entryId}
-                            kind="diary"
+                            size="sm"
+                            variant="diary"
                             to={`/tagebuch?entry=${link.entryId}`}
                             title={
                               link.displayName
                                 ? `Tagebuch von ${link.displayName}`
                                 : 'Tagebuch öffnen'
                             }
+                            onClick={(e) => e.stopPropagation()}
                           >
                             Tagebuch
-                          </ChipLink>
+                          </BadgeLink>
                         ))}
                       </div>
                       {primary.scenes.length > 0 && (
@@ -561,17 +541,24 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
                     {primary.title}
                   </span>
                   <span className="ml-auto flex flex-none items-center gap-1">
-                    <ChipLink kind="session" to={`/sessions?session=${primary.sessionId}`}>
+                    <BadgeLink
+                      size="sm"
+                      variant="session"
+                      to={`/sessions?session=${primary.sessionId}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       Session
-                    </ChipLink>
+                    </BadgeLink>
                     {primary.diaryLinks.slice(0, 2).map((link) => (
-                      <ChipLink
+                      <BadgeLink
                         key={link.entryId}
-                        kind="diary"
+                        size="sm"
+                        variant="diary"
                         to={`/tagebuch?entry=${link.entryId}`}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         Tagebuch
-                      </ChipLink>
+                      </BadgeLink>
                     ))}
                   </span>
                 </div>
