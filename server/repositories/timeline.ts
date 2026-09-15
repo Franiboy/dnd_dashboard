@@ -1,4 +1,5 @@
 import { db } from '../database.js';
+import { stripHtml } from '../ai/rewrite.js';
 import type { TimelineDiaryLink, TimelineEvent, TimelineEventInput } from '../../shared/types.js';
 
 /**
@@ -225,23 +226,25 @@ export function replaceSessionEvents(sessionId: number, events: TimelineEventInp
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM timeline_events WHERE session_id = ?').run(sessionId);
     const insertEvent = db.prepare(
-      `INSERT INTO timeline_events (game_day, arc_id, session_id, title, description, prompt_version, generated_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO timeline_events (game_day, arc_id, session_id, title, description, description_text, prompt_version, generated_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const insertScene = db.prepare(
-      `INSERT INTO timeline_scenes (event_id, game_day, position, title, description)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO timeline_scenes (event_id, game_day, position, title, description, description_text)
+       VALUES (?, ?, ?, ?, ?, ?)`
     );
     for (const event of events) {
       const day =
         Number.isInteger(event.gameDay) && event.gameDay > 0 ? event.gameDay : fallbackDay;
       if (day === null) continue;
+      const description = event.description?.trim() || null;
       const result = insertEvent.run(
         day,
         arcId,
         sessionId,
         event.title.trim(),
-        event.description?.trim() || null,
+        description,
+        description ? stripHtml(description) : null,
         TIMELINE_PROMPT_VERSION,
         now,
         now
@@ -249,12 +252,14 @@ export function replaceSessionEvents(sessionId: number, events: TimelineEventInp
       const eventId = Number(result.lastInsertRowid);
       event.scenes.forEach((scene, index) => {
         const sceneDay = Number.isInteger(scene.gameDay) && scene.gameDay > 0 ? scene.gameDay : day;
+        const sceneDescription = scene.description?.trim() || null;
         insertScene.run(
           eventId,
           sceneDay,
           index,
           scene.title.trim(),
-          scene.description?.trim() || null
+          sceneDescription,
+          sceneDescription ? stripHtml(sceneDescription) : null
         );
       });
     }

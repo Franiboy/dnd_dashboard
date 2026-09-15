@@ -100,8 +100,10 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
   const showWorld = appVisible('world');
   const showDiary = appVisible('notes');
   const showSessions = appVisible('sessions');
+  const showTimeline = appVisible('timeline');
 
-  // Stable display order: world entities, knowledge facts, diary, sessions.
+  // Stable display order: world entities, knowledge facts, diary, sessions,
+  // timeline.
   const entries = useMemo<FlatEntry[]>(() => {
     const list: FlatEntry[] = [];
     if (showWorld) {
@@ -120,8 +122,13 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
         if (hit.source === 'session') list.push({ kind: 'result', group: 'Sessions', hit });
       }
     }
+    if (showTimeline) {
+      for (const hit of results) {
+        if (hit.source === 'timeline') list.push({ kind: 'result', group: 'Zeitleiste', hit });
+      }
+    }
     return list;
-  }, [entityHits, results, showWorld, showDiary, showSessions]);
+  }, [entityHits, results, showWorld, showDiary, showSessions, showTimeline]);
 
   // Derived clamp: results shrink while typing, so the stored index can point
   // past the end; computing it during render avoids a cascading setState.
@@ -181,6 +188,8 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
           ? `/sessions?session=${hit.id}&t=${encodeURIComponent(hit.transcriptTime)}`
           : `/sessions?session=${hit.id}`
       );
+    } else if (hit.source === 'timeline') {
+      navigate(`/zeitleiste?event=${hit.id}`);
     }
   }
 
@@ -242,7 +251,7 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
                   setActiveIndex(0);
                 }}
                 onKeyDown={onInputKeyDown}
-                placeholder="Tagebücher, Sessions und Welt durchsuchen…"
+                placeholder="Tagebücher, Sessions, Zeitleiste und Welt durchsuchen…"
                 className="flex-1 bg-transparent text-[var(--text-h)] placeholder:text-slate-500 focus:outline-none text-sm"
               />
               {loading && <span className="text-xs text-slate-500 animate-pulse">Suche …</span>}
@@ -259,8 +268,8 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
             <div ref={listRef} className="max-h-[55vh] overflow-y-auto p-2">
               {!hasQuery && (
                 <p className="px-3 py-6 text-center text-sm text-slate-500">
-                  Tippe mindestens zwei Zeichen, um Tagebücher, Session-Transkripte und die Welt zu
-                  durchsuchen.
+                  Tippe mindestens zwei Zeichen, um Tagebücher, Session-Transkripte, die Zeitleiste
+                  und die Welt zu durchsuchen.
                 </p>
               )}
               {hasQuery && entries.length === 0 && !loading && (
@@ -346,6 +355,17 @@ function entrySubtitle(entry: FlatEntry): ReactNode {
       </>
     );
   }
+  if (hit.source === 'timeline') {
+    return (
+      <>
+        <Snippet text={hit.snippet} />
+        <span className="ml-2 text-slate-500">
+          Spieltag {hit.gameDay}
+          {hit.sessionName ? ` · ${hit.sessionName}` : ''}
+        </span>
+      </>
+    );
+  }
   return (
     <>
       <Snippet text={hit.snippet} />
@@ -378,6 +398,13 @@ function entryBadge(entry: FlatEntry): ReactNode {
     return (
       <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-slate-700 text-slate-300">
         Tagebuch
+      </span>
+    );
+  }
+  if (hit.source === 'timeline') {
+    return (
+      <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-slate-700 text-slate-300">
+        Zeitleiste
       </span>
     );
   }
