@@ -39,9 +39,11 @@ export function Timeline() {
   const visibleEvents = useMemo(
     () =>
       events
-        .filter((event) => arcMatchesFilter(selectedArcId, event.arcId))
+        .filter(
+          (event) => event.id === focusEventId || arcMatchesFilter(selectedArcId, event.arcId)
+        )
         .sort((a, b) => a.gameDay - b.gameDay || a.id - b.id),
-    [events, selectedArcId]
+    [events, focusEventId, selectedArcId]
   );
   const isAdmin = !!user?.isAdmin;
 
