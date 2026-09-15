@@ -378,7 +378,7 @@ export function Admin({ currentUser }: AdminProps) {
   }
 
   return (
-    <div className="min-h-full p-6">
+    <div className="min-h-full p-4 sm:p-6">
       <SideDrawer side="right">
         <SideDrawerItem
           id="jobs"
@@ -692,163 +692,165 @@ export function Admin({ currentUser }: AdminProps) {
             ) : users.length === 0 ? (
               <p className="text-slate-400">Keine Benutzer vorhanden.</p>
             ) : (
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--border)]">
-                    <th className="p-3">Anzeigename</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3">Rolle</th>
-                    <th className="p-3">Charakter</th>
-                    <th className="p-3">Admin</th>
-                    <th className="p-3">Aktionen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id} className="border-b border-[var(--border)] last:border-0">
-                      <td className="p-3 text-[var(--text-h)]">
-                        <div className="flex items-center gap-2">
-                          {u.avatarUrl && (
-                            <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full" />
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border)]">
+                      <th className="p-3">Anzeigename</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3">Rolle</th>
+                      <th className="p-3">Charakter</th>
+                      <th className="p-3">Admin</th>
+                      <th className="p-3">Aktionen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
+                      <tr key={u.id} className="border-b border-[var(--border)] last:border-0">
+                        <td className="p-3 text-[var(--text-h)]">
+                          <div className="flex items-center gap-2">
+                            {u.avatarUrl && (
+                              <img src={u.avatarUrl} alt="" className="w-8 h-8 rounded-full" />
+                            )}
+                            <span>
+                              {u.displayName}{' '}
+                              {u.isInitialAdmin && (
+                                <span className="text-xs text-slate-500">(Ursprungsadmin)</span>
+                              )}
+                              {isOwn(u) && !u.isInitialAdmin && (
+                                <span className="text-xs text-slate-500"> (Du)</span>
+                              )}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          {u.isApproved ? (
+                            <span className="text-[var(--accent)]">Freigegeben</span>
+                          ) : (
+                            <span className="text-[var(--danger)]">Wartend</span>
                           )}
-                          <span>
-                            {u.displayName}{' '}
-                            {u.isInitialAdmin && (
-                              <span className="text-xs text-slate-500">(Ursprungsadmin)</span>
-                            )}
-                            {isOwn(u) && !u.isInitialAdmin && (
-                              <span className="text-xs text-slate-500"> (Du)</span>
-                            )}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        {u.isApproved ? (
-                          <span className="text-[var(--accent)]">Freigegeben</span>
-                        ) : (
-                          <span className="text-[var(--danger)]">Wartend</span>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        <select
-                          value={u.role}
-                          onChange={(e) => action(u.id, '/role', { role: e.target.value })}
-                          disabled={isActionLoading(u.id, '/role')}
-                          aria-label={`Rolle von ${u.displayName}`}
-                          className="bg-slate-800 border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
-                        >
-                          {USER_ROLE_OPTIONS.map((role) => (
-                            <option key={role} value={role}>
-                              {USER_ROLE_LABELS[role]}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="p-3">
-                        {u.role === 'player' ? (
+                        </td>
+                        <td className="p-3">
                           <select
-                            value={u.activePerson ?? ''}
-                            onChange={(e) =>
-                              action(u.id, '/active-person', { name: e.target.value || null })
-                            }
-                            disabled={isActionLoading(u.id, '/active-person')}
-                            aria-label={`Charakter von ${u.displayName}`}
-                            className="bg-slate-800 border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50 max-w-[10rem]"
+                            value={u.role}
+                            onChange={(e) => action(u.id, '/role', { role: e.target.value })}
+                            disabled={isActionLoading(u.id, '/role')}
+                            aria-label={`Rolle von ${u.displayName}`}
+                            className="bg-slate-800 border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
                           >
-                            <option value="">Kein Charakter</option>
-                            {persons.map((p) => (
-                              <option key={p} value={p}>
-                                {p}
+                            {USER_ROLE_OPTIONS.map((role) => (
+                              <option key={role} value={role}>
+                                {USER_ROLE_LABELS[role]}
                               </option>
                             ))}
                           </select>
-                        ) : (
-                          <span className="text-slate-500 text-xs">–</span>
-                        )}
-                      </td>
-                      <td className="p-3">{u.isAdmin ? 'Ja' : 'Nein'}</td>
-                      <td className="p-3 flex flex-wrap gap-2">
-                        {!u.isInitialAdmin && !isOwn(u) && (
-                          <>
-                            {!u.isApproved && (
+                        </td>
+                        <td className="p-3">
+                          {u.role === 'player' ? (
+                            <select
+                              value={u.activePerson ?? ''}
+                              onChange={(e) =>
+                                action(u.id, '/active-person', { name: e.target.value || null })
+                              }
+                              disabled={isActionLoading(u.id, '/active-person')}
+                              aria-label={`Charakter von ${u.displayName}`}
+                              className="bg-slate-800 border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50 max-w-[10rem]"
+                            >
+                              <option value="">Kein Charakter</option>
+                              {persons.map((p) => (
+                                <option key={p} value={p}>
+                                  {p}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-slate-500 text-xs">–</span>
+                          )}
+                        </td>
+                        <td className="p-3">{u.isAdmin ? 'Ja' : 'Nein'}</td>
+                        <td className="p-3 flex flex-wrap gap-2">
+                          {!u.isInitialAdmin && !isOwn(u) && (
+                            <>
+                              {!u.isApproved && (
+                                <button
+                                  onClick={() => action(u.id, '/approve')}
+                                  disabled={isActionLoading(u.id, '/approve')}
+                                  className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 text-xs font-semibold disabled:opacity-50"
+                                >
+                                  {isActionLoading(u.id, '/approve') ? (
+                                    <Loading text="" size="sm" />
+                                  ) : (
+                                    'Freigeben'
+                                  )}
+                                </button>
+                              )}
+                              {u.isApproved && (
+                                <button
+                                  onClick={() => action(u.id, '/reject')}
+                                  disabled={isActionLoading(u.id, '/reject')}
+                                  className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 text-xs font-semibold disabled:opacity-50"
+                                >
+                                  {isActionLoading(u.id, '/reject') ? (
+                                    <Loading text="" size="sm" />
+                                  ) : (
+                                    'Sperren'
+                                  )}
+                                </button>
+                              )}
+                              {u.isApproved && !isOwn(u) && (
+                                <button
+                                  onClick={() => setViewAsUser(u)}
+                                  className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
+                                >
+                                  Ansicht simulieren
+                                </button>
+                              )}
                               <button
-                                onClick={() => action(u.id, '/approve')}
-                                disabled={isActionLoading(u.id, '/approve')}
-                                className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 text-xs font-semibold disabled:opacity-50"
-                              >
-                                {isActionLoading(u.id, '/approve') ? (
-                                  <Loading text="" size="sm" />
-                                ) : (
-                                  'Freigeben'
-                                )}
-                              </button>
-                            )}
-                            {u.isApproved && (
-                              <button
-                                onClick={() => action(u.id, '/reject')}
-                                disabled={isActionLoading(u.id, '/reject')}
-                                className="px-3 py-1 rounded bg-[var(--warning)] text-slate-900 text-xs font-semibold disabled:opacity-50"
-                              >
-                                {isActionLoading(u.id, '/reject') ? (
-                                  <Loading text="" size="sm" />
-                                ) : (
-                                  'Sperren'
-                                )}
-                              </button>
-                            )}
-                            {u.isApproved && !isOwn(u) && (
-                              <button
-                                onClick={() => setViewAsUser(u)}
+                                onClick={() => action(u.id, '/admin', { isAdmin: !u.isAdmin })}
+                                disabled={isActionLoading(u.id, '/admin')}
                                 className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
                               >
-                                Ansicht simulieren
+                                {isActionLoading(u.id, '/admin') ? (
+                                  <Loading text="" size="sm" />
+                                ) : u.isAdmin ? (
+                                  'Admin entfernen'
+                                ) : (
+                                  'Zum Admin'
+                                )}
                               </button>
-                            )}
-                            <button
-                              onClick={() => action(u.id, '/admin', { isAdmin: !u.isAdmin })}
-                              disabled={isActionLoading(u.id, '/admin')}
-                              className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
-                            >
-                              {isActionLoading(u.id, '/admin') ? (
-                                <Loading text="" size="sm" />
-                              ) : u.isAdmin ? (
-                                'Admin entfernen'
-                              ) : (
-                                'Zum Admin'
-                              )}
-                            </button>
-                            <button
-                              onClick={() => setManagingAppsFor(u)}
-                              disabled={isActionLoading(u.id, '/disabled-apps')}
-                              className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
-                            >
-                              {isActionLoading(u.id, '/disabled-apps') ? (
-                                <Loading text="" size="sm" />
-                              ) : (
-                                'Apps'
-                              )}
-                            </button>
-                            <button
-                              onClick={() => deleteU(u.id)}
-                              disabled={isActionLoading(u.id, '/delete')}
-                              className="px-3 py-1 rounded bg-[var(--danger)] text-white text-xs disabled:opacity-50"
-                            >
-                              {isActionLoading(u.id, '/delete') ? (
-                                <Loading text="" size="sm" />
-                              ) : (
-                                'Löschen'
-                              )}
-                            </button>
-                          </>
-                        )}
-                        {(u.isInitialAdmin || isOwn(u)) && (
-                          <span className="text-slate-500 text-xs">Geschützt</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                              <button
+                                onClick={() => setManagingAppsFor(u)}
+                                disabled={isActionLoading(u.id, '/disabled-apps')}
+                                className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
+                              >
+                                {isActionLoading(u.id, '/disabled-apps') ? (
+                                  <Loading text="" size="sm" />
+                                ) : (
+                                  'Apps'
+                                )}
+                              </button>
+                              <button
+                                onClick={() => deleteU(u.id)}
+                                disabled={isActionLoading(u.id, '/delete')}
+                                className="px-3 py-1 rounded bg-[var(--danger)] text-white text-xs disabled:opacity-50"
+                              >
+                                {isActionLoading(u.id, '/delete') ? (
+                                  <Loading text="" size="sm" />
+                                ) : (
+                                  'Löschen'
+                                )}
+                              </button>
+                            </>
+                          )}
+                          {(u.isInitialAdmin || isOwn(u)) && (
+                            <span className="text-slate-500 text-xs">Geschützt</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
           <div className="mt-6">

@@ -31,7 +31,9 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
             }`}
           >
             <AppIcon id={app.iconId ?? app.id} size={16} />
-            <span className="hidden md:inline">{app.label}</span>
+            {/* Labels only from xl on: with seven apps the labeled switcher
+                would push the search out of the header row below xl. */}
+            <span className="hidden xl:inline">{app.label}</span>
           </Link>
         );
       })}

@@ -235,7 +235,7 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
 
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-black/60"
+          className="fixed inset-0 z-50 bg-black/60 px-4"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) close();
           }}
