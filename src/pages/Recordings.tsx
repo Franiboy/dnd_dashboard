@@ -697,7 +697,7 @@ export function Sessions({ user }: SessionsProps) {
   }
 
   return (
-    <div className="min-h-full p-6">
+    <div className="min-h-full p-4 sm:p-6">
       <SideDrawer side="right">
         <SideDrawerItem
           id="config"
@@ -943,7 +943,7 @@ export function Sessions({ user }: SessionsProps) {
             }}
             className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 transition"
           >
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-2">
               <div>
                 <h3 className="text-lg font-semibold text-[var(--text-h)]">
                   {session.name}
@@ -1104,7 +1104,7 @@ export function Sessions({ user }: SessionsProps) {
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                 {user.isAdmin && (
                   <>
                     {(session.status === 'pending_transcription' ||
