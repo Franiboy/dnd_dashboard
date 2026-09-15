@@ -25,19 +25,19 @@ This document describes the high-level structure of the D&D Dashboard.
 
 ### Routes (`server/routes/`)
 
-| File            | Purpose                                                                                 |
-| --------------- | --------------------------------------------------------------------------------------- |
-| `auth.ts`       | Login, Discord callback, `/me`, logout                                                  |
-| `admin.ts`      | Admin API, SSE `/admin/users/events`, SSE `/admin/logs/events`, paginated `/admin/logs` |
-| `ai.ts`         | `POST /api/execute` – direct execution of AI tool actions (admin/debug only)            |
-| `bingo.ts`      | AI bingo suggestions: list, accept, reject, refresh                                     |
-| `campaign.ts`   | Central campaign timeline: list days, create/advance a day                              |
-| `diary.ts`      | CRUD for diary entries, AI rewrite, summary, entities; SSE for AI status                |
-| `entities.ts`   | Entity list, details, aliases, blacklist, knowledge and summary CRUD                    |
-| `recordings.ts` | Discord recording sessions, transcripts, trimming and AI session-to-diary draft         |
-| `search.ts`     | `GET /api/search` – global FTS5 full-text search across diary, sessions and knowledge   |
-| `storyArcs.ts`  | Story arcs: list/create/update/activate/delete incl. chapter numbers (admin mutations)  |
-| `timeline.ts`   | Campaign timeline events: list with diary links, SSE AI progress, admin regeneration    |
+| File            | Purpose                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------- |
+| `auth.ts`       | Login, Discord callback, `/me`, logout                                                          |
+| `admin.ts`      | Admin API, SSE `/admin/users/events`, SSE `/admin/logs/events`, paginated `/admin/logs`         |
+| `ai.ts`         | `POST /api/execute` – direct execution of AI tool actions (admin/debug only)                    |
+| `bingo.ts`      | AI bingo suggestions: list, accept, reject, refresh                                             |
+| `campaign.ts`   | Central campaign timeline: list days, create/advance a day                                      |
+| `diary.ts`      | CRUD for diary entries, AI rewrite, summary, entities; SSE for AI status                        |
+| `entities.ts`   | Entity list, details, aliases, blacklist, knowledge and summary CRUD                            |
+| `recordings.ts` | Discord recording sessions, transcripts, trimming and AI session-to-diary draft                 |
+| `search.ts`     | `GET /api/search` – global FTS5 full-text search across diary, sessions, knowledge and timeline |
+| `storyArcs.ts`  | Story arcs: list/create/update/activate/delete incl. chapter numbers (admin mutations)          |
+| `timeline.ts`   | Campaign timeline events: list with diary links, SSE AI progress, admin regeneration            |
 
 ### Repositories (`server/repositories/`)
 

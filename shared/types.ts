@@ -544,7 +544,7 @@ export interface EntityKnowledgeEntry {
 // ---------------------------------------------------------------------------
 
 /** Source tables of the global search index. */
-export type SearchSource = 'diary' | 'session' | 'knowledge';
+export type SearchSource = 'diary' | 'session' | 'knowledge' | 'timeline';
 
 /**
  * A diary entry hit. Snippets carry match markers: \u0001 opens and \u0002
@@ -587,7 +587,24 @@ export interface KnowledgeSearchHit {
   validUntil: number | null;
 }
 
-export type SearchResult = DiarySearchHit | SessionSearchHit | KnowledgeSearchHit;
+/**
+ * A timeline event hit; scene matches are folded into the parent event's
+ * document, so a hit always points at a timeline_events row.
+ */
+export interface TimelineSearchHit {
+  source: 'timeline';
+  /** timeline_events.id */
+  id: number;
+  title: string;
+  snippet: string;
+  gameDay: number;
+  arcId: number | null;
+  sessionId: number;
+  sessionName: string | null;
+}
+
+export type SearchResult =
+  DiarySearchHit | SessionSearchHit | KnowledgeSearchHit | TimelineSearchHit;
 
 export interface SearchResponse {
   results: SearchResult[];
