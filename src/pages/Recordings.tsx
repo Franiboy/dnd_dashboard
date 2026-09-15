@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import { BadgeLink } from '../components/BadgeLink';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -90,17 +91,11 @@ function SessionDiaryTransferBadge({ transfer }: { transfer: SessionDiaryTransfe
     : transfer.autoAccepted
       ? 'In Tagebuch übernommen'
       : 'KI-Tagebuch-Entwurf';
-  const colorClasses = transfer.isOutdated
-    ? 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20'
-    : transfer.autoAccepted
-      ? 'bg-[var(--accent)]/10 text-[var(--accent)] border-[var(--accent)]/20'
-      : 'bg-slate-800 text-slate-300 border-slate-700';
+  const variant = transfer.isOutdated ? 'warning' : transfer.autoAccepted ? 'accent' : 'neutral';
   return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${colorClasses}`}
-    >
+    <BadgeLink to={`/tagebuch?entry=${transfer.entryId}`} variant={variant} title="Tagebuch öffnen">
       {label}
-    </span>
+    </BadgeLink>
   );
 }
 
@@ -1066,17 +1061,17 @@ export function Sessions({ user }: SessionsProps) {
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
                     <span className="text-slate-400">Tagebuch:</span>
                     {sessionDiaryEntries[session.id].map((entry) => (
-                      <Link
+                      <BadgeLink
                         key={entry.entryId}
+                        variant="diary"
                         to={`/tagebuch?entry=${entry.entryId}`}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20 hover:bg-[var(--accent)]/20 transition text-xs"
                         title={user.isAdmin ? `${entry.title} (${entry.displayName})` : entry.title}
                       >
                         {entry.title}
                         {user.isAdmin && (
                           <span className="text-slate-500">· {entry.displayName}</span>
                         )}
-                      </Link>
+                      </BadgeLink>
                     ))}
                   </div>
                 )}
