@@ -1,14 +1,10 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
 import { AppSwitcher } from './AppSwitcher';
 import { GlobalSearch } from './GlobalSearch';
 import { StoryArcFilter } from './StoryArcFilter';
 import { UserMenu } from './UserMenu';
 import { useAuth } from '../hooks/useAuth';
 import type { SafeUser, VersionInfo } from '../../shared/types';
-
-// Routes the global story-arc filter applies to; shown in the header there.
-const STORY_ARC_FILTER_PATHS = ['/sessions', '/tagebuch', '/welt', '/zeitleiste'];
 
 interface LayoutProps {
   user: SafeUser;
@@ -21,7 +17,6 @@ interface LayoutProps {
 export function Layout({ user, realUser, version, onLogout, children }: LayoutProps) {
   const isSimulating = realUser !== undefined && realUser !== null && realUser.id !== user.id;
   const { clearViewAsUser } = useAuth();
-  const location = useLocation();
   const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -63,7 +58,7 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
               shrinking could kick in, wrapping the header even though
               shrinking would fit. */}
           <div className="order-last flex min-w-0 flex-1 basis-full items-center justify-center gap-3 min-[480px]:order-none min-[480px]:basis-0">
-            {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
+            <StoryArcFilter />
             <AppSwitcher user={user} version={version} />
           </div>
 
