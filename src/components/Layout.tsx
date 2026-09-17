@@ -55,8 +55,12 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
 
           {/* Middle: chapter filter and the app switcher, centered as a group.
               On phones it moves to its own full-width row below so it is not
-              squeezed between avatar and search. */}
-          <div className="order-last flex min-w-0 flex-1 basis-full items-center justify-center gap-3 sm:order-none sm:basis-auto">
+              squeezed between avatar and search. From sm on the basis must be
+              0: with basis-auto the line break would be decided on the
+              section's max-content width (untruncated arc name, app rail)
+              before truncation/scroll shrinking could kick in, wrapping the
+              header to a second row even though shrinking would fit. */}
+          <div className="order-last flex min-w-0 flex-1 basis-full items-center justify-center gap-3 sm:order-none sm:basis-0">
             {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
             <AppSwitcher user={user} version={version} />
           </div>
