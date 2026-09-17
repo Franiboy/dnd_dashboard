@@ -44,14 +44,14 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
     <>
       {/* Phones: collapsed behind an app-picker button with a labeled popup,
           so no app icon has to be hunted down via horizontal scrolling. */}
-      <div className="relative sm:hidden" ref={rootRef}>
+      <div className="shrink-0 sm:hidden" ref={rootRef}>
         <button
           type="button"
           aria-haspopup="menu"
           aria-expanded={open}
           aria-label="App-Auswahl"
           onClick={() => setOpen((o) => !o)}
-          className={`flex rounded-lg p-1.5 transition-colors ${
+          className={`flex size-11 items-center justify-center rounded-lg transition-colors ${
             open
               ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
               : 'text-slate-300 hover:bg-slate-700/50 hover:text-[var(--text-h)]'
@@ -79,7 +79,7 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
           <div
             role="menu"
             aria-label="App-Auswahl"
-            className="menu-pop-in absolute left-1/2 top-full z-50 mt-2 w-60 -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2 shadow-xl"
+            className="menu-pop-in absolute inset-x-3 top-full z-50 mx-auto mt-2 max-h-[calc(100dvh-var(--header-height,0px)-1rem)] max-w-60 overflow-y-auto overscroll-contain rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2 shadow-xl"
           >
             {visibleApps.map((app) => {
               const active = location.pathname === app.path;
@@ -89,7 +89,7 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
                   to={app.path}
                   role="menuitem"
                   onClick={() => setOpen(false)}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                     active
                       ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
                       : 'text-slate-300 hover:bg-slate-700/50 hover:text-[var(--text-h)]'
