@@ -166,7 +166,7 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
 - **Derived metadata:** an arc's game-day range and member counts (`sessionCount`,
   `diaryEntryCount`, `entityCount`) are computed from its members on read, never stored.
 - **Global filter:** the header shows a "Kapitel" trigger (between the user menu and the app
-  switcher, on Sessions/Diary/World routes) that opens the campaign timeline as a full-width
+  switcher, on every route while logged in) that opens the campaign timeline as a full-width
   panel directly below the header (state in `StoryArcProvider`, persisted in `localStorage`;
   options "Alle Kapitel" and "Ohne Kapitel"; `ChapterTimeline` with `mode="filter"`, serif/brass
   "Abenteuer-Look" styling shared by `ChapterChip`). In the timeline a **picked** chapter wears a
@@ -244,8 +244,8 @@ group frames):
   game day. Chapter segments (chapter-colored bands like the chapter chips) are clipped to the
   window. Level-1 cards additionally open a scene list popover on click. Events link to
   `/sessions?session=<id>` and `/tagebuch?entry=<id>` (deep-link expand + scroll, existing
-  behavior). Filtering uses the global header chapter filter (`arcMatchesFilter`); the app
-  participates in `STORY_ARC_FILTER_PATHS`. Events are AI-generated only and cannot be edited
+  behavior). Filtering uses the global header chapter filter (`arcMatchesFilter`), which is
+  available in the header on every route. Events are AI-generated only and cannot be edited
   manually. Legacy multi-event days (pre-grouping data) collapse into a "+N" badge.
 
 ### AI Workflow
