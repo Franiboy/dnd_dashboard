@@ -87,6 +87,20 @@ describe('AppSwitcher', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('keeps the mobile picker touch-sized and anchors its scrollable menu to the header', () => {
+    renderSwitcher();
+    const trigger = screen.getByRole('button', { name: 'App-Auswahl' });
+    expect(trigger.classList.contains('size-11')).toBe(true);
+    expect(trigger.parentElement!.classList.contains('relative')).toBe(false);
+    fireEvent.click(trigger);
+    const menu = screen.getByRole('menu');
+    expect(menu.classList.contains('inset-x-3')).toBe(true);
+    expect(menu.classList.contains('overflow-y-auto')).toBe(true);
+    for (const item of within(menu).getAllByRole('menuitem')) {
+      expect(item.classList.contains('min-h-11')).toBe(true);
+    }
+  });
+
   it('renders the icon rail with every visible app for wide screens', () => {
     renderSwitcher({ ...baseUser, isAdmin: true });
 
