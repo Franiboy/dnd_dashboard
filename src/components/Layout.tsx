@@ -40,10 +40,10 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
   }, []);
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-screen supports-[height:100dvh]:h-dvh flex flex-col overflow-hidden">
       <header
         ref={headerRef}
-        className="relative z-50 flex flex-col border-b border-[var(--border)] bg-[var(--panel)]"
+        className="relative z-50 flex shrink-0 flex-col border-b border-[var(--border)] bg-[var(--panel)]"
       >
         <div className="flex flex-wrap items-center gap-2 px-3 sm:px-6 py-2">
           {/* Left: user menu (Discord avatar, role, logout) */}
