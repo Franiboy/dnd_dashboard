@@ -230,23 +230,29 @@ group frames):
   refreshes/extends the timeline for all pending sessions – this is the catch-up path for
   pre-existing data. Progress is streamed to every open timeline page via the global SSE stream
   `GET /api/timeline/ai-events` (`server/timelineAiEvents.ts`). A per-session variant
-  (`{ sessionId }`) regenerates one session inline. Without events the page offers the button as
-  the manual catch-up.
+  (`{ sessionId }`) regenerates one session inline and is rejected with 409 while a campaign-wide
+  run is in progress. Without events the page offers the button as the manual catch-up.
 - **UI (`src/components/timeline/HorizontalTimeline.tsx`):** a fixed-height diagram with a violet
   **leyline axis**; the page is **never scaled**. The view is a **window over the day axis**
-  (initially 10 days, ruler with every day); **dragging or the mouse wheel** moves the window,
-  ＜/＞ buttons page and "Heute" jumps to the current day. **Zooming (Ctrl+wheel / ＋/－) shrinks
-  the visible day range 10 → 5 → 2 days** with the window center anchored, which gives each event
-  room to **unfold into a bordered group frame**: the frame header carries the main event
-  (day · title · links) and beneath it the sub-events appear as **standalone cards** (number,
-  title, description) – making visible which sub-events belong to the same main event. The main
-  pin stays on the axis and connects the frame via a stem; a teal pulsing pin marks the current
-  game day. Chapter segments (chapter-colored bands like the chapter chips) are clipped to the
-  window. Level-1 cards additionally open a scene list popover on click. Events link to
-  `/sessions?session=<id>` and `/tagebuch?entry=<id>` (deep-link expand + scroll, existing
-  behavior). Filtering uses the global header chapter filter (`arcMatchesFilter`), which is
-  available in the header on every route. Events are AI-generated only and cannot be edited
-  manually. Legacy multi-event days (pre-grouping data) collapse into a "+N" badge.
+  (initially 10 days, ruler with every day); **dragging, the mouse wheel or a horizontal swipe**
+  moves the window and **zooming (Ctrl+wheel, two-finger pinch on touch) shrinks the visible day
+  range 10 → 5 → 2 days** with the window center anchored, which gives each event room to
+  **unfold into a bordered group frame**: the frame header carries the main event (day · title ·
+  links, diary badges capped with a "+x" hint) and beneath it the sub-events appear as
+  **standalone cards** (number, title, description) – making visible which sub-events belong to
+  the same main event. The main pin stays on the axis and connects the frame via a stem; a teal
+  pulsing pin marks the current game day. Chapter segments (chapter-colored bands like the chapter
+  chips) are clipped to the window and their bottom-edge labels are hidden when they would collide.
+  Level-1 cards open their details on click (the mouse wheel scrolls the opened card instead of
+  panning; touch scrolls it natively via `touch-action: pan-y`) and also list **legacy extra
+  events** of the same day; group frames show them beneath the scenes. Geometry (window math,
+  overlap resolution, label placement) lives in the pure, unit-tested
+  `src/components/timeline/layout.ts`; days outside the window (+2-day buffer) stay unmounted.
+  Events link to `/sessions?session=<id>` and `/tagebuch?entry=<id>` (deep-link expand + scroll,
+  existing behavior). Filtering uses the global header chapter filter (`arcMatchesFilter`), which
+  is available in the header on every route. Events are AI-generated only and cannot be edited
+  manually. Legacy multi-event days (pre-grouping data) collapse into a "+N" badge that opens the
+  day's card.
 
 ### AI Workflow
 
