@@ -51,12 +51,12 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
           {/* Middle: chapter filter and the app switcher, centered as a group.
               Only on very narrow phones it moves to its own full-width row
               below, where one row would genuinely be too cramped; from 480px
-              on it shares the single header row (the arc filter truncates and
-              the app rail scrolls, so shrinking wins over wrapping). With a
-              non-zero basis the line break would be decided on the section's
-              max-content width (untruncated arc name, app rail) before
-              shrinking could kick in, wrapping the header even though
-              shrinking would fit. */}
+              on it shares the single header row. With a non-zero basis the
+              line break would be decided on the section's max-content width
+              (untruncated arc name, app rail) before shrinking could kick in,
+              wrapping the header even though shrinking would fit: the arc
+              filter truncates and the app switcher collapses to its popup
+              button when the rail no longer fits. */}
           <div className="order-last flex min-w-0 flex-1 basis-full items-center justify-center gap-3 min-[480px]:order-none min-[480px]:basis-0">
             <StoryArcFilter />
             <AppSwitcher user={user} version={version} />

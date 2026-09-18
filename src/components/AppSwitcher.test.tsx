@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppSwitcher } from './AppSwitcher';
+import { TestResizeObserver } from '../vitest.setup';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 
 const baseUser: SafeUser = {
@@ -107,5 +108,32 @@ describe('AppSwitcher', () => {
     const rail = document.querySelector('nav');
     expect(rail).not.toBeNull();
     expect(within(rail as HTMLElement).getAllByRole('link')).toHaveLength(7);
+  });
+
+  it('collapses the rail to the popup when the apps do not fit the header slot', () => {
+    renderSwitcher({ ...baseUser, isAdmin: true });
+
+    const nav = document.querySelector('nav') as HTMLElement;
+    const root = nav.parentElement as HTMLElement;
+    const inner = nav.firstElementChild as HTMLElement;
+    const trigger = screen.getByRole('button', { name: 'App-Auswahl' });
+
+    // Rail wider than the slot: the rail turns invisible and the popup
+    // trigger becomes the visible variant.
+    vi.spyOn(inner, 'getBoundingClientRect').mockReturnValue({ width: 800 } as DOMRect);
+    vi.spyOn(root, 'clientWidth', 'get').mockReturnValue(400);
+    act(() => TestResizeObserver.latest!.trigger());
+
+    expect(nav.className).toContain('invisible');
+    expect(trigger.parentElement!.className).not.toContain('hidden');
+
+    // Space frees up (resize, an app disappears): the rail comes back and
+    // the popup trigger is display:none.
+    vi.spyOn(inner, 'getBoundingClientRect').mockReturnValue({ width: 300 } as DOMRect);
+    vi.spyOn(root, 'clientWidth', 'get').mockReturnValue(400);
+    act(() => TestResizeObserver.latest!.trigger());
+
+    expect(nav.className).not.toContain('invisible');
+    expect(trigger.parentElement!.className).toContain('hidden');
   });
 });
