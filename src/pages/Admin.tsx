@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import { useError } from '../hooks/useError';
+import { ActionMenu, type ActionMenuItem } from '../components/ActionMenu';
 import { Loading } from '../components/Loading';
 import { LogPanel } from '../components/LogPanel';
 import { Modal } from '../components/Modal';
@@ -261,6 +262,47 @@ export function Admin({ currentUser }: AdminProps) {
   };
 
   const isOwn = (u: SafeUser) => u.id === currentUser.id;
+
+  /** Secondary actions for one user row, offered in its kebab menu. */
+  function userMenuItems(u: SafeUser): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [];
+
+    if (u.isApproved) {
+      items.push({
+        id: 'view-as',
+        label: 'Ansicht simulieren',
+        onSelect: () => setViewAsUser(u),
+      });
+    }
+
+    items.push({
+      id: 'toggle-admin',
+      label: isActionLoading(u.id, '/admin')
+        ? u.isAdmin
+          ? 'Admin entfernen...'
+          : 'Zum Admin...'
+        : u.isAdmin
+          ? 'Admin entfernen'
+          : 'Zum Admin',
+      disabled: isActionLoading(u.id, '/admin'),
+      onSelect: () => action(u.id, '/admin', { isAdmin: !u.isAdmin }),
+    });
+    items.push({
+      id: 'apps',
+      label: isActionLoading(u.id, '/disabled-apps') ? 'Apps...' : 'Apps',
+      disabled: isActionLoading(u.id, '/disabled-apps'),
+      onSelect: () => setManagingAppsFor(u),
+    });
+    items.push({
+      id: 'delete',
+      label: isActionLoading(u.id, '/delete') ? 'Löschen...' : 'Löschen',
+      danger: true,
+      disabled: isActionLoading(u.id, '/delete'),
+      onSelect: () => deleteU(u.id),
+    });
+
+    return items;
+  }
 
   function AppAccessModal({ user, onClose }: { user: SafeUser; onClose: () => void }) {
     const disableableApps = APPS.filter(
@@ -797,49 +839,10 @@ export function Admin({ currentUser }: AdminProps) {
                                   )}
                                 </button>
                               )}
-                              {u.isApproved && !isOwn(u) && (
-                                <button
-                                  onClick={() => setViewAsUser(u)}
-                                  className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
-                                >
-                                  Ansicht simulieren
-                                </button>
-                              )}
-                              <button
-                                onClick={() => action(u.id, '/admin', { isAdmin: !u.isAdmin })}
-                                disabled={isActionLoading(u.id, '/admin')}
-                                className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
-                              >
-                                {isActionLoading(u.id, '/admin') ? (
-                                  <Loading text="" size="sm" />
-                                ) : u.isAdmin ? (
-                                  'Admin entfernen'
-                                ) : (
-                                  'Zum Admin'
-                                )}
-                              </button>
-                              <button
-                                onClick={() => setManagingAppsFor(u)}
-                                disabled={isActionLoading(u.id, '/disabled-apps')}
-                                className="px-3 py-1 rounded bg-slate-700 text-[var(--text-h)] text-xs disabled:opacity-50"
-                              >
-                                {isActionLoading(u.id, '/disabled-apps') ? (
-                                  <Loading text="" size="sm" />
-                                ) : (
-                                  'Apps'
-                                )}
-                              </button>
-                              <button
-                                onClick={() => deleteU(u.id)}
-                                disabled={isActionLoading(u.id, '/delete')}
-                                className="px-3 py-1 rounded bg-[var(--danger)] text-white text-xs disabled:opacity-50"
-                              >
-                                {isActionLoading(u.id, '/delete') ? (
-                                  <Loading text="" size="sm" />
-                                ) : (
-                                  'Löschen'
-                                )}
-                              </button>
+                              <ActionMenu
+                                ariaLabel={`Weitere Aktionen für ${u.displayName}`}
+                                items={userMenuItems(u)}
+                              />
                             </>
                           )}
                           {(u.isInitialAdmin || isOwn(u)) && (
