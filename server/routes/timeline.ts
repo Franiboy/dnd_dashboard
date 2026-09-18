@@ -83,6 +83,11 @@ router.post('/generate', requireAdmin, aiRateLimit, async (req: AuthRequest, res
   }
 
   // Targeted regeneration for one session, awaited like the diary AI routes.
+  // A running campaign-wide generation must not interleave with the
+  // transactional event replacement of a single session.
+  if (isTimelineRunRunning()) {
+    throw new AppError(409, 'Die Zeitleiste wird bereits aktualisiert');
+  }
   const ok = await generateTimelineForSession(sessionId, req.user!, undefined, (line) => {
     log.info(`Timeline AI: ${line.trim()}`);
   });
