@@ -537,8 +537,8 @@ export function Diary() {
                 }}
                 className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 transition"
               >
-                <div className="flex items-start justify-between gap-4 mb-3">
-                  <div className="flex items-center gap-2 flex-1 flex-wrap">
+                <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-3">
+                  <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
                     <h3 className="text-lg font-semibold text-[var(--text-h)]">
                       Spieltag {entry.gameDay ?? '—'}
                     </h3>
@@ -548,7 +548,7 @@ export function Diary() {
                         value={entry.arcId ?? null}
                         onChange={(arcId) => void handleArcChange(entry, arcId)}
                         disabled={working}
-                        className="align-middle"
+                        className="align-middle min-w-0"
                       />
                     )}
                     {entry.sessionDraftFor && (
@@ -561,17 +561,23 @@ export function Diary() {
                             ? `Springe zu Session „${entry.sessionDraftForName}“`
                             : 'Springe zur Session'
                         }
+                        className="max-w-full"
                       >
-                        {entry.sessionDraftForName
-                          ? `Session: ${entry.sessionDraftForName}`
-                          : 'Session-Vorschlag'}
+                        <span className="truncate">
+                          {entry.sessionDraftForName
+                            ? `Session: ${entry.sessionDraftForName}`
+                            : 'Session-Vorschlag'}
+                        </span>
                       </BadgeLink>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-2 justify-end">
+                  <div className="flex flex-wrap gap-2 justify-end ml-auto">
                     <Button
                       variant="danger"
-                      onClick={() => handleDelete(entry.id)}
+                      onClick={() => {
+                        if (!confirm('Eintrag wirklich löschen?')) return;
+                        handleDelete(entry.id);
+                      }}
                       disabled={working}
                     >
                       Löschen
