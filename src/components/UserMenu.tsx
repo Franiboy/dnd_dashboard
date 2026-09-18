@@ -136,6 +136,8 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
   // While the picker is mid-edit the chips and the whole UI reflect the preview.
   const activeColor = preview ? preview.hex : savedColor;
   const previewTokens = buildTheme(activeColor);
+  // Only shown inside the free-picker affordance when it isn't a preset swatch.
+  const customColor = activeColor && !PRESET_COLORS.includes(activeColor) ? activeColor : null;
 
   return (
     <div ref={rootRef} className="relative shrink-0 self-stretch flex items-center">
@@ -209,13 +211,43 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
                   style={{ backgroundColor: hex }}
                 />
               ))}
-              <input
-                type="color"
-                aria-label="Eigene Farbe wählen"
-                value={activeColor ?? FALLBACK_PICKER_VALUE}
-                onChange={(e) => applyThemeColor(e.target.value.toLowerCase())}
-                className="theme-color-input h-6 w-6"
-              />
+              {/* Free picker: a hue-wheel affordance clearly distinct from the
+                  preset swatches; the native input rides invisibly on top. */}
+              <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-[var(--border)]" />
+              <span className="relative inline-flex" title="Eigene Farbe wählen">
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-full ring-1 ring-white/20"
+                  style={{
+                    background:
+                      'conic-gradient(from 180deg, #f87171, #fb923c, #fde047, #4ade80, #22d3ee, #60a5fa, #a78bfa, #f472b6, #f87171)',
+                  }}
+                >
+                  {customColor ? (
+                    <span
+                      className="h-4 w-4 rounded-full border border-white/70 shadow-sm"
+                      style={{ backgroundColor: customColor }}
+                    />
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={3}
+                      strokeLinecap="round"
+                      className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.7)]"
+                    >
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  )}
+                </span>
+                <input
+                  type="color"
+                  aria-label="Eigene Farbe wählen"
+                  value={activeColor ?? FALLBACK_PICKER_VALUE}
+                  onChange={(e) => applyThemeColor(e.target.value.toLowerCase())}
+                  className="absolute inset-0 h-full w-full cursor-pointer rounded-full opacity-0"
+                />
+              </span>
             </div>
             {activeColor && (
               <div className="mt-2 flex items-center gap-1" aria-hidden="true">

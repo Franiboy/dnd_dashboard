@@ -217,4 +217,22 @@ describe('UserMenu theme picker', () => {
     const selected = screen.getByRole('button', { name: 'Design-Farbe #ef4444' });
     expect(selected.getAttribute('aria-pressed')).toBe('true');
   });
+
+  it('shows the plus affordance without an inner color when no custom color is set', () => {
+    renderMenu(baseUser, themeValue({ themePrimary: '#22c55e' }));
+
+    openMenu();
+    const affordance = screen.getByTitle('Eigene Farbe wählen');
+    // Only an active custom color renders an inner color dot.
+    expect(affordance.querySelector('span[style*="background-color"]')).toBeNull();
+  });
+
+  it('reflects an active custom color inside the free picker affordance', () => {
+    renderMenu(baseUser, themeValue({ themePrimary: '#112233' }));
+
+    openMenu();
+    const affordance = screen.getByTitle('Eigene Farbe wählen');
+    const dot = affordance.querySelector('span[style*="background-color"]');
+    expect(dot?.getAttribute('style')).toContain('background-color: rgb(17, 34, 51)');
+  });
 });
