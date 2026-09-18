@@ -24,6 +24,10 @@ describe('BadgeList', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.className).toContain('md:hidden');
     expect(screen.getByText('Elminster').parentElement?.className).toContain('hidden');
+    // On mobile the list dissolves into the surrounding shared chip row
+    // (display:contents); on md+ it is one badge row per type.
+    expect(toggle.parentElement?.className).toContain('contents');
+    expect(toggle.parentElement?.className).toContain('md:flex');
   });
 
   it('expands the badges on click and collapses again', () => {
