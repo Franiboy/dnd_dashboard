@@ -14,7 +14,11 @@ import { writeSse } from '../utils/sse.js';
 import { isAiEnabled } from '../ai/config.js';
 import { generateTimelineForSession } from '../ai/timeline.js';
 import { listSessionsPendingTimeline, listTimelineEvents } from '../repositories/timeline.js';
-import { isTimelineRunRunning, runTimelineGenerationNow } from '../scheduler/timeline.js';
+import {
+  acquireTimelineRun,
+  isTimelineRunRunning,
+  runTimelineGenerationNow,
+} from '../scheduler/timeline.js';
 import { getTimelineBroadcaster, sendTimelineStatus } from '../timelineAiEvents.js';
 
 const log = createLogger('timelineRoutes');
@@ -68,10 +72,8 @@ router.post('/generate', requireAdmin, aiRateLimit, async (req: AuthRequest, res
 
   if (sessionId === undefined) {
     // Campaign-wide refresh of every pending session, fire-and-forget with
-    // SSE progress so the request stays responsive for long runs.
-    if (isTimelineRunRunning()) {
-      throw new AppError(409, 'Die Zeitleiste wird bereits aktualisiert');
-    }
+    // SSE progress so the request stays responsive for long runs. The run
+    // slot is reserved atomically inside runTimelineGenerationNow.
     const pendingCount = listSessionsPendingTimeline().length;
     const started = runTimelineGenerationNow((progress) => sendTimelineStatus(progress.status));
     if (!started) {
@@ -83,16 +85,22 @@ router.post('/generate', requireAdmin, aiRateLimit, async (req: AuthRequest, res
   }
 
   // Targeted regeneration for one session, awaited like the diary AI routes.
-  // A running campaign-wide generation must not interleave with the
-  // transactional event replacement of a single session.
-  if (isTimelineRunRunning()) {
+  // The shared generation slot is reserved atomically for the full operation,
+  // so a campaign-wide run (manual or nightly) can never write the same
+  // session's events concurrently.
+  const releaseTimelineRun = acquireTimelineRun();
+  if (!releaseTimelineRun) {
     throw new AppError(409, 'Die Zeitleiste wird bereits aktualisiert');
   }
-  const ok = await generateTimelineForSession(sessionId, req.user!, undefined, (line) => {
-    log.info(`Timeline AI: ${line.trim()}`);
-  });
-  if (!ok) {
-    throw new AppError(500, 'Aktualisierung der Zeitleiste ist fehlgeschlagen');
+  try {
+    const ok = await generateTimelineForSession(sessionId, req.user!, undefined, (line) => {
+      log.info(`Timeline AI: ${line.trim()}`);
+    });
+    if (!ok) {
+      throw new AppError(500, 'Aktualisierung der Zeitleiste ist fehlgeschlagen');
+    }
+  } finally {
+    releaseTimelineRun();
   }
   res.json({
     ok: true,

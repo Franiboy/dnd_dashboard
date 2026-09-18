@@ -230,8 +230,10 @@ group frames):
   refreshes/extends the timeline for all pending sessions – this is the catch-up path for
   pre-existing data. Progress is streamed to every open timeline page via the global SSE stream
   `GET /api/timeline/ai-events` (`server/timelineAiEvents.ts`). A per-session variant
-  (`{ sessionId }`) regenerates one session inline and is rejected with 409 while a campaign-wide
-  run is in progress. Without events the page offers the button as the manual catch-up.
+  (`{ sessionId }`) regenerates one session inline; every entry point (manual campaign run,
+  nightly job, targeted regeneration) reserves the same atomic timeline run slot
+  (`acquireTimelineRun`), so generations never interleave – overlapping requests get a 409.
+  Without events the page offers the button as the manual catch-up.
 - **UI (`src/components/timeline/HorizontalTimeline.tsx`):** a fixed-height diagram with a violet
   **leyline axis**; the page is **never scaled**. The view is a **window over the day axis**
   (initially 10 days, ruler with every day); **dragging, the mouse wheel or a horizontal swipe**
