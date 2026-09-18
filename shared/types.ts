@@ -173,6 +173,8 @@ export interface User {
   activePerson: string | null;
   autoSessionToDiary: boolean;
   autoAcceptSessionDiary: boolean;
+  /** User-chosen theme base color as #rrggbb; null = default theme. */
+  themePrimary: string | null;
   failedLoginAttempts: number;
   lockedUntil: string | null;
   createdAt: string;
@@ -190,6 +192,8 @@ export interface SafeUser {
   activePerson: string | null;
   autoSessionToDiary: boolean;
   autoAcceptSessionDiary: boolean;
+  /** User-chosen theme base color as #rrggbb; null = default theme. */
+  themePrimary: string | null;
   isInitialAdmin: boolean;
 }
 

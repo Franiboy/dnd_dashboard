@@ -19,7 +19,10 @@ type ButtonProps = AsButton | AsLink | AsAnchor;
 const variantClasses: Record<NonNullable<ButtonProps['variant']>, string> = {
   ghost: 'bg-transparent text-slate-400 hover:text-[var(--text-h)] hover:bg-slate-800/50',
   danger: 'bg-[var(--danger)]/20 text-[var(--danger)] hover:bg-[var(--danger)]/30',
-  accent: 'bg-[var(--accent)] text-slate-900 hover:brightness-110',
+  // The accent-2 gradient collapses to a solid accent for the default theme
+  // and only shows the complementary tone for dynamic user themes.
+  accent:
+    'bg-[linear-gradient(120deg,var(--accent),var(--accent-2))] text-[var(--accent-contrast)] hover:brightness-110',
   secondary: 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600',
   warning: 'bg-[var(--warning)] text-slate-900 hover:brightness-110',
 };

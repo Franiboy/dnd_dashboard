@@ -184,7 +184,7 @@ export function DiaryCreateModal({
             ? customDayValue === '' || currentGameDay === undefined
             : !(createDayValue !== '' && Number(createDayValue) > 0))
         }
-        className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
+        className="px-4 py-2 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
       >
         {working ? <Loading text="" size="sm" /> : 'Erstellen'}
       </button>

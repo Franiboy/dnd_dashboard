@@ -16,7 +16,7 @@ export function TabButton({ active, onClick, className, children }: TabButtonPro
       className={cn(
         'min-w-0 flex-1 truncate px-2 py-2 text-sm font-medium rounded-lg transition',
         active
-          ? 'bg-[var(--accent)] text-slate-900'
+          ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
           : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-[var(--text-h)]',
         className
       )}
