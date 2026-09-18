@@ -28,15 +28,18 @@ const badgePillClass =
 
 /**
  * Wrappable list of entity badges for one diary entry. On small screens the
- * badges collapse into a single count chip per type that expands on tap; from
- * md upwards all badges stay visible as before.
+ * badges collapse into a single count chip per type that expands on tap, and
+ * all chips share one row around the entry content; from md upwards every
+ * type keeps its own badge row as before.
  */
 export function BadgeList({ items, variant }: BadgeListProps) {
   const { openEntity } = useEntityDialog();
   const [expanded, setExpanded] = useState(false);
   if (items.length === 0) return null;
   return (
-    <div className={`flex flex-wrap gap-2 mb-3 ${expanded ? 'items-center' : ''}`}>
+    // display:contents on mobile lets the chip and any expanded badges join
+    // the surrounding shared row; md+ turns this into the per-type row.
+    <div className="contents md:flex md:flex-wrap md:gap-2 md:mb-3">
       <button
         type="button"
         aria-expanded={expanded}
