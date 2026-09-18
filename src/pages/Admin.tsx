@@ -340,7 +340,7 @@ export function Admin({ currentUser }: AdminProps) {
               type="button"
               onClick={handleSave}
               disabled={isActionLoading(user.id, '/disabled-apps')}
-              className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+              className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
             >
               Speichern
             </button>
@@ -463,7 +463,7 @@ export function Admin({ currentUser }: AdminProps) {
                   triggerJob('nightly-job', setNightlyJobLoading, setNightlyJobMessage)
                 }
                 disabled={nightlyJobLoading || jobStatus?.nightly === true}
-                className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+                className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
               >
                 {nightlyJobLoading ? (
                   <Loading text="" size="sm" />
@@ -497,7 +497,7 @@ export function Admin({ currentUser }: AdminProps) {
                   )
                 }
                 disabled={transcriptionJobLoading || jobStatus?.transcription === true}
-                className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+                className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
               >
                 {transcriptionJobLoading ? (
                   <Loading text="" size="sm" />
@@ -532,7 +532,7 @@ export function Admin({ currentUser }: AdminProps) {
                   )
                 }
                 disabled={bingoSuggestionLoading || jobStatus?.bingoSuggestion === true}
-                className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+                className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
               >
                 {bingoSuggestionLoading ? (
                   <Loading text="" size="sm" />
@@ -707,7 +707,7 @@ export function Admin({ currentUser }: AdminProps) {
                       type="button"
                       onClick={saveRecordingConfig}
                       disabled={recordingSaving}
-                      className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+                      className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
                     >
                       {recordingSaving ? <Loading text="" size="sm" /> : 'Speichern'}
                     </button>
@@ -817,7 +817,7 @@ export function Admin({ currentUser }: AdminProps) {
                                 <button
                                   onClick={() => action(u.id, '/approve')}
                                   disabled={isActionLoading(u.id, '/approve')}
-                                  className="px-3 py-1 rounded bg-[var(--accent)] text-slate-900 text-xs font-semibold disabled:opacity-50"
+                                  className="px-3 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold disabled:opacity-50"
                                 >
                                   {isActionLoading(u.id, '/approve') ? (
                                     <Loading text="" size="sm" />

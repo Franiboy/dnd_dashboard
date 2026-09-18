@@ -6,8 +6,14 @@
   --bg: #0f172a;
   --panel: #1e293b;
   --border: #334155;
+  --inset: #111827;
   --accent: #22c55e;
   --accent-dim: #15803d;
+  /* Collapses to the accent for the default theme; the real value comes from
+     the user's dynamic theme (see src/lib/color.ts). */
+  --accent-2: var(--accent);
+  /* Readable text color on top of --accent; overridden by the dynamic theme. */
+  --accent-contrast: #0f172a;
   --danger: #ef4444;
   --warning: #f59e0b;
   font-family:
@@ -36,7 +42,7 @@ button {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #64748b var(--bg);
+  scrollbar-color: var(--color-slate-500, #64748b) var(--bg);
 }
 
 ::-webkit-scrollbar {
@@ -50,8 +56,32 @@ button {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #64748b;
+  background: var(--color-slate-500, #64748b);
   border-radius: 4px;
+}
+
+/* Round free-color picker inside the user menu's design section. */
+.theme-color-input {
+  appearance: none;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.theme-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.theme-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 9999px;
+}
+
+.theme-color-input::-moz-color-swatch {
+  border: none;
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -91,12 +121,12 @@ button {
   border-left: 4px solid var(--accent);
   padding-left: 1rem;
   margin: 0.75rem 0;
-  color: #94a3b8;
+  color: var(--color-slate-400, #94a3b8);
   font-style: italic;
 }
 
 .diary-content pre {
-  background: #0f172a;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.75rem;
@@ -105,7 +135,7 @@ button {
 }
 
 .diary-content code {
-  background: #0f172a;
+  background: var(--bg);
   border-radius: 0.25rem;
   padding: 0.125rem 0.25rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -152,7 +182,7 @@ button {
   width: 100%;
   border-collapse: collapse;
   margin: 0.75rem 0;
-  background: #0f172a;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   overflow: hidden;
@@ -167,13 +197,13 @@ button {
 }
 
 .diary-content th {
-  background: #1e293b;
+  background: var(--panel);
   font-weight: 600;
   color: var(--text-h);
 }
 
 .diary-content tr:nth-child(even) td {
-  background: #111827;
+  background: var(--inset);
 }
 
 .ql-toolbar {
@@ -193,7 +223,7 @@ button {
 }
 
 .ql-editor.ql-blank::before {
-  color: #94a3b8;
+  color: var(--color-slate-400, #94a3b8);
 }
 
 .ql-toolbar.ql-snow .ql-picker-label,
@@ -226,7 +256,7 @@ button {
 }
 
 .ql-toolbar.ql-snow .ql-picker .ql-picker-item:hover {
-  background-color: rgb(148 163 184 / 0.15);
+  background-color: color-mix(in srgb, var(--color-slate-400, #94a3b8) 15%, transparent);
 }
 
 .ql-editor {
@@ -239,12 +269,12 @@ button {
 .ql-editor blockquote {
   border-left: 4px solid var(--accent);
   padding-left: 1rem;
-  color: #94a3b8;
+  color: var(--color-slate-400, #94a3b8);
   font-style: italic;
 }
 
 .ql-editor pre.ql-syntax {
-  background: #0f172a;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.75rem;
@@ -256,7 +286,7 @@ button {
   width: 100%;
   border-collapse: collapse;
   margin: 0.5rem 0;
-  background: #0f172a;
+  background: var(--bg);
   border: 1px solid var(--border);
 }
 
@@ -269,7 +299,7 @@ button {
 }
 
 .ql-editor th {
-  background: #1e293b;
+  background: var(--panel);
   font-weight: 600;
   color: var(--text-h);
 }

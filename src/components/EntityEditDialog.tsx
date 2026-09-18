@@ -114,7 +114,7 @@ function CorrectKnowledgeDialog({
             type="button"
             onClick={handleCorrect}
             disabled={working || !text.trim()}
-            className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+            className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
           >
             {working ? 'Wird berichtigt...' : 'Berichtigen'}
           </button>
@@ -882,7 +882,7 @@ export function EntityEditDialog({
                       type="button"
                       onClick={handleGenerateSummary}
                       disabled={generatingSummary}
-                      className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
+                      className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
                     >
                       {generatingSummary
                         ? 'Wird generiert...'
@@ -939,7 +939,7 @@ export function EntityEditDialog({
                           type="button"
                           onClick={saveMiniSummary}
                           disabled={editingMiniSummaryText.trim().length > 200}
-                          className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
+                          className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
                         >
                           Speichern
                         </button>
@@ -1089,7 +1089,7 @@ export function EntityEditDialog({
                                 <button
                                   type="button"
                                   onClick={() => saveEditKnowledge(entry.id)}
-                                  className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition"
+                                  className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition"
                                 >
                                   Speichern
                                 </button>

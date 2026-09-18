@@ -66,7 +66,7 @@ export function Bingo({ user }: BingoProps) {
     <div className="h-full flex flex-col p-4 sm:p-6">
       {hasBingo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="bg-[var(--accent)] text-slate-900 text-4xl sm:text-5xl font-black px-10 py-6 rounded-2xl shadow-2xl animate-bounce text-center max-w-full">
+          <div className="bg-[var(--accent)] text-[var(--accent-contrast)] text-4xl sm:text-5xl font-black px-10 py-6 rounded-2xl shadow-2xl animate-bounce text-center max-w-full">
             {bingoLabel}
           </div>
         </div>

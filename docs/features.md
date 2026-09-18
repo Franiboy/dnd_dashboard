@@ -320,6 +320,34 @@ group frames):
   parameter), entity hits open it on the summary tab.
 - Groups belonging to apps the user has disabled are hidden from the results.
 
+## Dynamic User Theme
+
+- Every user can pick a personal theme base color in the user menu (avatar in
+  the header, "Design-Farbe" section): eight curated preset swatches plus a
+  free `<input type="color">` picker, and a "Zurücksetzen" entry that restores
+  the default theme (green accent, neutral slate).
+- The whole UI derives from that single color: accent, darker accent, a
+  readable auto-contrast text color for accent surfaces, a damped
+  complementary tone and a hue-tinted neutral ramp that replaces Tailwind's
+  slate scale (backgrounds, panels, borders and muted text pick up a subtle
+  cast of the chosen hue). All math lives in `src/lib/color.ts`
+  (`buildTheme`), unit-tested in `src/lib/color.test.ts`.
+- Mechanics: Tailwind v4 utilities resolve their colors via CSS variables
+  (`bg-slate-800` → `var(--color-slate-800)`), so the `ThemeProvider`
+  (`src/contexts/ThemeProvider.tsx`) simply writes the derived tokens as
+  inline overrides on `document.documentElement` — the same mechanism the
+  layout already uses for `--header-height`. No color set means no overrides
+  and therefore the stylesheet defaults.
+- The picker previews live while dragging; the value is saved (debounced) to
+  `PUT /api/me/theme` and closing the menu flushes a pending save. It persists
+  per user in the `users.theme_primary` column (nullable `#rrggbb`, NULL =
+  default) following the existing `PUT /api/me/...` settings pattern, so the
+  theme follows the login on every device. The theme always belongs to the
+  really logged-in account, not to an admin's simulated view.
+- Functional colors stay fixed: danger/warning, the online status dot, entity
+  category colors (organizations blue, locations amber) and the whiteboard
+  note palette are intentionally not themed. The app remains dark-only.
+
 ## Recording Module
 
 - Activation: `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` must be set.

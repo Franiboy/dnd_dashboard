@@ -74,7 +74,7 @@ export function PlayerList({ game, playerId, className }: PlayerListProps) {
               <span
                 className={`text-xs px-2 py-1 rounded ${
                   p.status === 'bingo'
-                    ? 'bg-[var(--accent)] text-slate-900'
+                    ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
                     : p.status === 'playing'
                       ? 'bg-[var(--warning)] text-slate-900'
                       : 'bg-slate-700 text-slate-300'
