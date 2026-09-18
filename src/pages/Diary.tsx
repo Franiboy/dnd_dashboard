@@ -555,10 +555,18 @@ export function Diary() {
                   mappings={mappings}
                 />
 
-                <BadgeList items={entry.persons} variant="person" />
-                <BadgeList items={entry.organizations} variant="organization" />
-                <BadgeList items={entry.locations} variant="location" />
-                <BadgeList items={entry.items} variant="item" />
+                {entry.persons.length +
+                  entry.organizations.length +
+                  entry.locations.length +
+                  entry.items.length >
+                  0 && (
+                  <div className="mb-3 flex flex-wrap items-center gap-2 md:contents">
+                    <BadgeList items={entry.persons} variant="person" />
+                    <BadgeList items={entry.organizations} variant="organization" />
+                    <BadgeList items={entry.locations} variant="location" />
+                    <BadgeList items={entry.items} variant="item" />
+                  </div>
+                )}
 
                 {effectiveExpandedIds.has(entry.id) ? (
                   <>
