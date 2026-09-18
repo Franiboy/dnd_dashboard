@@ -36,7 +36,12 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
     if (!root || !inner) return;
 
     const update = () => {
-      setRailFits(inner.getBoundingClientRect().width <= root.clientWidth + 1);
+      const fits = inner.getBoundingClientRect().width <= root.clientWidth + 1;
+      setRailFits(fits);
+      // If the rail comes back while the popup is open (resize, an app
+      // disappears), the trigger disappears with it — close the menu so it
+      // does not float orphaned in the header.
+      if (fits) setOpen(false);
     };
 
     update();
@@ -76,7 +81,7 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
       <nav
         className={`flex min-w-0 flex-1 items-center gap-1 overflow-x-hidden ${railFits ? '' : 'invisible'}`}
       >
-        <div ref={railInnerRef} className="mx-auto flex w-max items-center gap-1">
+        <div ref={railInnerRef} className="mx-auto flex w-max shrink-0 items-center gap-1">
           {visibleApps.map((app) => {
             const active = location.pathname === app.path;
             return (

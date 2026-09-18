@@ -127,13 +127,19 @@ describe('AppSwitcher', () => {
     expect(nav.className).toContain('invisible');
     expect(trigger.parentElement!.className).not.toContain('hidden');
 
-    // Space frees up (resize, an app disappears): the rail comes back and
-    // the popup trigger is display:none.
+    // The popup opens while collapsed...
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menu')).toBeDefined();
+
+    // Space frees up (resize, an app disappears): the rail comes back, the
+    // popup trigger is display:none and an open menu closes instead of
+    // floating orphaned in the header.
     vi.spyOn(inner, 'getBoundingClientRect').mockReturnValue({ width: 300 } as DOMRect);
     vi.spyOn(root, 'clientWidth', 'get').mockReturnValue(400);
     act(() => TestResizeObserver.latest!.trigger());
 
     expect(nav.className).not.toContain('invisible');
     expect(trigger.parentElement!.className).toContain('hidden');
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 });
