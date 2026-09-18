@@ -5,6 +5,7 @@ import { BingoGrid } from './BingoGrid';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SideDrawer, SideDrawerItem } from './SideDrawer';
 import { Panel } from './Panel';
+import { TabButton } from './TabButton';
 import { PlayerList } from './PlayerList';
 import { TaskPool } from './TaskPool';
 import { TaskStatus } from './TaskStatus';
@@ -144,30 +145,6 @@ function BoardControls({
         </ConfirmDialog>
       )}
     </>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 px-2 py-2 text-sm font-medium rounded-lg transition ${
-        active
-          ? 'bg-[var(--accent)] text-slate-900'
-          : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-[var(--text-h)]'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

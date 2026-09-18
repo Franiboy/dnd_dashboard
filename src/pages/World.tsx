@@ -8,6 +8,7 @@ import { DashboardHeader } from '../components/DashboardHeader';
 import { Loading } from '../components/Loading';
 import { Panel } from '../components/Panel';
 import { Modal } from '../components/Modal';
+import { TabButton } from '../components/TabButton';
 import { typeLabels, typeAccusative, formatEntityLabel } from '../lib/entityLabels';
 import type {
   EntitiesResponse,
@@ -17,6 +18,17 @@ import type {
 } from '../../shared/types';
 
 type PanelView = 'entities' | 'blacklist';
+
+const PANELS: { type: EntityType; title: string; emptyText: string }[] = [
+  { type: 'persons', title: 'Personen', emptyText: 'Noch keine Personen vorhanden.' },
+  {
+    type: 'organizations',
+    title: 'Organisationen',
+    emptyText: 'Noch keine Organisationen vorhanden.',
+  },
+  { type: 'locations', title: 'Orte', emptyText: 'Noch keine Orte vorhanden.' },
+  { type: 'items', title: 'Gegenstände', emptyText: 'Noch keine Gegenstände vorhanden.' },
+];
 
 interface DragPayload {
   name: string;
@@ -426,6 +438,8 @@ export function World() {
     locations: 'entities',
     items: 'entities',
   });
+  // Active entity list on small screens, where the panels stack behind tabs.
+  const [activePanel, setActivePanel] = useState<EntityType>('persons');
   const [distributeOpen, setDistributeOpen] = useState(false);
 
   const canClickRef = useRef(true);
@@ -679,11 +693,33 @@ export function World() {
         </button>
       </DashboardHeader>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 min-h-0">
-        {renderPanel('persons', 'Personen', 'Noch keine Personen vorhanden.')}
-        {renderPanel('organizations', 'Organisationen', 'Noch keine Organisationen vorhanden.')}
-        {renderPanel('locations', 'Orte', 'Noch keine Orte vorhanden.')}
-        {renderPanel('items', 'Gegenstände', 'Noch keine Gegenstände vorhanden.')}
+      {/* Desktop layout: all four lists side by side. */}
+      <div className="hidden md:grid md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 min-h-0">
+        {PANELS.map((panel) => renderPanel(panel.type, panel.title, panel.emptyText))}
+      </div>
+
+      {/* Mobile layout: full-height panel switched via tabs. */}
+      <div className="md:hidden flex flex-col flex-1 min-h-0 gap-3">
+        <div className="flex items-center gap-2 shrink-0">
+          {PANELS.map((panel) => (
+            <TabButton
+              key={panel.type}
+              active={activePanel === panel.type}
+              onClick={() => setActivePanel(panel.type)}
+              className="text-xs px-1"
+            >
+              {panel.title}
+            </TabButton>
+          ))}
+        </div>
+
+        {PANELS.map((panel) =>
+          activePanel === panel.type ? (
+            <div key={panel.type} className="flex-1 min-h-0">
+              {renderPanel(panel.type, panel.title, panel.emptyText)}
+            </div>
+          ) : null
+        )}
       </div>
 
       {pendingAction && (
