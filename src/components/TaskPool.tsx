@@ -133,7 +133,7 @@ export function TaskPool({
         onClick={() => setActiveTab('tasks')}
         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
           activeTab === 'tasks'
-            ? 'bg-[var(--accent)] text-slate-900'
+            ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
             : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-[var(--text-h)]'
         }`}
       >
@@ -144,7 +144,7 @@ export function TaskPool({
         onClick={() => setActiveTab('suggestions')}
         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
           activeTab === 'suggestions'
-            ? 'bg-[var(--accent)] text-slate-900'
+            ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
             : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-[var(--text-h)]'
         }`}
       >
@@ -163,7 +163,7 @@ export function TaskPool({
           onClick={() => setPreferredAudience(aud)}
           className={`px-2 py-1 rounded text-xs font-medium transition ${
             activeAudience === aud
-              ? 'bg-[var(--accent)] text-slate-900'
+              ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
               : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-[var(--text-h)]'
           }`}
         >
@@ -191,7 +191,7 @@ export function TaskPool({
               disabled={
                 !text.trim() || (activeAudience !== 'dm' && isPrivate && assignedTo.length === 0)
               }
-              className="shrink-0 whitespace-nowrap px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
+              className="shrink-0 whitespace-nowrap px-4 py-2 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
             >
               Hinzufügen
             </button>
@@ -286,7 +286,7 @@ export function TaskPool({
                 disabled={
                   !editingText.trim() || (editingIsPrivate && editingAssignedTo.length === 0)
                 }
-                className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
+                className="px-4 py-2 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
               >
                 Speichern
               </button>

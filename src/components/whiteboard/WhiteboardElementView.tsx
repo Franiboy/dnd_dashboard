@@ -653,7 +653,7 @@ export function WhiteboardElementView({
               e.stopPropagation();
               onRequestEdit(element.id);
             }}
-            className="absolute z-10 flex items-center justify-center rounded-full bg-[var(--accent)] text-slate-900 shadow hover:brightness-110"
+            className="absolute z-10 flex items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] shadow hover:brightness-110"
             style={{
               width: 24 * uiScale,
               height: 24 * uiScale,
@@ -957,7 +957,7 @@ function CropOverlay({
               e.stopPropagation();
               onApply(rect);
             }}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-slate-900 shadow hover:brightness-110"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] shadow hover:brightness-110"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

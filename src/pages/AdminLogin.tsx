@@ -47,7 +47,7 @@ export function AdminLogin({ onLogin, error }: AdminLoginProps) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3 rounded-lg bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50"
+          className="w-full py-3 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
         >
           {loading ? <Loading text="" size="sm" className="justify-center" /> : 'Einloggen'}
         </button>

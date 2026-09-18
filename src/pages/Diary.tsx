@@ -456,7 +456,7 @@ export function Diary() {
             <button
               type="button"
               onClick={() => setIsModalOpen(true)}
-              className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition"
+              className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition"
             >
               Neuer Eintrag
             </button>
@@ -578,7 +578,7 @@ export function Diary() {
                             onClick={() => setViewRewritten(entry.id, false)}
                             className={`px-3 py-1 rounded-md text-sm font-medium transition ${
                               !effectiveViewingRewrittenIds.has(entry.id)
-                                ? 'bg-[var(--accent)] text-slate-900'
+                                ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
                                 : 'text-slate-300 hover:text-[var(--text-h)]'
                             }`}
                           >
@@ -590,7 +590,7 @@ export function Diary() {
                             disabled={working}
                             className={`px-3 py-1 rounded-md text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${
                               effectiveViewingRewrittenIds.has(entry.id)
-                                ? 'bg-[var(--accent)] text-slate-900'
+                                ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
                                 : 'text-slate-300 hover:text-[var(--text-h)]'
                             }`}
                           >

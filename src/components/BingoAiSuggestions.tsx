@@ -133,7 +133,7 @@ export function BingoAiSuggestions({ isSetup, audience }: BingoAiSuggestionsProp
                     onClick={() => accept(suggestion.id)}
                     disabled={isBusy}
                     title="Als Aufgabe übernehmen"
-                    className="px-2 py-1 rounded bg-[var(--accent)] text-slate-900 text-xs font-semibold hover:bg-green-400 transition disabled:opacity-50"
+                    className="px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:brightness-110 transition disabled:opacity-50"
                   >
                     {isProcessing ? '...' : '+'}
                   </button>

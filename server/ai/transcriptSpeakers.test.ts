@@ -19,6 +19,7 @@ const users: SafeUser[] = [
     activePerson: 'Calzone',
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
+    themePrimary: null,
     isInitialAdmin: false,
   },
   {
@@ -33,6 +34,7 @@ const users: SafeUser[] = [
     activePerson: 'Vimak',
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
+    themePrimary: null,
     isInitialAdmin: false,
   },
   {
@@ -47,6 +49,7 @@ const users: SafeUser[] = [
     activePerson: 'Heinz-Hartmut',
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
+    themePrimary: null,
     isInitialAdmin: false,
   },
   {
@@ -61,6 +64,7 @@ const users: SafeUser[] = [
     activePerson: 'Archybald',
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
+    themePrimary: null,
     isInitialAdmin: false,
   },
   {
@@ -75,6 +79,7 @@ const users: SafeUser[] = [
     activePerson: null,
     autoSessionToDiary: false,
     autoAcceptSessionDiary: false,
+    themePrimary: null,
     isInitialAdmin: false,
   },
   {
@@ -89,6 +94,7 @@ const users: SafeUser[] = [
     activePerson: null,
     autoSessionToDiary: false,
     autoAcceptSessionDiary: false,
+    themePrimary: null,
     isInitialAdmin: false,
   },
 ];
