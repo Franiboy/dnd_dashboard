@@ -56,6 +56,7 @@ export const schema: Record<string, TableDef> = {
       active_person: { type: 'TEXT' },
       auto_session_to_diary: { type: 'INTEGER', notNull: true, default: '0' },
       auto_accept_session_diary: { type: 'INTEGER', notNull: true, default: '0' },
+      theme_primary: { type: 'TEXT' },
     },
   },
 

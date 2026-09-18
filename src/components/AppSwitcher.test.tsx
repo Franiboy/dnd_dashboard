@@ -17,6 +17,7 @@ const baseUser: SafeUser = {
   activePerson: null,
   autoSessionToDiary: false,
   autoAcceptSessionDiary: false,
+  themePrimary: null,
   isInitialAdmin: false,
 };
 

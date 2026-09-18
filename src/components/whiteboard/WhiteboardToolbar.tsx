@@ -226,7 +226,7 @@ export function WhiteboardToolbar({
       onMouseDown={(e) => e.preventDefault()}
       className={`flex h-9 w-9 cursor-pointer select-none items-center justify-center rounded-lg transition-colors ${
         tool === button.id
-          ? 'bg-[var(--accent)] text-slate-900'
+          ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
           : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
       }`}
     >
@@ -323,7 +323,7 @@ export function WhiteboardToolbar({
       onMouseDown={(e) => e.preventDefault()}
       className={`flex h-9 w-9 cursor-pointer select-none items-center justify-center rounded-lg transition-colors ${
         drawingActive
-          ? 'bg-[var(--accent)] text-slate-900'
+          ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
           : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
       }`}
     >

@@ -382,7 +382,7 @@ function DistributeKnowledgeDialog({
             type="button"
             onClick={handleDistribute}
             disabled={working || !text.trim()}
-            className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-slate-900 hover:brightness-110 transition disabled:opacity-50"
+            className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
           >
             {working ? 'Wird eingeordnet...' : 'Einordnen'}
           </button>
@@ -687,7 +687,7 @@ export function World() {
         <button
           type="button"
           onClick={() => setDistributeOpen(true)}
-          className="px-4 py-2 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition"
+          className="px-4 py-2 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition"
         >
           Wissen einordnen
         </button>
