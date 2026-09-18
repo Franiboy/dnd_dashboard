@@ -60,30 +60,6 @@ button {
   border-radius: 4px;
 }
 
-/* Round free-color picker inside the user menu's design section. */
-.theme-color-input {
-  appearance: none;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 9999px;
-  background: transparent;
-  cursor: pointer;
-}
-
-.theme-color-input::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.theme-color-input::-webkit-color-swatch {
-  border: none;
-  border-radius: 9999px;
-}
-
-.theme-color-input::-moz-color-swatch {
-  border: none;
-  border-radius: 9999px;
-}
-
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent);
 }
