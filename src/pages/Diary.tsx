@@ -4,7 +4,6 @@ import type ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
-import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
 import { useStoryArcs } from '../hooks/useStoryArcs';
@@ -12,9 +11,9 @@ import { useDiaryEntries } from '../hooks/useDiaryEntries';
 import { useDiaryDrafts } from '../hooks/useDiaryDrafts';
 import { useDiaryAiStatus } from '../hooks/useDiaryAiStatus';
 import { arcMatchesFilter } from '../lib/storyArcs';
-import { splitEntityLabel } from '../lib/entityLabels';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
 import { BadgeLink } from '../components/BadgeLink';
+import { BadgeList } from '../components/diary/BadgeList';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
@@ -25,53 +24,10 @@ import { DiarySummaryPanel } from '../components/diary/DiarySummaryPanel';
 import { isEmptyHtml, normalizeDraftHtml } from '../lib/diaryDraft';
 import { ensureHtml, stripHtml, quillFormats, quillModules } from '../components/quillConfig';
 
-import type { DiaryEntry, EntityType } from '../../shared/types';
+import type { DiaryEntry } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 const SUMMARY_MAX_LENGTH = 500;
-
-interface BadgeListProps {
-  items: string[];
-  variant: 'person' | 'organization' | 'location' | 'item';
-}
-
-const badgeStyles = {
-  person: 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20',
-  organization: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
-  location: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
-  item: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
-};
-
-const badgeTypeMap: Record<BadgeListProps['variant'], EntityType> = {
-  person: 'persons',
-  organization: 'organizations',
-  location: 'locations',
-  item: 'items',
-};
-
-function BadgeList({ items, variant }: BadgeListProps) {
-  const { openEntity } = useEntityDialog();
-  if (items.length === 0) return null;
-  return (
-    <div className="flex flex-wrap gap-2 mb-3">
-      {items.map((item) => {
-        // Items are qualified labels ("Name (Qualifier)") - parse before
-        // opening so homonyms resolve to the exact entity.
-        const { name, qualifier } = splitEntityLabel(item);
-        return (
-          <span
-            key={item}
-            onClick={() => openEntity(name, badgeTypeMap[variant], undefined, qualifier)}
-            title="Öffnen"
-            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium cursor-pointer hover:brightness-110 transition ${badgeStyles[variant]}`}
-          >
-            {item}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
 
 export function Diary() {
   const { request } = useApi();
