@@ -3,7 +3,7 @@ import { processPendingSessions } from './sessionAi.js';
 import { processSessionToDiary } from './sessionToDiary.js';
 import { processDirtyDiaryEntries } from './diarySummaries.js';
 import { processDirtySummaries } from './entitySummaries.js';
-import { processPendingTimelineSessions } from './timeline.js';
+import { acquireTimelineRun, processPendingTimelineSessions } from './timeline.js';
 
 const log = createLogger('summary-scheduler');
 
@@ -36,8 +36,18 @@ async function processNightlySummaries() {
   }
   try {
     // Timeline events follow the summaries: fresh sessions get their events
-    // and stale ones (newer summary / moved arc) are refreshed.
-    await processPendingTimelineSessions();
+    // and stale ones (newer summary / moved arc) are refreshed. The shared
+    // generation slot serializes this with manual regenerations.
+    const releaseTimelineRun = acquireTimelineRun();
+    if (!releaseTimelineRun) {
+      log.info('Timeline generation already running; skipping nightly timeline step');
+    } else {
+      try {
+        await processPendingTimelineSessions();
+      } finally {
+        releaseTimelineRun();
+      }
+    }
   } catch (err) {
     log.error(`Timeline generation failed: ${err}`);
   }

@@ -24,31 +24,28 @@ export function useTimeline() {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const applyData = useCallback((data: TimelineResponse) => {
+    setEvents(data.events);
+    setPendingCount(data.pendingCount);
+    setRunning(data.running);
+    setAiEnabled(data.aiEnabled);
+  }, []);
+
   const loadTimeline = useCallback(async () => {
     const { data, error } = await request<TimelineResponse>('/api/timeline');
-    if (data) {
-      setEvents(data.events);
-      setPendingCount(data.pendingCount);
-      setRunning(data.running);
-      setAiEnabled(data.aiEnabled);
-    }
+    if (data) applyData(data);
     setLoading(false);
     if (error) showError(error);
-  }, [request, showError]);
+  }, [request, showError, applyData]);
 
   useEffect(() => {
     // Inline .then chain: the lint's data-flow analysis tracks promise
     // callbacks, unlike a discarded async loader call.
     request<TimelineResponse>('/api/timeline').then(({ data }) => {
-      if (data) {
-        setEvents(data.events);
-        setPendingCount(data.pendingCount);
-        setRunning(data.running);
-        setAiEnabled(data.aiEnabled);
-      }
+      if (data) applyData(data);
       setLoading(false);
     });
-  }, [request]);
+  }, [request, applyData]);
 
   /**
    * Admin action: refresh/extend the timeline for all pending sessions.
