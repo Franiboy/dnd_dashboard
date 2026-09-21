@@ -5,6 +5,7 @@ import { BingoGrid } from './BingoGrid';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SideDrawer, SideDrawerItem } from './SideDrawer';
 import { Panel } from './Panel';
+import { TabButton } from './TabButton';
 import { PlayerList } from './PlayerList';
 import { TaskPool } from './TaskPool';
 import { TaskStatus } from './TaskStatus';
@@ -76,7 +77,7 @@ function SetupControls({ game, socket }: { game: BingoGame; socket: Socket | nul
               ? `Spiel starten – Hinweis: ${warning}`
               : 'Spiel starten'
         }
-        className="px-3 py-1.5 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:bg-green-400 transition disabled:opacity-50 text-xs"
+        className="px-3 py-1.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50 text-xs"
       >
         Spiel starten
       </button>
@@ -108,7 +109,7 @@ function BoardControls({
         className={`px-4 py-2 rounded font-semibold transition text-sm ${
           player.locked
             ? 'bg-slate-700 text-[var(--text-h)] hover:bg-slate-600'
-            : 'bg-[var(--accent)] text-slate-900 hover:bg-green-400'
+            : 'bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110'
         }`}
       >
         {player.locked ? 'Entsperren' : 'Einlocken'}
@@ -144,30 +145,6 @@ function BoardControls({
         </ConfirmDialog>
       )}
     </>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 px-2 py-2 text-sm font-medium rounded-lg transition ${
-        active
-          ? 'bg-[var(--accent)] text-slate-900'
-          : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-[var(--text-h)]'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

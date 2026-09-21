@@ -80,7 +80,9 @@ export function UserCheckboxList({
                       : 'border-[var(--border)] bg-slate-900'
                   }`}
                 >
-                  {isSelected && <span className="text-slate-900 text-xs font-bold">✓</span>}
+                  {isSelected && (
+                    <span className="text-[var(--accent-contrast)] text-xs font-bold">✓</span>
+                  )}
                 </span>
                 <Avatar src={u.avatarUrl} name={u.displayName} className="w-6 h-6" />
                 <span className="flex-1 text-[var(--text-h)]">{u.displayName}</span>
@@ -98,7 +100,7 @@ export function UserCheckboxList({
             return (
               <span
                 key={id}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--accent)] text-slate-900 text-xs font-medium"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-medium"
               >
                 <Avatar src={user.avatarUrl} name={user.displayName} className="w-4 h-4" />
                 {user.displayName}

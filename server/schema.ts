@@ -56,6 +56,7 @@ export const schema: Record<string, TableDef> = {
       active_person: { type: 'TEXT' },
       auto_session_to_diary: { type: 'INTEGER', notNull: true, default: '0' },
       auto_accept_session_diary: { type: 'INTEGER', notNull: true, default: '0' },
+      theme_primary: { type: 'TEXT' },
     },
   },
 
@@ -188,6 +189,11 @@ export const schema: Record<string, TableDef> = {
       title: { type: 'TEXT', notNull: true },
       // Short HTML description; sanitized on write like the session summaries.
       description: { type: 'TEXT' },
+      // HTML-stripped plain text copy of description, maintained by the
+      // timeline repository on every write so the search index can index plain
+      // text (SQL triggers cannot strip HTML). NULL on legacy rows until the
+      // migration backfill fills it.
+      description_text: { type: 'TEXT' },
       // Version of the generation prompt that produced this event. NULL marks
       // legacy rows; migrations.ts deletes events older than the current
       // version so the scheduler regenerates them with the current prompt.
@@ -221,6 +227,9 @@ export const schema: Record<string, TableDef> = {
       position: { type: 'INTEGER', notNull: true },
       title: { type: 'TEXT', notNull: true },
       description: { type: 'TEXT' },
+      // Plain text copy of description for the search index (see
+      // timeline_events.description_text).
+      description_text: { type: 'TEXT' },
     },
     references: [
       {

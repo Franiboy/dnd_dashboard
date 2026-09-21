@@ -166,7 +166,7 @@ Sessions, diary entries and world entities are organized into **story arcs** (na
 - **Derived metadata:** an arc's game-day range and member counts (`sessionCount`,
   `diaryEntryCount`, `entityCount`) are computed from its members on read, never stored.
 - **Global filter:** the header shows a "Kapitel" trigger (between the user menu and the app
-  switcher, on Sessions/Diary/World routes) that opens the campaign timeline as a full-width
+  switcher, on every route while logged in) that opens the campaign timeline as a full-width
   panel directly below the header (state in `StoryArcProvider`, persisted in `localStorage`;
   options "Alle Kapitel" and "Ohne Kapitel"; `ChapterTimeline` with `mode="filter"`, serif/brass
   "Abenteuer-Look" styling shared by `ChapterChip`). In the timeline a **picked** chapter wears a
@@ -208,6 +208,9 @@ group frames):
   `timeline_events.arc_id`. Diary entries are **not stored per event** – links to diary entries are
   resolved at read time by the shared `game_day`, scoped to the viewer (players only see their own
   entries, admins see all authors).
+- **Search:** every event is indexed in the global search (FTS5 `search_index`) as **one document
+  including all its scene texts**; HTML descriptions are mirrored into plain-text `description_text`
+  columns maintained by the timeline repository (see "Global Search" below).
 - **One main event per notable game day (grouping prompt):** the AI prompt (`server/ai/timeline.ts`)
   consolidates every notable game day into **exactly one main event** – related happenings of the
   same day (arrival → interrogation → escape) belong into one event, and its day-by-day details
@@ -227,23 +230,31 @@ group frames):
   refreshes/extends the timeline for all pending sessions – this is the catch-up path for
   pre-existing data. Progress is streamed to every open timeline page via the global SSE stream
   `GET /api/timeline/ai-events` (`server/timelineAiEvents.ts`). A per-session variant
-  (`{ sessionId }`) regenerates one session inline. Without events the page offers the button as
-  the manual catch-up.
+  (`{ sessionId }`) regenerates one session inline; every entry point (manual campaign run,
+  nightly job, targeted regeneration) reserves the same atomic timeline run slot
+  (`acquireTimelineRun`), so generations never interleave – overlapping requests get a 409.
+  Without events the page offers the button as the manual catch-up.
 - **UI (`src/components/timeline/HorizontalTimeline.tsx`):** a fixed-height diagram with a violet
   **leyline axis**; the page is **never scaled**. The view is a **window over the day axis**
-  (initially 10 days, ruler with every day); **dragging or the mouse wheel** moves the window,
-  ＜/＞ buttons page and "Heute" jumps to the current day. **Zooming (Ctrl+wheel / ＋/－) shrinks
-  the visible day range 10 → 5 → 2 days** with the window center anchored, which gives each event
-  room to **unfold into a bordered group frame**: the frame header carries the main event
-  (day · title · links) and beneath it the sub-events appear as **standalone cards** (number,
-  title, description) – making visible which sub-events belong to the same main event. The main
-  pin stays on the axis and connects the frame via a stem; a teal pulsing pin marks the current
-  game day. Chapter segments (chapter-colored bands like the chapter chips) are clipped to the
-  window. Level-1 cards additionally open a scene list popover on click. Events link to
-  `/sessions?session=<id>` and `/tagebuch?entry=<id>` (deep-link expand + scroll, existing
-  behavior). Filtering uses the global header chapter filter (`arcMatchesFilter`); the app
-  participates in `STORY_ARC_FILTER_PATHS`. Events are AI-generated only and cannot be edited
-  manually. Legacy multi-event days (pre-grouping data) collapse into a "+N" badge.
+  (initially 10 days, ruler with every day); **dragging, the mouse wheel or a horizontal swipe**
+  moves the window and **zooming (Ctrl+wheel, two-finger pinch on touch) shrinks the visible day
+  range 10 → 5 → 2 days** with the window center anchored, which gives each event room to
+  **unfold into a bordered group frame**: the frame header carries the main event (day · title ·
+  links, diary badges capped with a "+x" hint) and beneath it the sub-events appear as
+  **standalone cards** (number, title, description) – making visible which sub-events belong to
+  the same main event. The main pin stays on the axis and connects the frame via a stem; a teal
+  pulsing pin marks the current game day. Chapter segments (chapter-colored bands like the chapter
+  chips) are clipped to the window and their bottom-edge labels are hidden when they would collide.
+  Level-1 cards open their details on click (the mouse wheel scrolls the opened card instead of
+  panning; touch scrolls it natively via `touch-action: pan-y`) and also list **legacy extra
+  events** of the same day; group frames show them beneath the scenes. Geometry (window math,
+  overlap resolution, label placement) lives in the pure, unit-tested
+  `src/components/timeline/layout.ts`; days outside the window (+2-day buffer) stay unmounted.
+  Events link to `/sessions?session=<id>` and `/tagebuch?entry=<id>` (deep-link expand + scroll,
+  existing behavior). Filtering uses the global header chapter filter (`arcMatchesFilter`), which
+  is available in the header on every route. Events are AI-generated only and cannot be edited
+  manually. Legacy multi-event days (pre-grouping data) collapse into a "+N" badge that opens the
+  day's card.
 
 ### AI Workflow
 
@@ -277,29 +288,65 @@ group frames):
   (`src/components/GlobalSearch.tsx`) available on every page. Arrow keys select,
   Enter opens, Esc closes.
 - **Sources:** diary entries (title, plain text, AI summary), recording sessions
-  (name, summaries, Whisper transcript) and world knowledge facts
-  (`entity_knowledge_entries`). Entity names, qualifiers and aliases are matched
+  (name, summaries, Whisper transcript), world knowledge facts
+  (`entity_knowledge_entries`) and timeline events (title, plain-text
+  description, all scene titles/descriptions folded into the event's document).
+  Entity names, qualifiers and aliases are matched
   instantly client-side from the already-loaded mappings cache
   (`filterEntityMappings` in `src/hooks/useGlobalSearch.ts`).
 - **Index:** an SQLite FTS5 virtual table `search_index` holds one document per
-  source row, kept in sync by triggers on `diary_entries`, `recording_sessions`
-  and `entity_knowledge_entries` (soft-deleted facts leave the index). Because
-  the declarative schema engine cannot express virtual tables, the index is
+  source row, kept in sync by triggers on `diary_entries`, `recording_sessions`,
+  `entity_knowledge_entries` and `timeline_events` (soft-deleted facts leave the
+  index). Timeline scenes are not separate documents: scene triggers re-sync
+  the parent event's document whenever a scene row changes. Because the
+  declarative schema engine cannot express virtual tables, the index is
   created and backfilled idempotently by the `setupSearchIndex` hook in
   `server/migrations.ts`. Legacy diary rows get an HTML-stripped `content_text`
-  copy that the diary repository maintains on every write.
+  copy and legacy timeline rows an HTML-stripped `description_text` copy
+  (per table) that the repositories maintain on every write.
 - **Privacy:** diary hits are filtered by the author (`owner_user_id` in the
-  index) — users only ever see their own entries. Sessions and world knowledge
-  are visible to all approved users, matching the modules' existing behaviour.
+  index) — users only ever see their own entries. Sessions, world knowledge and
+  timeline events are visible to all approved users, matching the modules'
+  existing behaviour.
 - **API:** `GET /api/search?q=<min. 2 Zeichen>&limit=<1–20, default 8>` returns
   bm25-ranked hits per source with snippets whose match ranges are wrapped in
   `\u0001`/`\u0002` markers for client-side highlighting.
 - **Deep links:** diary hits navigate to `/tagebuch?entry=<id>`, session hits to
   `/sessions?session=<id>&t=<mm:ss>` — the transcript opens automatically and
-  the matched timestamp line is scrolled into view and highlighted. Knowledge
+  the matched timestamp line is scrolled into view and highlighted. Timeline
+  hits navigate to `/zeitleiste?event=<id>` — the event's card opens, its day
+  is centered in the window and the card is highlighted briefly. Knowledge
   hits open the entity dialog directly on the "Wissen" tab (`initialTab`
   parameter), entity hits open it on the summary tab.
 - Groups belonging to apps the user has disabled are hidden from the results.
+
+## Dynamic User Theme
+
+- Every user can pick a personal theme base color in the user menu (avatar in
+  the header, "Design-Farbe" section): eight curated preset swatches plus a
+  free `<input type="color">` picker, and a "Zurücksetzen" entry that restores
+  the default theme (green accent, neutral slate).
+- The whole UI derives from that single color: accent, darker accent, a
+  readable auto-contrast text color for accent surfaces, a damped
+  complementary tone and a hue-tinted neutral ramp that replaces Tailwind's
+  slate scale (backgrounds, panels, borders and muted text pick up a subtle
+  cast of the chosen hue). All math lives in `src/lib/color.ts`
+  (`buildTheme`), unit-tested in `src/lib/color.test.ts`.
+- Mechanics: Tailwind v4 utilities resolve their colors via CSS variables
+  (`bg-slate-800` → `var(--color-slate-800)`), so the `ThemeProvider`
+  (`src/contexts/ThemeProvider.tsx`) simply writes the derived tokens as
+  inline overrides on `document.documentElement` — the same mechanism the
+  layout already uses for `--header-height`. No color set means no overrides
+  and therefore the stylesheet defaults.
+- The picker previews live while dragging; the value is saved (debounced) to
+  `PUT /api/me/theme` and closing the menu flushes a pending save. It persists
+  per user in the `users.theme_primary` column (nullable `#rrggbb`, NULL =
+  default) following the existing `PUT /api/me/...` settings pattern, so the
+  theme follows the login on every device. The theme always belongs to the
+  really logged-in account, not to an admin's simulated view.
+- Functional colors stay fixed: danger/warning, the online status dot, entity
+  category colors (organizations blue, locations amber) and the whiteboard
+  note palette are intentionally not themed. The app remains dark-only.
 
 ## Recording Module
 

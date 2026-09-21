@@ -113,7 +113,7 @@ export const TASK_STATUS_META: Record<WhiteboardTaskStatus, { label: string; cla
   {
     open: { label: 'Offen', className: 'bg-slate-600 text-slate-100' },
     in_progress: { label: 'In Arbeit', className: 'bg-[var(--warning)] text-slate-900' },
-    done: { label: 'Erledigt', className: 'bg-[var(--accent)] text-slate-900' },
+    done: { label: 'Erledigt', className: 'bg-[var(--accent)] text-[var(--accent-contrast)]' },
   };
 
 export function nextTaskStatus(status: WhiteboardTaskStatus): WhiteboardTaskStatus {

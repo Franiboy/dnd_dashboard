@@ -511,7 +511,7 @@ function resetTimelineEventsForPrompt(): void {
 //
 // The declarative schema engine cannot express FTS5 virtual tables, so the
 // index lives entirely in this hook: idempotent creation of the virtual table,
-// sync triggers on the three source tables and a guarded backfill.
+// sync triggers on the source tables and a guarded backfill.
 // ---------------------------------------------------------------------------
 
 const SEARCH_INDEX_DDL = `
@@ -533,9 +533,11 @@ const SEARCH_INDEX_DDL = `
 // ("new" inside triggers, the table alias inside the backfill). The diary body
 // prefers the plain-text copy (content_text) because SQL triggers cannot strip
 // HTML; rewritten_content is deliberately not indexed (AI draft of the same
-// text). Knowledge facts are only indexed while status = 'active'.
+// text). Knowledge facts are only indexed while status = 'active'. The
+// timeline document folds the event's scenes into one document (plain-text
+// copies again); the scene triggers keep it current while scenes are written.
 interface SearchSourceDef {
-  key: 'diary' | 'session' | 'knowledge';
+  key: 'diary' | 'session' | 'knowledge' | 'timeline';
   table: string;
   alias: string;
   title: string;
@@ -588,6 +590,24 @@ const SEARCH_SOURCES: SearchSourceDef[] = [
     entityQualifier: '{r}.entity_qualifier',
     where: `{r}.status = 'active'`,
   },
+  {
+    key: 'timeline',
+    table: 'timeline_events',
+    alias: 'e',
+    title: '{r}.title',
+    body: `COALESCE({r}.description_text, '') || ' ' || COALESCE((
+             SELECT group_concat(COALESCE(s.title, '') || ' ' || COALESCE(s.description_text, ''), ' ')
+             FROM timeline_scenes s
+             WHERE s.event_id = {r}.id
+           ), '')`,
+    // Timeline events are shared campaign content without a single owner.
+    ownerUserId: "''",
+    arcId: '{r}.arc_id',
+    entityType: "''",
+    entityName: "''",
+    entityQualifier: "''",
+    where: null,
+  },
 ];
 
 function renderDocumentSql(def: SearchSourceDef, rowPrefix: string): string {
@@ -613,6 +633,42 @@ function searchIndexColumnMismatch(): boolean {
   // The tokenize/prefix options are baked into the stored DDL; a mismatch
   // means the index was created by an older definition and must be rebuilt.
   return !row || !/remove_diacritics/.test(row.sql) || !/prefix/.test(row.sql);
+}
+
+// The timeline event trigger fires when the event row is inserted, before its
+// scenes exist (replaceSessionEvents writes scenes right after the event in
+// the same transaction). These triggers re-sync the parent event's document
+// whenever a scene row changes, so scene text is searchable without indexing
+// scenes as separate documents.
+function createTimelineSceneSyncTriggers(): void {
+  const timelineDef = SEARCH_SOURCES.find((def) => def.key === 'timeline');
+  if (!timelineDef) return;
+  const document = renderDocumentSql(timelineDef, 'e');
+  const resync = (eventRef: string) => `
+        DELETE FROM search_index WHERE source_type = '${timelineDef.key}' AND source_id = ${eventRef};
+        INSERT INTO search_index (title, body, source_type, source_id, owner_user_id, arc_id,
+                                  entity_type, entity_name, entity_qualifier)
+        SELECT ${document}
+        FROM timeline_events e
+        WHERE e.id = ${eventRef};`;
+  const statements = [
+    'DROP TRIGGER IF EXISTS trg_search_timeline_scene_ai;',
+    `
+      CREATE TRIGGER trg_search_timeline_scene_ai AFTER INSERT ON timeline_scenes
+      BEGIN${resync('new.event_id')}
+      END;`,
+    'DROP TRIGGER IF EXISTS trg_search_timeline_scene_au;',
+    `
+      CREATE TRIGGER trg_search_timeline_scene_au AFTER UPDATE ON timeline_scenes
+      BEGIN${resync('new.event_id')}${resync('old.event_id')}
+      END;`,
+    'DROP TRIGGER IF EXISTS trg_search_timeline_scene_ad;',
+    `
+      CREATE TRIGGER trg_search_timeline_scene_ad AFTER DELETE ON timeline_scenes
+      BEGIN${resync('old.event_id')}
+      END;`,
+  ];
+  db.exec(statements.join('\n'));
 }
 
 function createSearchSyncTriggers(): void {
@@ -642,6 +698,7 @@ function createSearchSyncTriggers(): void {
       END;`);
   }
   db.exec(statements.join('\n'));
+  createTimelineSceneSyncTriggers();
 }
 
 // Insert index rows that are still missing (first run / newly added sources).
@@ -686,8 +743,48 @@ function backfillDiaryContentText(): void {
   log.info(`Backfilled content_text for ${rows.length} diary entries`);
 }
 
+// Same plain-text copy for pre-existing timeline events and scenes (see
+// backfillDiaryContentText); new rows always write it in the repository.
+// Rows without a description are skipped: there is nothing to strip, and the
+// IS NULL guard must settle instead of re-running on every startup.
+function backfillTimelineDescriptionText(): void {
+  const updates: { table: string; rows: { id: number; description: string }[] }[] = [
+    {
+      table: 'timeline_events',
+      rows: db
+        .prepare(
+          'SELECT id, description FROM timeline_events WHERE description IS NOT NULL AND description_text IS NULL'
+        )
+        .all() as { id: number; description: string }[],
+    },
+    {
+      table: 'timeline_scenes',
+      rows: db
+        .prepare(
+          'SELECT id, description FROM timeline_scenes WHERE description IS NOT NULL AND description_text IS NULL'
+        )
+        .all() as { id: number; description: string }[],
+    },
+  ];
+  for (const { table, rows } of updates) {
+    if (rows.length === 0) continue;
+    const update = db.prepare(`UPDATE ${table} SET description_text = ? WHERE id = ?`);
+    for (const row of rows) {
+      update.run(stripHtml(row.description), row.id);
+    }
+    log.info(`Backfilled description_text for ${rows.length} ${table} row(s)`);
+  }
+}
+
 function setupSearchIndex(): void {
-  if (!tableExists('diary_entries') || !tableExists('recording_sessions')) return;
+  if (
+    !tableExists('diary_entries') ||
+    !tableExists('recording_sessions') ||
+    !tableExists('timeline_events') ||
+    !tableExists('timeline_scenes')
+  ) {
+    return;
+  }
   if (searchIndexColumnMismatch()) {
     // DROP on an FTS5 table also drops its triggers' target; triggers are
     // recreated right after and the backfill reindexes from the sources.
@@ -696,6 +793,7 @@ function setupSearchIndex(): void {
   db.exec(SEARCH_INDEX_DDL);
   createSearchSyncTriggers();
   backfillDiaryContentText();
+  backfillTimelineDescriptionText();
   backfillSearchIndex();
 }
 
