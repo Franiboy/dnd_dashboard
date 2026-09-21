@@ -39,4 +39,4 @@ Configuration via job env vars in the workflow:
 
 ## Assistant duties
 
-Coding assistants keep the loop closed: after opening a PR they actively watch the pipeline until the `ai-review` job merges it or it fails, fix and re-push on red instead of leaving the PR stale, and clean up the branch and worktree after a successful merge (see [`AGENTS.md`](../AGENTS.md)).
+Coding assistants keep the loop closed: after opening a PR they actively watch the pipeline until the `ai-review` job merges it or it fails, fix and re-push on red instead of leaving the PR stale, and clean up the branch after a successful merge (see [`AGENTS.md`](../AGENTS.md)).
