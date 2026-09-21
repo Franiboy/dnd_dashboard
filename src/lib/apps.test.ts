@@ -15,6 +15,7 @@ function makeUser(overrides: Partial<SafeUser> = {}): SafeUser {
     activePerson: null,
     autoSessionToDiary: false,
     autoAcceptSessionDiary: false,
+    themePrimary: null,
     isInitialAdmin: false,
     ...overrides,
   };

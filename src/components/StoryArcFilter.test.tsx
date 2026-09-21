@@ -60,6 +60,18 @@ describe('StoryArcFilter', () => {
     expect(container.querySelector('.absolute.top-full')).not.toBeNull();
   });
 
+  it('allows a long chapter selection to shrink without losing the full title', () => {
+    const name = 'A very long chapter name '.repeat(12);
+    renderFilter({ arcs: [arc({ id: 1, name })], selectedArcId: 1 });
+    const label = screen.getByText(name.trim());
+    const trigger = label.closest('button')!;
+    expect(label.classList.contains('truncate')).toBe(true);
+    expect(trigger.title).toContain(name);
+    expect(trigger.classList.contains('min-h-11')).toBe(true);
+    expect(trigger.parentElement!.classList.contains('min-w-0')).toBe(true);
+    expect(trigger.parentElement!.classList.contains('shrink-0')).toBe(false);
+  });
+
   it('reports a chapter selection through the story-arc context and closes', () => {
     const setSelectedArcId = vi.fn();
     renderFilter({ selectedArcId: 1, setSelectedArcId });

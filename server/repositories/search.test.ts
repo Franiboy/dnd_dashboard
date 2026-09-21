@@ -8,6 +8,7 @@ import {
   ensureEntityExists,
   updateDiaryEntry,
 } from './diary.js';
+import { replaceSessionEvents } from './timeline.js';
 
 function insertUser(id: string): void {
   db.prepare(
@@ -37,6 +38,18 @@ function insertSession(name: string, transcript: string | null): number {
          VALUES (?, 'completed', 'g', 'c', 'tester', ?, 'dir', ?)`
       )
       .run(name, now, transcript).lastInsertRowid
+  );
+}
+
+function insertTimelineSession(name: string, gameDay: number): number {
+  const now = new Date().toISOString();
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO recording_sessions (name, status, guild_id, channel_id, created_by, started_at, directory, transcript, game_day)
+         VALUES (?, 'completed', 'g', 'c', 'tester', ?, 'dir', 'transcript text', ?)`
+      )
+      .run(name, now, gameDay).lastInsertRowid
   );
 }
 
@@ -200,6 +213,76 @@ describe('globalSearch', () => {
     );
     expect(globalSearch('verlies', { userId: 'x' })).toHaveLength(1);
   });
+
+  it('finds timeline events with their scenes folded into the event hit', () => {
+    const sessionId = insertTimelineSession('Das Drachenfest', 5);
+    replaceSessionEvents(sessionId, [
+      {
+        gameDay: 5,
+        title: 'Drachenkampf',
+        description: '<p>Sieg über den <b>Drachen</b></p>',
+        scenes: [
+          { gameDay: 5, title: 'Vorbereitung', description: '<p>Die Helden sammeln sich</p>' },
+        ],
+      },
+    ]);
+
+    const hitsFor = (query: string) =>
+      globalSearch(query, { userId: 'x' }).filter((h) => h.source === 'timeline');
+
+    const hits = hitsFor('drachen');
+    expect(hits).toHaveLength(1);
+    const hit = hits[0];
+    if (!hit || hit.source !== 'timeline') throw new Error('expected timeline hit');
+    expect(hit.id).toBe(
+      (
+        db.prepare('SELECT id FROM timeline_events WHERE session_id = ?').get(sessionId) as {
+          id: number;
+        }
+      ).id
+    );
+    expect(hit.title).toBe('Drachenkampf');
+    expect(hit.gameDay).toBe(5);
+    expect(hit.sessionName).toBe('Das Drachenfest');
+    expect(hit.snippet).not.toContain('<');
+
+    // Scene-only terms hit the same parent event, not a separate document.
+    expect(hitsFor('vorbereitung')).toHaveLength(1);
+    expect(hitsFor('helden')).toHaveLength(1);
+  });
+
+  it('keeps the timeline document in sync when scenes change or the session regenerates', () => {
+    const sessionId = insertTimelineSession('Kerkerlauf', 8);
+    replaceSessionEvents(sessionId, [
+      { gameDay: 8, title: 'Einbruch', description: null, scenes: [] },
+    ]);
+    const hitsFor = (query: string) =>
+      globalSearch(query, { userId: 'x' }).filter((h) => h.source === 'timeline');
+    expect(hitsFor('einbruch')).toHaveLength(1);
+
+    // A scene written after the event completes the indexed document.
+    const eventId = (
+      db.prepare('SELECT id FROM timeline_events WHERE session_id = ?').get(sessionId) as {
+        id: number;
+      }
+    ).id;
+    db.prepare(
+      `INSERT INTO timeline_scenes (event_id, game_day, position, title, description)
+       VALUES (?, 8, 0, 'Wachen ausgeschaltet', '<p>Still und leise</p>')`
+    ).run(eventId);
+    expect(hitsFor('wachen')).toHaveLength(1);
+
+    db.prepare('DELETE FROM timeline_scenes WHERE event_id = ?').run(eventId);
+    expect(hitsFor('wachen')).toHaveLength(0);
+    expect(hitsFor('einbruch')).toHaveLength(1);
+
+    // Regeneration replaces events (new ids) instead of appending.
+    replaceSessionEvents(sessionId, [
+      { gameDay: 8, title: 'Rückzug', description: '<p>Der Rückzug</p>', scenes: [] },
+    ]);
+    expect(hitsFor('einbruch')).toHaveLength(0);
+    expect(hitsFor('rückzug')).toHaveLength(1);
+  });
 });
 
 describe('search index migration', () => {
@@ -222,6 +305,39 @@ describe('search index migration', () => {
     const before = count();
     runMigrations();
     expect(count()).toBe(before);
+  });
+
+  it('backfills legacy timeline events and scenes into plain-text documents', () => {
+    const sessionId = insertTimelineSession('Ritterfest', 3);
+    const now = new Date().toISOString();
+    // Legacy rows: raw insert without description_text, indexed only by the
+    // backfill (the trigger documents were removed below first).
+    const eventId = Number(
+      db
+        .prepare(
+          `INSERT INTO timeline_events (game_day, session_id, title, description, prompt_version, generated_at, updated_at)
+           VALUES (3, ?, 'Turnier', '<p>Das große <i>Turnier</i></p>', 2, ?, ?)`
+        )
+        .run(sessionId, now, now).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO timeline_scenes (event_id, game_day, position, title, description)
+       VALUES (?, 3, 0, 'Turniervorbereitung', '<p>Rüstung poliert</p>')`
+    ).run(eventId);
+    deleteFromSearchIndex('timeline', eventId);
+
+    runMigrations();
+
+    const hits = globalSearch('turnier', { userId: 'x' }).filter((h) => h.source === 'timeline');
+    expect(hits).toHaveLength(1);
+    const text = db
+      .prepare('SELECT description_text FROM timeline_events WHERE id = ?')
+      .get(eventId) as { description_text: string | null };
+    expect(text.description_text).toBe('Das große Turnier');
+    // The scene text lands in the same document as the parent event.
+    expect(
+      globalSearch('rüstung', { userId: 'x' }).filter((h) => h.source === 'timeline')
+    ).toHaveLength(1);
   });
 });
 

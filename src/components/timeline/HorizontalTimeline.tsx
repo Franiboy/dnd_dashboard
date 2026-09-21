@@ -1,25 +1,38 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import type { StoryArc, TimelineEvent } from '../../../shared/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { EntityMapping, StoryArc, TimelineEvent } from '../../../shared/types';
 import { useEntityMappings } from '../../hooks/useEntityMappings';
 import { EntityRichText } from '../EntityRichText';
+import { BadgeLink } from '../BadgeLink';
+import {
+  CARD_W,
+  CULL_DAYS,
+  OPEN_CARD_W,
+  PAD,
+  WINDOW_DAYS,
+  alternatingSides,
+  clampStart,
+  computeDayRange,
+  computeLayout,
+  dayToX,
+  frameWidth,
+  layoutChapterLabels,
+  pixelsPerDay,
+} from './layout';
 
 // ---------------------------------------------------------------------------
 // Horizontal campaign timeline ("Arkan-Chronik").
 //
-// The axis shows a fixed window of campaign days and is never scaled. Dragging
-// or the mouse wheel moves the window along the campaign; zooming (Ctrl+wheel
-// or buttons) shrinks the visible day range (10 -> 5 -> 2 days), which unfolds
-// every main event into a bordered group frame containing its sub-events
-// ("Unter-Ereignisse") as standalone cards, so they visibly belong together.
+// The axis shows a fixed window of campaign days and is never scaled. Dragging,
+// the mouse wheel or a horizontal swipe moves the window along the campaign;
+// zooming (Ctrl+wheel, two-finger pinch on touch) shrinks the visible day range
+// (10 -> 5 -> 2 days), which unfolds every main event into a bordered group
+// frame containing its sub-events ("Unter-Ereignisse") as standalone cards, so
+// they visibly belong together.
 // ---------------------------------------------------------------------------
 
-const PAD = 46;
-const CARD_W = 176;
-/** Widened slot of the opened card so the description has room. */
-const OPEN_CARD_W = 340;
-/** Visible days per detail level; zooming shows fewer days -> more room. */
-const WINDOW_DAYS: Record<number, number> = { 1: 10, 2: 5, 3: 2 };
+/** Finger spread (px) of one pinch zoom step. */
+const PINCH_STEP_PX = 32;
+
 const ARC_COLORS: Record<StoryArc['status'], string> = {
   active: 'rgba(74,222,128,.45)',
   planned: 'rgba(96,165,250,.45)',
@@ -30,38 +43,93 @@ interface HorizontalTimelineProps {
   /** Filtered, gameDay-ascending events of the campaign. */
   events: TimelineEvent[];
   arcs: StoryArc[];
+  /**
+   * Deep link (?event=<id>, e.g. from the global search): opens the event's
+   * card, centers its day in the window and highlights it briefly.
+   */
+  focusEventId?: number | null;
 }
 
 const posTransition = 'transition-[left,top,bottom,width,opacity] duration-300 ease-out';
 
-function ChipLink({
-  kind,
-  to,
-  title,
-  children,
-}: {
-  kind: 'session' | 'diary';
-  to: string;
-  title?: string;
-  children: React.ReactNode;
-}) {
-  const cls =
-    kind === 'session'
-      ? 'border-violet-400/50 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20'
-      : 'border-teal-400/35 bg-teal-400/10 text-teal-200 hover:bg-teal-400/20';
+/** Session + diary badges of an event; diaryLimit caps the badges with a "+x". */
+function EventLinkBadges({ event, diaryLimit }: { event: TimelineEvent; diaryLimit?: number }) {
+  const diaryLinks =
+    diaryLimit === undefined ? event.diaryLinks : event.diaryLinks.slice(0, diaryLimit);
   return (
-    <Link
-      to={to}
-      title={title}
-      onClick={(e) => e.stopPropagation()}
-      className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] transition ${cls}`}
-    >
-      {children}
-    </Link>
+    <>
+      <BadgeLink
+        size="sm"
+        variant="session"
+        to={`/sessions?session=${event.sessionId}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        Session
+      </BadgeLink>
+      {diaryLinks.map((link) => (
+        <BadgeLink
+          key={link.entryId}
+          size="sm"
+          variant="diary"
+          to={`/tagebuch?entry=${link.entryId}`}
+          title={link.displayName ? `Tagebuch von ${link.displayName}` : 'Tagebuch öffnen'}
+          onClick={(e) => e.stopPropagation()}
+        >
+          Tagebuch
+        </BadgeLink>
+      ))}
+      {diaryLimit !== undefined && event.diaryLinks.length > diaryLimit && (
+        <span className="text-[10px] text-slate-500">+{event.diaryLinks.length - diaryLimit}</span>
+      )}
+    </>
   );
 }
 
-export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
+/**
+ * Legacy pre-grouping events of the same day ("+N" badge): rendered inside the
+ * day's opened card (level 1) or group frame (level 2+, compact) so their
+ * content stays reachable.
+ */
+function ExtraEventList({
+  extras,
+  mappings,
+  compact = false,
+}: {
+  extras: TimelineEvent[];
+  mappings: EntityMapping[];
+  compact?: boolean;
+}) {
+  if (extras.length === 0) return null;
+  return (
+    <div className="mt-2 border-t border-dashed border-violet-400/30 pt-2">
+      <p className="chapter-caps text-[10px] text-violet-300">Weitere Ereignisse an diesem Tag</p>
+      {extras.map((extra) => (
+        <div
+          key={extra.id}
+          className="mt-1.5 rounded-lg border border-violet-400/25 bg-violet-100/[.03] p-2"
+        >
+          <p
+            className={`font-semibold leading-snug text-slate-100 ${compact ? 'text-[11px]' : 'text-[12px]'}`}
+          >
+            {extra.title}
+          </p>
+          {extra.description && (
+            <EntityRichText
+              content={extra.description}
+              mappings={mappings}
+              className={`mt-1 leading-relaxed text-slate-400 ${compact ? 'text-[10.5px] line-clamp-3' : 'text-[11px]'}`}
+            />
+          )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            <EventLinkBadges event={extra} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTimelineProps) {
   const { mappings } = useEntityMappings();
   const stageRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -69,20 +137,19 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
   const [start, setStart] = useState(1);
   const [openEventId, setOpenEventId] = useState<number | null>(null);
   const dragRef = useRef({ active: false, moved: false, lastX: 0 });
+  const pinchRef = useRef<{ baseDist: number } | null>(null);
+  const pinchActiveRef = useRef(false);
   const startRef = useRef(start);
-  startRef.current = start;
+  useEffect(() => {
+    startRef.current = start;
+  }, [start]);
   const width = size.w;
 
-  const dayRange = useMemo(() => {
-    if (events.length === 0) return { min: 1, max: 10 };
-    const days = events.map((e) => e.gameDay);
-    return { min: Math.min(...days), max: Math.max(...days) };
-  }, [events]);
+  const dayRange = useMemo(() => computeDayRange(events), [events]);
 
   const windowDays = WINDOW_DAYS[level];
-  const pxD = width > 2 * PAD ? (width - 2 * PAD) / (windowDays - 1) : 0;
-  const clampStart = (v: number) => Math.max(1, Math.min(dayRange.max - windowDays + 1, v));
-  const xOf = (day: number) => PAD + (day - start) * pxD;
+  const pxD = pixelsPerDay(width, windowDays);
+  const xOf = (day: number) => dayToX(day, start, pxD);
 
   // Measure the stage for pixel-positioned layout.
   useEffect(() => {
@@ -101,62 +168,143 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
   useEffect(() => {
     if (width === 0 || initializedRef.current || events.length === 0) return;
     initializedRef.current = true;
-    setStart(clampStart(dayRange.max - windowDays + 2));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width, dayRange]);
+    setStart(clampStart(dayRange.max - windowDays + 2, dayRange.max, windowDays));
+  }, [width, events.length, dayRange.max, windowDays]);
 
-  function zoomBy(dir: 1 | -1) {
-    // Keep the window center anchored: zooming changes only the day count.
-    const oldCenter = startRef.current + windowDays / 2 - 0.5;
-    const newLevel = Math.max(1, Math.min(3, level + dir));
-    const newWindow = WINDOW_DAYS[newLevel];
-    setLevel(newLevel);
-    setStart(Math.max(1, Math.min(dayRange.max - newWindow + 1, oldCenter - newWindow / 2 + 0.5)));
-  }
+  // Deep link (?event=): open the event's card and center its day once the
+  // stage is measured. Declared after the latest-day jump so it wins on first
+  // mount; the highlight mirrors the diary deep link. The state updates run in
+  // a timer so the effect itself stays free of synchronous setState.
+  useEffect(() => {
+    if (focusEventId == null || width === 0) return;
+    const event = events.find((e) => e.id === focusEventId);
+    if (!event) return;
+    const openTimer = setTimeout(() => {
+      setOpenEventId(event.id);
+      setStart(clampStart(event.gameDay - windowDays / 2 + 0.5, dayRange.max, windowDays));
+    }, 0);
+    const highlightTimer = setTimeout(() => {
+      const element = stageRef.current?.querySelector(`[data-event-id="${event.id}"]`);
+      if (element) {
+        element.classList.add('ring-2', 'ring-[var(--accent)]');
+        setTimeout(() => element.classList.remove('ring-2', 'ring-[var(--accent)]'), 2000);
+      }
+    }, 350);
+    return () => {
+      clearTimeout(openTimer);
+      clearTimeout(highlightTimer);
+    };
+  }, [focusEventId, width, events, dayRange.max, windowDays]);
 
-  // Non-passive wheel handling: plain wheel pans, Ctrl+wheel zooms.
+  const zoomBy = useCallback(
+    (dir: 1 | -1) => {
+      // Keep the window center anchored: zooming changes only the day count.
+      const oldCenter = startRef.current + WINDOW_DAYS[level] / 2 - 0.5;
+      const newLevel = Math.max(1, Math.min(3, level + dir));
+      const newWindow = WINDOW_DAYS[newLevel];
+      setLevel(newLevel);
+      setStart(clampStart(oldCenter - newWindow / 2 + 0.5, dayRange.max, newWindow));
+    },
+    [level, dayRange.max]
+  );
+
+  // Non-passive wheel handling: plain wheel pans, Ctrl+wheel zooms. Scrollable
+  // event content (opened card, group frame) consumes the wheel first so its
+  // text can be scrolled instead of panning the whole timeline.
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
     const onWheel = (e: WheelEvent) => {
+      const scroller = (e.target as Element | null)?.closest?.('.tl-scroll');
+      if (scroller && scroller.scrollHeight > scroller.clientHeight) return;
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         zoomBy(e.deltaY < 0 ? 1 : -1);
       } else if (pxD > 0) {
-        setStart(clampStart(startRef.current - ((e.deltaY + e.deltaX) / pxD) * 1.6));
+        setStart(
+          clampStart(
+            startRef.current - ((e.deltaY + e.deltaX) / pxD) * 1.6,
+            dayRange.max,
+            WINDOW_DAYS[level]
+          )
+        );
       }
     };
     stage.addEventListener('wheel', onWheel, { passive: false });
     return () => stage.removeEventListener('wheel', onWheel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [level, width, dayRange]);
+  }, [pxD, zoomBy, dayRange.max, level]);
 
-  // Drag panning; a real drag suppresses the following click.
-  function onPointerDown(e: React.PointerEvent) {
-    dragRef.current = { active: true, moved: false, lastX: e.clientX };
-  }
+  // Touch pinch zoom: two fingers step through the zoom levels. The stage is
+  // touch-action: pan-y, so vertical scrolling (page and opened cards) stays
+  // native while horizontal drags and the pinch belong to the custom handlers.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const spread = (touches: TouchList) =>
+      Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length < 2) return;
+      e.preventDefault(); // own the two-finger gesture: no native scroll/zoom
+      pinchActiveRef.current = true;
+      dragRef.current.active = false;
+      dragRef.current.moved = true; // a pinch must not trigger the click
+      pinchRef.current = { baseDist: spread(e.touches) };
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!pinchActiveRef.current || e.touches.length < 2) return;
+      e.preventDefault();
+      const dist = spread(e.touches);
+      const base = pinchRef.current?.baseDist ?? dist;
+      if (Math.abs(dist - base) > PINCH_STEP_PX) {
+        zoomBy(dist > base ? 1 : -1);
+        pinchRef.current = { baseDist: dist };
+      }
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        pinchActiveRef.current = false;
+        pinchRef.current = null;
+      }
+    };
+    stage.addEventListener('touchstart', onTouchStart, { passive: false });
+    stage.addEventListener('touchmove', onTouchMove, { passive: false });
+    stage.addEventListener('touchend', onTouchEnd);
+    stage.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      stage.removeEventListener('touchstart', onTouchStart);
+      stage.removeEventListener('touchmove', onTouchMove);
+      stage.removeEventListener('touchend', onTouchEnd);
+      stage.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [zoomBy]);
+
+  // Drag panning (mouse or single-finger swipe); a real drag suppresses the
+  // following click. While a pinch is active, panning pauses.
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      if (pinchActiveRef.current) return;
       if (!dragRef.current.active || pxD === 0) return;
       const dx = e.clientX - dragRef.current.lastX;
       if (Math.abs(dx) > 3) dragRef.current.moved = true;
       dragRef.current.lastX = e.clientX;
-      setStart(clampStart(startRef.current - dx / pxD));
+      setStart(clampStart(startRef.current - dx / pxD, dayRange.max, WINDOW_DAYS[level]));
     };
     const onUp = () => {
       dragRef.current.active = false;
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pxD, level, dayRange]);
+  }, [pxD, dayRange.max, level]);
 
   // Group events per day: the first one is the visible primary, extras collapse
-  // into a "+N" badge (only possible on legacy data before the grouping prompt).
+  // into a "+N" badge (only possible on legacy data before the grouping prompt)
+  // and are listed inside the day's card/frame.
   const byDay = useMemo(() => {
     const groups = new Map<number, TimelineEvent[]>();
     for (const ev of events) {
@@ -171,52 +319,46 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
   const windowEnd = start + windowDays - 1;
   const inWindow = (day: number) => day >= start - 1 && day <= windowEnd + 1;
   const latestId = events[events.length - 1]?.id ?? -1;
-  // Frame width adapts to the day spacing so adjacent days never collide.
-  const frameW = Math.max(200, Math.min(level >= 3 ? 470 : 330, pxD - 24));
-  const evtOffsets = useMemo(
-    () => byDay.map((_, i) => (i % 2 === 0 ? 'up' : 'down') as 'up' | 'down'),
-    [byDay]
-  );
+  const frameW = frameWidth(level, pxD);
+  const evtSides = useMemo(() => alternatingSides(byDay.length), [byDay]);
 
-  // Sequential overlap resolution per side: cards and frames of same-side
-  // events never overlap horizontally (the pin keeps its true axis position;
-  // only the card/frame and its stem shift to the next free slot).
   const layoutLefts = useMemo(() => {
-    const cards = new Map<number, number>();
-    const frames = new Map<number, number>();
-    if (pxD === 0) return { cards, frames };
-    for (const side of ['up', 'down'] as const) {
-      let prevRight = -Infinity;
-      let prevFrameRight = -Infinity;
-      byDay.forEach(([day, group], i) => {
-        if (evtOffsets[i] !== side) return;
-        // Hidden events must not consume slots and push visible events offstage.
-        if (!inWindow(day)) return;
-        const x = xOf(day);
-        // The opened card gets a wider slot so the description has room.
-        const cardW = group[0].id === openEventId ? OPEN_CARD_W : CARD_W;
-        const cardLeft = Math.max(x - cardW / 2, prevRight + 8);
-        cards.set(day, cardLeft);
-        prevRight = cardLeft + cardW;
-        const frameLeft = Math.max(x - frameW / 2, prevFrameRight + 8);
-        frames.set(day, frameLeft);
-        prevFrameRight = frameLeft + frameW;
-      });
-    }
-    return { cards, frames };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [byDay, evtOffsets, start, width, level, pxD, openEventId]);
+    const pxD = pixelsPerDay(width, windowDays);
+    return computeLayout({
+      groups: byDay,
+      sides: evtSides,
+      start,
+      windowDays,
+      pxD,
+      openEventId,
+      frameW: frameWidth(level, pxD),
+    });
+  }, [byDay, evtSides, start, windowDays, width, openEventId, level]);
+
+  const chapterBoxes = useMemo(
+    () =>
+      layoutChapterLabels(arcs, {
+        start,
+        windowDays,
+        maxDay: dayRange.max,
+        width,
+        pxD: pixelsPerDay(width, windowDays),
+      }),
+    [arcs, start, windowDays, dayRange.max, width]
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
         ref={stageRef}
-        onPointerDown={onPointerDown}
+        onPointerDown={(e) => {
+          dragRef.current = { active: true, moved: false, lastX: e.clientX };
+        }}
         onClick={(e) => {
           if (dragRef.current.moved) return;
           if (!(e.target as HTMLElement).closest('.tl-evt')) setOpenEventId(null);
         }}
-        className="relative min-h-[340px] flex-1 cursor-grab overflow-hidden rounded-2xl border border-violet-500/30 active:cursor-grabbing"
+        className="relative min-h-[340px] flex-1 cursor-grab touch-pan-y overflow-hidden rounded-2xl border border-violet-500/30 active:cursor-grabbing"
         style={{
           backgroundImage:
             'radial-gradient(ellipse at 15% 20%, rgba(139,92,246,.12), transparent 55%), radial-gradient(ellipse at 85% 80%, rgba(45,212,191,.10), transparent 55%), linear-gradient(180deg, #171232 0%, #0e0b21 100%)',
@@ -225,10 +367,11 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
         {/* Interaction legend (bottom-right corner) */}
         <div className="pointer-events-none absolute bottom-2 right-3 z-30 rounded-lg border border-[var(--border)] bg-[#0e0b21]/85 px-2.5 py-1.5 text-[10px] leading-relaxed text-slate-400 backdrop-blur-sm">
           <p>
-            <b className="text-slate-300">Mausrad</b> · Ausschnitt bewegen
+            <b className="text-slate-300">Mausrad / Wischen</b> · Ausschnitt bewegen
           </p>
           <p>
-            <b className="text-slate-300">Strg + Mausrad</b> · Zoom: Unter-Ereignisse aufklappen
+            <b className="text-slate-300">Strg+Mausrad / 2 Finger</b> · Zoom: Unter-Ereignisse
+            aufklappen
           </p>
           <p>
             <b className="text-slate-300">Klick</b> · Details öffnen
@@ -252,6 +395,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
           const visible = arc.gameDayStart !== null && from <= to;
           const x1 = xOf(from);
           const x2 = xOf(to);
+          const label = chapterBoxes.get(arc.id);
           const rangeLabel =
             arc.gameDayStart !== null
               ? `Spieltag ${arc.gameDayStart}${arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart ? `–${arc.gameDayEnd}` : ''}`
@@ -271,11 +415,12 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                 className={`absolute text-center ${posTransition}`}
                 style={{
                   // Pinned to the bottom edge so labels never collide with
-                  // group frames or cards near the axis.
-                  left: Math.max(90, Math.min(width - 90, (x1 + x2) / 2)),
+                  // group frames or cards near the axis; layoutChapterLabels
+                  // hides labels that would overlap each other.
+                  left: label?.left ?? 0,
                   bottom: 14,
                   transform: 'translate(-50%, 0)',
-                  opacity: visible && x2 - x1 > 130 ? 1 : 0,
+                  opacity: visible && (label?.visible ?? false) ? 1 : 0,
                 }}
               >
                 <span className="chapter-caps block text-[10px] leading-none text-violet-300/90">
@@ -322,13 +467,16 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
           return ticks;
         })()}
 
-        {/* Events: marker + group frame */}
+        {/* Events: marker + group frame. Days outside the window plus a small
+            buffer stay unmounted (DOM culling); the buffer keeps pan
+            transitions smooth because they fade in before entering the view. */}
         {byDay.map(([day, group], groupIndex) => {
+          if (day < start - CULL_DAYS || day > windowEnd + CULL_DAYS) return null;
           const primary = group[0];
-          const extras = group.length - 1;
+          const extras = group.slice(1);
           const x = xOf(day);
           const visible = inWindow(day);
-          const side = evtOffsets[groupIndex];
+          const side = evtSides[groupIndex];
           const open = openEventId === primary.id;
           const isLatest = primary.id === latestId;
           const markerOffset = 'calc(50% + 26px)';
@@ -337,6 +485,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
             <div key={primary.id}>
               {/* Level-1 marker card */}
               <div
+                data-event-id={primary.id}
                 className={`tl-evt absolute ${posTransition}`}
                 style={{
                   left: layoutLefts.cards.get(day) ?? x - CARD_W / 2,
@@ -359,6 +508,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                 />
                 <button
                   type="button"
+                  aria-label={primary.title}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (level >= 2) return; // the group frame carries the details
@@ -396,7 +546,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                   }}
                   className={`cursor-pointer rounded-xl border p-2.5 text-[12px] transition ${
                     open
-                      ? 'border-violet-300/70 shadow-[0_0_22px_rgba(168,85,247,.35)]'
+                      ? 'tl-scroll border-violet-300/70 shadow-[0_0_22px_rgba(168,85,247,.35)]'
                       : 'border-violet-400/35 shadow-[0_10px_26px_rgba(0,0,0,.45)] hover:border-violet-300/60'
                   }`}
                   style={{
@@ -408,7 +558,9 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                     // Never clip at the stage edge: the open card caps at the
                     // half-stage height (pixel-based - a CSS percentage would
                     // not resolve against the auto-height parent) and scrolls
-                    // internally instead of overflowing the stage.
+                    // internally instead of overflowing the stage. The stage is
+                    // touch-action: pan-y, so this scroll also works on touch;
+                    // tl-scroll lets the wheel handler skip panning here.
                     maxHeight: open ? `${Math.max(0, Math.round(size.h / 2 - 48))}px` : undefined,
                     overflowY: open ? 'auto' : undefined,
                   }}
@@ -454,23 +606,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                         />
                       )}
                       <div className="mt-2 flex flex-wrap items-center gap-1">
-                        <ChipLink kind="session" to={`/sessions?session=${primary.sessionId}`}>
-                          Session
-                        </ChipLink>
-                        {primary.diaryLinks.map((link) => (
-                          <ChipLink
-                            key={link.entryId}
-                            kind="diary"
-                            to={`/tagebuch?entry=${link.entryId}`}
-                            title={
-                              link.displayName
-                                ? `Tagebuch von ${link.displayName}`
-                                : 'Tagebuch öffnen'
-                            }
-                          >
-                            Tagebuch
-                          </ChipLink>
-                        ))}
+                        <EventLinkBadges event={primary} />
                       </div>
                       {primary.scenes.length > 0 && (
                         <div className="mt-2 border-t border-dashed border-violet-400/30 pt-2">
@@ -494,6 +630,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                           ))}
                         </div>
                       )}
+                      <ExtraEventList extras={extras} mappings={mappings} />
                     </>
                   )}
                 </div>
@@ -501,7 +638,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
 
               {/* Level-2/3 group frame: main event header + sub-event cards */}
               <div
-                className={`absolute rounded-xl border border-violet-400/55 p-2.5 shadow-[0_14px_34px_rgba(0,0,0,.5),0_0_22px_rgba(168,85,247,.2)] ${posTransition}`}
+                className={`tl-scroll absolute rounded-xl border border-violet-400/55 p-2.5 shadow-[0_14px_34px_rgba(0,0,0,.5),0_0_22px_rgba(168,85,247,.2)] ${posTransition}`}
                 style={{
                   left: Math.max(
                     10,
@@ -535,18 +672,7 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                     {primary.title}
                   </span>
                   <span className="ml-auto flex flex-none items-center gap-1">
-                    <ChipLink kind="session" to={`/sessions?session=${primary.sessionId}`}>
-                      Session
-                    </ChipLink>
-                    {primary.diaryLinks.slice(0, 2).map((link) => (
-                      <ChipLink
-                        key={link.entryId}
-                        kind="diary"
-                        to={`/tagebuch?entry=${link.entryId}`}
-                      >
-                        Tagebuch
-                      </ChipLink>
-                    ))}
+                    <EventLinkBadges event={primary} diaryLimit={2} />
                   </span>
                 </div>
                 <div className="flex flex-wrap items-stretch gap-2">
@@ -572,27 +698,27 @@ export function HorizontalTimeline({ events, arcs }: HorizontalTimelineProps) {
                     <p className="text-[11px] text-slate-500">Keine Unter-Ereignisse erfasst.</p>
                   )}
                 </div>
+                <ExtraEventList extras={extras} mappings={mappings} compact />
               </div>
 
-              {/* "+N" badge for legacy multi-event days */}
-              {visible && extras > 0 && (
+              {/* "+N" badge for legacy multi-event days; from level 2 on the
+                  group frame lists the extras, so the badge is level-1 only. */}
+              {visible && extras.length > 0 && level === 1 && (
                 <button
                   type="button"
+                  aria-label={`Weitere Ereignisse: ${extras.map((o) => o.title).join(', ')}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setOpenEventId(primary.id);
                   }}
-                  title={`Weitere Ereignisse: ${group
-                    .slice(1)
-                    .map((o) => o.title)
-                    .join(', ')}`}
+                  title={`Weitere Ereignisse: ${extras.map((o) => o.title).join(', ')}`}
                   className="absolute z-20 -translate-x-1/2 cursor-pointer rounded-full border border-violet-400/50 bg-[#221a4d] px-2 py-0.5 text-[10px] font-bold text-violet-200 shadow-lg hover:brightness-110"
                   style={{
                     left: x,
                     ...(side === 'up' ? { top: frameOffset } : { bottom: frameOffset }),
                   }}
                 >
-                  +{extras}
+                  +{extras.length}
                 </button>
               )}
             </div>

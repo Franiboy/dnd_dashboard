@@ -4,6 +4,7 @@ import type {
   KnowledgeSearchHit,
   SearchResult,
   SessionSearchHit,
+  TimelineSearchHit,
 } from '../../shared/types.js';
 
 /**
@@ -151,6 +152,39 @@ function hydrateKnowledge(rows: IndexRow[]): KnowledgeSearchHit[] {
   return hits;
 }
 
+function hydrateTimeline(rows: IndexRow[]): TimelineSearchHit[] {
+  const get = db.prepare(
+    `SELECT e.title, e.game_day, e.arc_id, e.session_id, s.name AS session_name
+     FROM timeline_events e
+     LEFT JOIN recording_sessions s ON s.id = e.session_id
+     WHERE e.id = ?`
+  );
+  const hits: TimelineSearchHit[] = [];
+  for (const row of rows) {
+    const event = get.get(row.source_id) as
+      | {
+          title: string;
+          game_day: number;
+          arc_id: number | null;
+          session_id: number;
+          session_name: string | null;
+        }
+      | undefined;
+    if (!event) continue;
+    hits.push({
+      source: 'timeline',
+      id: row.source_id,
+      title: event.title,
+      snippet: row.snippet,
+      gameDay: event.game_day,
+      arcId: event.arc_id,
+      sessionId: event.session_id,
+      sessionName: event.session_name,
+    });
+  }
+  return hits;
+}
+
 export interface GlobalSearchOptions {
   /** Acting user; diary hits are restricted to their own entries. */
   userId: string;
@@ -161,9 +195,9 @@ export interface GlobalSearchOptions {
 }
 
 /**
- * Ranked full-text search across diary entries, recording sessions and world
- * knowledge facts. Result groups keep a stable source order; within a group
- * hits are ordered by FTS5 bm25 relevance.
+ * Ranked full-text search across diary entries, recording sessions, world
+ * knowledge facts and timeline events. Result groups keep a stable source
+ * order; within a group hits are ordered by FTS5 bm25 relevance.
  */
 export function globalSearch(query: string, options: GlobalSearchOptions): SearchResult[] {
   const match = buildFtsQuery(query);
@@ -189,6 +223,7 @@ export function globalSearch(query: string, options: GlobalSearchOptions): Searc
   const knowledge = hydrateKnowledge(
     searchIndex(match, " AND source_type = 'knowledge'", [], limit)
   );
+  const timeline = hydrateTimeline(searchIndex(match, " AND source_type = 'timeline'", [], limit));
 
-  return [...diary, ...sessions, ...knowledge];
+  return [...diary, ...sessions, ...knowledge, ...timeline];
 }
