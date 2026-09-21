@@ -1,14 +1,10 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
 import { AppSwitcher } from './AppSwitcher';
 import { GlobalSearch } from './GlobalSearch';
 import { StoryArcFilter } from './StoryArcFilter';
 import { UserMenu } from './UserMenu';
 import { useAuth } from '../hooks/useAuth';
 import type { SafeUser, VersionInfo } from '../../shared/types';
-
-// Routes the global story-arc filter applies to; shown in the header there.
-const STORY_ARC_FILTER_PATHS = ['/sessions', '/tagebuch', '/welt', '/zeitleiste'];
 
 interface LayoutProps {
   user: SafeUser;
@@ -21,7 +17,6 @@ interface LayoutProps {
 export function Layout({ user, realUser, version, onLogout, children }: LayoutProps) {
   const isSimulating = realUser !== undefined && realUser !== null && realUser.id !== user.id;
   const { clearViewAsUser } = useAuth();
-  const location = useLocation();
   const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -40,12 +35,12 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
   }, []);
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-screen supports-[height:100dvh]:h-dvh flex flex-col overflow-hidden">
       <header
         ref={headerRef}
-        className="relative z-50 flex flex-col border-b border-[var(--border)] bg-[var(--panel)]"
+        className="relative z-50 flex shrink-0 flex-col border-b border-[var(--border)] bg-[var(--panel)]"
       >
-        <div className="flex items-center gap-2 px-3 sm:px-6 py-2">
+        <div className="flex flex-wrap items-center gap-2 px-3 sm:px-6 py-2">
           {/* Left: user menu (Discord avatar, role, logout) */}
           <UserMenu
             user={user}
@@ -53,16 +48,22 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
             onExitSimulation={isSimulating ? clearViewAsUser : undefined}
           />
 
-          {/* Middle: chapter filter and the app switcher, centered as a group */}
-          <div className="flex min-w-0 flex-1 items-center justify-center gap-3">
-            {STORY_ARC_FILTER_PATHS.includes(location.pathname) && <StoryArcFilter />}
-            <div className="flex min-w-0 max-w-full items-center overflow-x-auto">
-              <AppSwitcher user={user} version={version} />
-            </div>
+          {/* Middle: chapter filter and the app switcher, centered as a group.
+              Only on very narrow phones it moves to its own full-width row
+              below, where one row would genuinely be too cramped; from 480px
+              on it shares the single header row. With a non-zero basis the
+              line break would be decided on the section's max-content width
+              (untruncated arc name, app rail) before shrinking could kick in,
+              wrapping the header even though shrinking would fit: the arc
+              filter truncates and the app switcher collapses to its popup
+              button when the rail no longer fits. */}
+          <div className="order-last flex min-w-0 flex-1 basis-full items-center justify-center gap-3 min-[480px]:order-none min-[480px]:basis-0">
+            <StoryArcFilter />
+            <AppSwitcher user={user} version={version} />
           </div>
 
           {/* Right: global search */}
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <GlobalSearch user={user} version={version} />
           </div>
         </div>

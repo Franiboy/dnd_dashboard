@@ -15,11 +15,27 @@ export interface TimelineRunProgress {
   currentSessionName: string | null;
 }
 
+let running = false;
+
 export function isTimelineRunRunning(): boolean {
   return running;
 }
 
-let running = false;
+/**
+ * Atomically reserves the single timeline-generation slot: the check-and-set
+ * runs synchronously on the Node event loop, so two entry points can never
+ * both acquire. Returns the release function, or null when a generation is
+ * already active. Shared by the manual campaign run, the nightly job step and
+ * the targeted single-session regeneration, so concurrent AI runs can never
+ * interleave and overwrite each other's events.
+ */
+export function acquireTimelineRun(): (() => void) | null {
+  if (running) return null;
+  running = true;
+  return () => {
+    running = false;
+  };
+}
 
 /**
  * Generates/refreshes the timeline events of every session that is pending
@@ -66,15 +82,15 @@ export async function processPendingTimelineSessions(
 export function runTimelineGenerationNow(
   onProgress?: (progress: TimelineRunProgress) => void
 ): boolean {
-  if (running) {
+  const release = acquireTimelineRun();
+  if (!release) {
     log.info('Timeline generation already running; skipping manual trigger');
     return false;
   }
-  running = true;
   processPendingTimelineSessions(onProgress)
     .catch((err) => log.error(`Timeline generation failed: ${err}`))
     .finally(() => {
-      running = false;
+      release();
       onProgress?.({
         status: 'Aktualisierung der Zeitleiste abgeschlossen.',
         done: true,

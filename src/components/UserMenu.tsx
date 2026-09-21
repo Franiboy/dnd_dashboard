@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SafeUser, UserRole } from '../../shared/types';
 import { AppIcon } from './AppIcon';
 import { Avatar } from './Avatar';
+import { useAuth } from '../hooks/useAuth';
+import { useError } from '../hooks/useError';
+import { useTheme } from '../hooks/useTheme';
+import { buildTheme, isValidHexColor } from '../lib/color';
 
 interface UserMenuProps {
   user: SafeUser;
@@ -16,10 +20,86 @@ const ROLE_LABELS: Record<UserRole, string> = {
   player: 'Spieler',
 };
 
+/** Curated starting points; the default green stays one click away. */
+const PRESET_COLORS = [
+  '#22c55e',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#ef4444',
+  '#f97316',
+  '#eab308',
+  '#06b6d4',
+];
+
+const FALLBACK_PICKER_VALUE = '#22c55e';
+
+const PREVIEW_CHIPS = [
+  { name: '--accent', label: 'Akzent' },
+  { name: '--accent-dim', label: 'Abgedunkelt' },
+  { name: '--accent-2', label: 'Komplementär' },
+  { name: '--panel', label: 'Hintergrund' },
+] as const;
+
 export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const { updateUser } = useAuth();
+  const { showError } = useError();
+  const { themePrimary, preview, previewTheme, endPreview } = useTheme();
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Last previewed value that still needs persisting; undefined = nothing pending.
+  const pendingSave = useRef<string | null | undefined>(undefined);
+
+  const persistTheme = useCallback(
+    async (hex: string | null) => {
+      try {
+        const res = await fetch('/api/me/theme', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ primary: hex }),
+          credentials: 'include',
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Speichern fehlgeschlagen');
+        updateUser({ themePrimary: data.user.themePrimary });
+      } catch {
+        showError('Farbe konnte nicht gespeichert werden');
+      } finally {
+        endPreview();
+      }
+    },
+    [updateUser, showError, endPreview]
+  );
+
+  /** Preview live and schedule the save (debounced while dragging the picker). */
+  const applyThemeColor = useCallback(
+    (hex: string | null) => {
+      previewTheme(hex);
+      pendingSave.current = hex;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        saveTimer.current = null;
+        pendingSave.current = undefined;
+        void persistTheme(hex);
+      }, 500);
+    },
+    [previewTheme, persistTheme]
+  );
+
+  // Closing the menu flushes a pending color save so "pick, then click away"
+  // still persists what was previewed.
+  useEffect(() => {
+    if (open || !saveTimer.current) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    if (pendingSave.current !== undefined) {
+      const hex = pendingSave.current;
+      pendingSave.current = undefined;
+      void persistTheme(hex);
+    }
+  }, [open, persistTheme]);
 
   useEffect(() => {
     if (!open) return;
@@ -51,6 +131,13 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
 
   const menuItemClass =
     'flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]';
+
+  const savedColor = isValidHexColor(themePrimary) ? themePrimary : null;
+  // While the picker is mid-edit the chips and the whole UI reflect the preview.
+  const activeColor = preview ? preview.hex : savedColor;
+  const previewTokens = buildTheme(activeColor);
+  // Only shown inside the free-picker affordance when it isn't a preset swatch.
+  const customColor = activeColor && !PRESET_COLORS.includes(activeColor) ? activeColor : null;
 
   return (
     <div ref={rootRef} className="relative shrink-0 self-stretch flex items-center">
@@ -91,6 +178,89 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
               </span>
               <span className="text-[11px] text-slate-400">{roleLabel}</span>
             </span>
+          </div>
+
+          <div className="border-b border-[var(--border)] px-1 pb-2 pt-1.5">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Design-Farbe
+              </span>
+              {activeColor && (
+                <button
+                  type="button"
+                  onClick={() => applyThemeColor(null)}
+                  className="text-[11px] text-slate-400 transition-colors hover:text-[var(--text-h)]"
+                >
+                  Zurücksetzen
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {PRESET_COLORS.map((hex) => (
+                <button
+                  key={hex}
+                  type="button"
+                  aria-label={`Design-Farbe ${hex}`}
+                  aria-pressed={activeColor === hex}
+                  onClick={() => applyThemeColor(hex)}
+                  className={`h-6 w-6 rounded-full border border-white/10 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-h)] ${
+                    activeColor === hex
+                      ? 'ring-2 ring-[var(--text-h)] ring-offset-1 ring-offset-[var(--panel)]'
+                      : ''
+                  }`}
+                  style={{ backgroundColor: hex }}
+                />
+              ))}
+              {/* Free picker: a hue-wheel affordance clearly distinct from the
+                  preset swatches; the native input rides invisibly on top. */}
+              <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-[var(--border)]" />
+              <span className="relative inline-flex" title="Eigene Farbe wählen">
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-full ring-1 ring-white/20"
+                  style={{
+                    background:
+                      'conic-gradient(from 180deg, #f87171, #fb923c, #fde047, #4ade80, #22d3ee, #60a5fa, #a78bfa, #f472b6, #f87171)',
+                  }}
+                >
+                  {customColor ? (
+                    <span
+                      className="h-4 w-4 rounded-full border border-white/70 shadow-sm"
+                      style={{ backgroundColor: customColor }}
+                    />
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={3}
+                      strokeLinecap="round"
+                      className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.7)]"
+                    >
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  )}
+                </span>
+                <input
+                  type="color"
+                  aria-label="Eigene Farbe wählen"
+                  value={activeColor ?? FALLBACK_PICKER_VALUE}
+                  onChange={(e) => applyThemeColor(e.target.value.toLowerCase())}
+                  className="absolute inset-0 h-full w-full cursor-pointer rounded-full opacity-0"
+                />
+              </span>
+            </div>
+            {activeColor && (
+              <div className="mt-2 flex items-center gap-1" aria-hidden="true">
+                {PREVIEW_CHIPS.map(({ name, label }) => (
+                  <span
+                    key={name}
+                    title={label}
+                    className="h-3 w-8 rounded-sm border border-white/10"
+                    style={{ backgroundColor: previewTokens[name] }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           {onExitSimulation && (

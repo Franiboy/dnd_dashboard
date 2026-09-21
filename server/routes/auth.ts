@@ -34,6 +34,7 @@ import {
   recordFailedLogin,
   resetFailedLogins,
   setUserSessionDiarySettings,
+  setUserTheme,
   storeDiscordTokens,
   toSafeUser,
   updateDiscordProfile,
@@ -66,6 +67,14 @@ const booleanFlag = z.preprocess((v) => (typeof v === 'boolean' ? v : false), z.
 const sessionDiarySettingsSchema = z.object({
   autoSessionToDiary: booleanFlag,
   autoAcceptSessionDiary: booleanFlag,
+});
+
+const themeSchema = z.object({
+  // null resets to the default theme; otherwise a strict #rrggbb color.
+  primary: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Ungültige Farbe')
+    .nullable(),
 });
 
 const loginSchema = z.object({
@@ -248,6 +257,16 @@ router.put('/me/session-diary-settings', authMiddleware, (req: AuthRequest, res)
     autoSessionToDiary,
     autoAcceptSessionDiary
   );
+  if (!user) {
+    throw new AppError(500, 'Speichern fehlgeschlagen');
+  }
+  res.json({ ok: true, user });
+});
+
+router.put('/me/theme', authMiddleware, (req: AuthRequest, res) => {
+  const { primary } = parseWith(themeSchema, req.body);
+
+  const user = setUserTheme(req.user!.id, primary ? primary.toLowerCase() : null);
   if (!user) {
     throw new AppError(500, 'Speichern fehlgeschlagen');
   }

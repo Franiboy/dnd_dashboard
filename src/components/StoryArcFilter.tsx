@@ -25,13 +25,13 @@ export function StoryArcFilter() {
     : 'Kapitel-Filter (wirkt auf Sessions, Tagebuch und Welt)';
 
   return (
-    <div ref={ref} className="flex shrink-0 items-center">
+    <div ref={ref} className="flex min-w-0 max-w-full items-center">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         title={triggerTitle}
-        className={`inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition hover:brightness-110 ${
+        className={`inline-flex min-h-11 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition hover:brightness-110 ${
           selectedArc
             ? 'border-amber-400/60 bg-amber-400/10 text-amber-100'
             : 'border-[var(--border)] bg-slate-900/60 text-slate-300'

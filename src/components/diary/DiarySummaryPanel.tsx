@@ -53,7 +53,7 @@ export function DiarySummaryPanel({
                 title="Zusammenfassung aktualisieren"
                 onClick={onGenerate}
                 disabled={working || processing}
-                className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-slate-900 font-semibold hover:brightness-110 transition disabled:opacity-50"
+                className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
               >
                 {processing ? 'Wird generiert...' : entry.summary ? 'Aktualisieren' : 'Generieren'}
               </button>

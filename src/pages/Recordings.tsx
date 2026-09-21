@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import { ActionMenu, type ActionMenuItem } from '../components/ActionMenu';
+import { BadgeLink } from '../components/BadgeLink';
 import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -90,17 +92,11 @@ function SessionDiaryTransferBadge({ transfer }: { transfer: SessionDiaryTransfe
     : transfer.autoAccepted
       ? 'In Tagebuch übernommen'
       : 'KI-Tagebuch-Entwurf';
-  const colorClasses = transfer.isOutdated
-    ? 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20'
-    : transfer.autoAccepted
-      ? 'bg-[var(--accent)]/10 text-[var(--accent)] border-[var(--accent)]/20'
-      : 'bg-slate-800 text-slate-300 border-slate-700';
+  const variant = transfer.isOutdated ? 'warning' : transfer.autoAccepted ? 'accent' : 'neutral';
   return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${colorClasses}`}
-    >
+    <BadgeLink to={`/tagebuch?entry=${transfer.entryId}`} variant={variant} title="Tagebuch öffnen">
       {label}
-    </span>
+    </BadgeLink>
   );
 }
 
@@ -356,6 +352,73 @@ export function Sessions({ user }: SessionsProps) {
     setAudioToDelete(null);
     await request(`/api/recordings/${audioToDelete}/delete-audio`, { method: 'POST' });
     setWorking(false);
+  }
+
+  /** Admin maintenance actions for one session, offered in its kebab menu. */
+  function adminMenuItems(session: RecordingSession): ActionMenuItem[] {
+    if (!user.isAdmin) return [];
+    const items: ActionMenuItem[] = [];
+
+    if (
+      (session.status === 'pending_transcription' ||
+        session.status === 'error' ||
+        session.status === 'completed') &&
+      session.hasWavFiles
+    ) {
+      items.push({
+        id: 'transcribe',
+        label: session.status === 'error' ? 'Transkription wiederholen' : 'Jetzt transkribieren',
+        disabled: working,
+        onSelect: () => startTranscriptionNow(session.id),
+      });
+    }
+
+    if (session.status === 'completed') {
+      items.push({
+        id: 'improve-transcript',
+        label:
+          improvingId === session.id
+            ? 'Verbessern...'
+            : session.transcriptImprovedAt
+              ? 'Skript erneut verbessern'
+              : 'Skript verbessern',
+        disabled: working || improvingId === session.id,
+        onSelect: () => improveTranscript(session.id),
+      });
+      items.push({
+        id: 'summary',
+        label:
+          summarizingId === session.id
+            ? 'Zusammenfassung...'
+            : session.longSummary
+              ? 'Zusammenfassung erneuern'
+              : 'Zusammenfassung erstellen',
+        disabled: working || summarizingId === session.id,
+        onSelect: () => generateSummary(session.id),
+      });
+    }
+
+    if (session.hasWavFiles && session.status !== 'recording' && session.status !== 'processing') {
+      items.push({
+        id: 'delete-audio',
+        label: 'Audiodateien löschen',
+        danger: true,
+        disabled: working,
+        onSelect: () => startDeleteAudio(session.id),
+      });
+    }
+
+    if (isDeletableSession(session)) {
+      items.push({
+        id: 'delete-session',
+        label: 'Session löschen',
+        danger: true,
+        disabled: working,
+        onSelect: () => startDeleteSession(session.id),
+      });
+    }
+
+    return items;
   }
 
   async function trimTranscriptFromStart(sessionId: number, seconds: number) {
@@ -702,7 +765,7 @@ export function Sessions({ user }: SessionsProps) {
   }
 
   return (
-    <div className="min-h-full p-6">
+    <div className="min-h-full p-4 sm:p-6">
       <SideDrawer side="right">
         <SideDrawerItem
           id="config"
@@ -948,7 +1011,7 @@ export function Sessions({ user }: SessionsProps) {
             }}
             className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 transition"
           >
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-2">
               <div>
                 <h3 className="text-lg font-semibold text-[var(--text-h)]">
                   {session.name}
@@ -1066,17 +1129,17 @@ export function Sessions({ user }: SessionsProps) {
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
                     <span className="text-slate-400">Tagebuch:</span>
                     {sessionDiaryEntries[session.id].map((entry) => (
-                      <Link
+                      <BadgeLink
                         key={entry.entryId}
+                        variant="diary"
                         to={`/tagebuch?entry=${entry.entryId}`}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20 hover:bg-[var(--accent)]/20 transition text-xs"
                         title={user.isAdmin ? `${entry.title} (${entry.displayName})` : entry.title}
                       >
                         {entry.title}
                         {user.isAdmin && (
                           <span className="text-slate-500">· {entry.displayName}</span>
                         )}
-                      </Link>
+                      </BadgeLink>
                     ))}
                   </div>
                 )}
@@ -1109,51 +1172,7 @@ export function Sessions({ user }: SessionsProps) {
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                {user.isAdmin && (
-                  <>
-                    {(session.status === 'pending_transcription' ||
-                      session.status === 'error' ||
-                      session.status === 'completed') &&
-                      session.hasWavFiles && (
-                        <Button
-                          variant="secondary"
-                          disabled={working}
-                          onClick={() => startTranscriptionNow(session.id)}
-                        >
-                          {session.status === 'error'
-                            ? 'Transkription wiederholen'
-                            : 'Jetzt transkribieren'}
-                        </Button>
-                      )}
-                    {session.status === 'completed' && (
-                      <Button
-                        variant="secondary"
-                        disabled={working || improvingId === session.id}
-                        onClick={() => improveTranscript(session.id)}
-                      >
-                        {improvingId === session.id
-                          ? 'Verbessern...'
-                          : session.transcriptImprovedAt
-                            ? 'Skript erneut verbessern'
-                            : 'Skript verbessern'}
-                      </Button>
-                    )}
-                    {session.status === 'completed' && (
-                      <Button
-                        variant="secondary"
-                        disabled={working || summarizingId === session.id}
-                        onClick={() => generateSummary(session.id)}
-                      >
-                        {summarizingId === session.id
-                          ? 'Zusammenfassung...'
-                          : session.longSummary
-                            ? 'Zusammenfassung erneuern'
-                            : 'Zusammenfassung erstellen'}
-                      </Button>
-                    )}
-                  </>
-                )}
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                 {session.status === 'completed' && (
                   <Button
                     variant="accent"
@@ -1174,27 +1193,11 @@ export function Sessions({ user }: SessionsProps) {
                       : 'Transkript anzeigen'}
                   </Button>
                 )}
-                {user.isAdmin &&
-                  session.hasWavFiles &&
-                  session.status !== 'recording' &&
-                  session.status !== 'processing' && (
-                    <Button
-                      variant="danger"
-                      disabled={working}
-                      onClick={() => startDeleteAudio(session.id)}
-                    >
-                      Audiodateien löschen
-                    </Button>
-                  )}
-                {user.isAdmin && isDeletableSession(session) && (
-                  <Button
-                    variant="danger"
-                    disabled={working}
-                    onClick={() => startDeleteSession(session.id)}
-                  >
-                    Löschen
-                  </Button>
-                )}
+                <ActionMenu
+                  ariaLabel={`Weitere Aktionen für ${session.name}`}
+                  items={adminMenuItems(session)}
+                  disabled={working}
+                />
               </div>
             </div>
 

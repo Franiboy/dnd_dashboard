@@ -24,14 +24,16 @@ export function ConfirmDialog({
   const confirmClasses =
     variant === 'danger'
       ? 'bg-[var(--danger)] text-white hover:bg-red-400'
-      : 'bg-[var(--accent)] text-slate-900 hover:bg-green-400';
+      : 'bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-        <h3 className="text-xl font-semibold text-[var(--text-h)] mb-2">{title}</h3>
-        <div className="text-slate-300 mb-6">{children}</div>
-        <div className="flex justify-end gap-3">
+      <div className="flex min-h-0 max-h-full min-w-0 flex-col overflow-y-auto bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-4 sm:p-6 max-w-sm w-full shadow-2xl">
+        <h3 className="shrink-0 wrap-anywhere text-xl font-semibold text-[var(--text-h)] mb-2">
+          {title}
+        </h3>
+        <div className="min-h-0 overflow-y-auto wrap-anywhere text-slate-300 mb-6">{children}</div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-3 [&>button]:min-h-11">
           <button
             onClick={onCancel}
             disabled={loading}
