@@ -1,28 +1,20 @@
 #!/usr/bin/env bash
-# One-shot server bootstrap for the D&D Dashboard self-hosted deploy setup.
+# One-shot server bootstrap for the D&D Dashboard application host.
 #
-# Reproduces the live server (see AGENTS.md on the host): GitHub Actions runner
-# + nvm-managed Node + systemd units/timers + nginx reverse proxy + sudoers
-# entries. Idempotent: safe to re-run; already-present pieces are skipped.
+# Installs nvm-managed Node, stable systemd units/timers, nginx and narrowly
+# scoped sudo rules. The production GitHub Actions runner is intentionally
+# registered to the separate private dnd_dashboard-deploy repository, not to
+# this public source repository.
 #
 # Manual, on the FIRST run only (not scriptable):
-#   1. Register a runner in GitHub UI: Settings > Actions > Runners > New,
-#      copy the token, then run with  RUNNER_TOKEN=<token> ./scripts/dnd-server-setup.sh
-#   2. Obtain the TLS cert:  sudo certbot --nginx -d <your-domain>
-#   3. Point DNS/Fritz.Box port-forward (443 -> this host) at the new server.
+#   1. Obtain the TLS cert: sudo certbot --nginx -d <your-domain>
+#   2. Point DNS/Fritz.Box port-forward (443 -> this host) at the new server.
 #
 # Requirements: bash, sudo (passwordless), network. Run as the deploy user.
 set -euo pipefail
 
 REPO_DIR="${DND_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DEPLOY_USER="${DND_DEPLOY_USER:-$USER}"
-RUNNER_DIR="${DND_RUNNER_DIR:-$HOME/actions-runner}"
-RUNNER_VERSION="${DND_RUNNER_VERSION:-2.337.0}"
-RUNNER_SHA256="${DND_RUNNER_SHA256:-70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613}"
-RUNNER_NAME="${DND_RUNNER_NAME:-dnd-runner}"
-RUNNER_LABELS="${DND_RUNNER_LABELS:-self-hosted,Linux,X64,HomeServer}"
-RUNNER_TOKEN="${RUNNER_TOKEN:-}"
-GIT_REPO="${DND_GIT_REPO:-Franiboy/dnd_dashboard}"
 NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 NVM_VERSION="${DND_NVM_VERSION:-0.40.3}"
 SERVICE_NAME="dnd-dashboard"
@@ -51,32 +43,10 @@ else
 fi
 grep -q NVM_SYMLINK_CURRENT "$HOME/.bashrc" 2>/dev/null || echo 'export NVM_SYMLINK_CURRENT=true' >> "$HOME/.bashrc"
 
-# --- 2. GitHub Actions runner ------------------------------------------------
-if [ -x "$RUNNER_DIR/bin/Runner.Listener" ]; then
-  log "runner already installed at $RUNNER_DIR ($($RUNNER_DIR/bin/Runner.Listener --version))"
-else
-  log "installing runner $RUNNER_VERSION into $RUNNER_DIR..."
-  mkdir -p "$RUNNER_DIR"
-  curl -fsSL -o /tmp/runner.tar.gz \
-    "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
-  echo "$RUNNER_SHA256  /tmp/runner.tar.gz" | sha256sum -c -
-  tar xzf /tmp/runner.tar.gz -C "$RUNNER_DIR"
-  rm -f /tmp/runner.tar.gz
-  "$RUNNER_DIR/bin/installdependencies.sh"
-  if [ -n "$RUNNER_TOKEN" ]; then
-    log "configuring runner '$RUNNER_NAME' for $GIT_REPO..."
-    (cd "$RUNNER_DIR" && ./config.sh --url "https://github.com/$GIT_REPO" \
-      --token "$RUNNER_TOKEN" --name "$RUNNER_NAME" --labels "$RUNNER_LABELS" --unattended --replace)
-    "$RUNNER_DIR/svc.sh" install "$DEPLOY_USER"
-  else
-    log "RUNNER_TOKEN empty - skipping runner registration and service installation. Re-run with RUNNER_TOKEN=<token>."
-  fi
-fi
-
-# --- 3. runtime directories --------------------------------------------------
+# --- 2. runtime directories --------------------------------------------------
 mkdir -p "$HOME/logs" "$HOME/backups/dnd" "$REPO_DIR/releases" "$REPO_DIR/recordings" "$REPO_DIR/data/keys"
 
-# --- 4. systemd units (dashboard, socket, timers) ---------------------------
+# --- 3. systemd units (dashboard, socket, timers) ---------------------------
 SERVICES=(dnd-dashboard.service dnd-dashboard.socket dnd-backup.service dnd-backup.timer dnd-healthcheck.service dnd-healthcheck.timer)
 # Unit templates use neutral placeholders (User=dnd, /home/dnd/...).
 deploy_home="$(getent passwd "$DEPLOY_USER" | cut -d: -f6)"
@@ -139,10 +109,10 @@ sudo chmod 440 "$SUDOERS_FILE"
 log "sudoers: $DEPLOY_USER may manage $SERVICE_NAME without password"
 
 # --- 7. first release ---------------------------------------------------------
-log "The first application release is deployed by the GitHub release workflow."
+log "The first application release is deployed by the private dnd_dashboard-deploy workflow."
 log "Do not start dnd-dashboard.service until /dnd_dashboard/current exists."
 
 log "Done. Remaining manual steps:"
 log "  - DNS/Fritz.Box port-forward to this host (HTTPS/443 only; Node remains on loopback)"
 log "  - sudo certbot --nginx -d <your-domain>"
-log "  - if runner was not registered: RUNNER_TOKEN=<token> $0"
+log "  - register the runner only in the private deployment repository"

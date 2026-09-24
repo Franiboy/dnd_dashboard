@@ -1,4 +1,4 @@
-name: CI/CD
+name: CI
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   ci:
@@ -49,60 +49,3 @@ jobs:
 
       - name: Build
         run: npm run build
-
-  trusted-ai-review:
-    name: Trusted AI review
-    needs: ci
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.base_ref == 'main' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login == 'Franiboy' &&
-      vars.DND_AI_REVIEW_ENABLED == 'true' &&
-      !contains(github.event.pull_request.labels.*.name, 'automerge')
-    runs-on: [self-hosted, Linux, X64, HomeServer]
-    timeout-minutes: 30
-    permissions:
-      actions: write
-      contents: write
-      pull-requests: write
-      checks: read
-    env:
-      AI_REVIEW_MODEL: opencode-go/gpt-6-luna
-      AI_HOLD_LABEL: hold
-      GITHUB_REPOSITORY: ${{ github.repository }}
-      PR_ACTOR: ${{ github.event.pull_request.user.login }}
-      HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-      PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-    steps:
-      - name: Checkout exact PR revision
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Restore writable PR branch context
-        shell: bash
-        run: git switch -C "$PR_BRANCH"
-
-      - name: Setup Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version-file: .nvmrc
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Put OpenCode on PATH
-        run: echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
-
-      - name: AI review, merge and trigger release
-        env:
-          AI_GITHUB_TOKEN: ${{ secrets.AI_GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.AI_GITHUB_TOKEN || github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_BRANCH: ${{ github.base_ref }}
-          RELEASE_WORKFLOW: release.yml
-        run: bash scripts/ai-review.sh

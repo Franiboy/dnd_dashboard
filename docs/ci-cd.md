@@ -1,123 +1,100 @@
 # CI/CD Pipeline
 
-The project uses separate trust domains:
+The public source repository and the production runner are separate trust
+boundaries.
 
-- **Untrusted CI:** `.github/workflows/ci-cd.yml` runs pull-request checks on
-  GitHub-hosted `ubuntu-24.04`. It has read-only repository permissions and no
-  access to the production host.
-- **Trusted review:** The AI job runs only for the configured maintainer's
-  same-repository pull requests on the local runner. Fork pull requests never
-  receive the write-capable token or the local runner.
-- **Release:** `.github/workflows/release.yml` builds the exact commit on a
-  GitHub-hosted runner, uploads a checksummed artifact, and promotes it in a
-  separate job on the local `HomeServer` runner.
+- **Public CI:** `.github/workflows/ci-cd.yml` runs only on GitHub-hosted
+  `ubuntu-24.04` runners. It has read-only repository permissions and no access
+  to the production host.
+- **Public release build:** `.github/workflows/release.yml` builds an exact
+  source commit, verifies the artifact, and publishes the checksummed files as
+  a GitHub Release asset. It has no self-hosted job.
+- **Private deployment:** `Franiboy/dnd_dashboard-deploy` contains the manual
+  production workflow. Its local `HomeServer` runner is registered only to that
+  private repository and accepts only an explicit `workflow_dispatch` with a
+  source `main` SHA.
+
+The public repository must not contain a job with `runs-on: self-hosted`.
+Keeping the runner in a separate repository is the security boundary that
+prevents a public pull request from adding or redirecting a production job.
 
 ## Jobs
 
-| Job                 | Trigger                                     | Runner                    | Purpose                                                                  |
-| ------------------- | ------------------------------------------- | ------------------------- | ------------------------------------------------------------------------ |
-| `ci`                | Every PR and push to `main`                 | GitHub-hosted             | Clean checkout, `npm ci`, format check, lint, tests, build               |
-| `trusted-ai-review` | Own, same-repository PRs after `ci`         | Local `HomeServer` runner | OpenCode review, optional fixes, exact-head auto-merge, release dispatch |
-| `build`             | Push to `main` or trusted workflow dispatch | GitHub-hosted             | Exact-SHA build and immutable artifact                                   |
-| `deploy`            | Successful `build`                          | Local `HomeServer` runner | Migration, release switch, readiness check, rollback                     |
+| Job                     | Repository/trigger                     | Runner                    | Purpose                                                    |
+| ----------------------- | -------------------------------------- | ------------------------- | ---------------------------------------------------------- |
+| `CI`                    | Public PR and `main` push              | GitHub-hosted             | Clean checkout, `npm ci`, format, lint, tests, build       |
+| `Build release`         | Public `main` push or trusted dispatch | GitHub-hosted             | Exact-SHA build, tests, package, checksum                  |
+| `Publish release asset` | Successful build                       | GitHub-hosted             | Publishes `release-<sha>` assets                           |
+| `Production Deploy`     | Private repository manual dispatch     | Local `HomeServer` runner | Fetch, verify, migrate, switch release, readiness/rollback |
 
-No pull-request code is allowed to run on the local runner under the reviewed
-workflow definition. Do not replace the `trusted-ai-review` condition with a
-generic `pull_request` condition.
+## Release handoff
 
-### Public-repository runner boundary
+The public release workflow creates a tag/release named
+`release-<40-character-main-sha>` and attaches:
 
-A self-hosted runner registered to this repository is **not a sufficient
-security boundary for a public repository**: a pull request can modify a
-workflow to add a self-hosted job, and `if` conditions in that modified
-workflow are not a trust boundary. Before making the repository public, either
-remove this runner from the public repository or move the deployment workflow
-and runner to a separate private deployment repository/host. Until that
-separation is complete, keep the repository private and do not approve fork
-workflows.
+- `dnd-release.tar.gz`
+- `dnd-release.tar.gz.sha256`
 
-### Deployment bootstrap gate
+The private deployment workflow checks out the same source commit, verifies
+that it is an ancestor of the source `main` branch, downloads the assets, and
+checks the SHA-256 file. If the source repository is still private, configure a
+least-privilege `SOURCE_GITHUB_TOKEN` secret in the private deployment
+repository. It is unnecessary after the source repository is public.
 
-While `DND_AUTO_DEPLOY` is unset, a push to `main` builds and validates the
-release but skips the local deploy job. A trusted `workflow_dispatch` with an
-exact `main` SHA always deploys. After the first manual release succeeds, set
-the repository variable `DND_AUTO_DEPLOY=true` to enable push-triggered
-deployments. The trusted AI job is likewise disabled while
-`DND_AI_REVIEW_ENABLED` is unset; set it to `true` only after the release
-transition is complete. CodeQL is gated by `DND_CODEQL_ENABLED` until code
-scanning is enabled for the repository. The private-plan `production`
-environment can be given required reviewers after the repository is public.
+## Production transaction
 
-## Release layout
+`source/scripts/dnd-release-deploy.sh` is run from the exact source commit and:
 
-The production checkout remains at `/dnd_dashboard`, while application releases
-are immutable directories below `/dnd_dashboard/releases/<sha>`. The stable
-`/dnd_dashboard/current` symlink points to the active release. Shared runtime
-state (`.env`, `dnd.db`, `data`, and `recordings`) stays outside the release
-directory.
-
-The systemd unit is installed separately by `dnd-server-setup.sh`; application
-deploys never copy repository-controlled unit files into `/etc/systemd`.
-
-## Deployment transaction
-
-`scripts/dnd-release-deploy.sh`:
-
-1. verifies the artifact checksum, manifest, commit SHA, and required files;
-2. creates the immutable release directory and shared-data links;
-3. stops the application and its activation socket to quiesce writes;
-4. creates and integrity-checks a consistent pre-migration SQLite snapshot;
-5. runs the compiled migration runner from the new release;
+1. verifies the artifact checksum, manifest, Node/platform/lockfile metadata;
+2. creates `/dnd_dashboard/releases/<sha>` and shared-data links;
+3. pauses both the application service and its activation socket;
+4. creates and integrity-checks a consistent SQLite snapshot;
+5. runs the compiled migration runner and checks the migrated database;
 6. atomically switches `/dnd_dashboard/current`;
-7. starts the socket and service, then polls `/ready` for the expected release SHA;
-8. restores the previous release, operations checkout and database snapshot on failure.
+7. starts the socket and service, then polls `/ready` for the exact release SHA;
+8. restores the previous release, operations checkout and database on failure.
 
-A crash leaves `/dnd_dashboard/backups/deploy/.active-transaction` in place. The
-next deployment refuses to continue until an operator inspects that marker and
-recovers the previous release/database explicitly.
+A crash leaves `/dnd_dashboard/backups/deploy/.active-transaction`. The next
+deployment refuses to continue until an operator inspects and recovers that
+transaction explicitly. Daily backups share the deployment lock and cannot
+overlap migrations.
 
-The service must be installed with the reviewed `current`-path unit before the
-first artifact deployment:
+The service unit is installed once by the reviewed host setup; release jobs do
+not copy repository-controlled files into `/etc/systemd`.
+
+## Manual deployment
+
+From an authorized maintainer workstation:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now dnd-dashboard.socket
+gh workflow run deploy.yml \
+  --repo Franiboy/dnd_dashboard-deploy \
+  -f sha=<40-character-source-main-sha>
 ```
 
-Do not run the legacy `scripts/dnd-deploy.sh`; it is intentionally disabled.
+The source repository remains responsible for build/test/release-asset
+creation. The private deployment repository is responsible only for promotion.
 
-## AI review and merge
+## AI review
 
-The AI job is restricted to the configured maintainer and same-repository
-branches. It reviews only the exact PR head SHA, validates any local fixes, and
-merges only that reviewed SHA. After a merge it dispatches `release.yml` with
-the merge commit; it never calls the production deploy script directly.
+The former public-repository AI job was removed because a self-hosted runner
+belongs to the private deployment repository. The review script remains in the
+source tree for a future separately hosted/trusted automation workflow, but it
+is not executed by public CI and cannot auto-merge a public fork.
 
-For reliable pushes from an AI-created fix commit, configure a narrowly scoped
-GitHub App installation token or fine-grained token as `AI_GITHUB_TOKEN` if the
-repository should trigger normal CI on those pushes. Without such a token, the
-workflow's `GITHUB_TOKEN` may not start a new push-triggered run; the AI job
-then fails closed rather than merging without required CI.
+If AI automation is reintroduced, use an isolated GitHub-hosted runner or the
+private deployment repository with a separately scoped token. It must never
+execute fork code on the production runner.
 
-Configure branch protection for `main` after the first safe workflow is merged:
+## Publication checklist
 
-- require the `CI / CI` check;
-- require pull requests and disallow force pushes;
-- require a human decision for external contributions;
-- keep the `hold` label as an emergency stop for AI review.
+Before changing the source repository from private to public:
 
-## Manual recovery
-
-A deployment can be retried with the exact release workflow and any commit that
-is an ancestor of the current `main` tip. Never force-push or edit a release
-directory in place. If a migration is not backward-compatible, keep the previous
-release available and restore the pre-migration database snapshot as part of an
-explicitly reviewed recovery.
-
-## Dependency security
-
-`quill` remains pinned to `2.0.2` through the root override. Version `2.0.3` is
-affected by CVE-2025-15056 / GHSA-v3m3-f69x-jf25 (XSS in HTML export) and has
-no patched release at the time of writing. Do not remove the override or run
-`npm audit fix --force` for this advisory; revisit the pin when an upstream
-patched release is available and verify the editor integration.
+- confirm the public repository has no `self-hosted` job;
+- confirm the `HomeServer` runner is registered only to
+  `Franiboy/dnd_dashboard-deploy`;
+- enable branch protection and required CI checks;
+- rotate `ADMIN_PASSWORD` and any other exposed credentials;
+- configure CodeQL/code scanning and Dependabot protections;
+- verify `/ready`, backups, rollback documentation and the private deployment
+  dispatch.

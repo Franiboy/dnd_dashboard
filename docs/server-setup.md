@@ -6,15 +6,15 @@ by the GitHub release workflow.
 
 ## Repo layout for the server role
 
-| Path                              | Purpose                                                                             |
-| --------------------------------- | ----------------------------------------------------------------------------------- |
-| `scripts/dnd-server-setup.sh`     | Bootstrap nvm/Node, the local deploy runner, stable systemd units, timers and nginx |
-| `scripts/dnd-release-deploy.sh`   | Promote a checksummed CI artifact to `/dnd_dashboard/current`                       |
-| `scripts/dnd-backup.sh`           | Daily backup (SQLite + data + recordings)                                           |
-| `scripts/dnd-healthcheck.sh`      | Readiness check and service recovery                                                |
-| `systemd/`                        | Stable root-owned unit/timer templates                                              |
-| `deploy/nginx-dnd-dashboard.conf` | Reverse proxy reference configuration                                               |
-| `.nvmrc`                          | Node version source for setup and CI                                                |
+| Path                              | Purpose                                                       |
+| --------------------------------- | ------------------------------------------------------------- |
+| `scripts/dnd-server-setup.sh`     | Bootstrap nvm/Node, stable systemd units, timers and nginx    |
+| `scripts/dnd-release-deploy.sh`   | Promote a checksummed CI artifact to `/dnd_dashboard/current` |
+| `scripts/dnd-backup.sh`           | Daily backup (SQLite + data + recordings)                     |
+| `scripts/dnd-healthcheck.sh`      | Readiness check and service recovery                          |
+| `systemd/`                        | Stable root-owned unit/timer templates                        |
+| `deploy/nginx-dnd-dashboard.conf` | Reverse proxy reference configuration                         |
+| `.nvmrc`                          | Node version source for setup and CI                          |
 
 ## Scripted bootstrap
 
@@ -28,26 +28,32 @@ by the GitHub release workflow.
    bash scripts/dnd-server-setup.sh
    ```
 
-   The script installs nvm/Node from `.nvmrc`, the repository-scoped local
-   runner, stable systemd units, nginx, timers and narrowly scoped sudo rules.
-   It does not start the application until the first immutable release exists.
+   The script installs nvm/Node from `.nvmrc`, stable systemd units, nginx,
+   timers and narrowly scoped sudo rules. The production runner is registered
+   separately to the private `Franiboy/dnd_dashboard-deploy` repository; it is
+   not installed by this public source repository.
 
-The local runner is used only by the trusted release/deploy job. Public PR
-code must run on GitHub-hosted runners. Before making this repository public,
-move the runner and deployment workflow to a separate private deployment
-repository/host; a self-hosted runner registered to a public repository is not a
-sufficient trust boundary.
+The application is not started until the first immutable release exists.
 
 ## First release
 
-After the release workflow is available on `main`, merge or dispatch it with an
-exact commit SHA. The deploy job will:
+After the public release workflow has published an asset for an exact source
+commit, dispatch the private deployment workflow with that SHA. The private
+job will:
 
 - validate the artifact and checksum;
 - create `/dnd_dashboard/releases/<sha>`;
 - pause the activation socket and snapshot/migrate SQLite while the service is stopped;
 - switch `/dnd_dashboard/current` atomically;
 - start the socket and service, then verify `/ready` plus the release SHA.
+
+Dispatch the private deployment workflow from an authorized workstation:
+
+```bash
+gh workflow run deploy.yml \\
+  --repo Franiboy/dnd_dashboard-deploy \\
+  -f sha=<40-character-source-main-sha>
+```
 
 The stable unit must point to `/dnd_dashboard/current`. Verify it before the
 first release:
@@ -67,10 +73,10 @@ Do not run the legacy `scripts/dnd-deploy.sh`; it is intentionally disabled.
 
 ## Manual configuration
 
-1. **Runner token:** create a repository-scoped runner in GitHub Actions and
-   provide `RUNNER_TOKEN` to the setup script. The default labels include
-   `self-hosted,Linux,X64,HomeServer`; override them with
-   `DND_RUNNER_LABELS` if the host uses another name.
+1. **Private runner:** register the host runner in
+   `Franiboy/dnd_dashboard-deploy`, not in the public source repository. The
+   default labels are `self-hosted,Linux,X64,HomeServer`; the public source
+   repository must contain no self-hosted job.
 2. **TLS certificate:** `sudo certbot --nginx -d <your-domain>`.
 3. **DNS/firewall:** expose only HTTPS through the reverse proxy. The Node
    socket binds to `127.0.0.1:3001` and must not be forwarded externally.

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       sha:
-        description: Exact commit on main to build and deploy
+        description: Exact commit on main to build and publish
         required: true
         type: string
 
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: dnd-production-release
+  group: dnd-public-release
   cancel-in-progress: false
 
 jobs:
@@ -95,40 +95,40 @@ jobs:
           retention-days: 14
           compression-level: 0
 
-  deploy:
-    name: Deploy release
+  publish:
+    name: Publish release asset
     needs: build
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.DND_AUTO_DEPLOY == 'true' }}
-    runs-on: [self-hosted, Linux, X64, HomeServer]
-    timeout-minutes: 30
-    environment:
-      name: production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
-      contents: read
+      contents: write
+    env:
+      RELEASE_SHA: ${{ needs.build.outputs.release_sha }}
     steps:
-      - name: Checkout exact deploy script
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          repository: ${{ github.repository }}
-          ref: ${{ needs.build.outputs.release_sha }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Setup production Node runtime
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version-file: .nvmrc
-
       - name: Download release artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: dnd-release-${{ needs.build.outputs.release_sha }}
           path: ${{ runner.temp }}/release
 
-      - name: Deploy immutable release
+      - name: Publish immutable release asset
         shell: bash
         env:
-          DND_RELEASE_ARCHIVE: ${{ runner.temp }}/release/dnd-release.tar.gz
-          DND_RELEASE_SHA: ${{ needs.build.outputs.release_sha }}
-          DND_DEPLOY_ROOT: /dnd_dashboard
-        run: bash scripts/dnd-release-deploy.sh
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="release-${RELEASE_SHA}"
+          if ! gh release view "$tag" --repo "$SOURCE_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --repo "$SOURCE_REPOSITORY" \
+              --target "$RELEASE_SHA" \
+              --title "Release ${RELEASE_SHA:0:12}" \
+              --notes "Automated immutable build for ${RELEASE_SHA}."
+          fi
+          gh release upload "$tag" \
+            --repo "$SOURCE_REPOSITORY" \
+            --clobber \
+            "$RUNNER_TEMP/release/dnd-release.tar.gz" \
+            "$RUNNER_TEMP/release/dnd-release.tar.gz.sha256"
+          printf 'Published release asset: %s\n' "$tag"
