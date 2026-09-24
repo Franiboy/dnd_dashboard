@@ -72,12 +72,21 @@ fi
 
 # --- 3. systemd units (dashboardservice, socket, timers) ----------------------
 SERVICES=(dnd-dashboard.service dnd-dashboard.socket dnd-backup.service dnd-backup.timer dnd-healthcheck.service dnd-healthcheck.timer)
+# Unit templates use neutral placeholders (User=dnd, /home/dnd/...). Substitute
+# them with the actual deploy user and home directory before installing.
+deploy_user="$(id -un)"
+deploy_home="$(getent passwd "$deploy_user" | cut -d: -f6)"
+sub_tmp="$(mktemp)"
 for unit in "${SERVICES[@]}"; do
   if [ -f "$REPO_DIR/systemd/$unit" ]; then
-    sudo cp "$REPO_DIR/systemd/$unit" "/etc/systemd/system/$unit"
+    sed -e "s/^User=dnd$/User=$deploy_user/" \
+        -e "s#/home/dnd/#$deploy_home/#g" \
+        "$REPO_DIR/systemd/$unit" > "$sub_tmp"
+    sudo cp "$sub_tmp" "/etc/systemd/system/$unit"
     log "installed unit $unit"
   fi
 done
+rm -f "$sub_tmp"
 sudo systemctl daemon-reload
 sudo systemctl enable --now dnd-dashboard.socket
 sudo systemctl enable --now dnd-dashboard.service
