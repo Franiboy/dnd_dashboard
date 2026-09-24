@@ -24,6 +24,15 @@ The project uses separate trust domains:
 No pull-request code is allowed to run on the local runner. Do not replace the
 `trusted-ai-review` condition with a generic `pull_request` condition.
 
+### Deployment bootstrap gate
+
+While `DND_AUTO_DEPLOY` is unset, a push to `main` builds and validates the
+release but skips the local deploy job. A trusted `workflow_dispatch` with an
+exact `main` SHA always deploys. After the first manual release succeeds, set
+the repository variable `DND_AUTO_DEPLOY=true` to enable push-triggered
+deployments. The private-plan `production` environment can be given required
+reviewers after the repository is public.
+
 ## Release layout
 
 The production checkout remains at `/dnd_dashboard`, while application releases
