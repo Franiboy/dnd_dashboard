@@ -28,13 +28,15 @@ jobs:
     env:
       RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.sha }}
     steps:
+      # The trusted build job needs its read-only token to fetch origin/main
+      # for the exact-release validation below.
       - name: Checkout exact revision
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: ${{ github.repository }}
           ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Validate release revision
         id: validate
