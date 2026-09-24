@@ -23,17 +23,6 @@ function getOpenCodeBin(): string {
   return process.env.AI_OPENCODE_BIN || 'opencode';
 }
 
-/**
- * Determines the opencode major version from the configured binary.
- * The binary name is the single source of truth (driven by AI_OPENCODE_BIN):
- * an `opencode2` binary runs the V2 CLI, anything else is treated as V1.
- */
-export function isOpenCodeV2(): boolean {
-  const bin = getOpenCodeBin();
-  const name = bin.split(/[\\/]/).pop() ?? bin;
-  return /\bopencode2\.exe$/i.test(name) || /^opencode2/iu.test(name);
-}
-
 export interface OpenCodeOptions {
   prompt: string;
   worktreePath: string;
@@ -88,8 +77,6 @@ export function runOpenCode({
     );
   }
 
-  const v2 = isOpenCodeV2();
-
   if (sessionId) {
     args.push('--session', sessionId);
   } else if (title) {
@@ -97,17 +84,8 @@ export function runOpenCode({
   }
 
   args.push(prompt, '--model', model, '--auto', '--format', 'default');
-
-  if (!v2 && !sessionId) {
-    args.push('--dir', worktreePath);
-  }
-  if (v2) {
-    // V2 talks to the persistent background service, which would spawn the
-    // MCP server without the per-run MCP_SESSION_TOKEN (and without user
-    // context). A private per-run server (--standalone) inherits the env, so
-    // scoped MCP access keeps working exactly like V1.
-    args.push('--standalone');
-  }
+  // Keep the per-run MCP token in the environment of this private server.
+  args.push('--standalone');
 
   const displayArgs = args.map((a) =>
     a === prompt ? `<prompt:${a.length} chars>` : a.includes(' ') ? `"${a}"` : a
@@ -207,17 +185,10 @@ export async function deleteOpenCodeSession(sessionId: string): Promise<void> {
   const bin = getOpenCodeBin();
   log.info(`Deleting opencode session: ${sessionId}`);
   try {
-    if (isOpenCodeV2()) {
-      execFileSync(bin, ['api', 'DELETE', `/api/session/${sessionId}`], {
-        encoding: 'utf-8',
-        timeout: 30_000,
-      });
-    } else {
-      execFileSync(bin, ['session', 'delete', sessionId], {
-        encoding: 'utf-8',
-        timeout: 30_000,
-      });
-    }
+    execFileSync(bin, ['session', 'delete', sessionId], {
+      encoding: 'utf-8',
+      timeout: 30_000,
+    });
     log.info(`Deleted opencode session: ${sessionId}`);
   } catch (err) {
     log.warn(`Failed to delete opencode session ${sessionId}:`, err);
@@ -234,15 +205,6 @@ export interface OpenCodeSession {
 export async function listOpenCodeSessions(): Promise<OpenCodeSession[]> {
   const bin = getOpenCodeBin();
   try {
-    if (isOpenCodeV2()) {
-      const output = execFileSync(bin, ['api', 'GET', '/api/session'], {
-        encoding: 'utf-8',
-        timeout: 30_000,
-        maxBuffer: 50 * 1024 * 1024,
-      });
-      const parsed = JSON.parse(output) as { data?: Array<Record<string, unknown>> };
-      return (parsed.data ?? []).map(mapV2Session).filter((s): s is OpenCodeSession => s !== null);
-    }
     const output = execFileSync(bin, ['session', 'list', '--format', 'json'], {
       encoding: 'utf-8',
       maxBuffer: 50 * 1024 * 1024,
@@ -252,17 +214,6 @@ export async function listOpenCodeSessions(): Promise<OpenCodeSession[]> {
     log.error(`Failed to list opencode sessions using ${bin}:`, err);
     return [];
   }
-}
-
-function mapV2Session(raw: Record<string, unknown>): OpenCodeSession | null {
-  const id = typeof raw.id === 'string' ? raw.id : null;
-  if (!id) return null;
-  const title = typeof raw.title === 'string' ? raw.title : '';
-  const time = (raw.time ?? {}) as Record<string, unknown>;
-  const location = (raw.location ?? {}) as Record<string, unknown>;
-  const directory = typeof location.directory === 'string' ? location.directory : '';
-  const updatedMs = typeof time.updated === 'number' ? time.updated : 0;
-  return { id, title, directory, updated: updatedMs / 1000 };
 }
 
 export async function cleanupOpenCodeSessions(
