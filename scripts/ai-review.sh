@@ -20,7 +20,7 @@
 # Requires: gh (GH_TOKEN), opencode on PATH, git identity is set here.
 set -euo pipefail
 
-MODEL="${AI_REVIEW_MODEL:-opencode-go/gpt-5.6-luna}"
+MODEL="${AI_REVIEW_MODEL:-opencode-go/gpt-6-luna}"
 HOLD_LABEL="${AI_HOLD_LABEL:-hold}"
 BLOCKERS_FILE=".ai-review-blockers.md"
 MAX_DIFF_CHARS=150000

@@ -69,7 +69,7 @@ if (!payload) {
   // All tools are registered behind requireScope(), so a token-less server
   // exposes no functionality. Hard-exiting here made opencode's MCP layer
   // retry/loop and produced "MCP server started without valid session token"
-  // errors on every token-less spawn (e.g. by the opencode2 service).
+  // errors on every token-less spawn (e.g. by the opencode background server).
   log.warn('MCP server started without valid session token; running with empty scopes');
 }
 

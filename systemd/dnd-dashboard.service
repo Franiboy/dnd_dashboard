@@ -1,7 +1,7 @@
 [Unit]
 Description=D&D Dashboard (Node.js production)
 After=network.target dnd-dashboard.socket
-Wants=dnd-opencode2.service
+Wants=network-online.target
 Requires=dnd-dashboard.socket
 
 [Service]
