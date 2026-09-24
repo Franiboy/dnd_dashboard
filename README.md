@@ -19,7 +19,7 @@ Web-based dashboard for Dungeons & Dragons with multiple modules: Bingo, Diary/W
 
 ## Tech Stack
 
-- **Backend:** Node.js 22+, Express 5, SQLite (better-sqlite3), Socket.io
+- **Backend:** Node.js 24.15+ (Node 24 release line), Express 5, SQLite (better-sqlite3), Socket.io
 - **Frontend:** React 19, Vite, TypeScript, Tailwind CSS 4
 - **Realtime:** Socket.io, Server-Sent Events (SSE)
 - **Auth:** JWT, bcrypt, Discord OAuth2
@@ -28,7 +28,7 @@ Web-based dashboard for Dungeons & Dragons with multiple modules: Bingo, Diary/W
 
 ## Requirements
 
-- Node.js >= 22
+- Node.js 24.15+ (Node 24 release line)
 - npm
 - For AI: [OpenCode](https://github.com/opencode-ai/opencode) CLI installed and in PATH
 - For AI: [ProjectAtlas](https://github.com/styler-ai/ProjectAtlas) repository intelligence (installed automatically by `npm run setup:atlas`)

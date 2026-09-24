@@ -14,6 +14,10 @@ Feature branches are validated exclusively via the `pull_request` event (exactly
 
 Before the fast-forward pull, `scripts/dnd-deploy.sh` gates on the RS256 session key pair under `data/keys/` (see `server/auth.ts`): it aborts when both keys are missing, only one exists, or the files are empty/unreadable. A restart with a missing pair would silently generate new keys (logging out every user) and a half-present pair makes the server `exit(1)` right after the restart. Fresh installs can explicitly allow key generation with `DND_DEPLOY_ALLOW_NEW_JWT_KEYS=1` (deploy-script variable, not read by the server).
 
+## Dependency security
+
+`quill` is intentionally pinned to `2.0.2` through the root override. Version `2.0.3` is affected by CVE-2025-15056 / GHSA-v3m3-f69x-jf25 (XSS in HTML export) and has no patched release at the time of writing. Do not remove the override or run `npm audit fix --force` for this advisory; revisit the pin when an upstream patched release is available and verify the editor integration.
+
 ## AI review job
 
 After the normal CI has passed, OpenCode CLI reviews the PR diff headlessly:
