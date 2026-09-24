@@ -139,7 +139,6 @@ if command -v systemctl >/dev/null 2>&1; then
     sudo cp "$unit" "/etc/systemd/system/$(basename "$unit")"
   done
   sudo systemctl daemon-reload
-  sudo systemctl enable dnd-opencode2.service >>"$LOG" 2>&1 || true
 fi
 
 log "Restarting service..."
