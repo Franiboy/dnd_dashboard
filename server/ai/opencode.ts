@@ -84,6 +84,8 @@ export function runOpenCode({
   }
 
   args.push(prompt, '--model', model, '--auto', '--format', 'default');
+  // Keep the per-run MCP token in the environment of this private server.
+  args.push('--standalone');
 
   const displayArgs = args.map((a) =>
     a === prompt ? `<prompt:${a.length} chars>` : a.includes(' ') ? `"${a}"` : a
