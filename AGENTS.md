@@ -41,7 +41,7 @@ D&D Dashboard is a web application for Dungeons & Dragons sessions with several 
 ### Tech Stack
 
 - **Frontend:** React 19, Vite, TypeScript, Tailwind CSS 4, Socket.io Client
-- **Backend:** Node.js 22+, Express 5, SQLite (better-sqlite3), Socket.io
+- **Backend:** Node.js 24.15+ (Node 24 release line), Express 5, SQLite (better-sqlite3), Socket.io
 - **Auth:** JWT (`httpOnly` cookie + Bearer header), bcrypt, Discord OAuth2
 - **AI/MCP:** OpenCode-CLI, `@modelcontextprotocol/sdk`, custom MCP server with dynamic scopes (`server/mcp/`)
 - **Discord:** `discord.js` + `@discordjs/voice` for voice recordings
