@@ -15,7 +15,8 @@
 #
 # Merging prefers GitHub auto-merge and falls back to a direct squash merge
 # when the repository disallows auto-merge. Both paths only ever merge the
-# exact reviewed commit (verified via head SHA) and deploy afterwards.
+# exact reviewed commit (verified via head SHA) and trigger the separate
+# release workflow with that merge SHA.
 #
 # Requires: gh (GH_TOKEN), opencode on PATH, git identity is set here.
 set -euo pipefail
@@ -28,6 +29,16 @@ MAX_DIFF_CHARS=150000
 PR_NUMBER="${PR_NUMBER:?PR_NUMBER is required}"
 BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required}"
 BASE="origin/${BASE_BRANCH}"
+GITHUB_REPOSITORY="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+HEAD_REPOSITORY="${HEAD_REPOSITORY:?HEAD_REPOSITORY is required}"
+PR_ACTOR="${PR_ACTOR:?PR_ACTOR is required}"
+TRUSTED_ACTOR="${AI_TRUSTED_ACTOR:-Franiboy}"
+RELEASE_WORKFLOW="${RELEASE_WORKFLOW:-release.yml}"
+
+if [ "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ] || [ "$PR_ACTOR" != "$TRUSTED_ACTOR" ]; then
+	echo "[ai-review] Skipping AI review for an untrusted PR actor or repository"
+	exit 0
+fi
 
 log() { echo "[ai-review] $*"; }
 
@@ -84,32 +95,13 @@ remove_automerge_label() {
 	fi
 }
 
-PROD_REPO="${DND_PROD_REPO:-/dnd_dashboard}"
-
-deploy_production() {
-	# Auto-merges happen with the workflow GITHUB_TOKEN, whose push events
-	# deliberately do not trigger further workflow runs – the deploy job on
-	# main would never run for them. Deploy directly instead.
-	#
-	# dnd-deploy.sh exits 0 as a no-op when a concurrent deployment holds its
-	# lock, so verify afterwards that the production checkout really reached
-	# this merge and retry briefly if it did not.
-	log "Deploying production checkout $PROD_REPO"
-	git fetch origin "$BASE_BRANCH" --quiet
-	local expected
-	expected="$(git rev-parse "origin/${BASE_BRANCH}")"
-	local attempt
-	for attempt in 1 2 3 4 5 6; do
-		if DND_DEPLOY_REPO="$PROD_REPO" bash scripts/dnd-deploy.sh &&
-			git -C "$PROD_REPO" merge-base --is-ancestor "$expected" HEAD; then
-			log "Production verified at $(git -C "$PROD_REPO" rev-parse --short HEAD)"
-			return 0
-		fi
-		log "Deployment not confirmed yet (attempt $attempt/6); retrying in 15s"
-		sleep 15
-	done
-	log "ERROR: production checkout did not reach ${expected:0:7}"
-	return 1
+trigger_release() {
+	local merge_sha="$1"
+	log "Triggering release workflow for ${merge_sha:0:7}"
+	gh workflow run "$RELEASE_WORKFLOW" \
+		--repo "$GITHUB_REPOSITORY" \
+		--ref "$BASE_BRANCH" \
+		-f "sha=$merge_sha"
 }
 
 merge_pr() {
@@ -133,9 +125,8 @@ merge_pr() {
 	# it, and we are not racing a stale, unapproved CI run.
 	local auto_output
 	if auto_output="$(gh pr merge "$PR_NUMBER" --auto --squash --delete-branch --match-head-commit "$target_sha" 2>&1)"; then
-		# --auto only queues the merge; reap it so the deployment below runs on the
-		# actually merged commit. Timeout generous because GitHub may still be
-		# finishing the re-triggered (action_required) run before accepting it.
+		# --auto only queues the merge; wait for the exact merged commit before
+		# dispatching the release workflow.
 		if wait_for_merged "$target_sha"; then
 			return 0
 		fi
@@ -159,7 +150,7 @@ merge_pr() {
 	return 1
 }
 
-# Wait until the PR reaches MERGED (then deploy) or fail on CLOSED/timeout.
+# Wait until the PR reaches MERGED (then trigger release) or fail on CLOSED/timeout.
 # Shared by the auto-merge and direct-merge paths.
 wait_for_merged() {
 	local target_sha="$1"
@@ -174,8 +165,12 @@ wait_for_merged() {
 		local state merged_at oid
 		read -r state merged_at oid <<<"$(gh pr view "$PR_NUMBER" --json state,mergedAt,mergeCommit --jq '[.state,.mergedAt//"",.mergeCommit.oid//""] | @tsv')"
 		if [ "$state" = "MERGED" ] && [ -n "$merged_at" ]; then
+			[ -n "$oid" ] || {
+				log "ERROR: merged PR did not report a merge commit"
+				return 1
+			}
 			log "PR #$PR_NUMBER merged as ${oid:0:7}"
-			deploy_production
+			trigger_release "$oid"
 			return 0
 		fi
 		if [ "$state" = "CLOSED" ]; then
@@ -242,14 +237,15 @@ rebase_head_to_base() {
 		log "WARN: rebase onto $BASE_BRANCH had conflicts; leaving head as-is (local validation already green)"
 	fi
 	git push --force-with-lease origin HEAD:refs/heads/$(git rev-parse --abbrev-ref HEAD) || {
-		log "WARN: could not push rebased head; continuing (local validation already green)"
+		log "ERROR: could not push rebased head; refusing to merge"
+		return 1
 	}
 }
 
 wait_for_ci() {
 	local pr="$1"
-	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-90}"
-	log "Waiting for required CI checks on PR #$pr (best effort, timeout ${timeout_seconds}s)"
+	local timeout_seconds="${CI_WAIT_TIMEOUT_SECONDS:-180}"
+	log "Waiting for required CI checks on PR #$pr (timeout ${timeout_seconds}s)"
 	# Bring the head up to date first so the resulting/auto merge is never
 	# rejected for being out of date against base.
 	rebase_head_to_base
@@ -260,23 +256,7 @@ wait_for_ci() {
 		rm -f "$log_file"
 		return 0
 	fi
-	local ec=${PIPESTATUS[0]:-$?}
-	if grep -q "Resource not accessible by integration" "$log_file"; then
-		log "WARN: gh pr checks lacks permission (add checks:read) – local validation already green, proceeding to merge"
-		rm -f "$log_file"
-		return 0
-	fi
-	if grep -qi "no.*checks" "$log_file"; then
-		log "No required checks – proceeding (private repo without Pro or no branch protection)"
-		rm -f "$log_file"
-		return 0
-	fi
-	if grep -qi "action_required" "$log_file"; then
-		log "WARN: CI requires approval (action_required) – local validation already green, proceeding to merge"
-		rm -f "$log_file"
-		return 0
-	fi
-	log "ERROR: CI checks not green (ec=$ec) – failing"
+	log "ERROR: required CI checks did not complete successfully; refusing to merge"
 	cat "$log_file" || true
 	rm -f "$log_file"
 	return 1
@@ -327,7 +307,7 @@ hide_project_config
 
 # Checksums of pipeline-critical files. The review must never edit its own
 # running script or the workflow definition; revert and continue if it does.
-PIPELINE_FILES=(scripts/ai-review.sh .github/workflows/ci-cd.yml)
+PIPELINE_FILES=(scripts/ai-review.sh scripts/dnd-release-deploy.sh scripts/package-release.sh scripts/dnd-server-setup.sh scripts/dnd-backup.sh systemd/dnd-dashboard.service .github/workflows/ci-cd.yml .github/workflows/release.yml)
 declare -A PIPELINE_HASHES
 for f in "${PIPELINE_FILES[@]}"; do
 	PIPELINE_HASHES[$f]="$(sha256sum "$f" | cut -d' ' -f1)"
@@ -337,7 +317,7 @@ done
 # single argv entry at 128 KiB (MAX_ARG_STRLEN), so large PR diffs fail exec
 # with E2BIG ("Argument list too long"). opencode run reads non-TTY stdin and
 # appends it to the message.
-printf '%s' "$PROMPT" | opencode run -m "$MODEL" --auto --title "AI PR review #$PR_NUMBER"
+printf '%s' "$PROMPT" | opencode run --standalone -m "$MODEL" --auto --title "AI PR review #$PR_NUMBER"
 restore_project_config
 
 for f in "${PIPELINE_FILES[@]}"; do

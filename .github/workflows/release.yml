@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact commit on main to build and deploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dnd-production-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      release_sha: ${{ steps.validate.outputs.sha }}
+    env:
+      RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.sha }}
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release revision
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --quiet origin main
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          git checkout --quiet --detach "$RELEASE_SHA"
+          echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Validate compiled server
+        shell: bash
+        run: |
+          node --check dist-server/server/index.js
+          node --check dist-server/scripts/db-migrate.js
+
+      - name: Package release
+        shell: bash
+        env:
+          DND_RELEASE_SHA: ${{ env.RELEASE_SHA }}
+        run: bash scripts/package-release.sh "$RUNNER_TEMP/dnd-release.tar.gz"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dnd-release-${{ steps.validate.outputs.sha }}
+          path: |
+            ${{ runner.temp }}/dnd-release.tar.gz
+            ${{ runner.temp }}/dnd-release.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  deploy:
+    name: Deploy release
+    needs: build
+    runs-on: [self-hosted, Linux, X64, HomeServer]
+    timeout-minutes: 30
+    environment:
+      name: production
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact deploy script
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ needs.build.outputs.release_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download release artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dnd-release-${{ needs.build.outputs.release_sha }}
+          path: ${{ runner.temp }}/release
+
+      - name: Deploy immutable release
+        shell: bash
+        env:
+          DND_RELEASE_ARCHIVE: ${{ runner.temp }}/release/dnd-release.tar.gz
+          DND_RELEASE_SHA: ${{ needs.build.outputs.release_sha }}
+          DND_DEPLOY_ROOT: /dnd_dashboard
+        run: bash scripts/dnd-release-deploy.sh

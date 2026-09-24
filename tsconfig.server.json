@@ -11,6 +11,6 @@
     "declaration": false,
     "noEmit": false
   },
-  "include": ["server/**/*.ts", "shared/**/*.ts"],
+  "include": ["server/**/*.ts", "shared/**/*.ts", "scripts/db-migrate.ts"],
   "exclude": ["node_modules", "dist", "dist-server"]
 }

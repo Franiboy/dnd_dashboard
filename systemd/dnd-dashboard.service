@@ -1,23 +1,27 @@
-# Template for the D&D Dashboard systemd unit.
-# Adjust the paths (/home/dnd, /dnd_dashboard) and the User= line to your
-# deploy user and checkout location before installing (see docs/server-setup.md).
+# Stable production unit for the immutable release layout.
+# The release deployer updates /dnd_dashboard/current; this unit is installed
+# separately by the host setup and is not replaced during application deploys.
 [Unit]
 Description=D&D Dashboard (Node.js production)
 After=network.target dnd-dashboard.socket
 Wants=network-online.target
 Requires=dnd-dashboard.socket
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=dnd
-WorkingDirectory=/dnd_dashboard
+WorkingDirectory=/dnd_dashboard/current
 Environment=NODE_ENV=production
+Environment=DB_PATH=/dnd_dashboard/dnd.db
+Environment=RECORDINGS_DIR=/dnd_dashboard/recordings
+Environment=WHITEBOARD_UPLOAD_DIR=/dnd_dashboard/data/whiteboard
+Environment=DND_RUN_MIGRATIONS_ON_STARTUP=0
 Environment=PATH=/home/dnd/.nvm/current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin
-ExecStart=/home/dnd/.nvm/current/bin/node /dnd_dashboard/dist-server/server/index.js
+ExecStart=/home/dnd/.nvm/current/bin/node /dnd_dashboard/current/dist-server/server/index.js
 Restart=on-failure
 RestartSec=3
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 [Install]
 WantedBy=multi-user.target

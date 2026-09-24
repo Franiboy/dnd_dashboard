@@ -16,6 +16,10 @@ const positiveIntFromEnv = z
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  DND_RUN_MIGRATIONS_ON_STARTUP: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
   PORT: z.coerce.number().int().positive().default(3001),
   LISTEN_FDS: z.coerce.number().int().nonnegative().default(0),
   DB_PATH: z.string().default('dnd.db'),

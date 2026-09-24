@@ -82,6 +82,7 @@ AI_MODEL=opencode/deepseek-v4-flash-free
 - `TOKEN_ENCRYPTION_KEY` is required when Discord OAuth is configured. It is used to encrypt stored Discord access/refresh tokens at rest. It must be a base64-encoded 32-byte key (e.g. the output of `openssl rand -base64 32`).
 - `ADMIN_PASSWORD` must be set, otherwise `ensureAdminUser()` will not start.
 - `DEV_AUTO_LOGIN` (default `false`) enables an automatic admin login for local development: when the dashboard is opened without a session, it silently signs in as the initial admin. The server only offers this outside production (`NODE_ENV !== 'production'`). The `/api/version` endpoint exposes the state as `devAutoLogin`.
+- `DND_RUN_MIGRATIONS_ON_STARTUP` (default `false`) allows schema migrations during application startup. Production releases intentionally keep this disabled because `scripts/dnd-release-deploy.sh` runs the compiled migration runner inside the deployment transaction. Development and test continue to migrate automatically when `NODE_ENV` is not `production`.
 - `DISCORD_*` must be configured for Discord login.
 - `DISCORD_TOKEN_REFRESH_INTERVAL_MS` controls how often stored Discord OAuth tokens are refreshed and profile data is synced (default: 3600000, 1 hour).
 - `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` enable the recording bot.

@@ -17,12 +17,14 @@ set -euo pipefail
 REPO_DIR="${DND_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DEPLOY_USER="${DND_DEPLOY_USER:-$USER}"
 RUNNER_DIR="${DND_RUNNER_DIR:-$HOME/actions-runner}"
-RUNNER_VERSION="${DND_RUNNER_VERSION:-2.336.0}"
+RUNNER_VERSION="${DND_RUNNER_VERSION:-2.337.0}"
+RUNNER_SHA256="${DND_RUNNER_SHA256:-70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613}"
 RUNNER_NAME="${DND_RUNNER_NAME:-dnd-runner}"
-RUNNER_LABELS="${DND_RUNNER_LABELS:-self-hosted,Linux,X64}"
+RUNNER_LABELS="${DND_RUNNER_LABELS:-self-hosted,Linux,X64,HomeServer}"
 RUNNER_TOKEN="${RUNNER_TOKEN:-}"
 GIT_REPO="${DND_GIT_REPO:-Franiboy/dnd_dashboard}"
 NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+NVM_VERSION="${DND_NVM_VERSION:-0.40.3}"
 SERVICE_NAME="dnd-dashboard"
 
 log() { echo "[dnd-server-setup] $*"; }
@@ -40,8 +42,8 @@ if [ -s "$NVM_DIR/nvm.sh" ]; then
   (cd "$REPO_DIR" && nvm use)
   log "Node: $(node -v) at $(command -v node)"
 else
-  log "nvm not found; installing..."
-  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+  log "nvm not found; installing v$NVM_VERSION from the tagged repository..."
+  git clone --depth 1 --branch "v${NVM_VERSION}" https://github.com/nvm-sh/nvm.git "$NVM_DIR"
   . "$NVM_DIR/nvm.sh"
   export NVM_SYMLINK_CURRENT=true
   (cd "$REPO_DIR" && nvm install && nvm use)
@@ -57,6 +59,7 @@ else
   mkdir -p "$RUNNER_DIR"
   curl -fsSL -o /tmp/runner.tar.gz \
     "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+  echo "$RUNNER_SHA256  /tmp/runner.tar.gz" | sha256sum -c -
   tar xzf /tmp/runner.tar.gz -C "$RUNNER_DIR"
   rm -f /tmp/runner.tar.gz
   "$RUNNER_DIR/bin/installdependencies.sh"
@@ -70,26 +73,32 @@ else
   "$RUNNER_DIR/svc.sh" install "$DEPLOY_USER"
 fi
 
-# --- 3. systemd units (dashboardservice, socket, timers) ----------------------
+# --- 3. runtime directories --------------------------------------------------
+mkdir -p "$HOME/logs" "$HOME/backups/dnd" "$REPO_DIR/releases" "$REPO_DIR/recordings"
+
+# --- 4. systemd units (dashboard, socket, timers) ---------------------------
 SERVICES=(dnd-dashboard.service dnd-dashboard.socket dnd-backup.service dnd-backup.timer dnd-healthcheck.service dnd-healthcheck.timer)
-# Unit templates use neutral placeholders (User=dnd, /home/dnd/...). Substitute
-# them with the actual deploy user and home directory before installing.
-deploy_user="$(id -un)"
-deploy_home="$(getent passwd "$deploy_user" | cut -d: -f6)"
+# Unit templates use neutral placeholders (User=dnd, /home/dnd/...).
+deploy_home="$(getent passwd "$DEPLOY_USER" | cut -d: -f6)"
 sub_tmp="$(mktemp)"
 for unit in "${SERVICES[@]}"; do
   if [ -f "$REPO_DIR/systemd/$unit" ]; then
-    sed -e "s/^User=dnd$/User=$deploy_user/" \
+    sed -e "s/^User=dnd$/User=$DEPLOY_USER/" \
         -e "s#/home/dnd/#$deploy_home/#g" \
         "$REPO_DIR/systemd/$unit" > "$sub_tmp"
+    if command -v systemd-analyze >/dev/null 2>&1; then
+      systemd-analyze verify "$sub_tmp" >/dev/null
+    fi
     sudo cp "$sub_tmp" "/etc/systemd/system/$unit"
     log "installed unit $unit"
   fi
 done
 rm -f "$sub_tmp"
 sudo systemctl daemon-reload
+# The first application release is started by the release workflow after the
+# immutable /dnd_dashboard/current symlink exists.
 sudo systemctl enable --now dnd-dashboard.socket
-sudo systemctl enable --now dnd-dashboard.service
+sudo systemctl enable dnd-dashboard.service
 sudo systemctl enable --now dnd-backup.timer
 sudo systemctl enable --now dnd-healthcheck.timer
 log "systemd units enabled (dashboard + socket + timers)"
@@ -110,25 +119,20 @@ if [ -f "$REPO_DIR/deploy/nginx-dnd-dashboard.conf" ]; then
   fi
 fi
 
-# --- 5. runtime dirs ----------------------------------------------------------
-mkdir -p "$HOME/logs" "$HOME/backups/dnd"
-log "created ~/logs and ~/backups/dnd"
-
-# --- 6. sudoers (NOPASSWD for restart used by deploy/healthcheck) -------------
+# --- 6. sudoers (NOPASSWD for release deploy/healthcheck) --------------------
 SUDOERS_FILE="/etc/sudoers.d/dnd-dashboard"
 sudo tee "$SUDOERS_FILE" >/dev/null <<EOF
+$DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start $SERVICE_NAME
+$DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop $SERVICE_NAME
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart $SERVICE_NAME
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl status $SERVICE_NAME
 EOF
 sudo chmod 440 "$SUDOERS_FILE"
-log "sudoers: $DEPLOY_USER may restart $SERVICE_NAME without password"
+log "sudoers: $DEPLOY_USER may manage $SERVICE_NAME without password"
 
-# --- 7. first deployment ------------------------------------------------------
-if [ ! -d "$REPO_DIR/node_modules" ]; then
-  log "installing dependencies (first run)..."
-  (cd "$REPO_DIR" && npm ci)
-  (cd "$REPO_DIR" && npm run build)
-fi
+# --- 7. first release ---------------------------------------------------------
+log "The first application release is deployed by the GitHub release workflow."
+log "Do not start dnd-dashboard.service until /dnd_dashboard/current exists."
 
 log "Done. Remaining manual steps:"
 log "  - DNS/Fritz.Box port-forward to this host (443/3001)"

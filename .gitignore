@@ -8,6 +8,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+releases
+current
+.release-sha
 dist
 dist-server
 dist-ssr
