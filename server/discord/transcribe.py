@@ -222,6 +222,7 @@ def _is_amp_chain_hallucination(text: str) -> bool:
     if len(parts) >= 3 and all(len(p) >= 2 and len(p.split()) <= 2 for p in parts):
         return True
     # Heuristic: a repeated speaker word with digits/suffixes is an invented chain
+    lower = text.lower()
     repeated = [w for w in re.findall(r"[a-züäöß]{4,}[0-9]?", lower) if lower.count(w) >= 2]
     if repeated and "&" in text:
         return True
