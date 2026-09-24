@@ -4,5 +4,5 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-User=franiboy
+User=dnd
 ExecStart=/dnd_dashboard/scripts/dnd-backup.sh

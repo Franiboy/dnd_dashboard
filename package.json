@@ -1,7 +1,8 @@
 {
   "name": "dnd_dashboard",
+  "version": "1.0.0",
+  "license": "MIT",
   "private": true,
-  "version": "0.0.0",
   "engines": {
     "node": ">=22"
   },

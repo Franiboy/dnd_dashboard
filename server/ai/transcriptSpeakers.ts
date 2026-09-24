@@ -19,7 +19,7 @@ const MIN_NAME_LENGTH = 4;
 const LINE_PREFIX_RE = /^\[(\d{1,3}:\d{2}(?::\d{2})?)\] ([^\n:]+):/gm;
 
 // Whisper transcripts contain misattribution artifacts inside the text, e.g.
-// "Cloudsen:"..., "franiboy:"..." or "Cloudsen& Nils & ...". These are not real
+// "Speaker:"...", "speaker:"..." or "SpeakerA& SpeakerB & ...". These are not real
 // dialogue, so they are replaced together with the line-level speaker labels.
 const IN_TEXT_NAME_RE = /([A-Za-zÄÖÜäöüß0-9][A-Za-zÄÖÜäöüß0-9 .,'|/-]*?)(?=:\s*"|=\s*"|\s*&\s*)/g;
 const IN_TEXT_AFTER_AMP_RE = /&\s*([A-Za-zÄÖÜäöüß0-9][A-Za-zÄÖÜäöüß0-9 .,'|/-]*?)\b/g;
@@ -135,8 +135,8 @@ function buildLabel(user: SafeUser, transcriptName: string, isAuthor: boolean): 
   return `${user.activePerson} (${transcriptName})${suffix}`;
 }
 
-// In-text artifacts often lose the canonical capitalization ("franiboy" instead
-// of "Franiboy"). Prefer the user's display name for exact matches.
+// In-text artifacts often lose the canonical capitalization ("variancbo" instead
+// of "Variance"). Prefer the user's display name for exact matches.
 function canonicalInTextName(user: SafeUser, inTextName: string): string {
   for (const candidate of [user.displayName, user.username]) {
     if (normalizeName(candidate) === normalizeName(inTextName)) return candidate;
@@ -150,9 +150,9 @@ function escapeRegExp(text: string): string {
 
 /**
  * Replaces Discord speaker labels in a transcript with character labels
- * (e.g. "Cloudsen" -> "Vimak (Cloudsen)", DM -> "Spielleiter (Nils)", the
+ * (e.g. "Selene" -> "Vimak (Selene)", DM -> "Spielleiter (Marek)", the
  * author additionally marked with "(du)"). Also cleans Whisper attribution
- * artifacts like `cloudsen:"..."` inside the text. Unresolved speakers stay
+ * artifacts like `speaker:"..."` inside the text. Unresolved speakers stay
  * unchanged.
  */
 export function annotateTranscriptSpeakers(
@@ -183,12 +183,12 @@ export function annotateTranscriptSpeakers(
       ),
       (_match, prefix: string) => `${prefix}${label}`
     );
-    // before-colon / before-& artifacts (e.g. `Cloudsen:"..."`, `Nils &`)
+    // before-colon / before-& artifacts (e.g. `Selene:"..."`, `Marek &`)
     result = result.replace(
       new RegExp(`${escapeRegExp(lineName ?? inTextName!)}(?=:\\s*"|=\\s*"|\\s*&\\s*)`, 'gi'),
       () => label
     );
-    // after-& artifacts (e.g. `Nils & Cloudsen`, trailing `& Cloudsen` without following `:`/`&`)
+    // after-& artifacts (e.g. `Marek & Selene`, trailing `& Selene` without following `:`/`&`)
     result = result.replace(
       new RegExp(`(?<=&\\s*)${escapeRegExp(lineName ?? inTextName!)}\\b`, 'gi'),
       () => label

@@ -101,6 +101,24 @@ npm start
 
 The server then serves `dist/` and is reachable on the port configured in `PORT` (default 3001).
 
+## Server Setup (Production Host)
+
+A full migration/production checklist — GitHub Actions self-hosted runner, nvm/Node,
+systemd units (service + socket activation + backup/healthcheck timers), nginx reverse
+proxy with TLS and deploy/backup scripts — lives in
+[`docs/server-setup.md`](./docs/server-setup.md). The scripted parts are idempotent and
+can be run with:
+
+```bash
+sudo apt update && sudo apt install -y git curl sudo zstd nginx
+scripts/dnd-server-setup.sh   # as the deploy user; re-run with RUNNER_TOKEN=<token>
+```
+
+Deployments run through CI/CD (`.github/workflows/ci-cd.yml`): CI on every PR,
+deploy on push to `main` with health check and automatic rollback
+(see [`docs/ci-cd.md`](./docs/ci-cd.md)). Backups are scheduled daily via
+`dnd-backup.timer` (`scripts/dnd-backup.sh`).
+
 ## Discord OAuth2
 
 For Discord login you need to create an application in the [Discord Developer Portal](https://discord.com/developers/applications) and set these values in `.env`:
@@ -197,3 +215,7 @@ Server and client test files live next to the code they test and use the `*.test
 - `src/lib/apps.ts` – app definitions
 - `AGENTS.md` – developer working rules and documentation index
 - `docs/` – detailed developer documentation (architecture, security, features, etc.)
+
+## License
+
+Released under the [MIT License](./LICENSE).

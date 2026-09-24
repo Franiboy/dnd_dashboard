@@ -209,8 +209,8 @@ def _is_prompt_echo(text: str, initial_prompt: str) -> bool:
 
 
 def _is_amp_chain_hallucination(text: str) -> bool:
-    # Hallucinated ampersand chains: "cloudsen&goblin1 & cloudsen2&cloudsen2 & ..."
-    # Legitimate intra-text "&" is rare (mostly "Nils & Cloudsen Ja.").
+    # Hallucinated ampersand chains: "speaker&goblin1 & speaker2&speaker2 & ..."
+    # Legitimate intra-text "&" is rare (mostly "Marek & Selene Ja.").
     # Chains with >=2 ampersands and fragmented short parts are almost always invented.
     if text.count("&") >= 2 and re.search(r"\w{2,}&\w{2,}", text):
         # Compact pairs within a longer chain are characteristic of the artifact.
@@ -221,9 +221,10 @@ def _is_amp_chain_hallucination(text: str) -> bool:
     parts = [p.strip() for p in re.split(r"\s*&\s*", text) if p.strip()]
     if len(parts) >= 3 and all(len(p) >= 2 and len(p.split()) <= 2 for p in parts):
         return True
-    # Heuristic: repeated "cloudsen" variations with digits -> invented suffix chain
+    # Heuristic: a repeated speaker word with digits/suffixes is an invented chain
     lower = text.lower()
-    if lower.count("cloudsen") >= 2 and "&" in text:
+    repeated = [w for w in re.findall(r"[a-züäöß]{4,}[0-9]?", lower) if lower.count(w) >= 2]
+    if repeated and "&" in text:
         return True
     return False
 
