@@ -30,8 +30,10 @@ While `DND_AUTO_DEPLOY` is unset, a push to `main` builds and validates the
 release but skips the local deploy job. A trusted `workflow_dispatch` with an
 exact `main` SHA always deploys. After the first manual release succeeds, set
 the repository variable `DND_AUTO_DEPLOY=true` to enable push-triggered
-deployments. The private-plan `production` environment can be given required
-reviewers after the repository is public.
+deployments. The trusted AI job is likewise disabled while
+`DND_AI_REVIEW_ENABLED` is unset; set it to `true` only after the release
+transition is complete. The private-plan `production` environment can be given
+required reviewers after the repository is public.
 
 ## Release layout
 

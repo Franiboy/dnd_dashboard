@@ -57,6 +57,7 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login == 'Franiboy' &&
+      vars.DND_AI_REVIEW_ENABLED == 'true' &&
       !contains(github.event.pull_request.labels.*.name, 'automerge')
     runs-on: [self-hosted, Linux, X64, HomeServer]
     timeout-minutes: 30
