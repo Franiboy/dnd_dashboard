@@ -7,8 +7,8 @@ This file describes the project, important conventions and working rules for ass
 These rules take precedence before every code change.
 
 - **Clarify before implementing.** Question every requirement for understanding and completeness and ask follow-up questions until the full context is clear (see "Requirements & Clarification Before Implementation" below).
-- **Finish every task with commit, push and pull request after coordinating with the user.** Commits and pushes each require explicit user approval; then open a PR against `main` so CI and the trusted AI review pipeline can validate the change. Never push directly to `main`.
-- **Watch CI on every PR until it is merged or blocked.** After opening a PR, actively monitor the pipeline (e.g. `gh pr checks --watch`); the trusted AI job may auto-merge same-repository PRs from the configured maintainer, while public fork PRs remain human-reviewed (see [`docs/ci-cd.md`](./docs/ci-cd.md)).
+- **Finish every task with commit, push and pull request after coordinating with the user.** Commits and pushes each require explicit user approval; then open a PR against `main` so hosted CI and the private deployment workflow can validate the change. Never push directly to `main`.
+- **Watch CI on every PR until it is merged or blocked.** After opening a PR, actively monitor the pipeline (e.g. `gh pr checks --watch`). The public repository has no production runner or AI auto-merge job; any future automation must live in the private deployment repository (see [`docs/ci-cd.md`](./docs/ci-cd.md)).
 - **No commits without explicit user approval.**
 - **No push without explicit user approval.**
 - **No force-push, branch deletions or history rewrites without approval.**

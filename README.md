@@ -103,20 +103,21 @@ The server then serves `dist/` and is reachable on the port configured in `PORT`
 
 ## Server Setup (Production Host)
 
-A full migration/production checklist — nvm/Node, the local deployment runner,
-stable systemd units, nginx, backups and immutable releases — lives in
+A full migration/production checklist — nvm/Node, stable systemd units, nginx,
+backups and immutable releases — lives in
 [`docs/server-setup.md`](./docs/server-setup.md). The bootstrap is idempotent:
 
 ```bash
 sudo apt update && sudo apt install -y git curl sudo zstd nginx
-bash scripts/dnd-server-setup.sh   # as the deploy user; re-run with RUNNER_TOKEN=<token>
+bash scripts/dnd-server-setup.sh   # as the deploy user
 ```
 
-Pull-request CI runs on GitHub-hosted runners. A protected merge or trusted
-release dispatch builds the exact commit into a checksummed artifact; only the
-local deploy job installs it under `/dnd_dashboard/releases/<sha>` and switches
-`/dnd_dashboard/current` after migration, readiness and rollback checks
-(see [`docs/ci-cd.md`](./docs/ci-cd.md)). Backups remain scheduled daily via
+Pull-request CI and release builds run on GitHub-hosted runners. The local
+production runner is registered only to the private
+`Franiboy/dnd_dashboard-deploy` repository; its manual workflow installs the
+published artifact under `/dnd_dashboard/releases/<sha>` and switches
+`/dnd_dashboard/current` after migration, readiness and rollback checks (see
+[`docs/ci-cd.md`](./docs/ci-cd.md)). Backups remain scheduled daily via
 `dnd-backup.timer` (`scripts/dnd-backup.sh`).
 
 ## Discord OAuth2
