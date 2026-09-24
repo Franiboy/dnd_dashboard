@@ -168,31 +168,27 @@ function loggedTool<T extends z.ZodRawShape>(
     args: z.infer<z.ZodObject<T>>
   ) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>
 ): void {
-  (server.tool as unknown as (...args: unknown[]) => void)(
-    name,
-    description,
-    argsSchema,
-    async (args: unknown) => {
-      const summary = formatToolArgs(args as Record<string, unknown>);
-      log.info(`MCP tool called: ${name}(${summary})`);
-      const start = Date.now();
-      try {
-        const result = await handler(args as z.infer<z.ZodObject<T>>);
-        const outputText = result.content.map((c) => c.text).join('');
-        const isError = result.isError ?? false;
-        log.info(
-          `MCP tool finished: ${name} (duration=${Date.now() - start}ms, isError=${isError}, outputChars=${outputText.length})`
-        );
-        return result;
-      } catch (err) {
-        const duration = Date.now() - start;
-        log.error(
-          `MCP tool failed: ${name} (duration=${duration}ms): ${err instanceof Error ? err.message : String(err)}`
-        );
-        throw err;
-      }
+  const inputSchema = z.object(argsSchema);
+  server.registerTool(name, { description, inputSchema }, async (args: unknown) => {
+    const summary = formatToolArgs(args as Record<string, unknown>);
+    log.info(`MCP tool called: ${name}(${summary})`);
+    const start = Date.now();
+    try {
+      const result = await handler(args as z.infer<z.ZodObject<T>>);
+      const outputText = result.content.map((c) => c.text).join('');
+      const isError = result.isError ?? false;
+      log.info(
+        `MCP tool finished: ${name} (duration=${Date.now() - start}ms, isError=${isError}, outputChars=${outputText.length})`
+      );
+      return result;
+    } catch (err) {
+      const duration = Date.now() - start;
+      log.error(
+        `MCP tool failed: ${name} (duration=${duration}ms): ${err instanceof Error ? err.message : String(err)}`
+      );
+      throw err;
     }
-  );
+  });
 }
 
 if (requireScope('diary:summarize')) {
