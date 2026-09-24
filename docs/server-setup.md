@@ -19,7 +19,7 @@ listed at the end.
 ## Scripted (run `scripts/dnd-server-setup.sh` on the new host)
 
 1. `sudo apt update && sudo apt install -y git curl sudo zstd nginx`
-2. Create the deploy user: `sudo adduser --disabled-password <user>` (or reuse `franiboy`).
+2. Create the deploy user: `sudo adduser --disabled-password <user>` (create a dedicated deploy user, e.g. `dnd`).
 3. Clone the repo into the deploy target location, e.g. `/dnd_dashboard`.
 4. As the deploy user, run `scripts/dnd-server-setup.sh`.
    It installs: nvm + Node (from `.nvmrc`), the GitHub Actions runner (systemd
@@ -44,10 +44,10 @@ sudo systemctl daemon-reload
 1. **Runner token**: GitHub UI `Settings > Actions > Runners > New self-hosted
 runner` → copy token → re-run `RUNNER_TOKEN=<token> scripts/dnd-server-setup.sh`.
    Runner name/labels are `DND_RUNNER_NAME` / `DND_RUNNER_LABELS` (defaults:
-   `HomeServer`, `self-hosted,Linux,X64,HomeServer`).
-2. **TLS certificate**: `sudo certbot --nginx -d einsnicergameserver.de`
+   `dnd-runner` (via `DND_RUNNER_NAME`), `self-hosted,Linux,X64`).
+2. **TLS certificate**: `sudo certbot --nginx -d <your-domain>`
    (regenerates the `# managed by Certbot` lines in the nginx site).
-3. **DNS / firewall**: point `einsnicergameserver.de` (or your domain) at the new
+3. **DNS / firewall**: point `<your-domain>` (or your domain) at the new
    host and forward 443 (HTTP/HTTPS) + 3001 (health) — for the Fritz.Box also the
    public IPv6 of the new machine.
 4. **Secrets** (`/dnd_dashboard/.env`): Discord bot token, JWT secret, DB paths.
@@ -62,7 +62,7 @@ runner` → copy token → re-run `RUNNER_TOKEN=<token> scripts/dnd-server-setup
 
 - `curl -i http://127.0.0.1:3001/health` → `200 {"status":"ok",...}`
 - `curl -i http://127.0.0.1:3001/ready` → `200 {"status":"ready","db":"ok",...}` (verifies the database is reachable; `503` when not ready)
-- `curl -I https://einsnicergameserver.de` → `200` over TLS
+- `curl -I https://<your-domain>` → `200` over TLS
 - `systemctl list-timers dnd-backup dnd-healthcheck` → both scheduled
 - Push a commit to `main` → CI/CD runs on the new runner and deploys itself
 - `~/backups/dnd/` gets a new daily backup after 03:00

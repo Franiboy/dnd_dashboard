@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { parseTranscriptLines, sliceTranscriptForBoundaryDetection } from './sessionBoundary.js';
 
 const HEADER_LINE = 'Transkript der Session';
-const SHORT_TS = '[12:30] Nils: Moin, wie geht es euch?';
-const END_TS = '[05:00:00] Nils: Damit endet die Session für heute.';
-const GOODBYE_TS = '[05:20:00] Nils: Bis zum nächsten Mal, tschüss!';
+const SHORT_TS = '[12:30] Marek: Moin, wie geht es euch?';
+const END_TS = '[05:00:00] Marek: Damit endet die Session für heute.';
+const GOODBYE_TS = '[05:20:00] Marek: Bis zum nächsten Mal, tschüss!';
 
 describe('parseTranscriptLines', () => {
   it('parses MM:SS and HH:MM:SS timestamps into seconds', () => {
@@ -18,7 +18,7 @@ describe('parseTranscriptLines', () => {
 
 describe('sliceTranscriptForBoundaryDetection', () => {
   it('returns the full transcript for short recordings', () => {
-    const transcript = [SHORT_TS, '[00:40:00] Nils: Inhalt'].join('\n');
+    const transcript = [SHORT_TS, '[00:40:00] Marek: Inhalt'].join('\n');
     const slices = sliceTranscriptForBoundaryDetection(transcript);
     expect(slices.useFull).toBe(true);
     expect(slices.head).toBeNull();
@@ -29,11 +29,11 @@ describe('sliceTranscriptForBoundaryDetection', () => {
   it('keeps only the first and last 90 minutes for long recordings', () => {
     const lines = [
       SHORT_TS,
-      '[01:00:00] Nils: Vorbesprechung',
-      '[01:30:00] Nils: Kurz vor Spielbeginn',
+      '[01:00:00] Marek: Vorbesprechung',
+      '[01:30:00] Marek: Kurz vor Spielbeginn',
       END_TS,
       GOODBYE_TS,
-      '[05:35:00] Nils: Auf Wiedersehen',
+      '[05:35:00] Marek: Auf Wiedersehen',
     ];
     const slices = sliceTranscriptForBoundaryDetection(lines.join('\n'));
     expect(slices.useFull).toBe(false);

@@ -112,7 +112,7 @@ function buildPrompt(
         ]
       : [
           '8. Analysiere die Transkripte gezielt nach wiederkehrenden, unbeabsichtigten oder DM-getriebenen Momenten, die sich für Bingo eignen:',
-          '   - Typische Sprüche, Floskeln oder Reaktionen des Dungeon Masters (Nils)',
+          '   - Typische Sprüche, Floskeln oder Reaktionen des Dungeon Masters',
           '   - Wiederkehrende Insider-Witze, running gags oder Memes der Gruppe, die oft unbeabsichtigt entstehen',
           '   - Würfelglücks-/Pech-Muster, die der Spieler nicht steuern kann (z. B. natürliche 1 oder 20 an ungünstigen Stellen, mehrere Fehlschläge hintereinander)',
           '   - Wiederkehrende Missgeschicke: Jemand vergisst einen wichtigen NPC-Namen, verwechselt Orte, missversteht den DM, verliert den Faden im Plan',

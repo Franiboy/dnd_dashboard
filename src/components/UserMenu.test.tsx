@@ -8,8 +8,8 @@ import type { SafeUser } from '../../shared/types';
 
 const baseUser: SafeUser = {
   id: 'u1',
-  username: 'franiboy',
-  displayName: 'Franiboy',
+  username: 'fenwick',
+  displayName: 'Fenwick',
   avatarUrl: null,
   isAdmin: false,
   isApproved: true,
@@ -87,7 +87,7 @@ describe('UserMenu', () => {
     openMenu();
 
     expect(screen.getByRole('menu')).toBeDefined();
-    expect(screen.getByText('Franiboy')).toBeDefined();
+    expect(screen.getByText('Fenwick')).toBeDefined();
     expect(screen.getByText('Spieler')).toBeDefined();
     expect(screen.getByRole('menuitem', { name: /Logout/ })).toBeDefined();
   });
