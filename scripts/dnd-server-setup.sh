@@ -67,22 +67,23 @@ else
     log "configuring runner '$RUNNER_NAME' for $GIT_REPO..."
     (cd "$RUNNER_DIR" && ./config.sh --url "https://github.com/$GIT_REPO" \
       --token "$RUNNER_TOKEN" --name "$RUNNER_NAME" --labels "$RUNNER_LABELS" --unattended --replace)
+    "$RUNNER_DIR/svc.sh" install "$DEPLOY_USER"
   else
-    log "RUNNER_TOKEN empty - skipping runner registration. Re-run with RUNNER_TOKEN=<token>."
+    log "RUNNER_TOKEN empty - skipping runner registration and service installation. Re-run with RUNNER_TOKEN=<token>."
   fi
-  "$RUNNER_DIR/svc.sh" install "$DEPLOY_USER"
 fi
 
 # --- 3. runtime directories --------------------------------------------------
-mkdir -p "$HOME/logs" "$HOME/backups/dnd" "$REPO_DIR/releases" "$REPO_DIR/recordings"
+mkdir -p "$HOME/logs" "$HOME/backups/dnd" "$REPO_DIR/releases" "$REPO_DIR/recordings" "$REPO_DIR/data/keys"
 
 # --- 4. systemd units (dashboard, socket, timers) ---------------------------
 SERVICES=(dnd-dashboard.service dnd-dashboard.socket dnd-backup.service dnd-backup.timer dnd-healthcheck.service dnd-healthcheck.timer)
 # Unit templates use neutral placeholders (User=dnd, /home/dnd/...).
 deploy_home="$(getent passwd "$DEPLOY_USER" | cut -d: -f6)"
-sub_tmp="$(mktemp)"
+verify_dir="$(mktemp -d)"
 for unit in "${SERVICES[@]}"; do
   if [ -f "$REPO_DIR/systemd/$unit" ]; then
+    sub_tmp="$verify_dir/$unit"
     sed -e "s/^User=dnd$/User=$DEPLOY_USER/" \
         -e "s#/home/dnd/#$deploy_home/#g" \
         "$REPO_DIR/systemd/$unit" > "$sub_tmp"
@@ -93,11 +94,16 @@ for unit in "${SERVICES[@]}"; do
     log "installed unit $unit"
   fi
 done
-rm -f "$sub_tmp"
+rm -rf "$verify_dir"
 sudo systemctl daemon-reload
 # The first application release is started by the release workflow after the
 # immutable /dnd_dashboard/current symlink exists.
-sudo systemctl enable --now dnd-dashboard.socket
+sudo systemctl enable dnd-dashboard.socket
+if [ -L "$REPO_DIR/current" ]; then
+  sudo systemctl start dnd-dashboard.socket
+else
+  log "dnd-dashboard.socket remains stopped until the first immutable release"
+fi
 sudo systemctl enable dnd-dashboard.service
 sudo systemctl enable --now dnd-backup.timer
 sudo systemctl enable --now dnd-healthcheck.timer
@@ -126,6 +132,8 @@ $DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start $SERVICE_NAME
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop $SERVICE_NAME
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart $SERVICE_NAME
 $DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl status $SERVICE_NAME
+$DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl start dnd-dashboard.socket
+$DEPLOY_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop dnd-dashboard.socket
 EOF
 sudo chmod 440 "$SUDOERS_FILE"
 log "sudoers: $DEPLOY_USER may manage $SERVICE_NAME without password"
@@ -135,6 +143,6 @@ log "The first application release is deployed by the GitHub release workflow."
 log "Do not start dnd-dashboard.service until /dnd_dashboard/current exists."
 
 log "Done. Remaining manual steps:"
-log "  - DNS/Fritz.Box port-forward to this host (443/3001)"
+log "  - DNS/Fritz.Box port-forward to this host (HTTPS/443 only; Node remains on loopback)"
 log "  - sudo certbot --nginx -d <your-domain>"
 log "  - if runner was not registered: RUNNER_TOKEN=<token> $0"

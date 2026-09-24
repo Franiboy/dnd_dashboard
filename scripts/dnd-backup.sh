@@ -11,7 +11,8 @@ BACKUP_ROOT="${DND_BACKUP_ROOT:-$HOME/backups/dnd}"
 KEEP_DAILY="${DND_BACKUP_KEEP_DAILY:-7}"
 LOG_DIR="${DND_LOG_DIR:-$HOME/logs}"
 LOG="$LOG_DIR/dnd-backup.log"
-LOCK="${DND_BACKUP_LOCK:-/tmp/dnd-backup.lock}"
+# Share the deployment lock so backups never overlap migrations/release switches.
+LOCK="${DND_DEPLOY_LOCK:-/tmp/dnd-release-deploy.lock}"
 ZSTD_LEVEL="${DND_ZSTD_LEVEL:-3}"
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
@@ -35,7 +36,7 @@ trap cleanup EXIT
 
 exec 9>"$LOCK"
 if ! flock -n 9; then
-  log 'Another backup is already running'
+  log 'Deployment or another backup is already running'
   exit 0
 fi
 

@@ -119,7 +119,7 @@ ProjectAtlas is the standard local repository-intelligence tool for coding agent
 - [`docs/apps.md`](./docs/apps.md) – App navigator and admin/user rules
 - [`docs/features.md`](./docs/features.md) – Bingo, diary/world and recording modules
 - [`docs/sse.md`](./docs/sse.md) – Server-Sent Events pattern and endpoints
-- [`docs/ci-cd.md`](./docs/ci-cd.md) – CI, trusted AI review, immutable releases and local deployment
+- [`docs/ci-cd.md`](./docs/ci-cd.md) – CI, trusted AI review, immutable releases and local deployment. A self-hosted runner must not remain registered to the public repository; move it to a private deployment repository/host before publication.
 - [`docs/edge-cases.md`](./docs/edge-cases.md) – Known edge cases and protected files
 - [`CodingStandards.md`](./CodingStandards.md) – Code style, import conventions and quality guidelines
 - [`README.md`](./README.md) – End-user setup and feature overview

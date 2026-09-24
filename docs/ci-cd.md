@@ -21,8 +21,20 @@ The project uses separate trust domains:
 | `build`             | Push to `main` or trusted workflow dispatch | GitHub-hosted             | Exact-SHA build and immutable artifact                                   |
 | `deploy`            | Successful `build`                          | Local `HomeServer` runner | Migration, release switch, readiness check, rollback                     |
 
-No pull-request code is allowed to run on the local runner. Do not replace the
-`trusted-ai-review` condition with a generic `pull_request` condition.
+No pull-request code is allowed to run on the local runner under the reviewed
+workflow definition. Do not replace the `trusted-ai-review` condition with a
+generic `pull_request` condition.
+
+### Public-repository runner boundary
+
+A self-hosted runner registered to this repository is **not a sufficient
+security boundary for a public repository**: a pull request can modify a
+workflow to add a self-hosted job, and `if` conditions in that modified
+workflow are not a trust boundary. Before making the repository public, either
+remove this runner from the public repository or move the deployment workflow
+and runner to a separate private deployment repository/host. Until that
+separation is complete, keep the repository private and do not approve fork
+workflows.
 
 ### Deployment bootstrap gate
 
@@ -53,12 +65,16 @@ deploys never copy repository-controlled unit files into `/etc/systemd`.
 
 1. verifies the artifact checksum, manifest, commit SHA, and required files;
 2. creates the immutable release directory and shared-data links;
-3. stops the application while the socket remains available;
-4. copies and integrity-checks a pre-migration SQLite snapshot;
+3. stops the application and its activation socket to quiesce writes;
+4. creates and integrity-checks a consistent pre-migration SQLite snapshot;
 5. runs the compiled migration runner from the new release;
 6. atomically switches `/dnd_dashboard/current`;
-7. starts the service and polls `/ready` for the expected release SHA;
-8. restores the previous release and database snapshot on failure.
+7. starts the socket and service, then polls `/ready` for the expected release SHA;
+8. restores the previous release, operations checkout and database snapshot on failure.
+
+A crash leaves `/dnd_dashboard/backups/deploy/.active-transaction` in place. The
+next deployment refuses to continue until an operator inspects that marker and
+recovers the previous release/database explicitly.
 
 The service must be installed with the reviewed `current`-path unit before the
 first artifact deployment:
@@ -92,10 +108,11 @@ Configure branch protection for `main` after the first safe workflow is merged:
 
 ## Manual recovery
 
-A deployment can be retried with the exact release workflow and commit SHA.
-Never force-push or edit a release directory in place. If a migration is not
-backward-compatible, keep the previous release available and restore the
-pre-migration database snapshot as part of an explicitly reviewed recovery.
+A deployment can be retried with the exact release workflow and any commit that
+is an ancestor of the current `main` tip. Never force-push or edit a release
+directory in place. If a migration is not backward-compatible, keep the previous
+release available and restore the pre-migration database snapshot as part of an
+explicitly reviewed recovery.
 
 ## Dependency security
 
