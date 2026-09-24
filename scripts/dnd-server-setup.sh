@@ -8,7 +8,7 @@
 # Manual, on the FIRST run only (not scriptable):
 #   1. Register a runner in GitHub UI: Settings > Actions > Runners > New,
 #      copy the token, then run with  RUNNER_TOKEN=<token> ./scripts/dnd-server-setup.sh
-#   2. Obtain the TLS cert:  sudo certbot --nginx -d einsnicergameserver.de
+#   2. Obtain the TLS cert:  sudo certbot --nginx -d <your-domain>
 #   3. Point DNS/Fritz.Box port-forward (443 -> this host) at the new server.
 #
 # Requirements: bash, sudo (passwordless), network. Run as the deploy user.
@@ -18,8 +18,8 @@ REPO_DIR="${DND_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DEPLOY_USER="${DND_DEPLOY_USER:-$USER}"
 RUNNER_DIR="${DND_RUNNER_DIR:-$HOME/actions-runner}"
 RUNNER_VERSION="${DND_RUNNER_VERSION:-2.336.0}"
-RUNNER_NAME="${DND_RUNNER_NAME:-HomeServer}"
-RUNNER_LABELS="${DND_RUNNER_LABELS:-self-hosted,Linux,X64,HomeServer}"
+RUNNER_NAME="${DND_RUNNER_NAME:-dnd-runner}"
+RUNNER_LABELS="${DND_RUNNER_LABELS:-self-hosted,Linux,X64}"
 RUNNER_TOKEN="${RUNNER_TOKEN:-}"
 GIT_REPO="${DND_GIT_REPO:-Franiboy/dnd_dashboard}"
 NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
@@ -123,5 +123,5 @@ fi
 
 log "Done. Remaining manual steps:"
 log "  - DNS/Fritz.Box port-forward to this host (443/3001)"
-log "  - sudo certbot --nginx -d einsnicergameserver.de"
+log "  - sudo certbot --nginx -d <your-domain>"
 log "  - if runner was not registered: RUNNER_TOKEN=<token> $0"

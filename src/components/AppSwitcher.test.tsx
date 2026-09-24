@@ -7,8 +7,8 @@ import type { SafeUser, VersionInfo } from '../../shared/types';
 
 const baseUser: SafeUser = {
   id: 'u1',
-  username: 'franiboy',
-  displayName: 'Franiboy',
+  username: 'fenwick',
+  displayName: 'Fenwick',
   avatarUrl: null,
   isAdmin: false,
   isApproved: true,
