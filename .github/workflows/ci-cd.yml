@@ -55,6 +55,7 @@ jobs:
     needs: ci
     if: >-
       github.event_name == 'pull_request' &&
+      github.base_ref == 'main' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login == 'Franiboy' &&
       vars.DND_AI_REVIEW_ENABLED == 'true' &&
@@ -72,6 +73,7 @@ jobs:
       GITHUB_REPOSITORY: ${{ github.repository }}
       PR_ACTOR: ${{ github.event.pull_request.user.login }}
       HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      PR_BRANCH: ${{ github.event.pull_request.head.ref }}
     steps:
       - name: Checkout exact PR revision
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -80,6 +82,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Restore writable PR branch context
+        shell: bash
+        run: git switch -C "$PR_BRANCH"
 
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -94,6 +100,7 @@ jobs:
 
       - name: AI review, merge and trigger release
         env:
+          AI_GITHUB_TOKEN: ${{ secrets.AI_GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.AI_GITHUB_TOKEN || github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_BRANCH: ${{ github.base_ref }}

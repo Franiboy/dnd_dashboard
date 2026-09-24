@@ -40,6 +40,8 @@ writeFileSync(
       commit,
       lockfileSha256,
       nodeVersion,
+      platform: process.platform,
+      arch: process.arch,
       commitTime,
     },
     null,

@@ -35,8 +35,8 @@ PR_ACTOR="${PR_ACTOR:?PR_ACTOR is required}"
 TRUSTED_ACTOR="${AI_TRUSTED_ACTOR:-Franiboy}"
 RELEASE_WORKFLOW="${RELEASE_WORKFLOW:-release.yml}"
 
-if [ "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ] || [ "$PR_ACTOR" != "$TRUSTED_ACTOR" ]; then
-	echo "[ai-review] Skipping AI review for an untrusted PR actor or repository"
+if [ "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ] || [ "$PR_ACTOR" != "$TRUSTED_ACTOR" ] || [ "$BASE_BRANCH" != "main" ]; then
+	echo "[ai-review] Skipping AI review for an untrusted PR actor, repository or base branch"
 	exit 0
 fi
 
@@ -60,6 +60,7 @@ trap restore_project_config EXIT
 
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+gh auth setup-git
 
 has_label() {
 	gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | grep -qx "$1"
@@ -219,12 +220,9 @@ direct_merge_pr() {
 # Only the required checks are watched, so this never blocks on this job's own
 # (non-required) "AI review" check, which would deadlock.
 #
-# Fix commits are pushed with the workflow's GITHUB_TOKEN, which on private
-# repos with self-hosted runners often triggers a run with conclusion
-# `action_required` (needs manual approval) or no `required` checks at all
-# (private without Pro). Local validation already ran lint/build/test, so a
-# missing or unapproved CI must never block the merge – otherwise the PR stays
-# stuck in `action_required` forever.
+# Fix commits require the separately configured AI_GITHUB_TOKEN. The script
+# refuses to push with only the workflow GITHUB_TOKEN, because that token may
+# not start a fresh push-triggered CI run.
 rebase_head_to_base() {
 	# Keep the PR head on top of the latest base so `gh pr merge` never fails
 	# with "Head branch is out of date". Only rebase if there is something to
@@ -307,7 +305,14 @@ hide_project_config
 
 # Checksums of pipeline-critical files. The review must never edit its own
 # running script or the workflow definition; revert and continue if it does.
-PIPELINE_FILES=(scripts/ai-review.sh scripts/dnd-release-deploy.sh scripts/package-release.sh scripts/dnd-server-setup.sh scripts/dnd-backup.sh systemd/dnd-dashboard.service .github/workflows/ci-cd.yml .github/workflows/release.yml)
+PIPELINE_FILES=(scripts/ai-review.sh scripts/dnd-release-deploy.sh scripts/package-release.sh scripts/dnd-server-setup.sh scripts/dnd-backup.sh scripts/dnd-healthcheck.sh systemd/dnd-dashboard.service systemd/dnd-dashboard.socket systemd/dnd-backup.service systemd/dnd-backup.timer systemd/dnd-healthcheck.service systemd/dnd-healthcheck.timer deploy/nginx-dnd-dashboard.conf .github/workflows/ci-cd.yml .github/workflows/release.yml)
+git fetch origin "$BASE_BRANCH" --quiet
+for f in "${PIPELINE_FILES[@]}"; do
+	if ! git diff --quiet "origin/$BASE_BRANCH" -- "$f"; then
+		log "ERROR: protected pipeline file changed in the PR: $f"
+		exit 1
+	fi
+done
 declare -A PIPELINE_HASHES
 for f in "${PIPELINE_FILES[@]}"; do
 	PIPELINE_HASHES[$f]="$(sha256sum "$f" | cut -d' ' -f1)"
@@ -325,7 +330,7 @@ for f in "${PIPELINE_FILES[@]}"; do
 		log "WARNING: AI modified $f while it was in use; reverting self-edit"
 		# Restore from HEAD (index AND working tree): restoring from the index
 		# alone would resurrect an edit the model had already staged.
-		git checkout HEAD -- "$f"
+		git checkout "origin/$BASE_BRANCH" -- "$f"
 	fi
 done
 
@@ -366,6 +371,12 @@ $SUMMARY
 	exit 1
 fi
 
+if [ -z "${AI_GITHUB_TOKEN:-}" ]; then
+	log "AI produced changes, but AI_GITHUB_TOKEN is not configured; refusing to push unvalidated fixes"
+	gh pr comment "$PR_NUMBER" --body "The AI review found a fix, but automatic pushes are disabled until the repository has a narrowly scoped AI_GITHUB_TOKEN configured. The changes were not pushed."
+	exit 1
+fi
+
 log "Validation green; pushing fix commit and merging"
 git add -A
 git commit -m "fix(ai-review): address critical review findings
@@ -377,8 +388,15 @@ $SUMMARY"
 # Protect the upcoming push/merge: without this label the push would cancel
 # (concurrency) the very job that is about to merge.
 set_automerge_label
-git push
-wait_for_ci "$PR_NUMBER" || exit 1
+if ! git push; then
+	remove_automerge_label
+	log "ERROR: could not push AI fix commit; refusing to merge"
+	exit 1
+fi
+if ! wait_for_ci "$PR_NUMBER"; then
+	remove_automerge_label
+	exit 1
+fi
 if ! merge_pr; then
 	remove_automerge_label
 	exit 1

@@ -14,5 +14,5 @@
 - Socket.io uses the same cookie-based session as the API.
 - `app.set('trust proxy', 1)` is active so rate limiting works correctly behind a reverse proxy.
 - MCP session tokens expire after 10 minutes and are restricted to specific scopes.
-- Public pull-request code runs only on ephemeral GitHub-hosted runners. The local `HomeServer` runner is restricted to exact, protected `main` releases and trusted same-repository AI review; it must never run a fork PR.
-- Production releases are built once in CI, checksum-verified, and promoted through a protected `production` environment. The deployment creates a pre-migration SQLite snapshot and verifies `/ready` for the exact release SHA.
+- Under the reviewed workflow, public pull-request code runs only on ephemeral GitHub-hosted runners. A self-hosted runner registered to this repository is not a sufficient boundary for a public repository, because a PR can modify its workflow; keep the repository private or move the runner/deployment workflow to a separate private deployment repository before publication.
+- Production releases are built in CI, checksum-verified, and promoted through the `production` environment after the bootstrap gate is enabled. The deployment creates a consistent pre-migration SQLite snapshot, pauses the activation socket, and verifies `/ready` for the exact release SHA.

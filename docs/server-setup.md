@@ -33,7 +33,10 @@ by the GitHub release workflow.
    It does not start the application until the first immutable release exists.
 
 The local runner is used only by the trusted release/deploy job. Public PR
-code must run on GitHub-hosted runners.
+code must run on GitHub-hosted runners. Before making this repository public,
+move the runner and deployment workflow to a separate private deployment
+repository/host; a self-hosted runner registered to a public repository is not a
+sufficient trust boundary.
 
 ## First release
 
@@ -42,9 +45,9 @@ exact commit SHA. The deploy job will:
 
 - validate the artifact and checksum;
 - create `/dnd_dashboard/releases/<sha>`;
-- snapshot and migrate SQLite while the service is stopped;
+- pause the activation socket and snapshot/migrate SQLite while the service is stopped;
 - switch `/dnd_dashboard/current` atomically;
-- start the service and verify `/ready` plus the release SHA.
+- start the socket and service, then verify `/ready` plus the release SHA.
 
 The stable unit must point to `/dnd_dashboard/current`. Verify it before the
 first release:
@@ -54,6 +57,11 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now dnd-dashboard.socket
 systemctl cat dnd-dashboard.service
 ```
+
+For a genuinely fresh host with no database or JWT key pair, the first manual
+release must explicitly set `DND_ALLOW_BOOTSTRAP=1` and
+`DND_DEPLOY_ALLOW_NEW_JWT_KEYS=1`; never set either flag for an existing
+installation.
 
 Do not run the legacy `scripts/dnd-deploy.sh`; it is intentionally disabled.
 

@@ -7,6 +7,7 @@ ARCHIVE="${DND_RELEASE_ARCHIVE:?DND_RELEASE_ARCHIVE is required}"
 EXPECTED_SHA="${DND_RELEASE_SHA:?DND_RELEASE_SHA is required}"
 ROOT="${DND_DEPLOY_ROOT:-/dnd_dashboard}"
 SERVICE_NAME="${DND_SERVICE_NAME:-dnd-dashboard}"
+SOCKET_NAME="${DND_SOCKET_NAME:-dnd-dashboard.socket}"
 SYSTEMCTL="${DND_SYSTEMCTL:-systemctl}"
 SUDO="${DND_SUDO:-sudo}"
 UNIT_FILE="${DND_SYSTEMD_UNIT_FILE:-/etc/systemd/system/${SERVICE_NAME}.service}"
@@ -22,9 +23,15 @@ RELEASE_KEEP="${DND_RELEASE_KEEP:-3}"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dnd-release-deploy.XXXXXX")"
 EXTRACT_DIR="$WORK_DIR/release"
 BACKUP_DIR=""
+TRANSACTION_FILE="$ROOT/backups/deploy/.active-transaction"
 PREVIOUS_TARGET=""
 SERVICE_WAS_ACTIVE=0
 SERVICE_STOPPED=0
+SOCKET_WAS_ACTIVE=0
+SOCKET_STOPPED=0
+DATABASE_EXISTED=0
+PREVIOUS_OPS_SHA=""
+TRANSACTION_ACTIVE=0
 COMPLETED=0
 ROLLING_BACK=0
 
@@ -57,11 +64,15 @@ NODE
 
 restore_database() {
   [ -n "$BACKUP_DIR" ] || return 0
-  [ -f "$BACKUP_DIR/dnd.db" ] || return 0
-  rm -f "$ROOT/dnd.db" "$ROOT/dnd.db-wal" "$ROOT/dnd.db-shm"
-  for file in dnd.db dnd.db-wal dnd.db-shm; do
-    [ -f "$BACKUP_DIR/$file" ] && cp -a "$BACKUP_DIR/$file" "$ROOT/$file"
-  done
+  if [ -f "$BACKUP_DIR/dnd.db" ]; then
+    rm -f "$ROOT/dnd.db" "$ROOT/dnd.db-wal" "$ROOT/dnd.db-shm"
+    cp -a "$BACKUP_DIR/dnd.db" "$ROOT/dnd.db"
+  elif [ "$DATABASE_EXISTED" -eq 0 ]; then
+    # A first-time bootstrap had no database before the migration.
+    rm -f "$ROOT/dnd.db" "$ROOT/dnd.db-wal" "$ROOT/dnd.db-shm"
+  else
+    log 'No database snapshot exists; preserving the current database during rollback'
+  fi
 }
 
 switch_current() {
@@ -87,12 +98,28 @@ wait_for_ready() {
   return 1
 }
 
+wait_for_any_ready() {
+  local attempt body
+  for attempt in $(seq 1 "$READY_RETRIES"); do
+    body="$(curl -fsS --max-time 5 "$READY_URL" 2>/dev/null || true)"
+    if [ -n "$body" ] && node -e '
+      const body = JSON.parse(process.argv[1]);
+      if (body.status !== "ready" || body.db !== "ok") process.exit(1);
+    ' "$body"; then
+      return 0
+    fi
+    sleep "$READY_SLEEP"
+  done
+  return 1
+}
+
 rollback() {
   [ "$ROLLING_BACK" -eq 0 ] || return 0
   ROLLING_BACK=1
   set +e
-  log 'Deployment failed; rolling back release and database'
+  log 'Deployment failed; rolling back release, database and operations checkout'
   "$SUDO" "$SYSTEMCTL" stop "$SERVICE_NAME" >>"$LOG" 2>&1
+  "$SUDO" "$SYSTEMCTL" stop "$SOCKET_NAME" >>"$LOG" 2>&1
   restore_database
   if [ -n "$PREVIOUS_TARGET" ]; then
     rm -f "$CURRENT_LINK"
@@ -100,16 +127,29 @@ rollback() {
   else
     rm -f "$CURRENT_LINK"
   fi
+  if [ -n "$PREVIOUS_OPS_SHA" ] && git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    git -C "$ROOT" reset --hard "$PREVIOUS_OPS_SHA" >>"$LOG" 2>&1
+  fi
+  if [ "$SOCKET_WAS_ACTIVE" -eq 1 ] || [ "$SERVICE_WAS_ACTIVE" -eq 1 ]; then
+    "$SUDO" "$SYSTEMCTL" start "$SOCKET_NAME" >>"$LOG" 2>&1
+  fi
   if [ "$SERVICE_WAS_ACTIVE" -eq 1 ]; then
     "$SUDO" "$SYSTEMCTL" start "$SERVICE_NAME" >>"$LOG" 2>&1
+    if ! wait_for_any_ready; then
+      log 'ERROR: previous release did not become ready during rollback'
+    fi
   fi
+  rm -f "$TRANSACTION_FILE"
+  TRANSACTION_ACTIVE=0
   log 'Rollback attempt finished'
 }
 
 on_exit() {
   local exit_code=$?
-  if [ "$COMPLETED" -ne 1 ] && [ "$SERVICE_STOPPED" -eq 1 ]; then
+  if [ "$COMPLETED" -ne 1 ] && { [ "$SERVICE_STOPPED" -eq 1 ] || [ "$SOCKET_STOPPED" -eq 1 ]; }; then
     rollback
+  elif [ "$COMPLETED" -ne 1 ] && [ "$TRANSACTION_ACTIVE" -eq 1 ]; then
+    rm -f "$TRANSACTION_FILE"
   fi
   rm -rf "$WORK_DIR"
   exit "$exit_code"
@@ -121,9 +161,20 @@ trap 'exit 130' INT TERM
 [ -f "$ARCHIVE" ] || die "release archive not found: $ARCHIVE"
 [ -d "$ROOT" ] || die "deployment root not found: $ROOT"
 [ -f "$ROOT/.env" ] || die "shared environment file not found: $ROOT/.env"
-[ -f "$ROOT/dnd.db" ] || die "shared database not found: $ROOT/dnd.db"
-[ -d "$ROOT/data" ] || die "shared data directory not found: $ROOT/data"
+if [ -f "$ROOT/dnd.db" ]; then
+  DATABASE_EXISTED=1
+elif [ "${DND_ALLOW_BOOTSTRAP:-0}" = "1" ]; then
+  log 'No existing database found; allowing first-release bootstrap'
+else
+  die "shared database not found: $ROOT/dnd.db (set DND_ALLOW_BOOTSTRAP=1 for a first install)"
+fi
+if [ ! -d "$ROOT/data" ]; then
+  [ "${DND_ALLOW_BOOTSTRAP:-0}" = "1" ] || die "shared data directory not found: $ROOT/data"
+  mkdir -p "$ROOT/data"
+fi
 [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || die "invalid release SHA"
+mkdir -p "$ROOT/backups/deploy"
+[ ! -f "$TRANSACTION_FILE" ] || die "unfinished deployment transaction found: $TRANSACTION_FILE (inspect and recover before retrying)"
 
 if [ -f "${ARCHIVE}.sha256" ]; then
   expected_hash="$(awk 'NR == 1 { print $1 }' "${ARCHIVE}.sha256")"
@@ -142,7 +193,15 @@ tar --extract --gzip --file "$ARCHIVE" --directory "$EXTRACT_DIR" --no-same-owne
 
 [ -f "$EXTRACT_DIR/manifest.json" ] || die 'release manifest is missing'
 manifest_sha="$(node -e 'const fs=require("node:fs"); console.log(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).commit)' "$EXTRACT_DIR/manifest.json")"
+manifest_node="$(node -e 'const fs=require("node:fs"); console.log(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).nodeVersion)' "$EXTRACT_DIR/manifest.json")"
+manifest_platform="$(node -e 'const fs=require("node:fs"); console.log(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).platform)' "$EXTRACT_DIR/manifest.json")"
+manifest_arch="$(node -e 'const fs=require("node:fs"); console.log(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).arch)' "$EXTRACT_DIR/manifest.json")"
+manifest_lock="$(node -e 'const fs=require("node:fs"); console.log(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).lockfileSha256)' "$EXTRACT_DIR/manifest.json")"
 [ "$manifest_sha" = "$EXPECTED_SHA" ] || die 'release manifest SHA does not match requested SHA'
+[ "$manifest_node" = "$(node -v)" ] || die "release Node version mismatch: artifact $manifest_node, runner $(node -v)"
+[ "$manifest_platform" = "$(node -p 'process.platform')" ] || die "release platform mismatch: artifact $manifest_platform, runner $(node -p 'process.platform')"
+[ "$manifest_arch" = "$(node -p 'process.arch')" ] || die "release architecture mismatch: artifact $manifest_arch, runner $(node -p 'process.arch')"
+[ "$manifest_lock" = "$(sha256sum "$EXTRACT_DIR/package-lock.json" | cut -d' ' -f1)" ] || die 'release lockfile checksum mismatch'
 [ -f "$EXTRACT_DIR/.release-sha" ] || die 'release SHA marker is missing'
 [ "$(tr -d '[:space:]' < "$EXTRACT_DIR/.release-sha")" = "$EXPECTED_SHA" ] || die 'release SHA marker does not match requested SHA'
 for required_path in dist dist-server node_modules package.json package-lock.json; do
@@ -160,9 +219,15 @@ fi
 grep -qF "WorkingDirectory=$ROOT/current" "$UNIT_FILE" || die 'the current systemd unit is not installed; install the reviewed unit before releasing'
 
 key_dir="$ROOT/data/keys"
+mkdir -p "$key_dir"
+keys_ready=1
 for key in jwt-private.pem jwt-public.pem; do
-  [ -s "$key_dir/$key" ] || die "JWT key is missing or empty: $key_dir/$key"
+  [ -s "$key_dir/$key" ] || keys_ready=0
 done
+if [ "$keys_ready" -ne 1 ]; then
+  [ "${DND_DEPLOY_ALLOW_NEW_JWT_KEYS:-0}" = "1" ] || die 'JWT key pair is missing or incomplete; set DND_DEPLOY_ALLOW_NEW_JWT_KEYS=1 only for a fresh install'
+  log 'JWT key pair is absent; allowing first-start key generation'
+fi
 
 exec 9>"$LOCK"
 flock -n 9 || die 'another release deployment is already running'
@@ -184,7 +249,7 @@ fi
 
 mkdir -p "$ROOT/recordings"
 for shared_link in .env data recordings; do
-  if [ ! -e "$release_dir/$shared_link" ]; then
+  if [ ! -e "$release_dir/$shared_link" ] && [ ! -L "$release_dir/$shared_link" ]; then
     case "$shared_link" in
       .env) ln -s "$ROOT/.env" "$release_dir/.env" ;;
       data) ln -s "$ROOT/data" "$release_dir/data" ;;
@@ -193,30 +258,59 @@ for shared_link in .env data recordings; do
   fi
 done
 
+if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  PREVIOUS_OPS_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+  git -C "$ROOT" diff --quiet || die 'production operations checkout has tracked changes'
+  git -C "$ROOT" diff --cached --quiet || die 'production operations checkout has staged changes'
+  git -C "$ROOT" fetch --quiet origin "$EXPECTED_SHA"
+  git -C "$ROOT" reset --hard "$EXPECTED_SHA" >>"$LOG" 2>&1
+fi
+
+printf 'release_sha=%s\\nprevious_target=%s\\nprevious_ops_sha=%s\\n' \
+  "$EXPECTED_SHA" "$PREVIOUS_TARGET" "$PREVIOUS_OPS_SHA" > "$TRANSACTION_FILE"
+TRANSACTION_ACTIVE=1
+
+if "$SYSTEMCTL" is-active --quiet "$SOCKET_NAME"; then
+  SOCKET_WAS_ACTIVE=1
+fi
 if "$SYSTEMCTL" is-active --quiet "$SERVICE_NAME"; then
   SERVICE_WAS_ACTIVE=1
-  log "Stopping $SERVICE_NAME for migration and release switch"
-  SERVICE_STOPPED=1
-  "$SUDO" "$SYSTEMCTL" stop "$SERVICE_NAME" >>"$LOG" 2>&1
+  log "Pausing $SOCKET_NAME and stopping $SERVICE_NAME for migration"
 else
-  log "$SERVICE_NAME is not active; starting it after release setup"
-  SERVICE_STOPPED=1
+  log "$SERVICE_NAME is not active; it will be started after release setup"
 fi
+SERVICE_STOPPED=1
+SOCKET_STOPPED=1
+"$SUDO" "$SYSTEMCTL" stop "$SERVICE_NAME" >>"$LOG" 2>&1
+"$SUDO" "$SYSTEMCTL" stop "$SOCKET_NAME" >>"$LOG" 2>&1
 
 backup_stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
 BACKUP_DIR="$ROOT/backups/deploy/${backup_stamp}-${EXPECTED_SHA}"
+printf 'release_sha=%s\\nprevious_target=%s\\nprevious_ops_sha=%s\\nbackup_dir=%s\\n' \
+  "$EXPECTED_SHA" "$PREVIOUS_TARGET" "$PREVIOUS_OPS_SHA" "$BACKUP_DIR" > "$TRANSACTION_FILE"
 mkdir -p "$BACKUP_DIR"
-for file in dnd.db dnd.db-wal dnd.db-shm; do
-  [ -f "$ROOT/$file" ] && cp -a "$ROOT/$file" "$BACKUP_DIR/$file"
-done
-verify_database "$BACKUP_DIR/dnd.db" || die 'pre-migration database backup failed integrity_check'
-log "Created pre-migration database backup: $BACKUP_DIR"
+if [ "$DATABASE_EXISTED" -eq 1 ]; then
+  (cd "$release_dir" && DB_PATH="$ROOT/dnd.db" BACKUP_PATH="$BACKUP_DIR/dnd.db" node --input-type=module - <<'NODE'
+import Database from 'better-sqlite3';
+
+const source = new Database(process.env.DB_PATH, { readonly: true });
+await source.backup(process.env.BACKUP_PATH);
+source.close();
+NODE
+  ) >>"$LOG" 2>&1
+  verify_database "$BACKUP_DIR/dnd.db" || die 'pre-migration database backup failed integrity_check'
+  log "Created consistent pre-migration database backup: $BACKUP_DIR"
+else
+  log 'No existing database; skipping pre-migration snapshot for bootstrap'
+fi
 
 if ! (cd "$release_dir" && DB_PATH="$ROOT/dnd.db" NODE_ENV=production node dist-server/scripts/db-migrate.js) >>"$LOG" 2>&1; then
   die 'database migration failed'
 fi
+verify_database "$ROOT/dnd.db" || die 'post-migration database integrity check failed'
 
 switch_current "$release_dir"
+"$SUDO" "$SYSTEMCTL" start "$SOCKET_NAME" >>"$LOG" 2>&1
 "$SUDO" "$SYSTEMCTL" start "$SERVICE_NAME" >>"$LOG" 2>&1
 if ! wait_for_ready "$EXPECTED_SHA"; then
   die "release did not become ready: $EXPECTED_SHA"
@@ -224,6 +318,9 @@ fi
 
 COMPLETED=1
 SERVICE_STOPPED=0
+SOCKET_STOPPED=0
+rm -f "$TRANSACTION_FILE"
+TRANSACTION_ACTIVE=0
 if [ "$RELEASE_KEEP" -gt 0 ] 2>/dev/null; then
   find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9a-f]{40}' -printf '%f\n' 2>/dev/null \
     | sort -r \
