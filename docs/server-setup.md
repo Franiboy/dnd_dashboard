@@ -60,9 +60,12 @@ first release:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now dnd-dashboard.socket
+sudo systemctl enable dnd-dashboard.socket
 systemctl cat dnd-dashboard.service
 ```
+
+Leave the socket stopped until the private deployment workflow has created
+`/dnd_dashboard/current`; the deployment starts it as part of the transaction.
 
 For a genuinely fresh host with no database or JWT key pair, the first manual
 release must explicitly set `DND_ALLOW_BOOTSTRAP=1` and
