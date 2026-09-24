@@ -196,8 +196,8 @@ done
 if "$SYSTEMCTL" is-active --quiet "$SERVICE_NAME"; then
   SERVICE_WAS_ACTIVE=1
   log "Stopping $SERVICE_NAME for migration and release switch"
-  "$SUDO" "$SYSTEMCTL" stop "$SERVICE_NAME" >>"$LOG" 2>&1
   SERVICE_STOPPED=1
+  "$SUDO" "$SYSTEMCTL" stop "$SERVICE_NAME" >>"$LOG" 2>&1
 else
   log "$SERVICE_NAME is not active; starting it after release setup"
   SERVICE_STOPPED=1
