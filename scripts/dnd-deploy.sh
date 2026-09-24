@@ -133,11 +133,20 @@ if ! npm run build >>"$LOG" 2>&1; then
 fi
 
 # Install/refresh systemd units (new or changed units land here on deploy).
+# Unit templates use neutral placeholders (User=dnd, /home/dnd/...); the
+# deploy-specific values are substituted from the current deploy user here.
 if command -v systemctl >/dev/null 2>&1; then
+  deploy_user="$(id -un)"
+  deploy_home="$(getent passwd "$deploy_user" | cut -d: -f6)"
+  sub_tmp="$(mktemp)"
   for unit in systemd/*.service systemd/*.socket systemd/*.timer; do
     [ -f "$unit" ] || continue
-    sudo cp "$unit" "/etc/systemd/system/$(basename "$unit")"
+    sed -e "s/^User=dnd$/User=$deploy_user/" \
+        -e "s#/home/dnd/#$deploy_home/#g" \
+        "$unit" > "$sub_tmp"
+    sudo cp "$sub_tmp" "/etc/systemd/system/$(basename "$unit")"
   done
+  rm -f "$sub_tmp"
   sudo systemctl daemon-reload
 fi
 
