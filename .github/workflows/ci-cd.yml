@@ -5,122 +5,97 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
-  group: cd-${{ github.ref }}
-  # Never cancel the run while the ai-review pipeline is mid-merge: its fix
-  # commit push triggers a fresh run that must not kill the merging job. The
-  # ai-review job sets the 'automerge' label right before pushing/merging, so
-  # runs triggered from then on are considered part of that merge sequence.
-  cancel-in-progress: ${{ github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'automerge') }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'pull_request' }}
 
 jobs:
   ci:
-    runs-on: self-hosted
+    name: CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Checkout exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          clean: false
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: |
-          # Self-hosted runner: keep node_modules across runs (checkout clean:false).
-          # npm ci always reinstalls from scratch, so skip it when the lockfile +
-          # Node version are unchanged. Marker lives in the persistent home dir
-          # (runner _temp is cleared after every job).
-          hash="$(sha256sum package-lock.json | cut -d' ' -f1)-$(node -v)"
-          marker="$HOME/.cache/dnd-ci/npm-$hash"
-          mkdir -p "$HOME/.cache/dnd-ci"
-          if [ -f "$marker" ] && [ -d node_modules ]; then
-            echo "node_modules unchanged, skipping npm ci"
-          else
-            npm ci
-            : > "$marker"
-          fi
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
 
       - name: Lint
         run: npm run lint
 
-      - name: Build
-        run: npm run build
-
       - name: Test
         run: npm test
 
-  deploy:
-    needs: ci
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          clean: false
+      - name: Build
+        run: npm run build
 
-      - name: Run deploy script
-        run: bash scripts/dnd-deploy.sh
-        shell: bash
-        env:
-          DND_DEPLOY_REPO: /dnd_dashboard
-
-  ai-review:
-    name: AI review
+  trusted-ai-review:
+    name: Trusted AI review
     needs: ci
-    # Skip when the 'automerge' label is set: that identifies a run triggered
-    # by the pipeline's own fix commit during an in-progress auto-merge. The
-    # merging job already reviewed and validated this head; re-reviewing here
-    # would only duplicate work and race the active merge.
-    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'automerge')
-    runs-on: self-hosted
-    timeout-minutes: 25
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == 'Franiboy' &&
+      vars.DND_AI_REVIEW_ENABLED == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'automerge')
+    runs-on: [self-hosted, Linux, X64, HomeServer]
+    timeout-minutes: 30
     permissions:
+      actions: write
       contents: write
       pull-requests: write
       checks: read
-      actions: read
     env:
-      # OpenCode model used for the review (provider/model format).
       AI_REVIEW_MODEL: opencode-go/gpt-6-luna
-      # PRs with this label are never merged automatically.
       AI_HOLD_LABEL: hold
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      PR_ACTOR: ${{ github.event.pull_request.user.login }}
+      HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
     steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v5
+      - name: Checkout exact PR revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: .nvmrc
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Put OpenCode on PATH
         run: echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
 
-      - name: Install dependencies
-        run: |
-          # Same marker trick as the ci job: this job runs right after it on the
-          # same runner, so node_modules is already present and up to date.
-          hash="$(sha256sum package-lock.json | cut -d' ' -f1)-$(node -v)"
-          marker="$HOME/.cache/dnd-ci/npm-$hash"
-          mkdir -p "$HOME/.cache/dnd-ci"
-          if [ -f "$marker" ] && [ -d node_modules ]; then
-            echo "node_modules unchanged, skipping npm ci"
-          else
-            npm ci
-            : > "$marker"
-          fi
-
-      - name: AI review, fix and merge
+      - name: AI review, merge and trigger release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.AI_GITHUB_TOKEN || github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_BRANCH: ${{ github.base_ref }}
+          RELEASE_WORKFLOW: release.yml
         run: bash scripts/ai-review.sh

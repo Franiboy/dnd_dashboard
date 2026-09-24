@@ -15,6 +15,8 @@
     "build:server": "tsc -p tsconfig.server.json && tsx scripts/copyServerAssets.ts",
     "build:version": "tsx scripts/buildVersion.ts",
     "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:migrate:compiled": "node dist-server/scripts/db-migrate.js",
+    "package:release": "bash scripts/package-release.sh",
     "build": "tsc -b && vite build && npm run build:server && npm run build:version",
     "start": "node dist-server/server/index.js",
     "preview": "vite preview",

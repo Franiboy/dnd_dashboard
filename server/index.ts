@@ -157,8 +157,11 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Run schema migrations and ensure admin user exists at startup
-runMigrations();
+// Run schema migrations in development/test. Production releases run the
+// versioned migration runner from the deployment transaction instead.
+const runStartupMigrations =
+  process.env.DND_RUN_MIGRATIONS_ON_STARTUP === '1' || process.env.NODE_ENV !== 'production';
+if (runStartupMigrations) runMigrations();
 
 if (isDiscordOAuthConfigured() && !isEncryptionConfigured()) {
   logger.error(
@@ -205,10 +208,20 @@ app.get('/ready', (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
     db.prepare('SELECT 1').get();
-    res.json({ status: 'ready', db: 'ok', time: new Date().toISOString() });
+    res.json({
+      status: 'ready',
+      db: 'ok',
+      releaseSha: getVersion().releaseSha,
+      time: new Date().toISOString(),
+    });
   } catch (err) {
     logger.error('Readiness check failed (database unreachable):', err);
-    res.status(503).json({ status: 'not_ready', db: 'error', time: new Date().toISOString() });
+    res.status(503).json({
+      status: 'not_ready',
+      db: 'error',
+      releaseSha: getVersion().releaseSha,
+      time: new Date().toISOString(),
+    });
   }
 });
 

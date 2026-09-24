@@ -8,8 +8,7 @@ for (const file of files) {
   const dest = join(process.cwd(), 'dist-server', file);
 
   if (!existsSync(src)) {
-    console.warn(`Source file not found, skipping: ${src}`);
-    continue;
+    throw new Error(`Required server asset not found: ${src}`);
   }
 
   mkdirSync(dirname(dest), { recursive: true });

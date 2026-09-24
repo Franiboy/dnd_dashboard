@@ -1,11 +1,8 @@
 import 'dotenv/config';
-import { runMigrations } from '../server/migrations.ts';
+import { runMigrations } from '../server/migrations.js';
 
-// Standalone migration runner. Applies the declarative schema diff and data
-// migrations to the configured database (DB_PATH) and exits.
-//
-// Used by the deploy script to bring the database up to date BEFORE the build
-// step, because the build itself (buildVersion.ts) already reads tables that
-// may have been changed by new migrations.
+// Standalone migration runner used by the immutable release deployment.
+// Production startup skips migrations; the deploy transaction runs this
+// compiled script before switching the current release symlink.
 runMigrations();
 console.log('Database migrations applied');

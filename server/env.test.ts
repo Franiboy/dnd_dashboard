@@ -9,6 +9,13 @@ describe('env validation', () => {
     expect(result.data?.NODE_ENV).toBe('development');
     expect(result.data?.DB_PATH).toBe('dnd.db');
     expect(result.data?.LOG_RETENTION_MAX).toBe(100000);
+    expect(result.data?.DND_RUN_MIGRATIONS_ON_STARTUP).toBe(false);
+  });
+
+  it('allows explicit production startup migrations', () => {
+    const result = parseEnv({ DND_RUN_MIGRATIONS_ON_STARTUP: '1' });
+    expect(result.success).toBe(true);
+    expect(result.data?.DND_RUN_MIGRATIONS_ON_STARTUP).toBe(true);
   });
 
   it('parses a numeric PORT', () => {

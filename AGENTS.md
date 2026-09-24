@@ -1,14 +1,14 @@
 # AGENTS.md – D&D Dashboard
 
-This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-09-21.
+This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-09-24.
 
 ## Critical Working Rules for Assistants
 
 These rules take precedence before every code change.
 
 - **Clarify before implementing.** Question every requirement for understanding and completeness and ask follow-up questions until the full context is clear (see "Requirements & Clarification Before Implementation" below).
-- **Finish every task with commit, push and pull request after coordinating with the user.** Commits and pushes each require explicit user approval; then open a PR against `main` so CI and the AI review pipeline can validate the change. Never push directly to `main`.
-- **Watch CI on every PR until it is merged or blocked.** After opening a PR, actively monitor the pipeline (e.g. `gh pr checks --watch`); the `ai-review` job squash-merges green PRs automatically (see [`docs/ci-cd.md`](./docs/ci-cd.md)) – never opt out via the `hold` label for routine changes. If CI fails or the AI review posts blockers, fix the findings, push again and keep watching.
+- **Finish every task with commit, push and pull request after coordinating with the user.** Commits and pushes each require explicit user approval; then open a PR against `main` so CI and the trusted AI review pipeline can validate the change. Never push directly to `main`.
+- **Watch CI on every PR until it is merged or blocked.** After opening a PR, actively monitor the pipeline (e.g. `gh pr checks --watch`); the trusted AI job may auto-merge same-repository PRs from the configured maintainer, while public fork PRs remain human-reviewed (see [`docs/ci-cd.md`](./docs/ci-cd.md)).
 - **No commits without explicit user approval.**
 - **No push without explicit user approval.**
 - **No force-push, branch deletions or history rewrites without approval.**
@@ -119,7 +119,7 @@ ProjectAtlas is the standard local repository-intelligence tool for coding agent
 - [`docs/apps.md`](./docs/apps.md) – App navigator and admin/user rules
 - [`docs/features.md`](./docs/features.md) – Bingo, diary/world and recording modules
 - [`docs/sse.md`](./docs/sse.md) – Server-Sent Events pattern and endpoints
-- [`docs/ci-cd.md`](./docs/ci-cd.md) – CI/CD pipeline, self-hosted runner and AI review automation
+- [`docs/ci-cd.md`](./docs/ci-cd.md) – CI, trusted AI review, immutable releases and local deployment
 - [`docs/edge-cases.md`](./docs/edge-cases.md) – Known edge cases and protected files
 - [`CodingStandards.md`](./CodingStandards.md) – Code style, import conventions and quality guidelines
 - [`README.md`](./README.md) – End-user setup and feature overview

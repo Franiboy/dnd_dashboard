@@ -103,20 +103,20 @@ The server then serves `dist/` and is reachable on the port configured in `PORT`
 
 ## Server Setup (Production Host)
 
-A full migration/production checklist — GitHub Actions self-hosted runner, nvm/Node,
-systemd units (service + socket activation + backup/healthcheck timers), nginx reverse
-proxy with TLS and deploy/backup scripts — lives in
-[`docs/server-setup.md`](./docs/server-setup.md). The scripted parts are idempotent and
-can be run with:
+A full migration/production checklist — nvm/Node, the local deployment runner,
+stable systemd units, nginx, backups and immutable releases — lives in
+[`docs/server-setup.md`](./docs/server-setup.md). The bootstrap is idempotent:
 
 ```bash
 sudo apt update && sudo apt install -y git curl sudo zstd nginx
-scripts/dnd-server-setup.sh   # as the deploy user; re-run with RUNNER_TOKEN=<token>
+bash scripts/dnd-server-setup.sh   # as the deploy user; re-run with RUNNER_TOKEN=<token>
 ```
 
-Deployments run through CI/CD (`.github/workflows/ci-cd.yml`): CI on every PR,
-deploy on push to `main` with health check and automatic rollback
-(see [`docs/ci-cd.md`](./docs/ci-cd.md)). Backups are scheduled daily via
+Pull-request CI runs on GitHub-hosted runners. A protected merge or trusted
+release dispatch builds the exact commit into a checksummed artifact; only the
+local deploy job installs it under `/dnd_dashboard/releases/<sha>` and switches
+`/dnd_dashboard/current` after migration, readiness and rollback checks
+(see [`docs/ci-cd.md`](./docs/ci-cd.md)). Backups remain scheduled daily via
 `dnd-backup.timer` (`scripts/dnd-backup.sh`).
 
 ## Discord OAuth2

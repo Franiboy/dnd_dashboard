@@ -1,108 +1,127 @@
 #!/usr/bin/env bash
-# D&D Dashboard backup: consistent SQLite dump (WAL-safe) + compressed data dirs.
-#
-# recordings/ are raw WAV (uncompressed); each file is stored as <name>.zst via
-# zstd (deterministic output). Unchanged files hard-link against the previous
-# backup so only new/changed material costs space.
-# Restore: gunzip dnd.db.gz, tar xzf data.tar.gz, zstd -d recordings/*.zst.
-#
-# All paths resolve relative to this script / $HOME; override with env vars.
+# D&D Dashboard backup: consistent SQLite dump, runtime data and recordings.
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="${DND_APP_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+RUNTIME_DIR="${DND_RUNTIME_DIR:-$APP_DIR/current}"
+[ -d "$RUNTIME_DIR" ] || RUNTIME_DIR="$APP_DIR"
 BACKUP_ROOT="${DND_BACKUP_ROOT:-$HOME/backups/dnd}"
 KEEP_DAILY="${DND_BACKUP_KEEP_DAILY:-7}"
 LOG_DIR="${DND_LOG_DIR:-$HOME/logs}"
 LOG="$LOG_DIR/dnd-backup.log"
-LOCK="/tmp/dnd-backup.lock"
-ZSTD_LEVEL=3
+LOCK="${DND_BACKUP_LOCK:-/tmp/dnd-backup.lock}"
+ZSTD_LEVEL="${DND_ZSTD_LEVEL:-3}"
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use --silent default
 
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$BACKUP_ROOT"
+DATE="$(date '+%Y%m%d-%H%M%S')"
+FINAL_DIR="$BACKUP_ROOT/$DATE"
+PARTIAL_DIR="$BACKUP_ROOT/.${DATE}.partial"
+TEMP_DB="${TMPDIR:-/tmp}/dnd-db-${DATE}-$$.backup"
 
 log() {
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
+  printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$LOG"
 }
+
+cleanup() {
+  rm -f "$TEMP_DB"
+  rm -rf "$PARTIAL_DIR"
+}
+trap cleanup EXIT
 
 exec 9>"$LOCK"
 if ! flock -n 9; then
-  log "Another run is in progress, skipping"
+  log 'Another backup is already running'
   exit 0
 fi
 
-DATE=$(date '+%Y%m%d-%H%M%S')
-DEST="$BACKUP_ROOT/$DATE"
-mkdir -p "$DEST"
+DB_PATH="${DB_PATH:-}"
+if [ -z "$DB_PATH" ] && [ -f "$APP_DIR/.env" ]; then
+  DB_PATH="$(sed -n 's/^DB_PATH=//p' "$APP_DIR/.env" | head -n 1)"
+fi
+DB_PATH="${DB_PATH:-$APP_DIR/dnd.db}"
+[[ "$DB_PATH" = /* ]] || DB_PATH="$APP_DIR/$DB_PATH"
+[ -f "$DB_PATH" ] || { log "ERROR: database not found: $DB_PATH"; exit 1; }
 
-# Newest previous backup dir (for recordings hard-link dedup).
-PREV_DIR=""
+PREV_DIR=''
 if [ -d "$BACKUP_ROOT" ]; then
-  PREV_DIR=$(find "$BACKUP_ROOT" -maxdepth 1 -mindepth 1 -type d -name '20*' ! -name "$DATE" -printf '%f\n' 2>/dev/null | sort -r | head -n 1)
-  [ -n "$PREV_DIR" ] && PREV_DIR="$BACKUP_ROOT/$PREV_DIR" || PREV_DIR=""
+  PREV_NAME="$(find "$BACKUP_ROOT" -maxdepth 1 -mindepth 1 -type d -name '20*' -exec test -f '{}/COMPLETE' ';' -printf '%f\n' 2>/dev/null | sort -r | head -n 1)"
+  [ -n "$PREV_NAME" ] && PREV_DIR="$BACKUP_ROOT/$PREV_NAME"
 fi
 
-log "Starting backup -> $DEST"
+mkdir -p "$PARTIAL_DIR"
+log "Starting backup -> $FINAL_DIR"
 
-# Consistent SQLite backup via better-sqlite3 backup API (WAL-safe), gzipped.
-DB_BACKUP="$DEST/dnd.db.gz"
-(cd "$APP_DIR" && node -e "
+# SQLite's backup API creates a consistent snapshot even while WAL is active.
+(
+  cd "$RUNTIME_DIR"
+  DB_PATH="$DB_PATH" BACKUP_PATH="$TEMP_DB" node - <<'NODE'
 const Database = require('better-sqlite3');
-const db = new Database('dnd.db', { readonly: true });
-db.backup('/tmp/dnd-db-$$.backup').then(() => {
-  process.exit(0);
-}).catch((err) => {
-  console.error('SQLite backup failed:', err);
+const database = new Database(process.env.DB_PATH, { readonly: true });
+database.backup(process.env.BACKUP_PATH).then(() => database.close()).catch((error) => {
+  console.error(error);
   process.exit(1);
 });
-") >>"$LOG" 2>&1
-gzip -c -9 "/tmp/dnd-db-$$.backup" > "$DB_BACKUP"
-rm -f "/tmp/dnd-db-$$.backup"
-log "SQLite backup OK (gzipped)"
+NODE
+) >>"$LOG" 2>&1
+gzip -c -9 "$TEMP_DB" > "$PARTIAL_DIR/dnd.db.gz"
+rm -f "$TEMP_DB"
+log 'SQLite backup completed'
 
-# Runtime data (diary, sessions, bingo). Small enough to copy.
 if [ -d "$APP_DIR/data" ]; then
-  tar czf "$DEST/data.tar.gz" -C "$APP_DIR" data >>"$LOG" 2>&1
+  tar czf "$PARTIAL_DIR/data.tar.gz" -C "$APP_DIR" data >>"$LOG" 2>&1
 fi
 
-# Config (secrets stay on this host; backup for disaster recovery).
 if [ -f "$APP_DIR/.env" ]; then
-  cp "$APP_DIR/.env" "$DEST/.env"
+  cp -a "$APP_DIR/.env" "$PARTIAL_DIR/.env"
 fi
 
-# Recordings: per-file zstd, hard-link dedup against previous backup.
-if [ -d "$APP_DIR/recordings" ] && command -v zstd >/dev/null 2>&1; then
-  REC_DEST="$DEST/recordings"
+if [ -d "$APP_DIR/recordings" ] && find "$APP_DIR/recordings" -type f -print -quit | grep -q .; then
+  command -v zstd >/dev/null 2>&1 || {
+    log 'ERROR: recordings exist but zstd is unavailable'
+    exit 1
+  }
+  REC_DEST="$PARTIAL_DIR/recordings"
   mkdir -p "$REC_DEST"
   REC_PREV="$PREV_DIR/recordings"
-  count=0
+  compressed=0
   linked=0
-  while IFS= read -r -d '' f; do
-    rel="${f#"$APP_DIR/recordings/"}"
-    target="$REC_DEST/$rel.zst"
+  while IFS= read -r -d '' file; do
+    relative="${file#"$APP_DIR/recordings/"}"
+    target="$REC_DEST/$relative.zst"
     mkdir -p "$(dirname "$target")"
-    prev_target="$REC_PREV/$rel.zst"
-    # Unchanged recordings are write-once: if the previous backup already has
-    # this file and the source is not newer than it, re-use via hard-link.
-    # (zstd preserves the source mtime, so use "not newer" not "older".)
-    if [ -n "$REC_PREV" ] && [ -f "$prev_target" ] && [ ! "$f" -nt "$prev_target" ]; then
-      ln "$prev_target" "$target"
+    previous="$REC_PREV/$relative.zst"
+    if [ -n "$REC_PREV" ] && [ -f "$previous" ] && [ ! "$file" -nt "$previous" ]; then
+      ln "$previous" "$target"
       linked=$((linked + 1))
     else
-      zstd -q -"$ZSTD_LEVEL" -f -o "$target" "$f"
-      count=$((count + 1))
+      zstd -q -"$ZSTD_LEVEL" -f -o "$target" "$file"
+      compressed=$((compressed + 1))
     fi
   done < <(find "$APP_DIR/recordings" -type f -print0)
-  log "recordings: $count compressed, $linked hard-linked from previous backup"
+  log "recordings: $compressed compressed, $linked hard-linked"
 fi
 
-# Prune old backups, keep the newest KEEP_DAILY.
-cd "$BACKUP_ROOT"
-ls -1d */ 2>/dev/null | sort -r | tail -n +$((KEEP_DAILY + 1)) | while read -r old; do
-  log "Pruning old backup: $old"
-  rm -rf "$old"
-done
+(
+  cd "$PARTIAL_DIR"
+  find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 -r sha256sum > SHA256SUMS
+)
+touch "$PARTIAL_DIR/COMPLETE"
+mv "$PARTIAL_DIR" "$FINAL_DIR"
+trap - EXIT
+rm -f "$TEMP_DB"
 
-log "Backup complete: $DEST"
+cd "$BACKUP_ROOT"
+find . -maxdepth 1 -mindepth 1 -type d -name '20*' -exec test -f '{}/COMPLETE' ';' -printf '%f\n' 2>/dev/null \
+  | sort -r \
+  | tail -n +$((KEEP_DAILY + 1)) \
+  | while read -r old; do
+      log "Pruning old backup: $old"
+      rm -rf "$BACKUP_ROOT/$old"
+    done
+
+log "Backup complete: $FINAL_DIR"
