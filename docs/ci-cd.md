@@ -32,8 +32,9 @@ exact `main` SHA always deploys. After the first manual release succeeds, set
 the repository variable `DND_AUTO_DEPLOY=true` to enable push-triggered
 deployments. The trusted AI job is likewise disabled while
 `DND_AI_REVIEW_ENABLED` is unset; set it to `true` only after the release
-transition is complete. The private-plan `production` environment can be given
-required reviewers after the repository is public.
+transition is complete. CodeQL is gated by `DND_CODEQL_ENABLED` until code
+scanning is enabled for the repository. The private-plan `production`
+environment can be given required reviewers after the repository is public.
 
 ## Release layout
 
