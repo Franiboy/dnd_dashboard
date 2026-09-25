@@ -30,7 +30,62 @@ runner and the production runner are separate trust boundaries.
 The source repository must not contain a job with `runs-on: self-hosted`.
 Keeping the runners and write-capable automation in a separate repository is
 the security boundary that prevents a public pull request from adding or
-redirecting a production job.
+redirecting a production job. Because this invariant decides whether pull
+request code can reach the production host, it is enforced by
+`scripts/verify-source-runners.sh` and covered by `tests/ci/sourceRunners.test.ts`
+rather than only by this paragraph.
+
+## Accepted risk: no enforced branch protection
+
+The branch protection and ruleset APIs answer `403 Upgrade to GitHub Pro or make
+this repository public to enable this feature.` for both repositories, so
+required reviews, required status checks and a "no direct push" rule cannot be
+enforced by GitHub on the current plan.
+
+The activation gates are nevertheless enabled, because the canaries proved the
+chain works. The accepted consequence is explicit:
+
+- **A direct push to `main` bypasses the AI review and the promotion step.**
+  Such a push still produces a normal release build with the full test suite, the
+  native module gate and the transactional deployment, so it cannot ship a broken
+  or undeployable artifact. It can ship a change that no model reviewed.
+- `hold` and `automerge` are therefore conventions, not permissions: they
+  constrain the automation, not a human with push access.
+
+Mitigations that do not depend on the plan: a direct push is visible in the
+release run and in the deployment log, the deployment can only install an
+immutable checksummed release of a commit that is an ancestor of `main`, and the
+private automation pins the exact private commit it executes. Re-evaluate this
+decision as soon as branch protection or rulesets become available; until then,
+prefer pull requests over direct pushes.
+
+## Operator rule: private automation pin
+
+`DND_PRIVATE_AUTOMATION_REF` in this repository is the full private commit the
+dispatcher must run as, and it is maintained by hand. **Every merge in
+`Franiboy/dnd_dashboard-deploy` makes it stale**, and a stale value makes the
+private `Validate trusted source request` job fail while this repository still
+shows a green `Dispatch trusted AI review`.
+
+After merging in the private repository:
+
+```bash
+gh variable set DND_PRIVATE_AUTOMATION_REF --repo Franiboy/dnd_dashboard \
+  --body "$(gh api repos/Franiboy/dnd_dashboard-deploy/commits/main --jq .sha)"
+```
+
+The dispatch job now performs this comparison itself and fails **in the source
+run** with the required value, so a stale pin can no longer pass unnoticed. A
+second step confirms that the private repository really started a run.
+
+## Known duplication: two `CI` checks per pull request
+
+`pull_request` and `pull_request_target` both produce a check named `CI` on the
+same head commit, because the private promotion waits for "the newest `CI`
+check" on the exact resulting SHA. The promotion selects it by
+`sort_by(.id) | last`, which is well defined but depends on which trigger
+started last. Both runs are green, so this is not a functional problem today,
+but the names should be made unique before anything depends on the ordering.
 
 ## Jobs
 
@@ -160,8 +215,14 @@ The public release workflow creates a tag/release named
 - `dnd-release.tar.gz`
 - `dnd-release.tar.gz.sha256`
 
-An existing release tag fails closed; assets are never replaced. Build, test
-and compilation run in a digest-pinned disposable container. The publish job
+An existing release tag fails closed; assets are never replaced. `npm ci` runs on
+the hosted runner so native addons match the production libc; build, test and
+compilation run in a digest-pinned disposable container that mounts the runner
+workspace at `/workspace` (read-only root filesystem, no host paths, no
+credentials in the environment). The checkout is done with
+`persist-credentials: false` and `origin/main` is fetched with a one-shot
+authorization header, so no credential is left in `.git/config` that the
+container could read. The publish job
 verifies the release target before optionally starting the private deployment
 workflow with `workflow_dispatch` and the exact SHA. The private workflow
 independently checks source ancestry, downloads the assets, and verifies the
@@ -217,7 +278,9 @@ not copy repository-controlled files into `/etc/systemd`.
 
 Before changing the source repository from private to public:
 
-- confirm the source repository has no `self-hosted` job;
+- confirm `bash scripts/verify-source-runners.sh .` passes; the invariant is
+  also covered by `tests/ci/sourceRunners.test.ts`, so a `self-hosted` job fails
+  CI rather than review;
 - confirm `HomeServer` and `HomeServer-AI` are registered only to
   `Franiboy/dnd_dashboard-deploy`;
 - confirm the private dispatcher and reusable workflow use a complete private
@@ -228,4 +291,7 @@ Before changing the source repository from private to public:
 - verify `/ready`, backups, rollback documentation and private deployment
   dispatch;
 - rotate any credential that was ever placed in a build, archive or production
-  workspace.
+  workspace;
+- confirm `SECURITY.md` and `.github/CODEOWNERS` exist and stay current. Both
+  are advisory while branch protection is unavailable, `SECURITY.md` still gives
+  reporters a private channel.

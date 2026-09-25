@@ -56,6 +56,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # The split-repository boundary only holds while no job here runs on the
+      # production host, so the invariant is checked and not only documented.
+      - name: Verify no self-hosted job
+        run: bash scripts/verify-source-runners.sh .
+
       - name: Test
         run: npm test
 
@@ -108,6 +113,32 @@ jobs:
           [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]]
           printf 'sha=%s\n' "$base_sha" >> "$GITHUB_OUTPUT"
 
+      # DND_PRIVATE_AUTOMATION_REF is maintained by hand and goes stale with
+      # every commit in the private repository. The private dispatcher rejects
+      # a run whose own commit differs from the requested ref, which used to
+      # fail silently here because `gh workflow run` returns 0 once the
+      # request is accepted. Both checks below make the failure visible in this
+      # run, where it can still be acted on.
+      - name: Verify private automation pin
+        id: pin
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.AI_DISPATCH_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          private_main="$(gh api repos/Franiboy/dnd_dashboard-deploy/commits/main --jq '.sha' 2>/dev/null || true)"
+          if [ -z "$private_main" ]; then
+            printf '::warning::cannot read the private main tip with this token; skipping the pin pre-check\n'
+            printf 'stale=false\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$private_main" != "$PRIVATE_AUTOMATION_REF" ]; then
+            printf '::error::DND_PRIVATE_AUTOMATION_REF is %s but the private main tip is %s; update the source variable to the private main tip\n' \
+              "$PRIVATE_AUTOMATION_REF" "$private_main"
+            exit 1
+          fi
+          printf 'stale=false\n' >> "$GITHUB_OUTPUT"
+
       - name: Dispatch private ephemeral AI review
         shell: bash
         env:
@@ -129,3 +160,26 @@ jobs:
             -f pr_number="$PR_NUMBER" \
             -f head_sha="$HEAD_SHA" \
             -f base_sha="$BASE_SHA"
+
+      # Confirms the private repository really started a run. Without this the
+      # dispatch looks successful in this repository even when the private
+      # validation job rejects the request.
+      - name: Verify the private review run started
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.AI_DISPATCH_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          for _ in 1 2 3 4 5 6; do
+            run_id="$(gh run list --repo Franiboy/dnd_dashboard-deploy \
+              --workflow ai-review-dispatch.yml --limit 5 \
+              --json headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | first | .databaseId" 2>/dev/null || true)"
+            if [ -n "$run_id" ] && [ "$run_id" != "null" ]; then
+              printf 'private review run: %s\n' "$run_id"
+              exit 0
+            fi
+            sleep 10
+          done
+          printf '::error::the private dispatcher accepted no run for %s; check DND_PRIVATE_AI_ENABLED and DND_PRIVATE_AUTOMATION_REF in the private repository\n' "$HEAD_SHA"
+          exit 1

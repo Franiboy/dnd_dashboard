@@ -5,9 +5,29 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # Security and runtime updates that belong together, so a single reviewed
+      # pull request carries them instead of one per package.
+      production-dependencies:
+        patterns:
+          - '*'
+        exclude-patterns:
+          - 'quill'
+          - 'tar'
+      # quill and tar are pinned through package.json overrides on purpose and
+      # are therefore not offered as routine updates.
+      development-dependencies:
+        dependency-type: development
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # Every action here is pinned by commit SHA, so a major bump is a
+      # deliberate change. One grouped pull request instead of five keeps the
+      # queue reviewable and avoids rubber-stamping.
+      github-actions:
+        patterns:
+          - '*'

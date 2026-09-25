@@ -33,6 +33,15 @@ export default defineConfig({
           setupFiles: ['./src/vitest.setup.ts'],
         },
       },
+      {
+        // Repository invariants that are not application code, so they also run
+        // in the local guardrail (`npm run check`) and not only in CI.
+        test: {
+          name: 'ci',
+          environment: 'node',
+          include: ['tests/**/*.test.ts'],
+        },
+      },
     ],
   },
 });
