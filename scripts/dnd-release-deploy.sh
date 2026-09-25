@@ -247,6 +247,17 @@ else
   mv "$EXTRACT_DIR" "$release_dir"
 fi
 
+# Load every native addon of the extracted release with the production Node
+# before anything is mutated. Native binaries are resolved against the libc of
+# the build host, so a release built elsewhere only fails once the service
+# starts. Checking here keeps the running release and the database untouched.
+for native_package in @discordjs/opus bcrypt better-sqlite3; do
+  if ! (cd "$release_dir" && node -e "require(process.argv[1])" "$native_package") >>"$LOG" 2>&1; then
+    die "native module does not load on this host: $native_package"
+  fi
+done
+log 'Native modules of the release load on this host'
+
 mkdir -p "$ROOT/recordings"
 for shared_link in .env data recordings; do
   if [ ! -e "$release_dir/$shared_link" ] && [ ! -L "$release_dir/$shared_link" ]; then

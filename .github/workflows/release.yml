@@ -55,6 +55,17 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      # Native addons are resolved against the libc of the machine that runs
+      # `npm ci`. Production is Ubuntu 24.04 (glibc 2.39), so the dependency
+      # install must happen on this runner and not inside the disposable
+      # container, whose Debian bookworm base carries glibc 2.36. A mismatch
+      # publishes a release that cannot load its native modules on production.
+      - name: Install dependencies for the production target
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+
       - name: Build and validate in disposable container
         shell: bash
         env:
@@ -77,7 +88,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             "$RELEASE_IMAGE" \
-            bash -c 'set -euo pipefail; mkdir -p /tmp/home /tmp/npm-cache; npm ci --no-audit --no-fund; npm run format:check; npm run lint; npm test; npm run build; node --check dist-server/server/index.js; node --check dist-server/scripts/db-migrate.js'
+            bash -c 'set -euo pipefail; mkdir -p /tmp/home /tmp/npm-cache; npm run format:check; npm run lint; npm test; npm run build; node --check dist-server/server/index.js; node --check dist-server/scripts/db-migrate.js'
 
       - name: Verify source tree after container build
         shell: bash
@@ -101,6 +112,15 @@ jobs:
           set -euo pipefail
           (cd "$RUNNER_TEMP" && sha256sum -c dnd-release.tar.gz.sha256)
           tar -tzf "$RUNNER_TEMP/dnd-release.tar.gz" >/dev/null
+
+      # Guards against publishing a release whose native addons cannot load on
+      # the production target. A glibc mismatch between the build host and
+      # production produced an undeployable release once already.
+      - name: Verify release native modules for the production target
+        shell: bash
+        env:
+          PRODUCTION_GLIBC: '2.39'
+        run: bash scripts/verify-release-native.sh "$RUNNER_TEMP/dnd-release.tar.gz" "$PRODUCTION_GLIBC"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
