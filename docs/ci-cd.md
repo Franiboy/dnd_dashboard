@@ -167,6 +167,20 @@ workflow with `workflow_dispatch` and the exact SHA. The private workflow
 independently checks source ancestry, downloads the assets, and verifies the
 SHA-256 file.
 
+Native addons are resolved against the libc of the machine that runs
+`npm ci`. Production is Ubuntu 24.04 with glibc 2.39, so `npm ci` runs on the
+`ubuntu-24.04` runner and only build, test and compilation move into the
+disposable container. Two gates keep an undeployable release from reaching
+production:
+
+- `scripts/verify-release-native.sh` runs in the release build. It fails closed
+  unless the archive contains the prebuilt addon for glibc 2.39 and the Node
+  ABI from `.nvmrc`, unless the set of packages shipping a compiled binary
+  still matches the reviewed list, and unless every native module loads.
+- `scripts/dnd-release-deploy.sh` loads the native modules of the extracted
+  release with the production Node **before** the `current` symlink moves, so a
+  libc mismatch fails without touching the running service.
+
 The dispatch requires `DEPLOY_DISPATCH_TOKEN` with `Actions: write` on the
 private deployment repository. Manual deployment remains available as a
 fallback:
