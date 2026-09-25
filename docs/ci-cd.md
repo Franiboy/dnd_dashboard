@@ -193,6 +193,9 @@ Before changing the source repository from private to public:
   `Franiboy/dnd_dashboard-deploy`;
 - confirm the source workflow and `automation_ref` use the same full private
   commit SHA;
+- set the private deployment repository's Actions access to
+  `Accessible from repositories owned by Franiboy`; otherwise GitHub cannot
+  resolve the cross-repository reusable workflow;
 - enable branch protection and required CI checks where supported;
 - rotate `ADMIN_PASSWORD` and any other exposed credentials;
 - configure CodeQL/code scanning and Dependabot protections;
