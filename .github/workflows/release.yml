@@ -42,12 +42,15 @@ jobs:
       - name: Validate release revision
         id: validate
         shell: bash
+        env:
+          # Needed because the checkout no longer persists a credential. The
+          # token exists only in this step's environment and is handed to git
+          # per command, so it never lands in .git/config, which the build
+          # container can read.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          # Fetched with an explicit one-shot header instead of a persisted
-          # credential; the header is passed per command and never written to
-          # .git/config, which the build container can read.
           # shellcheck disable=SC2016
           auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
           git -c "http.https://github.com/.extraheader=$auth_header" fetch --quiet origin main
