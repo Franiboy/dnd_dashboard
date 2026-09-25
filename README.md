@@ -113,9 +113,10 @@ bash scripts/dnd-server-setup.sh   # as the deploy user
 ```
 
 Pull-request CI and release builds run on GitHub-hosted runners. Trusted
-internal PRs additionally call the pinned private reusable AI-review workflow
-in `Franiboy/dnd_dashboard-deploy`; only OpenCode runs on the separately
-isolated `HomeServer-AI` runner, using its configured default model and no
+internal PRs dispatch a private workflow in `Franiboy/dnd_dashboard-deploy`;
+that private dispatcher validates the source run and starts one fresh
+`HomeServer-AI` JIT runner/container per review job. Only OpenCode runs in
+that isolated container, using its image-configured default model and no
 write credential. A hosted credential-free job validates the produced patch
 inside a disposable container, and a separate clean hosted promotion job
 independently checks the patch, waits for fresh CI and squash-merges the exact
