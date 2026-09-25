@@ -1,12 +1,17 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import { AppError, parseWith } from '../errors.js';
+import { AppError, errorPayload, parseWith } from '../errors.js';
 import { authMiddleware, requireAdmin, type AuthRequest } from '../auth.js';
 import { getRecentLogs, getLogsPaginated, subscribeLogs } from '../logger.js';
 import type { LogEntry, UserRole } from '../../shared/types.js';
-import { USER_ROLES } from '../../shared/types.js';
+import { SUPPORTED_LANGUAGES, USER_ROLES } from '../../shared/types.js';
 import { getModel, isValidModel, listAvailableModels } from '../ai/modelConfig.js';
-import { getAiModelSettings, setAiModelSettings } from '../repositories/aiSettings.js';
+import { getAiLanguage } from '../ai/languageConfig.js';
+import {
+  getAiSettings,
+  setAiLanguageSettings,
+  setAiModelSettings,
+} from '../repositories/aiSettings.js';
 import {
   deleteUser,
   findUserById,
@@ -86,19 +91,27 @@ subscribeLogs(notifyLogUpdate);
 /** Guards destructive admin actions against self-modification and the initial admin. */
 function requireAdminActionTarget(req: AuthRequest, targetId: string) {
   const target = findUserById(targetId);
-  if (!target) throw new AppError(403, 'User nicht gefunden');
+  if (!target) {
+    throw new AppError(403, 'User nicht gefunden', { messageKey: 'errors.admin.userNotFound' });
+  }
   if (isInitialAdmin(target)) {
-    throw new AppError(403, 'Der Ursprungsadmin kann nicht verändert werden');
+    throw new AppError(403, 'Der Ursprungsadmin kann nicht verändert werden', {
+      messageKey: 'errors.admin.initialAdminProtected',
+    });
   }
   if (target.id === req.user!.id) {
-    throw new AppError(403, 'Du kannst deinen eigenen Account nicht verändern');
+    throw new AppError(403, 'Du kannst deinen eigenen Account nicht verändern', {
+      messageKey: 'errors.admin.selfChangeDenied',
+    });
   }
   return target;
 }
 
 function requireExistingUser(targetId: string) {
   const user = findUserById(targetId);
-  if (!user) throw new AppError(404, 'User nicht gefunden');
+  if (!user) {
+    throw new AppError(404, 'User nicht gefunden', { messageKey: 'errors.admin.userNotFound' });
+  }
   return user;
 }
 
@@ -162,6 +175,10 @@ const modelSchema = z.object({
   ),
 });
 
+const aiLanguageSchema = z.object({
+  language: z.enum(SUPPORTED_LANGUAGES, { error: 'Ungültige Sprache' }),
+});
+
 router.get('/users', authMiddleware, requireAdmin, (_req: AuthRequest, res) => {
   res.json(getAllUsers());
 });
@@ -191,7 +208,9 @@ router.post('/users/:id/approve', authMiddleware, requireAdmin, (req: AuthReques
   const targetId = req.params.id as string;
   requireAdminActionTarget(req, targetId);
   const user = setUserApproved(targetId, true);
-  if (!user) throw new AppError(404, 'User nicht gefunden');
+  if (!user) {
+    throw new AppError(404, 'User nicht gefunden', { messageKey: 'errors.admin.userNotFound' });
+  }
   notifyUserUpdate();
   res.json(user);
 });
@@ -200,7 +219,9 @@ router.post('/users/:id/reject', authMiddleware, requireAdmin, (req: AuthRequest
   const targetId = req.params.id as string;
   requireAdminActionTarget(req, targetId);
   const user = setUserApproved(targetId, false);
-  if (!user) throw new AppError(404, 'User nicht gefunden');
+  if (!user) {
+    throw new AppError(404, 'User nicht gefunden', { messageKey: 'errors.admin.userNotFound' });
+  }
   notifyUserUpdate();
   res.json(user);
 });
@@ -210,7 +231,9 @@ router.post('/users/:id/admin', authMiddleware, requireAdmin, (req: AuthRequest,
   requireAdminActionTarget(req, targetId);
   const { isAdmin } = parseWith(adminFlagSchema, req.body);
   const user = setUserAdmin(targetId, isAdmin);
-  if (!user) throw new AppError(404, 'User nicht gefunden');
+  if (!user) {
+    throw new AppError(404, 'User nicht gefunden', { messageKey: 'errors.admin.userNotFound' });
+  }
   notifyUserUpdate();
   res.json(user);
 });
@@ -222,7 +245,9 @@ router.post('/users/:id/role', authMiddleware, requireAdmin, (req: AuthRequest, 
   // account and the initial admin - it does not affect admin permissions.
   requireExistingUser(targetId);
   const user = setUserRole(targetId, role);
-  if (!user) throw new AppError(404, 'User nicht gefunden');
+  if (!user) {
+    throw new AppError(404, 'User nicht gefunden', { messageKey: 'errors.admin.userNotFound' });
+  }
   // Players and dungeon masters are permanent bingo participants; reflect the
   // role change in the bingo player list immediately.
   syncPlayersFromUsers();
@@ -237,10 +262,14 @@ router.post('/users/:id/active-person', authMiddleware, requireAdmin, (req: Auth
   requireExistingUser(targetId);
   const { name } = parseWith(activePersonSchema, req.body);
   if (name !== null && !personExists(name)) {
-    throw new AppError(400, 'Person existiert nicht');
+    throw new AppError(400, 'Person existiert nicht', {
+      messageKey: 'errors.admin.personNotFound',
+    });
   }
   const user = setUserActivePerson(targetId, name);
-  if (!user) throw new AppError(404, 'User nicht gefunden');
+  if (!user) {
+    throw new AppError(404, 'User nicht gefunden', { messageKey: 'errors.admin.userNotFound' });
+  }
   notifyUserUpdate();
   res.json(user);
 });
@@ -250,7 +279,9 @@ router.post('/users/:id/disabled-apps', authMiddleware, requireAdmin, (req: Auth
   requireAdminActionTarget(req, targetId);
   const { disabledApps } = parseWith(disabledAppsSchema, req.body);
   const user = setUserDisabledApps(targetId, disabledApps);
-  if (!user) throw new AppError(404, 'User nicht gefunden');
+  if (!user) {
+    throw new AppError(404, 'User nicht gefunden', { messageKey: 'errors.admin.userNotFound' });
+  }
   notifyUserUpdate();
   res.json(user);
 });
@@ -258,22 +289,37 @@ router.post('/users/:id/disabled-apps', authMiddleware, requireAdmin, (req: Auth
 router.delete('/users/:id', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const targetId = req.params.id as string;
   requireAdminActionTarget(req, targetId);
-  if (!deleteUser(targetId)) throw new AppError(404, 'User nicht gefunden');
+  if (!deleteUser(targetId)) {
+    throw new AppError(404, 'User nicht gefunden', { messageKey: 'errors.admin.userNotFound' });
+  }
   notifyUserUpdate();
   res.json({ ok: true });
+});
+
+router.get('/ai/language', authMiddleware, requireAdmin, (_req: AuthRequest, res) => {
+  res.json({ language: getAiLanguage() });
+});
+
+router.put('/ai/language', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
+  const { language } = parseWith(aiLanguageSchema, req.body);
+  const settings = setAiLanguageSettings(language);
+  res.json({ language: settings.language });
 });
 
 router.get('/ai/models', authMiddleware, requireAdmin, async (_req: AuthRequest, res) => {
   try {
     const models = await listAvailableModels();
-    const settings = getAiModelSettings();
+    const settings = getAiSettings();
     res.json({
       models,
       model: getModel(),
       modelOverridden: isValidModel(settings.model),
     });
   } catch (err) {
-    throw new AppError(500, 'Modelle konnten nicht geladen werden', { cause: err });
+    throw new AppError(500, 'Modelle konnten nicht geladen werden', {
+      messageKey: 'errors.admin.modelsLoadFailed',
+      cause: err,
+    });
   }
 });
 
@@ -293,12 +339,19 @@ router.post('/nightly-job', authMiddleware, requireAdmin, (_req: AuthRequest, re
   const started = runNightlyJobNow();
   if (started) {
     notifyJobUpdate();
-    res.json({ started: true, message: 'Nightly-Job wurde gestartet.' });
+    res.json({
+      started: true,
+      message: 'Nightly-Job wurde gestartet.',
+      messageKey: 'errors.status.nightlyStarted',
+      errorCode: 'errors.status.nightlyStarted',
+    });
   } else {
     res.status(409).json({
+      ...errorPayload('Nightly-Job läuft bereits.', {
+        fallbackCode: 'errors.status.nightlyAlreadyRunning',
+      }),
       started: false,
       message: 'Nightly-Job läuft bereits.',
-      error: 'Nightly-Job läuft bereits.',
     });
   }
 });
@@ -307,13 +360,18 @@ router.post('/transcription-jobs', authMiddleware, requireAdmin, (_req: AuthRequ
   const started = runTranscriptionJobsNow();
   if (started) {
     notifyJobUpdate();
-    res.json({ started: true, message: 'Transkription-Jobs wurden gestartet.' });
+    res.json({
+      started: true,
+      message: 'Transkription-Jobs wurden gestartet.',
+      messageKey: 'errors.status.transcriptionStarted',
+      errorCode: 'errors.status.transcriptionStarted',
+    });
   } else {
     const message = 'Transkription-Jobs laufen bereits oder sind deaktiviert.';
     res.status(409).json({
+      ...errorPayload(message, { fallbackCode: 'errors.status.transcriptionAlreadyRunning' }),
       started: false,
       message,
-      error: message,
     });
   }
 });
@@ -322,13 +380,18 @@ router.post('/bingo-suggestion-refill', authMiddleware, requireAdmin, (_req: Aut
   const started = runBingoSuggestionRefillNow();
   if (started) {
     notifyJobUpdate();
-    res.json({ started: true, message: 'Bingo-Vorschlags-Nachfüllung wurde gestartet.' });
+    res.json({
+      started: true,
+      message: 'Bingo-Vorschlags-Nachfüllung wurde gestartet.',
+      messageKey: 'errors.status.bingoRefillStarted',
+      errorCode: 'errors.status.bingoRefillStarted',
+    });
   } else {
     const message = 'Bingo-Vorschlags-Nachfüllung läuft bereits oder KI ist deaktiviert.';
     res.status(409).json({
+      ...errorPayload(message, { fallbackCode: 'errors.status.bingoRefillAlreadyRunning' }),
       started: false,
       message,
-      error: message,
     });
   }
 });
@@ -336,7 +399,9 @@ router.post('/bingo-suggestion-refill', authMiddleware, requireAdmin, (_req: Aut
 router.put('/ai/models', authMiddleware, requireAdmin, (req: AuthRequest, res) => {
   const { model } = parseWith(modelSchema, req.body);
   if (model && !isValidModel(model)) {
-    throw new AppError(400, 'Ungültiges Modell');
+    throw new AppError(400, 'Ungültiges Modell', {
+      messageKey: 'errors.validation.invalidModel',
+    });
   }
   const settings = setAiModelSettings(model);
   res.json({

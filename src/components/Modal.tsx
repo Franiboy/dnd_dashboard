@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
+import { useI18n } from '../hooks/useI18n';
 
 interface ModalProps {
   isOpen: boolean;
@@ -6,6 +8,8 @@ interface ModalProps {
   children: ReactNode;
   actions?: ReactNode;
   onClose: () => void;
+  /** Accessible label for the close button; defaults to the current language. */
+  closeLabel?: string;
   className?: string;
   contentClassName?: string;
 }
@@ -16,24 +20,42 @@ export function Modal({
   children,
   actions,
   onClose,
+  closeLabel,
   className = '',
   contentClassName = '',
 }: ModalProps) {
+  const { t } = useI18n();
+  const titleId = useId();
+  const dialogRef = useDialogFocus<HTMLDivElement>(isOpen, onClose);
+  const resolvedCloseLabel = closeLabel ?? t('shared.close');
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="presentation"
+    >
       <div
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={-1}
+        aria-modal="true"
+        aria-labelledby={titleId}
         className={`flex min-h-0 max-h-full min-w-0 flex-col overflow-y-auto bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-4 sm:p-6 max-w-2xl w-full shadow-2xl ${className}`}
       >
         <div className="flex shrink-0 items-start justify-between gap-3 mb-4">
-          <h3 className="min-w-0 wrap-anywhere text-xl font-semibold text-[var(--text-h)]">
+          <h3
+            id={titleId}
+            className="min-w-0 wrap-anywhere text-xl font-semibold text-[var(--text-h)]"
+          >
             {title}
           </h3>
           <button
+            type="button"
             onClick={onClose}
             className="flex size-11 shrink-0 items-center justify-center text-slate-400 hover:text-[var(--text-h)] text-2xl leading-none"
-            aria-label="Schließen"
+            aria-label={resolvedCloseLabel}
           >
             ×
           </button>

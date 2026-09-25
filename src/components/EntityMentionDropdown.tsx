@@ -1,5 +1,6 @@
 import type { EntityType } from '../../shared/types';
-import { typeLabels } from '../lib/entityLabels';
+import { useI18n } from '../hooks/useI18n';
+import { getEntityTypeLabel } from '../lib/entityLabels';
 import type { MentionSuggestion } from '../lib/entityMention';
 
 const badgeStyles: Record<EntityType, string> = {
@@ -24,18 +25,18 @@ export function EntityMentionDropdown({
   onPick,
   onHover,
 }: EntityMentionDropdownProps) {
+  const { t } = useI18n();
+
   return (
     <div
       data-entity-mention="dropdown"
       className="fixed z-[100] w-72 max-h-64 overflow-auto rounded-lg border border-[var(--border)] bg-slate-900 shadow-xl"
       style={{ top: position.top, left: position.left }}
       role="listbox"
-      aria-label="Entitäten-Vorschläge"
+      aria-label={t('world.mention.label')}
     >
       {suggestions.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-slate-500">
-          Keine Treffer – weiter tippen oder Esc drücken, das @ bleibt dann als Text.
-        </p>
+        <p className="px-3 py-2 text-xs text-slate-500">{t('world.mention.noResults')}</p>
       ) : (
         suggestions.map((suggestion, index) => (
           <button
@@ -43,6 +44,7 @@ export function EntityMentionDropdown({
             type="button"
             role="option"
             aria-selected={index === activeIndex}
+            aria-label={`${suggestion.label} — ${getEntityTypeLabel(suggestion.type, t)}`}
             onMouseDown={(e) => {
               // Keep the Quill focus so the mention range stays valid.
               e.preventDefault();
@@ -56,7 +58,7 @@ export function EntityMentionDropdown({
             <span
               className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${badgeStyles[suggestion.type]}`}
             >
-              {typeLabels[suggestion.type]}
+              {getEntityTypeLabel(suggestion.type, t)}
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium text-[var(--text-h)]">

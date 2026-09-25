@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useError } from './useError';
+import { useI18n } from './useI18n';
+import { getServerMessagePayload, localizeServerMessage } from '../i18n/serverMessages';
+import { SERVER_MESSAGE_PROTOCOL_VERSION } from '../../shared/types';
 import type {
   BingoGame,
   ClientToServerEvents,
@@ -10,8 +13,13 @@ import type {
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || '';
 
+function connectErrorPayload(error: Error) {
+  return getServerMessagePayload((error as Error & { data?: unknown }).data) ?? error.message;
+}
+
 export function useSocket(user: SafeUser | null) {
   const { showError } = useError();
+  const { t } = useI18n();
   // Held in state (not a ref) so callers see the socket on the render where
   // it connects instead of a stale/null ref value.
   const [socket, setSocket] = useState<Socket<ServerToClientEvents, ClientToServerEvents> | null>(
@@ -21,11 +29,17 @@ export function useSocket(user: SafeUser | null) {
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [bingo, setBingo] = useState<string | null>(null);
   const joinedRef = useRef(false);
+  const tRef = useRef(t);
+
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   useEffect(() => {
     if (!user) return;
 
     const socket = io(SERVER_URL || undefined, {
+      auth: { messageProtocol: SERVER_MESSAGE_PROTOCOL_VERSION },
       withCredentials: true,
       reconnection: true,
     });
@@ -47,8 +61,18 @@ export function useSocket(user: SafeUser | null) {
     });
 
     socket.on('state', (g) => setGame(g));
-    socket.on('error', (msg) => {
-      showError(msg);
+    socket.on('error', (message) => {
+      const payload = getServerMessagePayload(message);
+      const localized = localizeServerMessage(payload ?? message, tRef.current, {
+        fallback: typeof message === 'string' ? message : undefined,
+      });
+      if (localized) showError(localized);
+    });
+    socket.on('connect_error', (error: Error) => {
+      const localized = localizeServerMessage(connectErrorPayload(error), tRef.current, {
+        fallback: error.message,
+      });
+      if (localized) showError(localized);
     });
     socket.on('joined', (id) => {
       setPlayerId(id);

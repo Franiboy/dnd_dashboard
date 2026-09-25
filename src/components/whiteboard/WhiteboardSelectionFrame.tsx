@@ -1,5 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { SelectionBounds } from './whiteboardShared';
+import { useI18n } from '../../hooks/useI18n';
 import { BASE_CONTROL_SIZE, MIN_UI_SCREEN_PX, LockIcon } from './WhiteboardElementView';
 
 interface WhiteboardSelectionFrameProps {
@@ -34,8 +35,12 @@ export function WhiteboardSelectionFrame({
   onSendBackward,
   onStartResize,
 }: WhiteboardSelectionFrameProps) {
+  const { t } = useI18n();
   // Same legibility compensation as the per-element overlay controls.
   const uiScale = Math.max(1, MIN_UI_SCREEN_PX / (BASE_CONTROL_SIZE * cameraScale));
+  const lockLabel = t(
+    allLocked ? 'whiteboard.selection.unlockAll' : 'whiteboard.selection.lockAll'
+  );
   return (
     <div
       className="pointer-events-none absolute"
@@ -44,9 +49,8 @@ export function WhiteboardSelectionFrame({
       <div className="absolute inset-0 rounded-lg border-2 border-[var(--accent)] bg-[var(--accent)]/5" />
       <button
         type="button"
-        title={
-          allLocked ? 'Alle lösen (wieder verschiebbar)' : 'Alle fixieren (nicht verschiebbar)'
-        }
+        title={lockLabel}
+        aria-label={lockLabel}
         onPointerDown={(e) => {
           if (e.button === 0) e.stopPropagation();
         }}
@@ -68,7 +72,8 @@ export function WhiteboardSelectionFrame({
       </button>
       <button
         type="button"
-        title="Alles löschen"
+        title={t('whiteboard.selection.deleteAll')}
+        aria-label={t('whiteboard.selection.deleteAll')}
         onPointerDown={(e) => {
           if (e.button === 0) e.stopPropagation();
         }}
@@ -101,13 +106,13 @@ export function WhiteboardSelectionFrame({
       {(
         [
           {
-            title: 'Alle eine Ebene nach vorn',
+            title: t('whiteboard.selection.bringAllForward'),
             enabled: canBringForward,
             onClick: onBringForward,
             icon: <path d="M12 19V5m0 0-6 6m6-6 6 6" />,
           },
           {
-            title: 'Alle eine Ebene nach hinten',
+            title: t('whiteboard.selection.sendAllBackward'),
             enabled: canSendBackward,
             onClick: onSendBackward,
             icon: <path d="M12 5v14m0 0 6-6m-6 6-6-6" />,
@@ -117,7 +122,11 @@ export function WhiteboardSelectionFrame({
         <button
           key={control.title}
           type="button"
-          title={control.enabled ? control.title : `${control.title} (nicht möglich)`}
+          title={
+            control.enabled
+              ? control.title
+              : t('whiteboard.selection.unavailableAction', { action: control.title })
+          }
           aria-label={control.title}
           disabled={!control.enabled}
           onPointerDown={(e) => {
@@ -153,7 +162,8 @@ export function WhiteboardSelectionFrame({
         </button>
       ))}
       <div
-        title="Auswahl skalieren"
+        title={t('whiteboard.selection.scale')}
+        aria-label={t('whiteboard.selection.scale')}
         onPointerDown={(e) => {
           // Right/middle presses fall through to the board pan.
           if (e.button !== 0) return;

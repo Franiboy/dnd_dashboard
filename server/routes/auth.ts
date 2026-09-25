@@ -2,7 +2,8 @@ import crypto from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { rateLimit } from 'express-rate-limit';
-import { AppError, parseWith } from '../errors.js';
+import { SUPPORTED_LANGUAGES } from '../../shared/types.js';
+import { AppError, errorPayload, parseWith } from '../errors.js';
 import {
   authMiddleware,
   clearAuthCookie,
@@ -35,6 +36,7 @@ import {
   resetFailedLogins,
   setUserSessionDiarySettings,
   setUserTheme,
+  setUserUiLanguage,
   storeDiscordTokens,
   toSafeUser,
   updateDiscordProfile,
@@ -48,7 +50,9 @@ const authRateLimit = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Zu viele Anmeldeversuche. Bitte später erneut versuchen.' },
+  message: errorPayload('Zu viele Anmeldeversuche. Bitte später erneut versuchen.', {
+    fallbackCode: 'errors.rateLimit.auth',
+  }),
   // The app runs behind nginx on a loopback-bound socket; nginx appends the real
   // client IP as the last X-Forwarded-For entry, so trusting proxies is safe.
   validate: { trustProxy: false },
@@ -72,9 +76,13 @@ const sessionDiarySettingsSchema = z.object({
 const themeSchema = z.object({
   // null resets to the default theme; otherwise a strict #rrggbb color.
   primary: z
-    .string()
+    .string({ error: 'Ungültige Farbe' })
     .regex(/^#[0-9a-fA-F]{6}$/, 'Ungültige Farbe')
     .nullable(),
+});
+
+const uiLanguageSchema = z.object({
+  language: z.enum(SUPPORTED_LANGUAGES, { error: 'Ungültige Sprache' }).nullable(),
 });
 
 const loginSchema = z.object({
@@ -85,7 +93,9 @@ const loginSchema = z.object({
 function requireOAuthConfigured(): string {
   const clientId = process.env.DISCORD_CLIENT_ID;
   if (!isDiscordOAuthConfigured() || !clientId) {
-    throw new AppError(500, 'Discord OAuth ist nicht konfiguriert');
+    throw new AppError(500, 'Discord OAuth ist nicht konfiguriert', {
+      messageKey: 'auth.discordNotConfigured',
+    });
   }
   return clientId;
 }
@@ -100,7 +110,7 @@ function isValidState(expected: string, actual: string): boolean {
 function requireInitialAdmin() {
   const user = findUserByUsername('admin');
   if (!user || !user.isAdmin || !isInitialAdmin(user)) {
-    throw new AppError(500, 'Admin-Konto fehlt');
+    throw new AppError(500, 'Admin-Konto fehlt', { messageKey: 'auth.adminMissing' });
   }
   return user;
 }
@@ -125,7 +135,7 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
   const expectedState = getOAuthStateCookie(req);
   if (!expectedState || !isValidState(expectedState, state)) {
     clearOAuthStateCookie(res);
-    throw new AppError(401, 'Ungültiger OAuth State');
+    throw new AppError(401, 'Ungültiger OAuth State', { messageKey: 'auth.invalidOAuthState' });
   }
   clearOAuthStateCookie(res);
 
@@ -136,7 +146,9 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     if (!user) {
       const existingByUsername = findUserByUsername(discordAuth.username);
       if (existingByUsername) {
-        throw new AppError(400, 'Ein Account mit diesem Username existiert bereits');
+        throw new AppError(400, 'Ein Account mit diesem Username existiert bereits', {
+          messageKey: 'auth.usernameTaken',
+        });
       }
       const created = createDiscordUser(
         discordAuth.discordId,
@@ -154,7 +166,9 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
     }
 
     if (!user) {
-      throw new AppError(500, 'Benutzer konnte nicht erstellt werden');
+      throw new AppError(500, 'Benutzer konnte nicht erstellt werden', {
+        messageKey: 'auth.userCreateFailed',
+      });
     }
 
     if (!user.isApproved) {
@@ -166,15 +180,19 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
         discordAuth.refreshToken,
         discordAuth.expiresAt
       );
-      res
-        .status(403)
-        .json({ error: 'Account wurde noch nicht freigegeben', user: toSafeUser(user) });
+      res.status(403).json({
+        ...errorPayload('Account wurde noch nicht freigegeben'),
+        user: toSafeUser(user),
+      });
       return;
     }
 
     const allowed = checkLoginAllowed(user);
     if (!allowed.allowed) {
-      throw new AppError(403, allowed.reason);
+      throw new AppError(403, allowed.reason, {
+        messageKey: allowed.messageKey,
+        params: allowed.params,
+      });
     }
 
     resetFailedLogins(user);
@@ -196,10 +214,15 @@ router.post('/auth/discord/callback', authRateLimit, async (req, res) => {
         discordErrorDescription: err.discordErrorDescription,
       });
       const status = err.status >= 400 && err.status < 500 ? err.status : 400;
-      throw new AppError(status, 'Discord Authentifizierung fehlgeschlagen');
+      throw new AppError(status, 'Discord Authentifizierung fehlgeschlagen', {
+        messageKey: 'auth.discordAuthenticationFailed',
+      });
     }
     log.error('Discord callback error:', err);
-    throw new AppError(500, 'Interner Fehler', { cause: err });
+    throw new AppError(500, 'Interner Fehler', {
+      messageKey: 'common.internalError',
+      cause: err,
+    });
   }
 });
 
@@ -208,17 +231,24 @@ router.post('/admin/login', authRateLimit, async (req, res) => {
 
   const user = findUserByUsername(username);
   if (!user || !user.isAdmin || !isInitialAdmin(user)) {
-    throw new AppError(401, 'Falsche Anmeldedaten');
+    throw new AppError(401, 'Falsche Anmeldedaten', {
+      messageKey: 'auth.invalidCredentials',
+    });
   }
 
   const allowed = checkLoginAllowed(user);
   if (!allowed.allowed) {
-    throw new AppError(403, allowed.reason);
+    throw new AppError(403, allowed.reason, {
+      messageKey: allowed.messageKey,
+      params: allowed.params,
+    });
   }
 
   if (!password || !(await verifyPassword(user, password))) {
     recordFailedLogin(user);
-    throw new AppError(401, 'Falsche Anmeldedaten');
+    throw new AppError(401, 'Falsche Anmeldedaten', {
+      messageKey: 'auth.invalidCredentials',
+    });
   }
 
   resetFailedLogins(user);
@@ -229,7 +259,7 @@ router.post('/admin/login', authRateLimit, async (req, res) => {
 
 router.post('/auth/dev-session', (req, res) => {
   if (!isDevAutoLoginEnabled()) {
-    throw new AppError(404, 'Nicht verfügbar');
+    throw new AppError(404, 'Nicht verfügbar', { messageKey: 'errors.devUnavailable' });
   }
   const user = requireInitialAdmin();
   resetFailedLogins(user);
@@ -258,7 +288,7 @@ router.put('/me/session-diary-settings', authMiddleware, (req: AuthRequest, res)
     autoAcceptSessionDiary
   );
   if (!user) {
-    throw new AppError(500, 'Speichern fehlgeschlagen');
+    throw new AppError(500, 'Speichern fehlgeschlagen', { messageKey: 'common.saveFailed' });
   }
   res.json({ ok: true, user });
 });
@@ -268,14 +298,26 @@ router.put('/me/theme', authMiddleware, (req: AuthRequest, res) => {
 
   const user = setUserTheme(req.user!.id, primary ? primary.toLowerCase() : null);
   if (!user) {
-    throw new AppError(500, 'Speichern fehlgeschlagen');
+    throw new AppError(500, 'Speichern fehlgeschlagen', { messageKey: 'common.saveFailed' });
+  }
+  res.json({ ok: true, user });
+});
+
+router.put('/me/ui-language', authMiddleware, (req: AuthRequest, res) => {
+  const { language } = parseWith(uiLanguageSchema, req.body);
+
+  const user = setUserUiLanguage(req.user!.id, language);
+  if (!user) {
+    throw new AppError(500, 'Speichern fehlgeschlagen', { messageKey: 'common.saveFailed' });
   }
   res.json({ ok: true, user });
 });
 
 router.get('/state', authMiddleware, (req: AuthRequest, res) => {
   if (!req.user!.isApproved) {
-    throw new AppError(403, 'Account wurde noch nicht freigegeben');
+    throw new AppError(403, 'Account wurde noch nicht freigegeben', {
+      messageKey: 'auth.accountPending',
+    });
   }
   res.json(getGame());
 });

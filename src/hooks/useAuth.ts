@@ -1,5 +1,16 @@
 import { createContext, useContext } from 'react';
-import type { SafeUser } from '../../shared/types';
+import type { SafeUser, ServerMessageParams } from '../../shared/types';
+
+export interface AuthCallbackResult {
+  ok: boolean;
+  pending?: boolean;
+  /** Legacy fallback retained for callers that only render text. */
+  message?: string;
+  error?: string;
+  messageKey?: string | null;
+  errorCode?: string | null;
+  params?: ServerMessageParams;
+}
 
 export interface AuthContextValue {
   user: SafeUser | null;
@@ -10,10 +21,7 @@ export interface AuthContextValue {
   loading: boolean;
   error: string | null;
   loginAdmin: (username: string, password: string) => Promise<boolean>;
-  handleDiscordCallback: (
-    code: string,
-    state: string
-  ) => Promise<{ ok: boolean; pending?: boolean; message?: string }>;
+  handleDiscordCallback: (code: string, state: string) => Promise<AuthCallbackResult>;
   startDiscordLogin: () => Promise<string | null>;
   logout: () => Promise<void>;
   checkApproved: () => Promise<boolean>;

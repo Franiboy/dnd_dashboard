@@ -141,15 +141,40 @@ export interface WhiteboardPatch {
  */
 export const WHITEBOARD_DIVIDER_Y = 0;
 
+export const SERVER_MESSAGE_PROTOCOL_VERSION = 2;
+export type ServerMessageParam = string | number | boolean | null | undefined;
+export type ServerMessageParams = Readonly<Record<string, ServerMessageParam>>;
+
+/**
+ * Structured user-facing message shared by HTTP, Socket.io and SSE producers.
+ * `message` remains a human-readable fallback for older clients; clients should
+ * prefer `errorCode`/`messageKey` and interpolate `params` in their locale.
+ */
+export interface ServerMessagePayload {
+  message: string;
+  errorCode?: string;
+  messageKey?: string;
+  params?: ServerMessageParams;
+  /** SSE lifecycle marker; never inferred from a translated message. */
+  statusCode?: string;
+  /** Raw OpenCode/CLI diagnostics intentionally bypass UI translation. */
+  technical?: boolean;
+}
+
 export interface ServerToClientEvents {
   state: (game: BingoGame) => void;
-  error: (message: string) => void;
+  error: (message: string | ServerMessagePayload) => void;
   bingo: (playerName: string) => void;
   joined: (playerId: string) => void;
   wbElements: (elements: WhiteboardElement[]) => void;
   wbUpsert: (element: WhiteboardElement) => void;
   wbRemoved: (id: string) => void;
 }
+
+export const SUPPORTED_LANGUAGES = ['de', 'en'] as const;
+export type Language = (typeof SUPPORTED_LANGUAGES)[number];
+/** Whisper's legacy automatic detection is accepted for bootstrap settings. */
+export type WhisperLanguage = Language | 'auto';
 
 // Role of a user within the campaign. Every user starts as a guest;
 // admins can promote users to dungeon master or player in the admin panel.
@@ -175,6 +200,8 @@ export interface User {
   autoAcceptSessionDiary: boolean;
   /** User-chosen theme base color as #rrggbb; null = default theme. */
   themePrimary: string | null;
+  /** User-selected UI language; null = automatic browser-based selection. */
+  uiLanguage: Language | null;
   failedLoginAttempts: number;
   lockedUntil: string | null;
   createdAt: string;
@@ -194,6 +221,8 @@ export interface SafeUser {
   autoAcceptSessionDiary: boolean;
   /** User-chosen theme base color as #rrggbb; null = default theme. */
   themePrimary: string | null;
+  /** User-selected UI language; null = automatic browser-based selection. */
+  uiLanguage: Language | null;
   isInitialAdmin: boolean;
 }
 
@@ -385,6 +414,8 @@ export interface RecordingSession {
   channelId: string;
   createdBy: string;
   startedAt: string;
+  /** Language captured when the recording session was created. */
+  transcriptionLanguage: WhisperLanguage | null;
   stoppedAt: string | null;
   directory: string;
   transcript: string | null;

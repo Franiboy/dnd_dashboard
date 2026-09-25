@@ -3,6 +3,7 @@ import { Loading } from '../components/Loading';
 import { BingoDashboard } from '../components/BingoDashboard';
 import type { SafeUser } from '../../shared/types';
 import { useSocket } from '../hooks/useSocket';
+import { useI18n } from '../hooks/useI18n';
 
 interface WindowWithWebkitAudio extends Window {
   webkitAudioContext?: typeof AudioContext;
@@ -34,6 +35,7 @@ interface BingoProps {
 
 export function Bingo({ user }: BingoProps) {
   const { game, socket, playerId, bingo } = useSocket(user);
+  const { t } = useI18n();
 
   useEffect(() => {
     if (bingo) playBingoSound();
@@ -57,10 +59,10 @@ export function Bingo({ user }: BingoProps) {
   // until the admin ends it (resetGame).
   const bingoPlayers = game.players.filter((p) => p.status === 'bingo');
   const hasBingo = bingoPlayers.length > 0;
-  const bingoLabel =
-    bingoPlayers.length === 1
-      ? `${bingoPlayers[0].name} hat BINGO!`
-      : `${bingoPlayers.map((p) => p.name).join(' & ')} haben BINGO!`;
+  const bingoLabel = t('bingo.game.announcement', {
+    count: bingoPlayers.length,
+    names: bingoPlayers.map((p) => p.name).join(' & '),
+  });
 
   return (
     <div className="h-full flex flex-col p-4 sm:p-6">
@@ -74,7 +76,7 @@ export function Bingo({ user }: BingoProps) {
 
       {needsJoin ? (
         <div className="flex items-center justify-center flex-1 min-h-0">
-          <Loading text="Trete dem Spiel bei..." />
+          <Loading text={t('bingo.game.joining')} />
         </div>
       ) : (
         <BingoDashboard

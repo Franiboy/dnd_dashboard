@@ -32,7 +32,7 @@ const SUGGESTIONS = [
 let lastBatchId = '';
 
 function extractBatchId(prompt: string): string {
-  const match = prompt.match(/Deine Batch-ID ist "([^"]+)"/);
+  const match = prompt.match(/(?:Deine Batch-ID|Your batch ID) (?:ist|is) "([^"]+)"/);
   if (!match) throw new Error('Prompt enthält keine Batch-ID');
   return match[1];
 }
@@ -57,7 +57,7 @@ describe('generateBingoSuggestionBatch', () => {
   it('keeps submitted results when the CLI exits non-zero after a successful submit', async () => {
     runOpenCodeMock.mockImplementation(async ({ prompt }) => {
       lastBatchId = extractBatchId(prompt);
-      // Der Agent übergibt den Batch erfolgreich, die CLI stürzt danach ab.
+      // The agent submits the batch successfully, then the CLI crashes.
       submitBingoSuggestionBatch(lastBatchId, submittedResults());
       return failureResult(1);
     });

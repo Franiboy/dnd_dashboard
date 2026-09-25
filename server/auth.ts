@@ -13,6 +13,7 @@ import type { Request, Response, NextFunction } from 'express';
 import type { User } from '../shared/types.js';
 import { findUserById } from './repositories/users.js';
 import { createLogger } from './logger.js';
+import { AppError, errorPayload } from './errors.js';
 
 const log = createLogger('auth');
 
@@ -21,6 +22,7 @@ const log = createLogger('auth');
 // first start. Existing HS256 tokens become invalid after the migration.
 const COOKIE_NAME = 'dnd_token';
 const OAUTH_STATE_COOKIE_NAME = 'dnd_oauth_state';
+export const VIEW_AS_USER_HEADER = 'x-dnd-view-as-user';
 const OAUTH_STATE_MAX_AGE_MS = 5 * 60 * 1000;
 
 // Session lifetime is configurable in days; defaults to 7 days.
@@ -120,10 +122,10 @@ export function getSessionPublicKey(): string {
   return JWT_KEY_PAIR.publicKey;
 }
 
-import { AppError } from './errors.js';
-
 export interface AuthRequest extends Request {
   user?: User;
+  /** Validated admin simulation target; never used for authorization. */
+  viewAsUser?: User;
 }
 
 /**
@@ -133,7 +135,7 @@ export interface AuthRequest extends Request {
  */
 export function requireUser(req: AuthRequest): User {
   if (!req.user) {
-    throw new AppError(403, 'Nicht autorisiert');
+    throw new AppError(403, 'Nicht autorisiert', { messageKey: 'errors.unauthorized' });
   }
   return req.user;
 }
@@ -295,7 +297,7 @@ export async function authMiddleware(
 ): Promise<void> {
   const user = getAuthenticatedUser(req);
   if (!user) {
-    res.status(401).json({ error: 'Unauthorized' });
+    res.status(401).json(errorPayload('Unauthorized'));
     return;
   }
   req.user = user;
@@ -304,7 +306,7 @@ export async function authMiddleware(
 
 export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
   if (!req.user?.isAdmin) {
-    res.status(403).json({ error: 'Forbidden' });
+    res.status(403).json(errorPayload('Forbidden'));
     return;
   }
   next();
@@ -312,9 +314,37 @@ export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction
 
 export function requireApproved(req: AuthRequest, res: Response, next: NextFunction): void {
   if (!req.user?.isApproved && !req.user?.isAdmin) {
-    res.status(403).json({ error: 'Forbidden: Account not approved' });
+    res.status(403).json(errorPayload('Forbidden: Account not approved'));
     return;
   }
+  next();
+}
+
+/**
+ * Validates the optional display context used by an administrator's simulated
+ * view. The requester's real account remains the authorization identity; this
+ * context only changes how approved, user-specific display data is rendered.
+ */
+export function resolveViewAsUser(req: AuthRequest, res: Response, next: NextFunction): void {
+  const raw = req.headers[VIEW_AS_USER_HEADER];
+  if (raw === undefined) {
+    next();
+    return;
+  }
+
+  const targetId = typeof raw === 'string' ? raw.trim() : '';
+  if (!req.user?.isAdmin || !targetId) {
+    res.status(403).json(errorPayload('Forbidden'));
+    return;
+  }
+
+  const target = findUserById(targetId);
+  if (!target || !target.isApproved) {
+    res.status(403).json(errorPayload('Forbidden'));
+    return;
+  }
+
+  req.viewAsUser = target;
   next();
 }
 
@@ -325,7 +355,7 @@ export function requireApproved(req: AuthRequest, res: Response, next: NextFunct
 export function requireActivePerson(req: AuthRequest, res: Response, next: NextFunction): void {
   const user = req.user;
   if (user && user.role === 'player' && !user.activePerson && !user.isAdmin) {
-    res.status(403).json({ error: 'Forbidden: Kein Charakter zugewiesen' });
+    res.status(403).json(errorPayload('Forbidden: Kein Charakter zugewiesen'));
     return;
   }
   next();

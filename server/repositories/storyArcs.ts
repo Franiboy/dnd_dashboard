@@ -176,7 +176,9 @@ export interface CreateStoryArcInput {
 /** Validates an incoming chapter number (NULL = unnumbered arc). */
 function assertValidChapterNumber(chapterNumber: number | null): void {
   if (chapterNumber !== null && (!Number.isInteger(chapterNumber) || chapterNumber < 1)) {
-    throw new AppError(400, 'Kapitelnummer muss eine positive ganze Zahl sein');
+    throw new AppError(400, 'Kapitelnummer muss eine positive ganze Zahl sein', {
+      messageKey: 'errors.validation.chapterNumber',
+    });
   }
 }
 
@@ -186,7 +188,10 @@ function assertChapterNumberFree(chapterNumber: number, excludeId?: number): voi
     .prepare('SELECT 1 FROM story_arcs WHERE chapter_number = ? AND id != ? LIMIT 1')
     .get(chapterNumber, excludeId ?? -1);
   if (row) {
-    throw new AppError(409, `Kapitelnummer ${chapterNumber} ist bereits vergeben`);
+    throw new AppError(409, `Kapitelnummer ${chapterNumber} ist bereits vergeben`, {
+      messageKey: 'errors.storyArc.chapterTaken',
+      params: { chapterNumber },
+    });
   }
 }
 
@@ -282,11 +287,14 @@ export function deleteStoryArc(id: number): boolean {
   if (existing.status === 'active') {
     throw new AppError(
       409,
-      'Der aktive Story Arc kann nicht gelöscht werden – aktiviere zuerst einen anderen Arc'
+      'Der aktive Story Arc kann nicht gelöscht werden – aktiviere zuerst einen anderen Arc',
+      { messageKey: 'errors.storyArc.activeDelete' }
     );
   }
   if (existing.status === 'completed') {
-    throw new AppError(409, 'Abgeschlossene Story Arcs können nicht gelöscht werden');
+    throw new AppError(409, 'Abgeschlossene Story Arcs können nicht gelöscht werden', {
+      messageKey: 'errors.storyArc.completedDelete',
+    });
   }
 
   // Members keep no dangling reference (arc_id has no FK, so the columns are
@@ -303,7 +311,9 @@ export function deleteStoryArc(id: number): boolean {
 
 export function assignSessionToArc(sessionId: number, arcId: number | null): void {
   if (arcId !== null && !storyArcExists(arcId)) {
-    throw new AppError(404, 'Story Arc nicht gefunden');
+    throw new AppError(404, 'Story Arc nicht gefunden', {
+      messageKey: 'errors.storyArc.notFound',
+    });
   }
   db.prepare('UPDATE recording_sessions SET arc_id = ?, updated_at = ? WHERE id = ?').run(
     arcId,
@@ -314,7 +324,9 @@ export function assignSessionToArc(sessionId: number, arcId: number | null): voi
 
 export function assignDiaryEntryToArc(entryId: number, arcId: number | null): void {
   if (arcId !== null && !storyArcExists(arcId)) {
-    throw new AppError(404, 'Story Arc nicht gefunden');
+    throw new AppError(404, 'Story Arc nicht gefunden', {
+      messageKey: 'errors.storyArc.notFound',
+    });
   }
   db.prepare('UPDATE diary_entries SET arc_id = ?, updated_at = ? WHERE id = ?').run(
     arcId,

@@ -1,4 +1,5 @@
 import type { StoryArc } from '../../../shared/types';
+import { useI18n } from '../../hooks/useI18n';
 import { ChapterStatusDot } from './ChapterStatusDot';
 
 interface ChapterChipProps {
@@ -22,6 +23,7 @@ const statusChipStyles = {
 
 /** Chapter display chip ("medallion"): serif arc name + chapter number. */
 export function ChapterChip({ arc, onClick, className = '', title, disabled }: ChapterChipProps) {
+  const { t, formatNumber } = useI18n();
   const base =
     'chapter-serif inline-flex max-w-full items-center gap-2 whitespace-nowrap rounded-[4px] border px-3 py-1 text-[13px] font-semibold tracking-[0.04em] outline outline-1 outline-offset-[3px] transition hover:brightness-110';
   const style = arc
@@ -33,7 +35,7 @@ export function ChapterChip({ arc, onClick, className = '', title, disabled }: C
       <ChapterStatusDot status={arc.status} />
       {arc.chapterNumber !== null && (
         <span className="chapter-caps whitespace-nowrap text-[9.5px] opacity-70">
-          Kapitel {arc.chapterNumber} ·
+          {t('sessions.storyArcs.chapterNumber', { number: formatNumber(arc.chapterNumber) })} ·
         </span>
       )}
       <span className="min-w-0 truncate uppercase">{arc.name}</span>
@@ -41,7 +43,7 @@ export function ChapterChip({ arc, onClick, className = '', title, disabled }: C
   ) : (
     <>
       <span className="h-[7px] w-[7px] shrink-0 rounded-full border border-dashed border-slate-400" />
-      <span className="min-w-0 truncate">Ohne Kapitel</span>
+      <span className="min-w-0 truncate">{t('sessions.storyArcs.noChapter')}</span>
     </>
   );
 

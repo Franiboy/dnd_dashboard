@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { useApi } from './useApi';
 import { useEntityMappings } from './useEntityMappings';
+import { I18nContext } from '../i18n/I18nContext';
 import type { EntityMapping, SearchResponse, SearchResult } from '../../shared/types';
 
 /** A world entity found directly in the client-side mapping cache. */
@@ -27,14 +28,15 @@ const ENTITY_HIT_CAP = 8;
 export function filterEntityMappings(
   mappings: EntityMapping[],
   query: string,
-  cap = ENTITY_HIT_CAP
+  cap = ENTITY_HIT_CAP,
+  sortLocale = 'de'
 ): EntitySearchHit[] {
-  const q = query.trim().toLowerCase();
+  const q = query.trim().toLocaleLowerCase(sortLocale);
   if (q.length < MIN_QUERY_LENGTH) return [];
 
   const hits: Array<EntitySearchHit & { score: number }> = [];
   for (const mapping of mappings) {
-    const label = mapping.label.toLowerCase();
+    const label = mapping.label.toLocaleLowerCase(sortLocale);
     let score = -1;
     let matchOn: EntitySearchHit['matchOn'] = 'summary';
     if (label.startsWith(q)) {
@@ -44,12 +46,18 @@ export function filterEntityMappings(
       score = 2;
       matchOn = 'name';
     } else {
-      const prefixAlias = mapping.aliases.some((a) => a.toLowerCase().startsWith(q));
-      const alias = prefixAlias || mapping.aliases.some((a) => a.toLowerCase().includes(q));
+      const prefixAlias = mapping.aliases.some((a) =>
+        a.toLocaleLowerCase(sortLocale).startsWith(q)
+      );
+      const alias =
+        prefixAlias || mapping.aliases.some((a) => a.toLocaleLowerCase(sortLocale).includes(q));
       if (alias) {
         score = prefixAlias ? 2 : 1;
         matchOn = 'alias';
-      } else if (mapping.miniSummary && mapping.miniSummary.toLowerCase().includes(q)) {
+      } else if (
+        mapping.miniSummary &&
+        mapping.miniSummary.toLocaleLowerCase(sortLocale).includes(q)
+      ) {
         score = 0;
         matchOn = 'summary';
       }
@@ -66,7 +74,8 @@ export function filterEntityMappings(
       });
     }
   }
-  hits.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, 'de'));
+  const collator = new Intl.Collator(sortLocale, { sensitivity: 'base', numeric: true });
+  hits.sort((a, b) => b.score - a.score || collator.compare(a.label, b.label));
   return hits.slice(0, cap).map(({ score: _score, ...hit }) => hit);
 }
 
@@ -79,9 +88,11 @@ export function filterEntityMappings(
  * loading flag are derived from that pairing during render (no setState in
  * effects): loading is true exactly while the current query has no answer yet.
  */
-export function useGlobalSearch(query: string, enabled: boolean) {
+export function useGlobalSearch(query: string, enabled: boolean, sortLocale?: string) {
   const { request } = useApi();
   const { mappings } = useEntityMappings();
+  const i18n = useContext(I18nContext);
+  const resolvedSortLocale = sortLocale ?? i18n?.locale ?? 'de';
   const [serverState, setServerState] = useState<{ query: string; results: SearchResult[] }>({
     query: '',
     results: [],
@@ -113,7 +124,10 @@ export function useGlobalSearch(query: string, enabled: boolean) {
   const results = isCurrent ? serverState.results : [];
   const loading = enabled && trimmed.length >= MIN_QUERY_LENGTH && !isCurrent;
 
-  const entityHits = useMemo(() => filterEntityMappings(mappings, query), [mappings, query]);
+  const entityHits = useMemo(
+    () => filterEntityMappings(mappings, query, ENTITY_HIT_CAP, resolvedSortLocale),
+    [mappings, query, resolvedSortLocale]
+  );
 
   return { entityHits, results, loading };
 }

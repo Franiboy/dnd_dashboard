@@ -5,7 +5,7 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { z } from 'zod';
-import { AppError, parseWith } from '../errors.js';
+import { AppError, errorPayload, parseWith } from '../errors.js';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { ensureWhiteboardUploadDir } from '../whiteboard.js';
 import { listElementsForUser } from '../repositories/whiteboard.js';
@@ -19,6 +19,9 @@ const whiteboardRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
+  message: errorPayload('Zu viele Whiteboard-Anfragen. Bitte später erneut versuchen.', {
+    fallbackCode: 'errors.rateLimit.whiteboard',
+  }),
 });
 
 const uploadRateLimit = rateLimit({
@@ -28,6 +31,9 @@ const uploadRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
+  message: errorPayload('Zu viele Uploads. Bitte später erneut versuchen.', {
+    fallbackCode: 'errors.rateLimit.upload',
+  }),
 });
 
 router.use(authMiddleware, requireApproved, whiteboardRateLimit);
@@ -62,14 +68,18 @@ router.post(
 
     const extension = UPLOAD_MIME_EXTENSIONS[type];
     if (!extension) {
-      throw new AppError(400, 'Nur PNG, JPEG, GIF oder WebP werden unterstützt.');
+      throw new AppError(400, 'Nur PNG, JPEG, GIF oder WebP werden unterstützt.', {
+        messageKey: 'errors.whiteboard.unsupportedType',
+      });
     }
 
     // Buffer.from ignores invalid base64 characters instead of throwing,
     // so a zero-length buffer is the "unparseable" signal here.
     const buffer = Buffer.from(data, 'base64');
     if (buffer.length === 0 || buffer.length > MAX_UPLOAD_BYTES) {
-      throw new AppError(413, 'Bild ist leer oder größer als 8 MB.');
+      throw new AppError(413, 'Bild ist leer oder größer als 8 MB.', {
+        messageKey: 'errors.whiteboard.invalidSize',
+      });
     }
 
     const dir = path.resolve(ensureWhiteboardUploadDir());
@@ -78,13 +88,18 @@ router.post(
     const target = path.resolve(dir, filename);
     const relative = path.relative(dir, target);
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
-      throw new AppError(400, 'Ungültiger Dateiname.');
+      throw new AppError(400, 'Ungültiger Dateiname.', {
+        messageKey: 'errors.whiteboard.invalidFilename',
+      });
     }
 
     try {
       await writeFile(target, buffer);
     } catch (err) {
-      throw new AppError(500, 'Speichern fehlgeschlagen.', { cause: err });
+      throw new AppError(500, 'Speichern fehlgeschlagen.', {
+        messageKey: 'common.saveFailed',
+        cause: err,
+      });
     }
     res.json({ url: `/uploads/whiteboard/${filename}` });
   }

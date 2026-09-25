@@ -34,11 +34,14 @@ import {
   isInternalBoardImageUrl,
   isUploadableImage,
   loadImageElement,
+  localizeWhiteboardImageError,
+  WhiteboardImageLocalizedError,
   probeImageSize,
   stripImageExtension,
   uploadWhiteboardImage,
 } from './imageUpload';
 import { useError } from '../../hooks/useError';
+import { useI18n } from '../../hooks/useI18n';
 
 const MIN_SCALE = 0.33;
 const MAX_SCALE = 20;
@@ -193,6 +196,7 @@ export function WhiteboardBoard({
 }: WhiteboardBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { showError } = useError();
+  const { t, formatNumber } = useI18n();
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
   const cameraRef = useRef(camera);
   useLayoutEffect(() => {
@@ -223,6 +227,18 @@ export function WhiteboardBoard({
   // delegate to the freshest closures via refs to avoid stale state.
   const windowMoveRef = useRef<((e: PointerEvent) => void) | null>(null);
   const windowUpRef = useRef<((e: PointerEvent) => void) | null>(null);
+
+  const imageErrorMessages = useMemo(
+    () => ({
+      fileRead: t('whiteboard.errors.fileRead'),
+      upload: t('whiteboard.errors.upload'),
+      imageLoad: t('whiteboard.errors.imageLoad'),
+      imageEmptyOrTooLarge: t('whiteboard.errors.imageEmptyOrTooLarge', {
+        size: formatNumber(8),
+      }),
+    }),
+    [formatNumber, t]
+  );
 
   const elementsById = useMemo(() => new Map(elements.map((e) => [e.id, e])), [elements]);
 
@@ -510,10 +526,10 @@ export function WhiteboardBoard({
         let url = source.url;
         if (url && isInternalBoardImageUrl(url)) {
           try {
-            url = await cloneBoardImage(url);
+            url = await cloneBoardImage(url, imageErrorMessages);
           } catch (err) {
             // Fall back to sharing the original file rather than dropping the copy.
-            showError(err instanceof Error ? err.message : 'Bild konnte nicht kopiert werden.');
+            showError(localizeWhiteboardImageError(err, t, t('whiteboard.errors.copyImage')));
           }
         }
         createElement({ ...baseCopy(source, id), url });
@@ -536,7 +552,17 @@ export function WhiteboardBoard({
 
       if (createdIds.length > 0) setSelection(createdIds);
     },
-    [pasteAnchor, elements, createElement, user.id, user.displayName, showError, setSelection]
+    [
+      pasteAnchor,
+      elements,
+      createElement,
+      user.id,
+      user.displayName,
+      showError,
+      setSelection,
+      imageErrorMessages,
+      t,
+    ]
   );
 
   useEffect(() => {
@@ -913,12 +939,16 @@ export function WhiteboardBoard({
   const addImageFile = useCallback(
     async (file: File, worldPoint: { x: number; y: number }) => {
       if (!isUploadableImage(file)) {
-        showError('Nur PNG, JPEG, GIF oder WebP bis 8 MB.');
+        showError(
+          t('whiteboard.errors.invalidImage', {
+            size: formatNumber(8),
+          })
+        );
         return;
       }
       setUploadingCount((n) => n + 1);
       try {
-        const url = await uploadWhiteboardImage(file);
+        const url = await uploadWhiteboardImage(file, imageErrorMessages);
         const dims = await probeImageSize(url);
         // Keep a constant on-screen footprint regardless of zoom.
         const s = cameraRef.current.scale;
@@ -939,7 +969,7 @@ export function WhiteboardBoard({
           width,
           height,
           color: '#60a5fa',
-          text: stripImageExtension(file.name || 'Screenshot'),
+          text: stripImageExtension(file.name || t('whiteboard.elements.screenshot')),
           description: null,
           status: null,
           url,
@@ -956,12 +986,23 @@ export function WhiteboardBoard({
         });
         setSelection([id]);
       } catch (err) {
-        showError(err instanceof Error ? err.message : 'Upload fehlgeschlagen.');
+        showError(localizeWhiteboardImageError(err, t, t('whiteboard.errors.upload')));
       } finally {
         setUploadingCount((n) => n - 1);
       }
     },
-    [user.id, user.displayName, cameraRef, elements, createElement, showError, setSelection]
+    [
+      user.id,
+      user.displayName,
+      cameraRef,
+      elements,
+      createElement,
+      showError,
+      setSelection,
+      imageErrorMessages,
+      t,
+      formatNumber,
+    ]
   );
 
   // Ctrl+V pastes onto the board with "last copy wins" semantics: a marked
@@ -1308,7 +1349,7 @@ export function WhiteboardBoard({
       setUploadingCount((n) => n + 1);
       try {
         const img = await loadImageElement(element.url);
-        if (!img) throw new Error('Bild konnte nicht geladen werden.');
+        if (!img) throw new WhiteboardImageLocalizedError(t('whiteboard.errors.imageLoad'));
         const sw = Math.max(1, Math.round(crop.w * img.naturalWidth));
         const sh = Math.max(1, Math.round(crop.h * img.naturalHeight));
         const sx = Math.round(crop.x * img.naturalWidth);
@@ -1317,14 +1358,17 @@ export function WhiteboardBoard({
         canvas.width = sw;
         canvas.height = sh;
         const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Zuschneiden nicht unterstützt.');
+        if (!ctx) {
+          throw new WhiteboardImageLocalizedError(t('whiteboard.errors.cropUnsupported'));
+        }
         ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
         const blob = await new Promise<Blob | null>((resolve) =>
           canvas.toBlob(resolve, 'image/png')
         );
-        if (!blob) throw new Error('Zuschneiden fehlgeschlagen.');
+        if (!blob) throw new WhiteboardImageLocalizedError(t('whiteboard.errors.crop'));
         const url = await uploadWhiteboardImage(
-          new File([blob], 'crop.png', { type: 'image/png' })
+          new File([blob], 'crop.png', { type: 'image/png' }),
+          imageErrorMessages
         );
         updateElement(id, {
           url,
@@ -1332,13 +1376,13 @@ export function WhiteboardBoard({
           height: Math.max(60, Math.round(crop.h * element.height)),
         });
       } catch (err) {
-        showError(err instanceof Error ? err.message : 'Zuschneiden fehlgeschlagen.');
+        showError(localizeWhiteboardImageError(err, t, t('whiteboard.errors.crop')));
       } finally {
         setUploadingCount((n) => n - 1);
         setCroppingId(null);
       }
     },
-    [elementsById, updateElement, showError]
+    [elementsById, updateElement, showError, imageErrorMessages, t]
   );
 
   const dividerScreenY = camera.y + WHITEBOARD_DIVIDER_Y * camera.scale;
@@ -1356,6 +1400,8 @@ export function WhiteboardBoard({
   return (
     <div
       ref={containerRef}
+      role="region"
+      aria-label={t('whiteboard.board.canvasLabel')}
       className="absolute inset-0 overflow-hidden"
       style={{
         touchAction: 'none',
@@ -1558,26 +1604,25 @@ export function WhiteboardBoard({
           className="absolute right-3 -translate-y-full rounded-md bg-[var(--panel)]/90 px-2 py-0.5 text-xs font-semibold text-[var(--accent)] shadow"
           style={{ top: '-2px' }}
         >
-          Öffentlich – alle sehen & bearbeiten
+          {t('whiteboard.board.publicZone')}
         </span>
         <span
           className="absolute right-3 rounded-md bg-[var(--panel)]/90 px-2 py-0.5 text-xs font-medium text-slate-300 shadow"
           style={{ top: '6px' }}
         >
-          Privat – nur deine Elemente ({user.displayName})
+          {t('whiteboard.board.privateZone', { name: user.displayName })}
         </span>
       </div>
 
       <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 select-none rounded-full border border-[var(--border)] bg-[var(--panel)]/95 px-4 py-1 text-xs font-medium shadow backdrop-blur">
-        {centerZone === 'public'
-          ? 'Neue Elemente hier sind Öffentlich'
-          : 'Neue Elemente hier sind Privat'}
+        {t(centerZone === 'public' ? 'whiteboard.board.newPublic' : 'whiteboard.board.newPrivate')}
       </div>
 
       <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--panel)]/95 p-1 shadow backdrop-blur">
         <button
           type="button"
-          title="Herauszoomen"
+          title={t('whiteboard.board.zoomOut')}
+          aria-label={t('whiteboard.board.zoomOut')}
           onClick={() =>
             setCamera((cam) => {
               const scale = clampScale(cam.scale / 1.25);
@@ -1599,7 +1644,8 @@ export function WhiteboardBoard({
         </button>
         <button
           type="button"
-          title="Ansicht zurücksetzen"
+          title={t('whiteboard.board.resetView')}
+          aria-label={t('whiteboard.board.resetView')}
           onClick={() => {
             const el = containerRef.current;
             if (!el) return;
@@ -1608,11 +1654,14 @@ export function WhiteboardBoard({
           }}
           className="min-w-12 rounded-md px-2 text-sm font-semibold text-slate-200 hover:bg-slate-700"
         >
-          {Math.round(camera.scale * 100)}%
+          {t('whiteboard.board.zoomLevel', {
+            value: formatNumber(Math.round(camera.scale * 100)),
+          })}
         </button>
         <button
           type="button"
-          title="Reinzoomen"
+          title={t('whiteboard.board.zoomIn')}
+          aria-label={t('whiteboard.board.zoomIn')}
           onClick={() =>
             setCamera((cam) => {
               const scale = clampScale(cam.scale * 1.25);
@@ -1630,7 +1679,7 @@ export function WhiteboardBoard({
 
       {uploadingCount > 0 && (
         <div className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--panel)]/95 px-4 py-1.5 text-sm text-[var(--text-h)] shadow backdrop-blur">
-          Bild wird hochgeladen…
+          {t('whiteboard.board.uploading')}
         </div>
       )}
     </div>

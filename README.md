@@ -189,11 +189,17 @@ For the Discord voice recording bot:
 ```bash
 DISCORD_BOT_TOKEN=your-bot-token
 DISCORD_GUILD_ID=your-guild-id
+# Bootstrap fallback only; the Admin UI setting in ai_settings (de/en) wins
+# for every new transcription process. Legacy "auto" is accepted and safely
+# normalizes to German when no persisted setting exists.
 WHISPER_LANGUAGE=de
 WHISPER_MODEL=base
+# Optional custom context prompt. If unset, a DE/EN prompt matching the
+# captured Admin language is generated automatically.
+# WHISPER_INITIAL_PROMPT=
 ```
 
-The bot joins voice channels and stores recordings under `recordings/`. The scheduler automatically transcribes completed recordings with OpenAI Whisper.
+The bot joins voice channels and stores recordings under `recordings/`. The scheduler automatically transcribes completed recordings with OpenAI Whisper. The global Admin language is captured when each process starts, so changing it affects only the next process; active processes and existing transcripts remain unchanged.
 
 ## Tests
 

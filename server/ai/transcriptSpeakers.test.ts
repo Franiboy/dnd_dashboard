@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   annotateTranscriptSpeakers,
+  resolveTranscriptDisplayLanguage,
   resolveTranscriptSpeaker,
   type SpeakerAnnotationResult,
 } from './transcriptSpeakers.js';
-import type { SafeUser } from '../../shared/types.js';
+import type { Language, SafeUser } from '../../shared/types.js';
 
 const users: SafeUser[] = [
   {
@@ -20,6 +21,7 @@ const users: SafeUser[] = [
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
     themePrimary: null,
+    uiLanguage: null,
     isInitialAdmin: false,
   },
   {
@@ -35,6 +37,7 @@ const users: SafeUser[] = [
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
     themePrimary: null,
+    uiLanguage: null,
     isInitialAdmin: false,
   },
   {
@@ -50,6 +53,7 @@ const users: SafeUser[] = [
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
     themePrimary: null,
+    uiLanguage: null,
     isInitialAdmin: false,
   },
   {
@@ -65,6 +69,7 @@ const users: SafeUser[] = [
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
     themePrimary: null,
+    uiLanguage: null,
     isInitialAdmin: false,
   },
   {
@@ -80,6 +85,7 @@ const users: SafeUser[] = [
     autoSessionToDiary: false,
     autoAcceptSessionDiary: false,
     themePrimary: null,
+    uiLanguage: null,
     isInitialAdmin: false,
   },
   {
@@ -95,12 +101,17 @@ const users: SafeUser[] = [
     autoSessionToDiary: false,
     autoAcceptSessionDiary: false,
     themePrimary: null,
+    uiLanguage: null,
     isInitialAdmin: false,
   },
 ];
 
-function annotate(transcript: string, authorUserId?: string): SpeakerAnnotationResult {
-  return annotateTranscriptSpeakers(transcript, users, authorUserId);
+function annotate(
+  transcript: string,
+  authorUserId?: string,
+  language: Language = 'de'
+): SpeakerAnnotationResult {
+  return annotateTranscriptSpeakers(transcript, users, authorUserId, language);
 }
 
 describe('resolveTranscriptSpeaker', () => {
@@ -123,6 +134,25 @@ describe('resolveTranscriptSpeaker', () => {
   it('returns null for unknown or too short names', () => {
     expect(resolveTranscriptSpeaker('Floh', users)).toBeNull();
     expect(resolveTranscriptSpeaker('Bob', users)).toBeNull();
+  });
+});
+
+describe('resolveTranscriptDisplayLanguage', () => {
+  it('prefers an explicit account language over Accept-Language', () => {
+    expect(resolveTranscriptDisplayLanguage('de', 'en-US,en;q=0.9')).toBe('de');
+    expect(resolveTranscriptDisplayLanguage('en', 'de-DE,de;q=0.9')).toBe('en');
+  });
+
+  it('normalizes automatic account selection from Accept-Language', () => {
+    expect(resolveTranscriptDisplayLanguage(null, 'en-US,en;q=0.9')).toBe('en');
+    expect(resolveTranscriptDisplayLanguage(null, 'fr-FR,de-DE;q=0.8')).toBe('de');
+    expect(resolveTranscriptDisplayLanguage(null, 'de;q=0.2,en;q=0.9')).toBe('en');
+  });
+
+  it('falls back to German for missing or unsupported preferences', () => {
+    expect(resolveTranscriptDisplayLanguage(null, undefined)).toBe('de');
+    expect(resolveTranscriptDisplayLanguage(null, 'fr-FR')).toBe('de');
+    expect(resolveTranscriptDisplayLanguage(null, 'en;q=0,fr;q=1')).toBe('de');
   });
 });
 

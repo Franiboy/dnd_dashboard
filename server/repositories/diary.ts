@@ -1214,7 +1214,9 @@ export function updateEntity(
   const newNormalized = newName.trim();
 
   if (!oldNormalized || !newNormalized) {
-    throw new AppError(400, 'Name ist erforderlich');
+    throw new AppError(400, 'Name ist erforderlich', {
+      messageKey: 'errors.validation.nameRequired',
+    });
   }
 
   const { table } = entityConfig[type];
@@ -1232,13 +1234,17 @@ export function updateEntity(
   const tx = db.transaction(() => {
     const oldRow = findEntityRow(type, { name: oldNormalized, qualifier: oldQualifier });
     if (!oldRow) {
-      throw new AppError(404, 'Entität nicht gefunden');
+      throw new AppError(404, 'Entität nicht gefunden', {
+        messageKey: 'errors.entities.notFound',
+      });
     }
 
     if (newNormalized !== oldRow.name || newQualifier !== (oldRow.qualifier ?? '')) {
       const clash = findEntityRow(type, { name: newNormalized, qualifier: newQualifier });
       if (clash && clash.id !== oldRow.id) {
-        throw new AppError(409, 'Name existiert bereits');
+        throw new AppError(409, 'Name existiert bereits', {
+          messageKey: 'errors.entities.nameExists',
+        });
       }
       db.prepare(`UPDATE ${table} SET name = ?, qualifier = ? WHERE id = ?`).run(
         newNormalized,
@@ -1273,7 +1279,10 @@ export function updateEntity(
 
     for (const alias of wantedAliases) {
       if (entityExistsInAnyType(alias)) {
-        throw new AppError(409, `„${alias}“ ist bereits ein Hauptname`);
+        throw new AppError(409, `„${alias}“ ist bereits ein Hauptname`, {
+          messageKey: 'errors.entities.aliasMainName',
+          params: { alias },
+        });
       }
       // A bare-name alias of a qualified homonym would hijack every plain
       // mention of that name; only allow it when it targets the plain name.
@@ -1283,7 +1292,10 @@ export function updateEntity(
         parsedAlias.qualifier &&
         parsedAlias.qualifier !== newQualifier
       ) {
-        throw new AppError(409, `„${alias}“ kollidiert mit dem Hauptnamen`);
+        throw new AppError(409, `„${alias}“ kollidiert mit dem Hauptnamen`, {
+          messageKey: 'errors.entities.aliasCollision',
+          params: { alias },
+        });
       }
 
       deleteAlias.run(type, alias);

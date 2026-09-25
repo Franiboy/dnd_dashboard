@@ -56,20 +56,21 @@ This document describes the high-level structure of the D&D Dashboard.
 
 ### AI / MCP (`server/ai/` & `server/mcp/`)
 
-| File                     | Purpose                                                                                                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ai/config.ts`           | Checks whether AI is enabled (`AI_PROVIDER=opencode` + valid `AI_MODEL`)                                                                                           |
-| `ai/bingoSuggestions.ts` | Prompts and pool management for AI bingo suggestions                                                                                                               |
-| `ai/opencode.ts`         | Spawns `opencode run` with MCP token and scopes; manages sessions directly via the CLI (`opencode session list/delete`), old sessions are cleaned up automatically |
-| `ai/arcContext.ts`       | Resolves the story-arc context of a session/diary entry and builds the arc-restriction prompt lines                                                                |
-| `ai/rewrite.ts`          | Prompts for rewrite, summary and entity extraction                                                                                                                 |
-| `ai/knowledge.ts`        | Prompts for knowledge distribution and entity summaries                                                                                                            |
-| `ai/sessionBoundary.ts`  | AI boundary detection (recording timeline)                                                                                                                         |
-| `ai/sessionGameDay.ts`   | AI game-day range detection (transcript + previous sessions + campaign timeline)                                                                                   |
-| `ai/timeline.ts`         | AI timeline-event extraction per session (notable events + scenes, written via MCP)                                                                                |
-| `ai/actions.ts`          | Parser and executor for direct AI tool actions                                                                                                                     |
-| `mcp/index.ts`           | MCP server with tools (`set_diary_*`, `get_entity`, `create_knowledge`, `set_session_game_day`, …)                                                                 |
-| `mcp/tokens.ts`          | JWT-based MCP session tokens with scopes (plus optional `arcId` claim for arc-scoped context)                                                                      |
+| File                     | Purpose                                                                                                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ai/config.ts`           | Checks whether AI is enabled (`AI_PROVIDER=opencode` + valid `AI_MODEL`)                                                                                                                              |
+| `ai/bingoSuggestions.ts` | Prompts and pool management for AI bingo suggestions                                                                                                                                                  |
+| `ai/opencode.ts`         | Spawns `opencode run` with MCP token, scopes, and the per-run `AI_OUTPUT_LANGUAGE`; manages sessions directly via the CLI (`opencode session list/delete`), old sessions are cleaned up automatically |
+| `ai/promptLanguage.ts`   | Shared DE/EN prompt selection and model-facing output-language instructions                                                                                                                           |
+| `ai/arcContext.ts`       | Resolves the story-arc context of a session/diary entry and builds the arc-restriction prompt lines                                                                                                   |
+| `ai/rewrite.ts`          | Prompts for rewrite, summary and entity extraction                                                                                                                                                    |
+| `ai/knowledge.ts`        | Prompts for knowledge distribution and entity summaries                                                                                                                                               |
+| `ai/sessionBoundary.ts`  | AI boundary detection (recording timeline)                                                                                                                                                            |
+| `ai/sessionGameDay.ts`   | AI game-day range detection (transcript + previous sessions + campaign timeline)                                                                                                                      |
+| `ai/timeline.ts`         | AI timeline-event extraction per session (notable events + scenes, written via MCP)                                                                                                                   |
+| `ai/actions.ts`          | Parser and executor for direct AI tool actions                                                                                                                                                        |
+| `mcp/index.ts`           | MCP server with tools (`set_diary_*`, `get_entity`, `create_knowledge`, `set_session_game_day`, …)                                                                                                    |
+| `mcp/tokens.ts`          | JWT-based MCP session tokens with scopes (plus optional `arcId` claim for arc-scoped context)                                                                                                         |
 
 ### Scheduler & Discord (`server/scheduler/` & `server/discord/`)
 
@@ -90,19 +91,21 @@ This document describes the high-level structure of the D&D Dashboard.
 
 ## Frontend (`src/`)
 
-| File / Directory                                     | Purpose                                                                                             |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `src/App.tsx`                                        | React app entry with router                                                                         |
-| `src/main.tsx`                                       | Root render                                                                                         |
-| `src/lib/apps.ts`                                    | App metadata (Dashboard, Diary, Bingo, World, Timeline, Recordings, Admin)                          |
-| `src/pages/`                                         | Pages: Login, AdminLogin, AuthCallback, Home, Bingo, Diary, World, Timeline, Recordings, Admin      |
-| `src/components/`                                    | Reusable components (Layout, ProtectedRoute, ConfirmDialog, Toast, LogPanel, BingoAiSuggestions, …) |
-| `src/hooks/useAuth.ts`                               | Auth hook                                                                                           |
-| `src/hooks/useSocket.ts`                             | Socket.io hook                                                                                      |
-| `src/hooks/useApi.ts`                                | `fetch` wrapper with automatic error toast display                                                  |
-| `src/hooks/useError.ts`                              | Access to the global error context                                                                  |
-| `src/contexts/ErrorContext.ts` / `ErrorProvider.tsx` | Global error / toast context                                                                        |
-| `src/types.ts`                                       | Frontend type alias for the Socket.io client                                                        |
+| File / Directory                                         | Purpose                                                                                               |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `src/App.tsx`                                            | React app entry with router                                                                           |
+| `src/main.tsx`                                           | Root render                                                                                           |
+| `src/lib/apps.ts`                                        | App metadata (Dashboard, Diary, Bingo, World, Timeline, Recordings, Admin)                            |
+| `src/pages/`                                             | Pages: Login, AdminLogin, AuthCallback, Home, Bingo, Diary, World, Timeline, Recordings, Admin        |
+| `src/components/`                                        | Reusable components (Layout, ProtectedRoute, ConfirmDialog, Toast, LogPanel, BingoAiSuggestions, …)   |
+| `src/hooks/useAuth.ts`                                   | Auth hook                                                                                             |
+| `src/hooks/useSocket.ts`                                 | Socket.io hook                                                                                        |
+| `src/hooks/useApi.ts`                                    | `fetch` wrapper with automatic error toast display                                                    |
+| `src/hooks/useError.ts`                                  | Access to the global error context                                                                    |
+| `src/i18n/`                                              | Dependency-free German/English messages, interpolation, plural selection, and locale-aware formatting |
+| `src/contexts/I18nProvider.tsx` / `src/hooks/useI18n.ts` | Auth-aware UI language context, persistence, and formatting hooks                                     |
+| `src/contexts/ErrorContext.ts` / `ErrorProvider.tsx`     | Global error / toast context                                                                          |
+| `src/types.ts`                                           | Frontend type alias for the Socket.io client                                                          |
 
 ## Shared
 

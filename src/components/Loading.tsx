@@ -1,3 +1,5 @@
+import { useI18n } from '../hooks/useI18n';
+
 interface LoadingProps {
   text?: string;
   size?: 'sm' | 'md' | 'lg';
@@ -10,10 +12,19 @@ const sizeClasses = {
   lg: 'h-12 w-12',
 };
 
-export function Loading({ text = 'Lade...', size = 'md', className }: LoadingProps) {
+export function Loading({ text, size = 'md', className }: LoadingProps) {
+  const { t } = useI18n();
+  const label = text === undefined ? t('shared.loading') : text;
+
   return (
-    <div className={`flex items-center gap-2 text-slate-400 ${className || ''}`}>
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={label || undefined}
+      className={`flex items-center gap-2 text-slate-400 ${className || ''}`}
+    >
       <svg
+        aria-hidden="true"
         className={`animate-spin ${sizeClasses[size]}`}
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
@@ -33,7 +44,7 @@ export function Loading({ text = 'Lade...', size = 'md', className }: LoadingPro
           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
         />
       </svg>
-      {text && <span>{text}</span>}
+      {label && <span>{label}</span>}
     </div>
   );
 }

@@ -172,7 +172,9 @@ function normGameDayOrNull(v: unknown): number | null {
 /** Validates that a numeric arc filter references an existing arc. */
 function requireExistingArc(value: number, status = 400): number {
   if (!storyArcExists(value)) {
-    throw new AppError(status, 'Story Arc nicht gefunden');
+    throw new AppError(status, 'Story Arc nicht gefunden', {
+      messageKey: 'errors.storyArc.notFound',
+    });
   }
   return value;
 }
@@ -245,7 +247,9 @@ router.get('/detail', (req: AuthRequest, res) => {
   const { type, name, qualifier } = parseWith(entityQuerySchema, req.query);
   const detail = orFail('Laden fehlgeschlagen', () => getEntityDetail(type, name, qualifier));
   if (!detail) {
-    throw new AppError(404, 'Entität nicht gefunden');
+    throw new AppError(404, 'Entität nicht gefunden', {
+      messageKey: 'errors.entities.notFound',
+    });
   }
   res.json(detail);
 });
@@ -301,7 +305,9 @@ router.put('/knowledge/:id', (req: AuthRequest, res) => {
   }
   if (content !== undefined) {
     if (typeof content !== 'string' || !content.trim()) {
-      throw new AppError(400, 'Inhalt ist erforderlich');
+      throw new AppError(400, 'Inhalt ist erforderlich', {
+        messageKey: 'errors.validation.contentRequired',
+      });
     }
     updates.content = content.trim();
   }
@@ -313,11 +319,15 @@ router.put('/knowledge/:id', (req: AuthRequest, res) => {
   }
 
   if (!orFail('Aktualisieren fehlgeschlagen', () => getEntityKnowledgeEntry(id))) {
-    throw new AppError(404, 'Eintrag nicht gefunden');
+    throw new AppError(404, 'Eintrag nicht gefunden', {
+      messageKey: 'errors.diary.entryNotFound',
+    });
   }
   const entry = orFail('Aktualisieren fehlgeschlagen', () => updateEntityKnowledge(id, updates));
   if (!entry) {
-    throw new AppError(500, 'Aktualisieren fehlgeschlagen');
+    throw new AppError(500, 'Aktualisieren fehlgeschlagen', {
+      messageKey: 'errors.entities.updateFailed',
+    });
   }
   res.json({ entry });
 });
@@ -329,7 +339,9 @@ router.delete('/knowledge/:id', (req: AuthRequest, res) => {
     typeof reason === 'string' && reason.trim() ? reason.trim() : 'Manuell als gelöscht markiert';
 
   if (!orFail('Löschen fehlgeschlagen', () => getEntityKnowledgeEntry(id))) {
-    throw new AppError(404, 'Eintrag nicht gefunden');
+    throw new AppError(404, 'Eintrag nicht gefunden', {
+      messageKey: 'errors.diary.entryNotFound',
+    });
   }
   const entry = orFail('Löschen fehlgeschlagen', () =>
     markEntityKnowledgeDeleted(id, deleteReason)
@@ -344,10 +356,14 @@ router.post('/knowledge/:id/end', (req: AuthRequest, res) => {
 
   const existing = orFail('Beenden fehlgeschlagen', () => getEntityKnowledgeEntry(id));
   if (!existing) {
-    throw new AppError(404, 'Eintrag nicht gefunden');
+    throw new AppError(404, 'Eintrag nicht gefunden', {
+      messageKey: 'errors.diary.entryNotFound',
+    });
   }
   if (existing.status !== 'active') {
-    throw new AppError(400, 'Nur aktive Einträge können beendet werden');
+    throw new AppError(400, 'Nur aktive Einträge können beendet werden', {
+      messageKey: 'errors.entities.activeOnlyEnd',
+    });
   }
   const entry = orFail('Beenden fehlgeschlagen', () =>
     markEntityKnowledgeTimelineEnd(id, until, endReason)
@@ -359,7 +375,9 @@ router.get('/arc-links', (req: AuthRequest, res) => {
   const { type, name, qualifier } = parseWith(entityQuerySchema, req.query);
   const resolved = orFail('Laden fehlgeschlagen', () => findEntityCanonical(type, name, qualifier));
   if (!resolved) {
-    throw new AppError(404, 'Entität nicht gefunden');
+    throw new AppError(404, 'Entität nicht gefunden', {
+      messageKey: 'errors.entities.notFound',
+    });
   }
   const arcIds = orFail('Laden fehlgeschlagen', () =>
     listArcIdsForEntity(type, resolved.name, resolved.qualifier)
@@ -380,7 +398,9 @@ router.post('/arc-links', (req: AuthRequest, res) => {
     findEntityCanonical(type, name, qualifier)
   );
   if (!resolved) {
-    throw new AppError(404, 'Entität nicht gefunden');
+    throw new AppError(404, 'Entität nicht gefunden', {
+      messageKey: 'errors.entities.notFound',
+    });
   }
   orFail('Zuordnen fehlgeschlagen', () => linkStoryArcEntity(arcId, type, resolved));
   res.json({ ok: true });
@@ -396,7 +416,9 @@ router.post('/arc-links/unlink', (req: AuthRequest, res) => {
 
   const resolved = orFail('Lösen fehlgeschlagen', () => findEntityCanonical(type, name, qualifier));
   if (!resolved) {
-    throw new AppError(404, 'Entität nicht gefunden');
+    throw new AppError(404, 'Entität nicht gefunden', {
+      messageKey: 'errors.entities.notFound',
+    });
   }
   orFail('Lösen fehlgeschlagen', () =>
     unlinkStoryArcEntity(arcId, type, resolved.name, resolved.qualifier)
@@ -406,7 +428,9 @@ router.post('/arc-links/unlink', (req: AuthRequest, res) => {
 
 router.post('/knowledge/distribute', aiRateLimit, async (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
-    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert', {
+      messageKey: 'errors.ai.disabled',
+    });
   }
   const text = parseWith(textSchema, req.body.text);
   const arc = parseWith(aiArcIdSchema, req.body.arcId);
@@ -416,13 +440,18 @@ router.post('/knowledge/distribute', aiRateLimit, async (req: AuthRequest, res) 
     const result = await distributeKnowledgeFromText(text, { user: req.user, arcId: arc });
     res.json(result);
   } catch (err) {
-    throw new AppError(500, 'KI-Einordnung fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Einordnung fehlgeschlagen', {
+      messageKey: 'errors.entities.classificationFailed',
+      cause: err,
+    });
   }
 });
 
 router.post('/knowledge/correct', aiRateLimit, async (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
-    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert', {
+      messageKey: 'errors.ai.disabled',
+    });
   }
   const text = parseWith(textSchema, req.body.text);
   const arc = parseWith(aiArcIdSchema, req.body.arcId);
@@ -439,13 +468,18 @@ router.post('/knowledge/correct', aiRateLimit, async (req: AuthRequest, res) => 
     const result = await correctKnowledgeFromText(text, focus, { user: req.user, arcId: arc });
     res.json(result);
   } catch (err) {
-    throw new AppError(500, 'KI-Berichtigung fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Berichtigung fehlgeschlagen', {
+      messageKey: 'errors.entities.correctionFailed',
+      cause: err,
+    });
   }
 });
 
 router.post('/knowledge/review', aiRateLimit, async (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
-    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert', {
+      messageKey: 'errors.ai.disabled',
+    });
   }
   const { type, name, qualifier } = parseWith(entityQuerySchema, req.body);
   const arc = parseWith(aiArcIdSchema, req.body.arcId);
@@ -459,7 +493,10 @@ router.post('/knowledge/review', aiRateLimit, async (req: AuthRequest, res) => {
     });
     res.json(result);
   } catch (err) {
-    throw new AppError(500, 'KI-Prüfung fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Prüfung fehlgeschlagen', {
+      messageKey: 'errors.entities.reviewFailed',
+      cause: err,
+    });
   }
 });
 
@@ -483,7 +520,9 @@ router.get('/summary', (req: AuthRequest, res) => {
 
 router.post('/summary/generate', aiRateLimit, async (req: AuthRequest, res) => {
   if (!isAiEnabled()) {
-    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert', {
+      messageKey: 'errors.ai.disabled',
+    });
   }
   const { type, name, qualifier } = parseWith(entityQuerySchema, req.body);
 
@@ -493,12 +532,17 @@ router.post('/summary/generate', aiRateLimit, async (req: AuthRequest, res) => {
       qualifier,
     });
     if (result === null) {
-      throw new AppError(500, 'KI-Zusammenfassung fehlgeschlagen');
+      throw new AppError(500, 'KI-Zusammenfassung fehlgeschlagen', {
+        messageKey: 'errors.entities.summaryFailed',
+      });
     }
     res.json({ summary: result.summary, miniSummary: result.miniSummary });
   } catch (err) {
     if (err instanceof AppError) throw err;
-    throw new AppError(500, 'KI-Zusammenfassung fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Zusammenfassung fehlgeschlagen', {
+      messageKey: 'errors.entities.summaryFailed',
+      cause: err,
+    });
   }
 });
 

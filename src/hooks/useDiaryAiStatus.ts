@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from './useI18n';
+import {
+  getServerMessagePayload,
+  localizeServerStatus,
+  type ServerMessageLike,
+} from '../i18n/serverMessages';
 
 /**
  * Diary AI progress state fed by the per-user SSE stream: a status toast,
@@ -6,9 +12,19 @@ import { useEffect, useRef, useState } from 'react';
  * status messages are not lost before the stream is connected.
  */
 export function useDiaryAiStatus() {
-  const [aiStatus, setAiStatus] = useState<string | null>(null);
+  const { t } = useI18n();
+  const [statusPayload, setStatusPayload] = useState<string | ServerMessageLike | null>(null);
   const [aiOperation, setAiOperation] = useState(false);
   const sseReadyRef = useRef(Promise.resolve());
+  const aiStatus = useMemo(
+    () =>
+      typeof statusPayload === 'string'
+        ? statusPayload
+        : statusPayload
+          ? (localizeServerStatus(statusPayload, t) ?? null)
+          : null,
+    [statusPayload, t]
+  );
 
   useEffect(() => {
     let resolveReady: (() => void) | null = null;
@@ -22,12 +38,13 @@ export function useDiaryAiStatus() {
     });
     es.addEventListener('log', (event) => {
       try {
-        const { message } = JSON.parse(event.data);
-        if (typeof message === 'string') {
-          setAiStatus(message);
-        }
+        const parsed = JSON.parse((event as MessageEvent<string>).data) as unknown;
+        const payload = getServerMessagePayload(parsed);
+        if (!payload) return;
+        setStatusPayload(payload);
       } catch {
-        // ignore malformed SSE messages
+        // Ignore malformed SSE messages; the next structured event can still
+        // provide a useful status.
       }
     });
     return () => {
@@ -36,5 +53,11 @@ export function useDiaryAiStatus() {
     };
   }, []);
 
-  return { aiStatus, setAiStatus, aiOperation, setAiOperation, sseReadyRef };
+  return {
+    aiStatus,
+    setAiStatus: setStatusPayload,
+    aiOperation,
+    setAiOperation,
+    sseReadyRef,
+  };
 }

@@ -10,6 +10,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
+import { useI18n } from '../hooks/useI18n';
 import { useStoryArcs } from '../hooks/useStoryArcs';
 import {
   arcMatchesFilter,
@@ -19,6 +20,7 @@ import {
 } from '../lib/storyArcs';
 import { EntityRichText } from '../components/EntityRichText';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
+import { getEntityTypeLabel } from '../lib/entityLabels';
 import { EntityChooserModal, type EntityCandidate } from '../components/EntityChooserModal';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { ArcAssignPicker } from '../components/storyArcs/ArcAssignPicker';
@@ -28,10 +30,18 @@ import { Toggle } from '../components/Toggle';
 import { quillModules } from '../components/quillConfig';
 import ReactQuill from 'react-quill-new';
 import type Quill from 'quill';
+import {
+  getServerMessagePayload,
+  localizeServerMessage,
+  localizeServerStatus,
+  type ServerMessageLike,
+} from '../i18n/serverMessages';
+import type { TranslationKey, TFunction } from '../i18n/messages';
 import type {
   DiaryEntry,
   EntityType,
   RecordingSession,
+  RecordingStatus,
   SafeUser,
   SessionDiaryEntryLink,
   SessionDiaryTransfer,
@@ -86,21 +96,69 @@ function isDeletableSession(session: RecordingSession): boolean {
   return Date.now() - new Date(session.startedAt).getTime() < SESSION_DELETE_WINDOW_MS;
 }
 
+const recordingStatusKeys = {
+  recording: 'sessions.status.recording',
+  pending_transcription: 'sessions.status.pendingTranscription',
+  processing: 'sessions.status.processing',
+  completed: 'sessions.status.completed',
+  error: 'sessions.status.error',
+} as const satisfies Record<RecordingStatus, TranslationKey>;
+
+const recordingAiActionKeys: Record<string, TranslationKey> = {
+  improveTranscript: 'sessions.ai.improveTranscript',
+  createSummary: 'sessions.ai.createSummary',
+  importToDiary: 'sessions.ai.importToDiary',
+};
+
+function localizeRecordingStatus(status: string | ServerMessageLike, t: TFunction): string {
+  if (typeof status !== 'string') {
+    return localizeServerStatus(status, t) ?? status.message ?? '';
+  }
+  const key = recordingAiActionKeys[status];
+  return key ? t(key) : (localizeServerMessage(status, t, { fallback: status }) ?? status);
+}
+
+function localizeRecordingError(message: string, t: TFunction): string {
+  if (message === 'Keine Audio-Dateien für diese Session vorhanden') {
+    return t('sessions.errors.noAudioFiles');
+  }
+  if (message === 'Transkription lieferte keine Ergebnisse') {
+    return t('sessions.errors.noTranscriptionResults');
+  }
+  if (message === 'Transkription fehlgeschlagen') {
+    return t('sessions.errors.transcriptionFailed', { error: t('common.internalError') });
+  }
+  if (message === 'Aufnahme konnte nicht wiederhergestellt werden') {
+    return t('sessions.errors.recoveryFailed');
+  }
+  const prefix = 'Transkription fehlgeschlagen: ';
+  if (message.startsWith(prefix)) {
+    return t('sessions.errors.transcriptionFailed', { error: message.slice(prefix.length) });
+  }
+  return localizeServerMessage(message, t, { fallback: message }) ?? message;
+}
+
 function SessionDiaryTransferBadge({ transfer }: { transfer: SessionDiaryTransfer }) {
+  const { t } = useI18n();
   const label = transfer.isOutdated
-    ? 'Tagebuch veraltet'
+    ? t('sessions.transfers.outdated')
     : transfer.autoAccepted
-      ? 'In Tagebuch übernommen'
-      : 'KI-Tagebuch-Entwurf';
+      ? t('sessions.transfers.accepted')
+      : t('sessions.transfers.draft');
   const variant = transfer.isOutdated ? 'warning' : transfer.autoAccepted ? 'accent' : 'neutral';
   return (
-    <BadgeLink to={`/tagebuch?entry=${transfer.entryId}`} variant={variant} title="Tagebuch öffnen">
+    <BadgeLink
+      to={`/tagebuch?entry=${transfer.entryId}`}
+      variant={variant}
+      title={t('sessions.transfers.openDiary')}
+    >
       {label}
     </BadgeLink>
   );
 }
 
 export function Sessions({ user }: SessionsProps) {
+  const { t, formatDateTime, formatNumber } = useI18n();
   const { request } = useApi();
   const { updateUser } = useAuth();
   const { mappings } = useEntityMappings();
@@ -129,7 +187,7 @@ export function Sessions({ user }: SessionsProps) {
   const [sessionDiaryEntries, setSessionDiaryEntries] = useState<
     Record<number, SessionDiaryEntryLink[]>
   >({});
-  const [aiStatus, setAiStatus] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<string | ServerMessageLike | null>(null);
   const [chooserCandidates, setChooserCandidates] = useState<EntityCandidate[] | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<
     Record<
@@ -170,6 +228,7 @@ export function Sessions({ user }: SessionsProps) {
         .join('\u0000'),
     [sessions, expandedLongSummaries]
   );
+  const displayedAiStatus = aiStatus ? localizeRecordingStatus(aiStatus, t) : null;
 
   useEffect(() => {
     let eventSource: EventSource | null = null;
@@ -203,8 +262,9 @@ export function Sessions({ user }: SessionsProps) {
       });
 
       eventSource.addEventListener('aiLog', (event) => {
-        const data = JSON.parse((event as MessageEvent).data) as { message: string };
-        setAiStatus(data.message);
+        const parsed = JSON.parse((event as MessageEvent).data) as unknown;
+        const payload = getServerMessagePayload(parsed);
+        if (payload) setAiStatus(payload);
       });
 
       eventSource.onerror = () => {
@@ -367,7 +427,10 @@ export function Sessions({ user }: SessionsProps) {
     ) {
       items.push({
         id: 'transcribe',
-        label: session.status === 'error' ? 'Transkription wiederholen' : 'Jetzt transkribieren',
+        label:
+          session.status === 'error'
+            ? t('sessions.actions.retryTranscription')
+            : t('sessions.actions.transcribeNow'),
         disabled: working,
         onSelect: () => startTranscriptionNow(session.id),
       });
@@ -378,10 +441,10 @@ export function Sessions({ user }: SessionsProps) {
         id: 'improve-transcript',
         label:
           improvingId === session.id
-            ? 'Verbessern...'
+            ? t('sessions.actions.improving')
             : session.transcriptImprovedAt
-              ? 'Skript erneut verbessern'
-              : 'Skript verbessern',
+              ? t('sessions.actions.improveAgain')
+              : t('sessions.actions.improve'),
         disabled: working || improvingId === session.id,
         onSelect: () => improveTranscript(session.id),
       });
@@ -389,10 +452,10 @@ export function Sessions({ user }: SessionsProps) {
         id: 'summary',
         label:
           summarizingId === session.id
-            ? 'Zusammenfassung...'
+            ? t('sessions.actions.summarizing')
             : session.longSummary
-              ? 'Zusammenfassung erneuern'
-              : 'Zusammenfassung erstellen',
+              ? t('sessions.actions.refreshSummary')
+              : t('sessions.actions.createSummary'),
         disabled: working || summarizingId === session.id,
         onSelect: () => generateSummary(session.id),
       });
@@ -401,7 +464,7 @@ export function Sessions({ user }: SessionsProps) {
     if (session.hasWavFiles && session.status !== 'recording' && session.status !== 'processing') {
       items.push({
         id: 'delete-audio',
-        label: 'Audiodateien löschen',
+        label: t('sessions.actions.deleteAudio'),
         danger: true,
         disabled: working,
         onSelect: () => startDeleteAudio(session.id),
@@ -411,7 +474,7 @@ export function Sessions({ user }: SessionsProps) {
     if (isDeletableSession(session)) {
       items.push({
         id: 'delete-session',
-        label: 'Session löschen',
+        label: t('sessions.actions.deleteSession'),
         danger: true,
         disabled: working,
         onSelect: () => startDeleteSession(session.id),
@@ -496,7 +559,7 @@ export function Sessions({ user }: SessionsProps) {
         if (!reactQuill) continue;
         const quill = reactQuill.getEditor();
         if (!quill) continue;
-        applyEntityHighlights(quill, mappings);
+        applyEntityHighlights(quill, mappings, (entityType) => getEntityTypeLabel(entityType, t));
 
         const handleClick = (event: MouseEvent) => {
           const target = (event.target as HTMLElement | null)?.closest(
@@ -541,12 +604,12 @@ export function Sessions({ user }: SessionsProps) {
         quill.root.removeEventListener('click', handler);
       }
     };
-  }, [expandedLongSummaries, mappings, openEntity, expandedSummaryHash]);
+  }, [expandedLongSummaries, mappings, openEntity, expandedSummaryHash, t]);
 
   async function improveTranscript(sessionId: number) {
     setWorking(true);
     setImprovingId(sessionId);
-    setAiStatus('KI verbessert das Transkript...');
+    setAiStatus('improveTranscript');
     const { data, error } = await request<{ session: RecordingSession }>(
       `/api/recordings/${sessionId}/improve-transcript`,
       { method: 'POST' }
@@ -565,7 +628,7 @@ export function Sessions({ user }: SessionsProps) {
   async function generateSummary(sessionId: number) {
     setWorking(true);
     setSummarizingId(sessionId);
-    setAiStatus('KI erstellt die Zusammenfassung...');
+    setAiStatus('createSummary');
     const { data, error } = await request<{ session: RecordingSession }>(
       `/api/recordings/${sessionId}/summary`,
       { method: 'POST' }
@@ -584,7 +647,7 @@ export function Sessions({ user }: SessionsProps) {
   async function importToDiary(sessionId: number) {
     setWorking(true);
     setDraftingId(sessionId);
-    setAiStatus('KI überführt Session ins Tagebuch...');
+    setAiStatus('importToDiary');
     const { data, error } = await request<{ entry: DiaryEntry; transfer: SessionDiaryTransfer }>(
       `/api/recordings/${sessionId}/diary-draft`,
       { method: 'POST' }
@@ -593,9 +656,7 @@ export function Sessions({ user }: SessionsProps) {
     setDraftingId(null);
     if (data) {
       setDiaryTransfers((prev) => ({ ...prev, [sessionId]: data.transfer }));
-      showSuccess(
-        'KI-Vorschlag wurde im Tagebuch erstellt. Bitte im Tagebuch prüfen und bestätigen.'
-      );
+      showSuccess(t('sessions.notifications.importSuccess'));
       setAiStatus(null);
     } else if (error) {
       showError(error);
@@ -630,7 +691,7 @@ export function Sessions({ user }: SessionsProps) {
           pendingGameDaysRef.current = { ...pendingGameDaysRef.current };
           delete pendingGameDaysRef.current[sessionId];
           setPendingGameDays(pendingGameDaysRef.current);
-          showSuccess('Spieltag gespeichert.');
+          showSuccess(t('sessions.notifications.gameDaySaved'));
         }
       } else if (error && isLatest) {
         pendingGameDaysRef.current = { ...pendingGameDaysRef.current };
@@ -672,7 +733,7 @@ export function Sessions({ user }: SessionsProps) {
     );
     if (data?.session) {
       setSessions((prev) => prev.map((s) => (s.id === sessionId ? data.session : s)));
-      showSuccess('Story Arc gespeichert.');
+      showSuccess(t('sessions.notifications.arcSaved'));
     } else if (error) {
       showError(error);
     }
@@ -697,7 +758,7 @@ export function Sessions({ user }: SessionsProps) {
       setArcCreateDescription('');
       setArcCreateChapter('');
       await refreshStoryArcs();
-      showSuccess('Story Arc angelegt.');
+      showSuccess(t('sessions.notifications.arcCreated'));
     } else if (error) {
       showError(error);
     }
@@ -719,7 +780,7 @@ export function Sessions({ user }: SessionsProps) {
     if (data?.arc) {
       setEditingArc(null);
       await refreshStoryArcs();
-      showSuccess('Story Arc gespeichert.');
+      showSuccess(t('sessions.notifications.arcSaved'));
     } else if (error) {
       showError(error);
     }
@@ -735,9 +796,7 @@ export function Sessions({ user }: SessionsProps) {
       showError(error);
     } else {
       await refreshStoryArcs();
-      showSuccess(
-        'Story Arc aktiviert – neue Sessions und Einträge landen jetzt dort. Der bisher aktive Arc wurde als abgeschlossen markiert.'
-      );
+      showSuccess(t('sessions.notifications.arcActivated'));
     }
   }
 
@@ -752,7 +811,7 @@ export function Sessions({ user }: SessionsProps) {
       showError(error);
     } else {
       await refreshStoryArcs();
-      showSuccess('Story Arc gelöscht.');
+      showSuccess(t('sessions.notifications.arcDeleted'));
     }
   }
 
@@ -769,7 +828,7 @@ export function Sessions({ user }: SessionsProps) {
       <SideDrawer side="right">
         <SideDrawerItem
           id="config"
-          label="Einstellungen"
+          label={t('sessions.settings.title')}
           icon={
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -788,12 +847,14 @@ export function Sessions({ user }: SessionsProps) {
           }
         >
           <div className="p-2 space-y-6">
-            <h3 className="text-lg font-semibold text-[var(--text-h)]">Tagebuch-Automatisierung</h3>
+            <h3 className="text-lg font-semibold text-[var(--text-h)]">
+              {t('sessions.settings.diaryAutomation')}
+            </h3>
             <div className="space-y-4">
               <Toggle
                 checked={user.autoSessionToDiary}
                 onChange={(checked) => updateSessionDiarySettings({ autoSessionToDiary: checked })}
-                label="Fertige Sessions automatisch in mein Tagebuch übertragen"
+                label={t('sessions.settings.transferCompleted')}
               />
               <Toggle
                 checked={user.autoAcceptSessionDiary}
@@ -801,22 +862,17 @@ export function Sessions({ user }: SessionsProps) {
                 onChange={(checked) =>
                   updateSessionDiarySettings({ autoAcceptSessionDiary: checked })
                 }
-                label="KI-Entwurf ohne Prüfung direkt als Tagebuchnotiz übernehmen"
+                label={t('sessions.settings.acceptDirectly')}
               />
             </div>
-            <p className="text-xs text-slate-400">
-              Wenn die automatische Übertragung aktiv ist, legt der Nightly-Job aus jeder fertigen
-              Session einen Tagebucheintrag an. Ist zusätzlich „direkt übernehmen“ aktiv, wird der
-              KI-Text sofort als endgültiger Inhalt gespeichert und der
-              Tagebuch-Zusammenfassungs-Job kann ihn direkt verarbeiten.
-            </p>
+            <p className="text-xs text-slate-400">{t('sessions.settings.description')}</p>
           </div>
         </SideDrawerItem>
 
         {user.isAdmin && (
           <SideDrawerItem
             id="story-arcs"
-            label="Story Arcs"
+            label={t('sessions.storyArcs.title')}
             icon={
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -835,16 +891,14 @@ export function Sessions({ user }: SessionsProps) {
             }
           >
             <div className="p-2 space-y-6">
-              <h3 className="text-lg font-semibold text-[var(--text-h)]">Story Arcs</h3>
-              <p className="text-xs text-slate-400">
-                Sessions und Tagebucheinträge gehören jeweils zu genau einem Kapitel. Neue Inhalte
-                landen automatisch im aktiven Kapitel (grün leuchtend). Entitäten können mehreren
-                Kapiteln zugeordnet sein (im Welt-Dialog pflegbar).
-              </p>
+              <h3 className="text-lg font-semibold text-[var(--text-h)]">
+                {t('sessions.storyArcs.title')}
+              </h3>
+              <p className="text-xs text-slate-400">{t('sessions.storyArcs.description')}</p>
 
               <div className="space-y-3">
                 {storyArcs.length === 0 && (
-                  <p className="text-sm text-slate-400">Noch keine Story Arcs vorhanden.</p>
+                  <p className="text-sm text-slate-400">{t('sessions.storyArcs.empty')}</p>
                 )}
                 {sortArcsChronologically(storyArcs).map((arc) => (
                   <div
@@ -857,7 +911,7 @@ export function Sessions({ user }: SessionsProps) {
                           value={editingArc.name}
                           onChange={(e) => setEditingArc({ ...editingArc, name: e.target.value })}
                           className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                          placeholder="Name"
+                          placeholder={t('sessions.storyArcs.namePlaceholder')}
                         />
                         <textarea
                           value={editingArc.description ?? ''}
@@ -865,7 +919,7 @@ export function Sessions({ user }: SessionsProps) {
                             setEditingArc({ ...editingArc, description: e.target.value })
                           }
                           className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                          placeholder="Beschreibung (optional)"
+                          placeholder={t('sessions.storyArcs.descriptionPlaceholder')}
                           rows={2}
                         />
                         <input
@@ -880,14 +934,14 @@ export function Sessions({ user }: SessionsProps) {
                             })
                           }
                           className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                          placeholder="Kapitelnummer (leer = ohne Nummer)"
+                          placeholder={t('sessions.storyArcs.chapterPlaceholder')}
                         />
                         <div className="flex gap-2">
                           <Button variant="accent" disabled={working} onClick={saveArcEdits}>
-                            Speichern
+                            {t('sessions.actions.save')}
                           </Button>
                           <Button variant="ghost" onClick={() => setEditingArc(null)}>
-                            Abbrechen
+                            {t('sessions.actions.cancel')}
                           </Button>
                         </div>
                       </div>
@@ -898,7 +952,10 @@ export function Sessions({ user }: SessionsProps) {
                             <p className="chapter-serif text-sm font-semibold tracking-[0.04em] text-amber-100/90 truncate uppercase">
                               {arc.chapterNumber !== null && (
                                 <span className="chapter-caps mr-1.5 text-[9.5px] text-amber-200/60">
-                                  Kapitel {arc.chapterNumber} ·
+                                  {t('sessions.storyArcs.chapterNumber', {
+                                    number: formatNumber(arc.chapterNumber),
+                                  })}
+                                  {' ·'}
                                 </span>
                               )}
                               {arc.name}
@@ -913,17 +970,39 @@ export function Sessions({ user }: SessionsProps) {
                               }`}
                             >
                               <ChapterStatusDot status={arc.status} />
-                              {arcStatusLabel(arc)}
+                              {arcStatusLabel(arc, t)}
                             </span>
                             {arc.description && (
                               <p className="text-xs text-slate-400 mt-1">{arc.description}</p>
                             )}
                             <p className="text-xs text-slate-500 mt-1">
-                              {arc.gameDayStart !== null
-                                ? `Spieltag ${arc.gameDayStart}${arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart ? `–${arc.gameDayEnd}` : ''} · `
-                                : ''}
-                              {arc.sessionCount} Sessions · {arc.diaryEntryCount} Einträge ·{' '}
-                              {arc.entityCount} Entitäten
+                              {arc.gameDayStart !== null && (
+                                <>
+                                  {arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart
+                                    ? t('sessions.storyArcs.gameDayRange', {
+                                        start: formatNumber(arc.gameDayStart),
+                                        end: formatNumber(arc.gameDayEnd),
+                                      })
+                                    : t('sessions.storyArcs.gameDay', {
+                                        day: formatNumber(arc.gameDayStart),
+                                      })}
+                                  {' · '}
+                                </>
+                              )}
+                              {t('sessions.storyArcs.countSummary', {
+                                sessions: t('sessions.storyArcs.sessionCount', {
+                                  count: arc.sessionCount,
+                                  formattedCount: formatNumber(arc.sessionCount),
+                                }),
+                                entries: t('sessions.storyArcs.diaryEntryCount', {
+                                  count: arc.diaryEntryCount,
+                                  formattedCount: formatNumber(arc.diaryEntryCount),
+                                }),
+                                entities: t('sessions.storyArcs.entityCount', {
+                                  count: arc.entityCount,
+                                  formattedCount: formatNumber(arc.entityCount),
+                                }),
+                              })}
                             </p>
                           </div>
                         </div>
@@ -934,15 +1013,15 @@ export function Sessions({ user }: SessionsProps) {
                               disabled={working}
                               onClick={() => activateStoryArc(arc.id)}
                             >
-                              Aktivieren
+                              {t('sessions.actions.activate')}
                             </Button>
                           )}
                           <Button variant="ghost" onClick={() => setEditingArc(arc)}>
-                            Bearbeiten
+                            {t('sessions.actions.edit')}
                           </Button>
                           {arc.status === 'planned' && (
                             <Button variant="danger" onClick={() => setArcToDelete(arc)}>
-                              Löschen
+                              {t('sessions.actions.delete')}
                             </Button>
                           )}
                         </div>
@@ -953,18 +1032,20 @@ export function Sessions({ user }: SessionsProps) {
               </div>
 
               <div className="space-y-2 border-t border-[var(--border)] pt-4">
-                <h4 className="text-sm font-semibold text-[var(--text-h)]">Neuer Story Arc</h4>
+                <h4 className="text-sm font-semibold text-[var(--text-h)]">
+                  {t('sessions.storyArcs.new')}
+                </h4>
                 <input
                   value={arcCreateName}
                   onChange={(e) => setArcCreateName(e.target.value)}
                   className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                  placeholder="Name"
+                  placeholder={t('sessions.storyArcs.namePlaceholder')}
                 />
                 <textarea
                   value={arcCreateDescription}
                   onChange={(e) => setArcCreateDescription(e.target.value)}
                   className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                  placeholder="Beschreibung (optional)"
+                  placeholder={t('sessions.storyArcs.descriptionPlaceholder')}
                   rows={2}
                 />
                 <input
@@ -976,14 +1057,16 @@ export function Sessions({ user }: SessionsProps) {
                     setArcCreateChapter(e.target.value === '' ? '' : Number(e.target.value))
                   }
                   className="w-full bg-slate-900 border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                  placeholder={`Kapitelnummer (Vorschlag: ${nextChapterNumber})`}
+                  placeholder={t('sessions.storyArcs.chapterSuggestion', {
+                    number: formatNumber(nextChapterNumber),
+                  })}
                 />
                 <Button
                   variant="accent"
                   disabled={arcCreateBusy || !arcCreateName.trim()}
                   onClick={createStoryArc}
                 >
-                  Anlegen
+                  {t('sessions.actions.create')}
                 </Button>
               </div>
             </div>
@@ -991,17 +1074,17 @@ export function Sessions({ user }: SessionsProps) {
         )}
       </SideDrawer>
 
-      {aiStatus && (
+      {displayedAiStatus && (
         <div className="mb-4 p-3 rounded-lg bg-[var(--accent)]/20 text-[var(--text-h)] text-sm flex items-center gap-2">
           <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
-          {aiStatus}
+          {displayedAiStatus}
         </div>
       )}
 
       <div className="space-y-4">
-        {sessions.length === 0 && <p className="text-slate-400">Noch keine Sessions vorhanden.</p>}
+        {sessions.length === 0 && <p className="text-slate-400">{t('sessions.list.empty')}</p>}
         {sessions.length > 0 && visibleSessions.length === 0 && (
-          <p className="text-slate-400">Keine Sessions im gewählten Kapitel vorhanden.</p>
+          <p className="text-slate-400">{t('sessions.list.emptyFiltered')}</p>
         )}
         {visibleSessions.map((session) => (
           <div
@@ -1021,7 +1104,7 @@ export function Sessions({ user }: SessionsProps) {
                     <ChapterChip
                       arc={arcById.get(session.arcId)!}
                       className="ml-2 align-middle"
-                      title={formatArcLabel(arcById.get(session.arcId)!)}
+                      title={formatArcLabel(arcById.get(session.arcId)!, t, formatNumber)}
                     />
                   )}
                   {!user.isAdmin && session.arcId == null && (
@@ -1029,13 +1112,26 @@ export function Sessions({ user }: SessionsProps) {
                   )}
                 </h3>
                 <p className="text-sm text-slate-400">
-                  {session.gameDay
-                    ? `Spieltag ${session.gameDay}${session.gameDayEnd && session.gameDayEnd !== session.gameDay ? `–${session.gameDayEnd}` : ''} · `
-                    : ''}
-                  {new Date(session.startedAt).toLocaleString('de-DE')} · Status: {session.status}
+                  {session.gameDay !== null && (
+                    <>
+                      {session.gameDayEnd !== null && session.gameDayEnd !== session.gameDay
+                        ? t('sessions.storyArcs.gameDayRange', {
+                            start: formatNumber(session.gameDay),
+                            end: formatNumber(session.gameDayEnd),
+                          })
+                        : t('sessions.storyArcs.gameDay', {
+                            day: formatNumber(session.gameDay),
+                          })}
+                      {' · '}
+                    </>
+                  )}
+                  {formatDateTime(session.startedAt)} ·{' '}
+                  {t('sessions.status.label', {
+                    status: t(recordingStatusKeys[session.status]),
+                  })}
                   {session.transcriptImprovedAt && (
                     <span className="ml-2 text-xs font-medium text-[var(--accent)]">
-                      ✓ KI-optimiert
+                      ✓ {t('sessions.details.aiOptimized')}
                     </span>
                   )}
                 </p>
@@ -1051,7 +1147,7 @@ export function Sessions({ user }: SessionsProps) {
                 )}
                 {user.isAdmin && (
                   <div className="mt-1 grid grid-cols-[auto_1fr] gap-2 items-center text-xs">
-                    <label className="text-slate-400">Spieltag</label>
+                    <label className="text-slate-400">{t('sessions.details.gameDayLabel')}</label>
                     <div className="flex items-center gap-2">
                       <select
                         value={
@@ -1081,14 +1177,14 @@ export function Sessions({ user }: SessionsProps) {
                         }}
                         className="min-w-0 px-2 py-1 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                       >
-                        <option value="">– kein –</option>
+                        <option value="">{t('sessions.details.gameDayNone')}</option>
                         {campaignDays.map((d) => (
                           <option key={d.day} value={d.day}>
-                            Spieltag {d.day}
+                            {t('sessions.storyArcs.gameDay', { day: formatNumber(d.day) })}
                           </option>
                         ))}
                       </select>
-                      <span className="text-slate-400">bis</span>
+                      <span className="text-slate-400">{t('sessions.details.gameDayTo')}</span>
                       <select
                         value={
                           (pendingGameDays[session.id]
@@ -1113,7 +1209,7 @@ export function Sessions({ user }: SessionsProps) {
                         <option value="">–</option>
                         {campaignDays.map((d) => (
                           <option key={d.day} value={d.day}>
-                            Spieltag {d.day}
+                            {t('sessions.storyArcs.gameDay', { day: formatNumber(d.day) })}
                           </option>
                         ))}
                       </select>
@@ -1127,7 +1223,7 @@ export function Sessions({ user }: SessionsProps) {
                 )}
                 {sessionDiaryEntries[session.id] && sessionDiaryEntries[session.id].length > 0 && (
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-                    <span className="text-slate-400">Tagebuch:</span>
+                    <span className="text-slate-400">{t('sessions.details.diary')}</span>
                     {sessionDiaryEntries[session.id].map((entry) => (
                       <BadgeLink
                         key={entry.entryId}
@@ -1155,7 +1251,12 @@ export function Sessions({ user }: SessionsProps) {
                         return (
                           <>
                             <p className="text-xs text-[var(--accent)] mb-1">
-                              Transkription … {filePercent.toFixed(0)}%
+                              {t('sessions.details.transcriptionProgress', {
+                                percent: formatNumber(filePercent / 100, {
+                                  style: 'percent',
+                                  maximumFractionDigits: 0,
+                                }),
+                              })}
                             </p>
                             <div className="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                               <div
@@ -1167,7 +1268,9 @@ export function Sessions({ user }: SessionsProps) {
                         );
                       })()
                     ) : (
-                      <p className="text-xs text-slate-400">Transkription wird vorbereitet...</p>
+                      <p className="text-xs text-slate-400">
+                        {t('sessions.details.transcriptionPreparing')}
+                      </p>
                     )}
                   </div>
                 )}
@@ -1179,7 +1282,9 @@ export function Sessions({ user }: SessionsProps) {
                     disabled={working || draftingId === session.id}
                     onClick={() => importToDiary(session.id)}
                   >
-                    {draftingId === session.id ? 'Tagebuch...' : 'Ins Tagebuch'}
+                    {draftingId === session.id
+                      ? t('sessions.actions.toDiaryPending')
+                      : t('sessions.actions.toDiary')}
                   </Button>
                 )}
                 {session.status === 'completed' && (
@@ -1189,12 +1294,12 @@ export function Sessions({ user }: SessionsProps) {
                     onClick={() => toggleTranscript(session.id)}
                   >
                     {visibleTranscripts.has(session.id)
-                      ? 'Transkript ausblenden'
-                      : 'Transkript anzeigen'}
+                      ? t('sessions.actions.hideTranscript')
+                      : t('sessions.actions.showTranscript')}
                   </Button>
                 )}
                 <ActionMenu
-                  ariaLabel={`Weitere Aktionen für ${session.name}`}
+                  ariaLabel={t('sessions.actions.moreActions', { name: session.name })}
                   items={adminMenuItems(session)}
                   disabled={working}
                 />
@@ -1204,32 +1309,36 @@ export function Sessions({ user }: SessionsProps) {
             {session.status === 'recording' && (
               <div className="mt-4 p-3 rounded-lg bg-[var(--danger)]/20 text-[var(--danger)] text-sm flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-[var(--danger)] animate-pulse" />
-                Aufnahme läuft…
+                {t('sessions.details.recordingBanner')}
               </div>
             )}
 
             {session.status === 'pending_transcription' && (
               <div className="mt-4 p-3 rounded-lg bg-slate-700/50 text-slate-300 text-sm">
-                Wartet auf die nächtliche Transkription (läuft ca. um 2 Uhr).
+                {t('sessions.details.pendingTranscriptionBanner')}
               </div>
             )}
 
             {session.status === 'processing' && (
               <div className="mt-4 p-3 rounded-lg bg-[var(--accent)]/20 text-[var(--text-h)] text-sm flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
-                Transkription läuft gerade...
+                {t('sessions.details.processingBanner')}
               </div>
             )}
 
             {session.summary && (
               <div className="mt-4 p-3 rounded-lg bg-slate-800/50 border-l-4 border-[var(--accent)] text-slate-200 text-sm">
-                <h4 className="text-sm font-semibold text-slate-300 mb-2">Kurze Zusammenfassung</h4>
+                <h4 className="text-sm font-semibold text-slate-300 mb-2">
+                  {t('sessions.details.shortSummary')}
+                </h4>
                 <div className="text-slate-200 text-sm whitespace-pre-wrap">
                   <EntityRichText content={session.summary} mappings={mappings} isHtml={false} />
                 </div>
                 {session.summaryGeneratedAt && (
                   <p className="text-xs text-slate-500 mt-2">
-                    Erstellt am {new Date(session.summaryGeneratedAt).toLocaleString('de-DE')}
+                    {t('sessions.details.createdAt', {
+                      date: formatDateTime(session.summaryGeneratedAt),
+                    })}
                   </p>
                 )}
               </div>
@@ -1240,7 +1349,7 @@ export function Sessions({ user }: SessionsProps) {
                 {expandedLongSummaries.has(session.id) ? (
                   <div className="p-3 rounded-lg bg-slate-800/50 border border-[var(--border)]">
                     <h4 className="text-sm font-semibold text-slate-300 mb-2">
-                      Ausführliche Zusammenfassung
+                      {t('sessions.details.detailedSummary')}
                     </h4>
                     <ReactQuill
                       ref={(el) => {
@@ -1255,8 +1364,9 @@ export function Sessions({ user }: SessionsProps) {
                     />
                     {session.longSummaryGeneratedAt && (
                       <p className="text-xs text-slate-500 mt-2">
-                        Erstellt am{' '}
-                        {new Date(session.longSummaryGeneratedAt).toLocaleString('de-DE')}
+                        {t('sessions.details.createdAt', {
+                          date: formatDateTime(session.longSummaryGeneratedAt),
+                        })}
                       </p>
                     )}
                     <Button
@@ -1264,12 +1374,12 @@ export function Sessions({ user }: SessionsProps) {
                       className="mt-2"
                       onClick={() => toggleLongSummary(session.id)}
                     >
-                      Weniger anzeigen
+                      {t('sessions.details.showLess')}
                     </Button>
                   </div>
                 ) : (
                   <Button variant="secondary" onClick={() => toggleLongSummary(session.id)}>
-                    Ausführliche Zusammenfassung anzeigen
+                    {t('sessions.details.showDetailedSummary')}
                   </Button>
                 )}
               </div>
@@ -1277,7 +1387,9 @@ export function Sessions({ user }: SessionsProps) {
 
             {visibleTranscripts.has(session.id) && (
               <div className="mt-4">
-                <h4 className="text-sm font-semibold text-slate-300 mb-2">Transkript</h4>
+                <h4 className="text-sm font-semibold text-slate-300 mb-2">
+                  {t('sessions.details.transcript')}
+                </h4>
                 {loadedTranscripts[session.id] ? (
                   <div className="bg-slate-900/50 rounded-lg p-2 text-sm text-slate-300 overflow-auto max-h-96 space-y-1">
                     {loadedTranscripts[session.id]!.split('\n').map((line, index) => {
@@ -1302,18 +1414,18 @@ export function Sessions({ user }: SessionsProps) {
                                   <button
                                     type="button"
                                     onClick={() => trimTranscriptFromStart(session.id, seconds)}
-                                    title="Alles vor diesem Zeitstempel entfernen"
+                                    title={t('sessions.details.trimFromStart')}
                                     className="text-[10px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-[var(--accent)] hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
                                   >
-                                    Start
+                                    {t('sessions.details.trimStart')}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => trimTranscriptToEnd(session.id, seconds)}
-                                    title="Alles nach diesem Zeitstempel entfernen"
+                                    title={t('sessions.details.trimToEnd')}
                                     className="text-[10px] px-1 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-[var(--accent)] hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition"
                                   >
-                                    Ende
+                                    {t('sessions.details.trimEnd')}
                                   </button>
                                 </>
                               )}
@@ -1325,14 +1437,14 @@ export function Sessions({ user }: SessionsProps) {
                     })}
                   </div>
                 ) : (
-                  <p className="text-slate-400 text-sm">Noch kein Transkript verfügbar.</p>
+                  <p className="text-slate-400 text-sm">{t('sessions.details.noTranscript')}</p>
                 )}
               </div>
             )}
 
             {session.error && (
               <div className="mt-4 p-3 rounded-lg bg-[var(--danger)]/20 text-[var(--danger)] text-sm">
-                {session.error}
+                {localizeRecordingError(session.error, t)}
               </div>
             )}
           </div>
@@ -1341,49 +1453,43 @@ export function Sessions({ user }: SessionsProps) {
 
       {sessionToDelete !== null && (
         <ConfirmDialog
-          title="Session löschen"
-          confirmLabel="Löschen"
-          cancelLabel="Abbrechen"
+          title={t('sessions.dialogs.deleteSessionTitle')}
+          confirmLabel={t('sessions.actions.delete')}
+          cancelLabel={t('sessions.actions.cancel')}
           variant="danger"
           loading={working}
           onConfirm={confirmDeleteSession}
           onCancel={() => setSessionToDelete(null)}
         >
-          <p>Möchtest du die Session wirklich löschen?</p>
+          <p>{t('sessions.dialogs.deleteSessionMessage')}</p>
         </ConfirmDialog>
       )}
 
       {audioToDelete !== null && (
         <ConfirmDialog
-          title="Audiodateien löschen"
-          confirmLabel="Löschen"
-          cancelLabel="Abbrechen"
+          title={t('sessions.dialogs.deleteAudioTitle')}
+          confirmLabel={t('sessions.actions.delete')}
+          cancelLabel={t('sessions.actions.cancel')}
           variant="danger"
           loading={working}
           onConfirm={confirmDeleteAudio}
           onCancel={() => setAudioToDelete(null)}
         >
-          <p>
-            Möchtest du die WAV-Audiodateien dieser Session wirklich löschen? Das Transkript bleibt
-            erhalten.
-          </p>
+          <p>{t('sessions.dialogs.deleteAudioMessage')}</p>
         </ConfirmDialog>
       )}
 
       {arcToDelete !== null && (
         <ConfirmDialog
-          title="Story Arc löschen"
-          confirmLabel="Löschen"
-          cancelLabel="Abbrechen"
+          title={t('sessions.dialogs.deleteArcTitle')}
+          confirmLabel={t('sessions.actions.delete')}
+          cancelLabel={t('sessions.actions.cancel')}
           variant="danger"
           loading={working}
           onConfirm={confirmDeleteArc}
           onCancel={() => setArcToDelete(null)}
         >
-          <p>
-            Möchtest du den Story Arc „{arcToDelete.name}“ wirklich löschen? Zugeordnete Sessions
-            und Tagebucheinträge bleiben erhalten und sind dann ohne Arc.
-          </p>
+          <p>{t('sessions.dialogs.deleteArcMessage', { name: arcToDelete.name })}</p>
         </ConfirmDialog>
       )}
 

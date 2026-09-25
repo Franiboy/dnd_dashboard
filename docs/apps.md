@@ -25,5 +25,6 @@ The `label` values in the table below are taken directly from `src/lib/apps.ts` 
 - The initial admin `admin` may not join Bingo as a player.
 - Admins can approve/lock users, grant/revoke admin rights, delete users and disable individual apps per user (`disabledApps`).
 - Admins assign each player a character (a world person) in the user table; players without a character cannot open the Tagebuch.
+- An admin's **Simulate view** is display-only: the client marks API calls with the selected approved user, while the server validates the target and uses it only for user-specific transcript labels/language; authorization continues to use the real admin account.
 - `/admin` is admin-only and shows user management and logs.
 - `/bingo`, `/tagebuch`, `/welt`, `/whiteboard` can be locked for regular users via `disabledApps`.

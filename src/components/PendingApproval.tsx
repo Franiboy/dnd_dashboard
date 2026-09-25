@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Loading } from './Loading';
+import { useI18n } from '../hooks/useI18n';
 import type { SafeUser } from '../../shared/types';
 
 interface PendingApprovalProps {
@@ -9,7 +10,8 @@ interface PendingApprovalProps {
 }
 
 export function PendingApproval({ user, onCheckApproved, onLogout }: PendingApprovalProps) {
-  const message = 'Dein Account wurde noch nicht freigegeben.';
+  const { t } = useI18n();
+  const message = t('auth.accountPending');
 
   useEffect(() => {
     const check = async () => {
@@ -30,11 +32,11 @@ export function PendingApproval({ user, onCheckApproved, onLogout }: PendingAppr
         {user.avatarUrl && (
           <img src={user.avatarUrl} alt="" className="w-16 h-16 rounded-full mx-auto mb-4" />
         )}
-        <h2 className="text-xl font-semibold text-[var(--text-h)] mb-2">Warte auf Freigabe</h2>
+        <h2 className="text-xl font-semibold text-[var(--text-h)] mb-2">
+          {t('auth.waitForApproval')}
+        </h2>
         <p className="text-slate-400 mb-4">{message}</p>
-        <p className="text-sm text-slate-500 mb-4">
-          Diese Seite prüft automatisch alle 5 Sekunden, ob ein Admin dich freigegeben hat.
-        </p>
+        <p className="text-sm text-slate-500 mb-4">{t('auth.approvalShortDescription')}</p>
         <button
           onClick={onLogout}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--danger)]/20 text-[var(--danger)] hover:bg-[var(--danger)]/30 transition-colors"
@@ -54,7 +56,7 @@ export function PendingApproval({ user, onCheckApproved, onLogout }: PendingAppr
             <polyline points="16 17 21 12 16 7" />
             <line x1="21" y1="12" x2="9" y2="12" />
           </svg>
-          Logout
+          {t('common.logout')}
         </button>
       </div>
     </div>

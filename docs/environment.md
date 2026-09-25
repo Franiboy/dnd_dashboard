@@ -27,7 +27,10 @@ DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord
 DISCORD_BOT_TOKEN=
 # Discord server ID where recordings should take place
 DISCORD_GUILD_ID=
-# Language for Whisper transcription (de, en, auto, ...)
+# Bootstrap fallback for Whisper before the database Admin UI language is
+# available. The persisted Admin setting takes precedence for new transcription
+# processes. de/en are preferred; legacy "auto" is accepted and safely normalizes
+# to German when no persisted setting exists.
 WHISPER_LANGUAGE=de
 # Model size for local Whisper (tiny, base, small, medium, large)
 WHISPER_MODEL=base
@@ -36,6 +39,10 @@ WHISPER_MODEL=base
 # PYTHON_COMMAND=python3
 # Enable FP16 acceleration for Whisper (true/false). Default: false
 # WHISPER_FP16=false
+# Optional explicit Whisper context prompt. If unset or blank, a prompt matching
+# the current Admin language (de/en) is generated automatically. A non-empty
+# custom value is passed unchanged and takes precedence.
+# WHISPER_INITIAL_PROMPT=
 
 # AI (optional)
 AI_PROVIDER=opencode
@@ -86,7 +93,7 @@ AI_MODEL=opencode/deepseek-v4-flash-free
 - `DISCORD_*` must be configured for Discord login.
 - `DISCORD_TOKEN_REFRESH_INTERVAL_MS` controls how often stored Discord OAuth tokens are refreshed and profile data is synced (default: 3600000, 1 hour).
 - `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` enable the recording bot.
-- `WHISPER_*` configure local transcription (faster-whisper, CTranslate2 + Silero VAD on CPU). `WHISPER_VAD_MIN_SILENCE` (default 2.0s) is how long a pause must be to split speech regions; shorter pauses stay in the same region so the model keeps context. Long pauses where a speaker is silent are skipped entirely while timestamps stay on the original recording timeline. `WHISPER_COMPUTE_TYPE` (default `int8`, or `float16`) trades a tiny amount of speed for integer vs float inference on CPU; quality is effectively identical. `WHISPER_CONDITION_ON_PREVIOUS` (default true) keeps context across consecutive speech regions. `WHISPER_FP16` is deprecated and ignored since faster-whisper uses `WHISPER_COMPUTE_TYPE`.
+- `WHISPER_*` configure local transcription (faster-whisper, CTranslate2 + Silero VAD on CPU). `WHISPER_LANGUAGE` is only a bootstrap fallback for the short interval before the database schema is available; the persisted Admin UI language in `ai_settings` takes precedence for every new transcription process. `de`/`en` are preferred, while legacy `auto` is accepted and normalizes to German when no persisted setting exists. A language change applies to the next process only; active processes and existing transcripts keep their captured language. `WHISPER_INITIAL_PROMPT` is an optional explicit override: when unset or blank, Whisper receives a context prompt in the captured Admin language; the old example prompt is treated as unset, while other non-empty custom values are passed unchanged and win. `WHISPER_VAD_MIN_SILENCE` (default 2.0s) is how long a pause must be to split speech regions; shorter pauses stay in the same region so the model keeps context. Long pauses where a speaker is silent are skipped entirely while timestamps stay on the original recording timeline. `WHISPER_COMPUTE_TYPE` (default `int8`, or `float16`) trades a tiny amount of speed for integer vs float inference on CPU; quality is effectively identical. `WHISPER_CONDITION_ON_PREVIOUS` (default true) keeps context across consecutive speech regions. `WHISPER_FP16` is deprecated and ignored since faster-whisper uses `WHISPER_COMPUTE_TYPE`.
 - `AI_PROVIDER` must be `opencode` and `AI_MODEL` must be set to a valid model (e.g. `opencode/deepseek-v4-flash-free`) for AI to be enabled. Values starting with `provider/…` are placeholders and keep AI disabled. The single model is used for all AI tasks (diary rewrite, summaries, entities, bingo suggestions).
 - `AI_OPENCODE_BIN` overrides the `opencode` command. Only needed when the CLI is installed under a different name or path.
 - The model can also be overridden persistently at runtime in the Admin UI (SideDrawer section "KI-Modell"). The selected value is stored in the `ai_settings` table and takes precedence over `AI_MODEL`.

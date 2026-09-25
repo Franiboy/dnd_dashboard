@@ -17,21 +17,28 @@ import { linkStoryArcEntity } from '../repositories/storyArcs.js';
 import { findEntityCanonical } from '../repositories/diary.js';
 import { createLogger } from '../logger.js';
 import type { KnowledgeTarget, McpSessionUser } from '../mcp/tokens.js';
-import type { EntityKnowledgeEntry, EntityType, KnowledgeOriginType } from '../../shared/types.js';
+import type {
+  EntityKnowledgeEntry,
+  EntityType,
+  KnowledgeOriginType,
+  Language,
+} from '../../shared/types.js';
+import { getAiLanguage } from './languageConfig.js';
+import { localize, outputLanguageInstruction } from './promptLanguage.js';
 
 const log = createLogger('knowledge');
 
-/** German singular label for an entity type, used in AI prompts and rules. */
-function entityTypeLabel(type: EntityType): string {
+/** Localized singular label for an entity type, used in AI prompts and rules. */
+export function entityTypeLabel(type: EntityType, language: Language = getAiLanguage()): string {
   switch (type) {
     case 'persons':
-      return 'Person';
+      return localize(language, 'Person', 'Person');
     case 'organizations':
-      return 'Organisation';
+      return localize(language, 'Organisation', 'Organization');
     case 'locations':
-      return 'Ort';
+      return localize(language, 'Ort', 'Location');
     case 'items':
-      return 'Gegenstand';
+      return localize(language, 'Gegenstand', 'Item');
   }
 }
 
@@ -70,6 +77,8 @@ export interface KnowledgePromptOptions {
    * given, the arc of the origin wins.
    */
   arcId?: number;
+  /** Language captured once for all prompts in this operation. */
+  language?: Language;
 }
 
 function takeKnowledgeSnapshot(): Map<number, KnowledgeSnapshot> {
@@ -89,7 +98,8 @@ function takeKnowledgeSnapshot(): Map<number, KnowledgeSnapshot> {
 
 function computeDistributionDiff(
   before: Map<number, KnowledgeSnapshot>,
-  after: EntityKnowledgeEntry[]
+  after: EntityKnowledgeEntry[],
+  language: Language
 ): DistributeResult {
   const afterById = new Map<number, EntityKnowledgeEntry>();
   for (const entry of after) afterById.set(entry.id, entry);
@@ -107,7 +117,11 @@ function computeDistributionDiff(
   for (const [id, beforeEntry] of before) {
     const afterEntry = afterById.get(id);
     if (beforeEntry.status === 'active' && afterEntry?.status === 'deleted') {
-      deleted.push({ id, reason: afterEntry.statusReason || 'Widerspruch', entry: afterEntry });
+      deleted.push({
+        id,
+        reason: afterEntry.statusReason || localize(language, 'Widerspruch', 'Contradiction'),
+        entry: afterEntry,
+      });
       continue;
     }
     // An active fact was given an end of validity -> a sequenced timeline change.
@@ -119,7 +133,8 @@ function computeDistributionDiff(
     ) {
       ended.push({
         id,
-        reason: afterEntry.statusReason || 'Ende der Gültigkeit',
+        reason:
+          afterEntry.statusReason || localize(language, 'Ende der Gültigkeit', 'End of validity'),
         entry: afterEntry,
       });
     }
@@ -133,6 +148,7 @@ export async function distributeKnowledgeFromText(
   options: KnowledgePromptOptions = {}
 ): Promise<DistributeResult> {
   const { model, onLog, origin, user, arcId: explicitArcId } = options;
+  const runLanguage = options.language ?? getAiLanguage();
   const plainText = stripHtml(text).trim();
   if (!plainText) return { created: [], deleted: [], ended: [] };
 
@@ -141,55 +157,144 @@ export async function distributeKnowledgeFromText(
   // Arc scope: the origin's arc wins over an explicitly chosen one.
   const arcContext = origin
     ? origin.type === 'diary'
-      ? resolveDiaryEntryArcContext(origin.id)
-      : resolveSessionArcContext(origin.id)
+      ? resolveDiaryEntryArcContext(origin.id, runLanguage)
+      : resolveSessionArcContext(origin.id, runLanguage)
     : explicitArcId
-      ? resolveArcContextById(explicitArcId)
+      ? resolveArcContextById(explicitArcId, runLanguage)
       : null;
 
+  const t = (german: string, english: string) => localize(runLanguage, german, english);
   const prompt = [
-    'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+    t(
+      'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+      'You are an assistant for a D&D diary system. You work exclusively through the provided tools and respond concisely in English.'
+    ),
+    outputLanguageInstruction(runLanguage),
     '',
-    'Aufgabe: Analysiere den folgenden Text und ordne die darin enthaltenen Fakten den passenden Entitäten zu.',
+    t(
+      'Aufgabe: Analysiere den folgenden Text und ordne die darin enthaltenen Fakten den passenden Entitäten zu.',
+      'Task: Analyze the following text and assign the facts it contains to the appropriate entities.'
+    ),
     ...(arcContext?.promptLines ?? []),
     '',
-    `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}. Nutze ihn als Bezugspunkt für zeitgebundene Fakten.`,
+    t(
+      `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}. Nutze ihn als Bezugspunkt für zeitgebundene Fakten.`,
+      `The current campaign game day is ${currentGameDay ?? 'unknown (no game day has been set yet)'}. Use it as the reference point for time-bound facts.`
+    ),
     '',
-    'Verfügbare Tools:',
-    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Historie und verknüpfte Tagebucheinträge (mit Spieltag) zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
-    '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
-    '- search_diary_entries(query, limit?): Durchsucht Tagebucheinträge nach einem Begriff, um Aussagen zu verifizieren.',
-    '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
-    '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
-    '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag. validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
-    '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (war wahr, gilt ab dann nicht mehr) - für zeitliche Änderungen, nicht für Widerrufe.',
-    '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch / trifft nie zu).',
+    t('Verfügbare Tools:', 'Available tools:'),
+    t(
+      '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Historie und verknüpfte Tagebucheinträge (mit Spieltag) zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
+      '- get_entity(type, name, qualifier?): Returns the summary, currently valid knowledge, no-longer-valid history, and linked diary entries (with game day) for an entity. It MUST be used to check existing knowledge.'
+    ),
+    t(
+      '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
+      '- list_entities(type?): Lists all known entities, including qualifiers (to distinguish namesakes).'
+    ),
+    t(
+      '- search_diary_entries(query, limit?): Durchsucht Tagebucheinträge nach einem Begriff, um Aussagen zu verifizieren.',
+      '- search_diary_entries(query, limit?): Searches diary entries for a term to verify claims.'
+    ),
+    t(
+      '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
+      '- get_diary_entry(entryId): Returns a complete diary entry.'
+    ),
+    t(
+      '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
+      '- get_previous_diary_entries(entryId, limit?): Returns earlier entries by the same author.'
+    ),
+    t(
+      '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag. validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
+      '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Creates a knowledge entry. validFrom/validUntil are optional game days for time-bound facts.'
+    ),
+    t(
+      '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (war wahr, gilt ab dann nicht mehr) - für zeitliche Änderungen, nicht für Widerrufe.',
+      '- end_knowledge(id, until, reason?): Ends an active fact from a game day onward (it was true and is no longer true afterward); use this for changes over time, not retractions.'
+    ),
+    t(
+      '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch / trifft nie zu).',
+      '- delete_knowledge(id, reason?): Marks a knowledge entry as deleted (retraction: the fact was false or never applied).'
+    ),
     '',
-    'Regeln:',
-    '- DU MUSST vor dem Erstellen, Beenden oder Löschen von Wissen get_entity für jede im Text erwähnte Entität aufrufen, um bestehendes Wissen zu sehen (inkl. includeHistory=true, um beendete/gelöschte Einträge zu berücksichtigen).',
-    '- Verifiziere zeitgebundene Aussagen gegen das Tagebuch: Suche mit search_diary_entries nach dem Ereignis und lese Treffer mit get_diary_entry vollständig, um zu bestimmen, wann etwas passiert ist (die verknüpften Einträge in get_entity zeigen den Spieltag).',
-    '- Du siehst die Tagebucheinträge aller Spieler (gemeinsames Weltwissen) – nutze sie zur Verifikation.',
-    '- Ordne jeden Fakt einer oder mehreren Entitäten zu.',
-    '- Wenn eine Entität noch nicht existiert, wird sie automatisch durch create_knowledge angelegt.',
-    '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
-    '- Gibt es mehrere Entitäten mit demselben Namen (list_entities zeigt sie mit unterschiedlichem Qualifier), wähle anhand des Kontexts die richtige Entität und gib beim Aufruf von get_entity bzw. create_knowledge deren Qualifier an.',
-    '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
-    '- content ist der eigentliche Faktentext.',
-    '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
-    '- Extrahiere nur Fakten, die im Text tatsächlich vorkommen. Erfinke keine Details.',
-    '- Halte jeden Fakt kurz und prägnant.',
-    '- Wenn ein bestehender Eintrag unvollständig ist, ergänze ihn mit create_knowledge für dieselbe Entität.',
-    '- Zeitgebundene Fakten (Beziehungen, Stimmungen, Zugehörigkeit, Ziele) bekommen ein Gültigkeitsfenster über validFrom/validUntil, immer bezogen auf den aktuellen Spieltag. Zeitliche Angaben im Text ("seit der Schlacht", "bis zum Fest", "inzwischen") werden dazu verwendet.',
-    '- Zeitlose Fakten (z. B. "ist eine Elfe", Herkunft, Beruf) erhalten kein Fenster.',
-    '- Wird ein bestehender aktiver Fakt durch eine zeitliche Änderung ersetzt ("stand X gut, jetzt nicht mehr"), beende den alten mit end_knowledge(id, until=<Spieltag>, reason) und erstelle den neuen mit validFrom=<Spieltag>.',
-    '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
-    '- Widerspricht ein neuer Fakt einem bestehenden Eintrag grundlegend (er war falsch, nicht nur überholt), lösche den alten mit delete_knowledge(id, reason) und erstelle einen neuen, korrekten Eintrag.',
-    '- In delete_knowledge und end_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
+    t('Regeln:', 'Rules:'),
+    t(
+      '- DU MUSST vor dem Erstellen, Beenden oder Löschen von Wissen get_entity für jede im Text erwähnte Entität aufrufen, um bestehendes Wissen zu sehen (inkl. includeHistory=true, um beendete/gelöschte Einträge zu berücksichtigen).',
+      '- BEFORE creating, ending, or deleting knowledge, you MUST call get_entity for every entity mentioned in the text to inspect existing knowledge (including includeHistory=true so ended or deleted entries are considered).'
+    ),
+    t(
+      '- Verifiziere zeitgebundene Aussagen gegen das Tagebuch: Suche mit search_diary_entries nach dem Ereignis und lese Treffer mit get_diary_entry vollständig, um zu bestimmen, wann etwas passiert ist (die verknüpften Einträge in get_entity zeigen den Spieltag).',
+      '- Verify time-bound claims against the diary: search for the event with search_diary_entries and read matching entries completely with get_diary_entry to determine when it happened (linked entries from get_entity show the game day).'
+    ),
+    t(
+      '- Du siehst die Tagebucheinträge aller Spieler (gemeinsames Weltwissen) – nutze sie zur Verifikation.',
+      "- You can see every player's diary entries (shared world knowledge); use them for verification."
+    ),
+    t(
+      '- Ordne jeden Fakt einer oder mehreren Entitäten zu.',
+      '- Assign each fact to one or more entities.'
+    ),
+    t(
+      '- Wenn eine Entität noch nicht existiert, wird sie automatisch durch create_knowledge angelegt.',
+      '- If an entity does not exist yet, create_knowledge creates it automatically.'
+    ),
+    t(
+      '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
+      '- Use the exact database spelling when a matching entity exists.'
+    ),
+    t(
+      '- Gibt es mehrere Entitäten mit demselben Namen (list_entities zeigt sie mit unterschiedlichem Qualifier), wähle anhand des Kontexts die richtige Entität und gib beim Aufruf von get_entity bzw. create_knowledge deren Qualifier an.',
+      '- If several entities have the same name (list_entities shows different qualifiers), choose the correct one from the context and provide its qualifier when calling get_entity or create_knowledge.'
+    ),
+    t(
+      '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
+      '- title is optional and should be a category such as "Affiliation", "Relationships", "Origin", "Occupation", "Goals", or "Notes".'
+    ),
+    t('- content ist der eigentliche Faktentext.', '- content is the fact text itself.'),
+    t(
+      '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
+      '- One fact may be assigned to several entities.'
+    ),
+    t(
+      '- Extrahiere nur Fakten, die im Text tatsächlich vorkommen. Erfinke keine Details.',
+      '- Extract only facts that actually occur in the text. Do not invent details.'
+    ),
+    t('- Halte jeden Fakt kurz und prägnant.', '- Keep every fact short and concise.'),
+    t(
+      '- Wenn ein bestehender Eintrag unvollständig ist, ergänze ihn mit create_knowledge für dieselbe Entität.',
+      '- If an existing entry is incomplete, supplement it with create_knowledge for the same entity.'
+    ),
+    t(
+      '- Zeitgebundene Fakten (Beziehungen, Stimmungen, Zugehörigkeit, Ziele) bekommen ein Gültigkeitsfenster über validFrom/validUntil, immer bezogen auf den aktuellen Spieltag. Zeitliche Angaben im Text ("seit der Schlacht", "bis zum Fest", "inzwischen") werden dazu verwendet.',
+      '- Time-bound facts (relationships, moods, affiliations, goals) receive a validity window through validFrom/validUntil, always relative to the current game day. Use temporal expressions in the text ("since the battle", "until the festival", "meanwhile") for this.'
+    ),
+    t(
+      '- Zeitlose Fakten (z. B. "ist eine Elfe", Herkunft, Beruf) erhalten kein Fenster.',
+      '- Timeless facts (for example, "is an elf", origin, occupation) receive no window.'
+    ),
+    t(
+      '- Wird ein bestehender aktiver Fakt durch eine zeitliche Änderung ersetzt ("stand X gut, jetzt nicht mehr"), beende den alten mit end_knowledge(id, until=<Spieltag>, reason) und erstelle den neuen mit validFrom=<Spieltag>.',
+      '- If a time change replaces an existing active fact ("X used to be friendly, but no longer is"), end the old fact with end_knowledge(id, until=<game day>, reason) and create the new one with validFrom=<game day>.'
+    ),
+    t(
+      '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
+      '- validUntil is EXCLUSIVE: the fact holds through game day (validUntil - 1) and no longer applies from validUntil onward. If a fact ends on game day X and its replacement starts with validFrom=X, they never overlap.'
+    ),
+    t(
+      '- Widerspricht ein neuer Fakt einem bestehenden Eintrag grundlegend (er war falsch, nicht nur überholt), lösche den alten mit delete_knowledge(id, reason) und erstelle einen neuen, korrekten Eintrag.',
+      '- If a new fact fundamentally contradicts an existing entry (it was false, not merely outdated), delete the old entry with delete_knowledge(id, reason) and create a new correct entry.'
+    ),
+    t(
+      '- In delete_knowledge und end_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
+      '- delete_knowledge and end_knowledge may use only IDs from existing knowledge.'
+    ),
     '',
-    'Text:',
+    t('Text:', 'Text:'),
     plainText,
     '',
-    'Speichere die Fakten direkt über die Tools, aber nur nachdem du das bestehende Wissen abgefragt hast. Wenn keine Fakten im Text enthalten sind, beende die Aufgabe ohne weitere Tool-Aufrufe.',
+    t(
+      'Speichere die Fakten direkt über die Tools, aber nur nachdem du das bestehende Wissen abgefragt hast. Wenn keine Fakten im Text enthalten sind, beende die Aufgabe ohne weitere Tool-Aufrufe.',
+      'Save the facts directly through the tools, but only after querying the existing knowledge. If the text contains no facts, finish without further tool calls.'
+    ),
   ].join('\n');
 
   log.info(`Distributing knowledge from free text`);
@@ -204,11 +309,12 @@ export async function distributeKnowledgeFromText(
     scopes: ['entity:read', 'knowledge:distribute', 'diary:read', 'diary:read-all'],
     user,
     arcId: arcContext?.arcId,
+    language: runLanguage,
     onLog,
   });
 
   const allAfter = listAllKnowledge();
-  const diff = computeDistributionDiff(snapshotBefore, allAfter);
+  const diff = computeDistributionDiff(snapshotBefore, allAfter, runLanguage);
 
   // Record where the newly created entries came from (display-only provenance).
   if (origin && diff.created.length > 0) {
@@ -310,60 +416,156 @@ export async function correctKnowledgeFromText(
   options: KnowledgePromptOptions = {}
 ): Promise<KnowledgeCorrectionResult> {
   const { model, onLog, user, arcId } = options;
+  const runLanguage = options.language ?? getAiLanguage();
   const plainText = stripHtml(correction).trim();
   if (!plainText) return { created: [], deleted: [], ended: [], summaries: [] };
 
-  const typeLabel = focus ? entityTypeLabel(focus.entityType) : null;
-  const arcContext = arcId ? resolveArcContextById(arcId) : null;
+  const typeLabel = focus ? entityTypeLabel(focus.entityType, runLanguage) : null;
+  const arcContext = arcId ? resolveArcContextById(arcId, runLanguage) : null;
 
   const currentGameDay = getCurrentGameDay();
 
+  const t = (german: string, english: string) => localize(runLanguage, german, english);
   const prompt = [
-    'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+    t(
+      'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+      'You are an assistant for a D&D diary system. You work exclusively through the provided tools and respond concisely in English.'
+    ),
+    outputLanguageInstruction(runLanguage),
     '',
-    'Aufgabe: Der Nutzer meldet einen Fehler im gespeicherten Wissen. Prüfe das betroffene Wissen gegen die Korrektur und berichtige es.',
+    t(
+      'Aufgabe: Der Nutzer meldet einen Fehler im gespeicherten Wissen. Prüfe das betroffene Wissen gegen die Korrektur und berichtige es.',
+      'Task: The user reports an error in stored knowledge. Check the affected knowledge against the correction and correct it.'
+    ),
     ...(typeLabel && focus
       ? [
-          `Fokus-Entität: ${typeLabel} "${focus.entityName}" – ihr Wissen ist auf jeden Fall zu prüfen.`,
+          t(
+            `Fokus-Entität: ${typeLabel} "${focus.entityName}" – ihr Wissen ist auf jeden Fall zu prüfen.`,
+            `Focus entity: ${typeLabel} "${focus.entityName}" – its knowledge must be checked.`
+          ),
         ]
       : []),
     ...(arcContext?.promptLines ?? []),
-    `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}.`,
+    t(
+      `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}.`,
+      `The current campaign game day is ${currentGameDay ?? 'unknown (no game day has been set yet)'}.`
+    ),
     '',
-    'Verfügbare Tools:',
-    '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Historie und verknüpfte Tagebucheinträge (mit Spieltag) zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
-    '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
-    '- search_diary_entries(query, limit?): Durchsucht Tagebucheinträge nach einem Begriff, um Aussagen zu verifizieren.',
-    '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
-    '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
-    '- get_session_summary(sessionId): Liefert kurze und lange Zusammenfassung einer Session (inkl. Transkript-Codes wie 000003, 696969).',
-    '- get_previous_session_summaries(sessionId, limit?): Liefert vorherige Session-Zusammenfassungen (grob).',
-    '- list_recent_sessions(limit?): Listet die letzten Sessions ohne bekannte ID auf (Einstieg für Session-Suche). Danach get_session_summary(sessionId) für Details.',
-    '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag; validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
-    '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (zeitliche Änderung, bleibt als Historie).',
-    '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch).',
+    t('Verfügbare Tools:', 'Available tools:'),
+    t(
+      '- get_entity(type, name, qualifier?): Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Historie und verknüpfte Tagebucheinträge (mit Spieltag) zu einer Entität. MUSS verwendet werden, um bestehendes Wissen zu prüfen.',
+      '- get_entity(type, name, qualifier?): Returns the summary, currently valid knowledge, no-longer-valid history, and linked diary entries (with game day) for an entity. It MUST be used to check existing knowledge.'
+    ),
+    t(
+      '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
+      '- list_entities(type?): Lists all known entities, including qualifiers (to distinguish namesakes).'
+    ),
+    t(
+      '- search_diary_entries(query, limit?): Durchsucht Tagebucheinträge nach einem Begriff, um Aussagen zu verifizieren.',
+      '- search_diary_entries(query, limit?): Searches diary entries for a term to verify claims.'
+    ),
+    t(
+      '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
+      '- get_diary_entry(entryId): Returns a complete diary entry.'
+    ),
+    t(
+      '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
+      '- get_previous_diary_entries(entryId, limit?): Returns earlier entries by the same author.'
+    ),
+    t(
+      '- get_session_summary(sessionId): Liefert kurze und lange Zusammenfassung einer Session (inkl. Transkript-Codes wie 000003, 696969).',
+      '- get_session_summary(sessionId): Returns the short and long summary of a session (including transcript codes such as 000003 and 696969).'
+    ),
+    t(
+      '- get_previous_session_summaries(sessionId, limit?): Liefert vorherige Session-Zusammenfassungen (grob).',
+      '- get_previous_session_summaries(sessionId, limit?): Returns previous session summaries (brief).'
+    ),
+    t(
+      '- list_recent_sessions(limit?): Listet die letzten Sessions ohne bekannte ID auf (Einstieg für Session-Suche). Danach get_session_summary(sessionId) für Details.',
+      '- list_recent_sessions(limit?): Lists recent sessions without a known ID (an entry point for session searches). Then use get_session_summary(sessionId) for details.'
+    ),
+    t(
+      '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag; validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
+      '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Creates a knowledge entry; validFrom/validUntil are optional game days for time-bound facts.'
+    ),
+    t(
+      '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (zeitliche Änderung, bleibt als Historie).',
+      '- end_knowledge(id, until, reason?): Ends an active fact from a game day onward (a change over time, retained as history).'
+    ),
+    t(
+      '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch).',
+      '- delete_knowledge(id, reason?): Marks a knowledge entry as deleted (retraction: the fact was false).'
+    ),
     '',
-    'Regeln:',
-    '- DU MUSST vor dem Löschen, Beenden oder Erstellen get_entity für die Fokus-Entität und jede in der Korrektur erwähnte Entität aufrufen – am besten mit includeHistory=true, um auch beendete/gelöschte Einträge zu sehen.',
-    '- Verifiziere Aussagen der Korrektur gegen Tagebuch UND grob gegen Sessions: Suche mit search_diary_entries nach dem Ereignis und lese Treffer mit get_diary_entry vollständig; ergänze mit list_recent_sessions / get_session_summary / get_previous_session_summaries für Session-Codes (z. B. Kreide 000003) und Transkript-Hinweise. Die verknüpften Einträge in get_entity zeigen den Spieltag, damit du "wann" etwas passiert ist bestimmen und Gültigkeitsfenster sauber setzen kannst.',
-    '- Du siehst die Tagebucheinträge aller Spieler (gemeinsames Weltwissen) plus Session-Zusammenfassungen – nutze beides zur Verifikation, Diary gilt als primäre Quelle, Sessions als grobe Ergänzung.',
-    '- Ist ein bestehender aktiver Eintrag nur überholt (zeitliche Änderung, z. B. "steht A nicht mehr gut"), beende ihn mit end_knowledge(id, until=<Spieltag>, reason) und erstelle den korrigierten Fakt mit validFrom=<Spieltag>.',
-    '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
-    '- Widerspricht ein Eintrag der Korrektur grundlegend (er war falsch), markiere ihn mit delete_knowledge(id, reason).',
-    '- In delete_knowledge und end_knowledge muss reason kurz erklären, warum der Eintrag falsch bzw. beendet ist, mit Bezug zur Korrektur.',
-    '- Erstelle mit create_knowledge die korrekten Fakten, die sich aus der Korrektur ergeben; setze bei zeitgebundenen Fakten das Gültigkeitsfenster.',
-    '- Extrahiere nur Fakten, die in der Korrektur tatsächlich vorkommen. Erfinde keine Details.',
-    '- Lasse Einträge unangetastet, die nicht von der Korrektur betroffen sind.',
-    '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
-    '- Gibt es mehrere Entitäten mit demselben Namen (list_entities zeigt sie mit unterschiedlichem Qualifier), wähle anhand des Kontexts die richtige Entität und gib deren Qualifier an.',
-    '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
-    '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
-    '- In delete_knowledge und end_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
+    t('Regeln:', 'Rules:'),
+    t(
+      '- DU MUSST vor dem Löschen, Beenden oder Erstellen get_entity für die Fokus-Entität und jede in der Korrektur erwähnte Entität aufrufen – am besten mit includeHistory=true, um auch beendete/gelöschte Einträge zu sehen.',
+      '- BEFORE deleting, ending, or creating, you MUST call get_entity for the focus entity and every entity mentioned in the correction; preferably use includeHistory=true so ended or deleted entries are also visible.'
+    ),
+    t(
+      '- Verifiziere Aussagen der Korrektur gegen Tagebuch UND grob gegen Sessions: Suche mit search_diary_entries nach dem Ereignis und lese Treffer mit get_diary_entry vollständig; ergänze mit list_recent_sessions / get_session_summary / get_previous_session_summaries für Session-Codes (z. B. Kreide 000003) und Transkript-Hinweise. Die verknüpften Einträge in get_entity zeigen den Spieltag, damit du "wann" etwas passiert ist bestimmen und Gültigkeitsfenster sauber setzen kannst.',
+      '- Verify the correction against the diary AND approximately against sessions: search for the event with search_diary_entries and read matches completely with get_diary_entry; supplement with list_recent_sessions / get_session_summary / get_previous_session_summaries for session codes (for example, chalk code 000003) and transcript hints. Linked entries from get_entity show the game day, allowing you to determine "when" something happened and set validity windows correctly.'
+    ),
+    t(
+      '- Du siehst die Tagebucheinträge aller Spieler (gemeinsames Weltwissen) plus Session-Zusammenfassungen – nutze beides zur Verifikation, Diary gilt als primäre Quelle, Sessions als grobe Ergänzung.',
+      "- You can see every player's diary entries (shared world knowledge) plus session summaries; use both for verification, treating the diary as the primary source and sessions as a rough supplement."
+    ),
+    t(
+      '- Ist ein bestehender aktiver Eintrag nur überholt (zeitliche Änderung, z. B. "steht A nicht mehr gut"), beende ihn mit end_knowledge(id, until=<Spieltag>, reason) und erstelle den korrigierten Fakt mit validFrom=<Spieltag>.',
+      '- If an existing active entry is merely outdated (a change over time, for example, "no longer gets along with A"), end it with end_knowledge(id, until=<game day>, reason) and create the corrected fact with validFrom=<game day>.'
+    ),
+    t(
+      '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
+      '- validUntil is EXCLUSIVE: the fact holds through game day (validUntil - 1) and no longer applies from validUntil onward. If a fact ends on game day X and its replacement starts with validFrom=X, they never overlap.'
+    ),
+    t(
+      '- Widerspricht ein Eintrag der Korrektur grundlegend (er war falsch), markiere ihn mit delete_knowledge(id, reason).',
+      '- If an entry fundamentally contradicts the correction (it was false), mark it with delete_knowledge(id, reason).'
+    ),
+    t(
+      '- In delete_knowledge und end_knowledge muss reason kurz erklären, warum der Eintrag falsch bzw. beendet ist, mit Bezug zur Korrektur.',
+      '- In delete_knowledge and end_knowledge, reason must briefly explain why the entry is false or ended, with reference to the correction.'
+    ),
+    t(
+      '- Erstelle mit create_knowledge die korrekten Fakten, die sich aus der Korrektur ergeben; setze bei zeitgebundenen Fakten das Gültigkeitsfenster.',
+      '- Use create_knowledge to create the correct facts resulting from the correction; set the validity window for time-bound facts.'
+    ),
+    t(
+      '- Extrahiere nur Fakten, die in der Korrektur tatsächlich vorkommen. Erfinde keine Details.',
+      '- Extract only facts that actually occur in the correction. Do not invent details.'
+    ),
+    t(
+      '- Lasse Einträge unangetastet, die nicht von der Korrektur betroffen sind.',
+      '- Leave entries unaffected by the correction untouched.'
+    ),
+    t(
+      '- Verwende die exakte Schreibweise aus der Datenbank, wenn eine passende Entität existiert.',
+      '- Use the exact database spelling when a matching entity exists.'
+    ),
+    t(
+      '- Gibt es mehrere Entitäten mit demselben Namen (list_entities zeigt sie mit unterschiedlichem Qualifier), wähle anhand des Kontexts die richtige Entität und gib deren Qualifier an.',
+      '- If several entities have the same name (list_entities shows different qualifiers), choose the correct one from the context and provide its qualifier.'
+    ),
+    t(
+      '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
+      '- title is optional and should be a category such as "Affiliation", "Relationships", "Origin", "Occupation", "Goals", or "Notes".'
+    ),
+    t(
+      '- Ein Fakt kann mehreren Entitäten zugeordnet werden.',
+      '- One fact may be assigned to several entities.'
+    ),
+    t(
+      '- In delete_knowledge und end_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
+      '- delete_knowledge and end_knowledge may use only IDs from existing knowledge.'
+    ),
     '',
-    'Korrektur:',
+    t('Korrektur:', 'Correction:'),
     plainText,
     '',
-    'Speichere die Berichtigungen direkt über die Tools, aber nur nachdem du das bestehende Wissen abgefragt hast. Widerspricht nichts der Korrektur, erstelle nur fehlende korrigierte Fakten oder beende die Aufgabe ohne weitere Tool-Aufrufe.',
+    t(
+      'Speichere die Berichtigungen direkt über die Tools, aber nur nachdem du das bestehende Wissen abgefragt hast. Widerspricht nichts der Korrektur, erstelle nur fehlende korrigierte Fakten oder beende die Aufgabe ohne weitere Tool-Aufrufe.',
+      'Save the corrections directly through the tools, but only after querying the existing knowledge. If nothing contradicts the correction, create only missing corrected facts or finish without further tool calls.'
+    ),
   ].join('\n');
 
   log.info('Correcting knowledge from free text');
@@ -384,11 +586,12 @@ export async function correctKnowledgeFromText(
     ],
     user,
     arcId: arcContext?.arcId,
+    language: runLanguage,
     onLog,
   });
 
   const allAfter = listAllKnowledge();
-  const diff = computeDistributionDiff(snapshotBefore, allAfter);
+  const diff = computeDistributionDiff(snapshotBefore, allAfter, runLanguage);
 
   if (!result.success) {
     log.warn(`Knowledge correction failed: exitCode=${result.exitCode}`);
@@ -409,6 +612,7 @@ export async function correctKnowledgeFromText(
       onLog,
       user,
       qualifier: target.entityQualifier ?? '',
+      language: runLanguage,
       knowledgeTarget: {
         entityType: target.entityType,
         entityName: target.entityName,
@@ -443,6 +647,8 @@ export interface KnowledgeReviewOptions {
   qualifier?: string;
   /** Optional story-arc scope so the review does not scan the whole campaign. */
   arcId?: number;
+  /** Language captured once for the review and its follow-up summaries. */
+  language?: Language;
 }
 
 /**
@@ -457,55 +663,153 @@ export async function reviewEntityKnowledge(
   options: KnowledgeReviewOptions = {}
 ): Promise<KnowledgeCorrectionResult> {
   const { model, onLog, user, qualifier = '', arcId } = options;
-  const typeLabel = entityTypeLabel(entityType);
+  const runLanguage = options.language ?? getAiLanguage();
+  const typeLabel = entityTypeLabel(entityType, runLanguage);
   const qualifiedName = qualifier ? `${entityName} (${qualifier})` : entityName;
-  const arcContext = arcId ? resolveArcContextById(arcId) : null;
+  const arcContext = arcId ? resolveArcContextById(arcId, runLanguage) : null;
   const currentGameDay = getCurrentGameDay();
 
+  const t = (german: string, english: string) => localize(runLanguage, german, english);
   const prompt = [
-    'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+    t(
+      'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+      'You are an assistant for a D&D diary system. You work exclusively through the provided tools and respond concisely in English.'
+    ),
+    outputLanguageInstruction(runLanguage),
     '',
-    'Aufgabe: Überprüfe das gesamte gespeicherte Wissen der Fokus-Entität darauf, ob es aktuell und stimmig ist, und berichtige es anhand der verfügbaren Kontext-Einträge (Tagebücher aller Spieler, Spieltage).',
+    t(
+      'Aufgabe: Überprüfe das gesamte gespeicherte Wissen der Fokus-Entität darauf, ob es aktuell und stimmig ist, und berichtige es anhand der verfügbaren Kontext-Einträge (Tagebücher aller Spieler, Spieltage).',
+      "Task: Check all stored knowledge for the focus entity for currency and consistency, then correct it using the available context (all players' diaries and game days)."
+    ),
     '',
-    `Fokus-Entität: ${typeLabel} "${qualifiedName}".`,
+    t(
+      `Fokus-Entität: ${typeLabel} "${qualifiedName}".`,
+      `Focus entity: ${typeLabel} "${qualifiedName}".`
+    ),
     ...(arcContext?.promptLines ?? []),
-    `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}.`,
+    t(
+      `Der aktuelle Spieltag der Kampagne ist ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}.`,
+      `The current campaign game day is ${currentGameDay ?? 'unknown (no game day has been set yet)'}.`
+    ),
     '',
-    'Verfügbare Tools:',
-    `- get_entity(type="${entityType}", name="${entityName}"${
-      qualifier ? `, qualifier="${qualifier}"` : ''
-    }, includeHistory=true): Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Historie und verknüpfte Tagebucheinträge (mit Spieltag) der Entität. MUSST du zuerst aufrufen.`,
-    '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
-    '- search_diary_entries(query, limit?): Durchsucht die Tagebucheinträge aller Spieler nach einem Begriff, um Aussagen zu verifizieren.',
-    '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
-    '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
-    '- get_session_summary(sessionId): Liefert kurze und lange Zusammenfassung einer Session (inkl. Transkript-Codes wie 000003, 696969).',
-    '- get_previous_session_summaries(sessionId, limit?): Liefert vorherige Session-Zusammenfassungen (grob).',
-    '- list_recent_sessions(limit?): Listet die letzten Sessions ohne bekannte ID auf (Einstieg für Session-Suche). Danach get_session_summary(sessionId) für Details.',
-    '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag; validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
-    '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (zeitliche Änderung, bleibt als Historie).',
-    '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch).',
+    t('Verfügbare Tools:', 'Available tools:'),
+    t(
+      `- get_entity(type="${entityType}", name="${entityName}"${
+        qualifier ? `, qualifier="${qualifier}"` : ''
+      }, includeHistory=true): Liefert Zusammenfassung, aktuell gültiges Wissen, nicht mehr gültige Historie und verknüpfte Tagebucheinträge (mit Spieltag) der Entität. MUSST du zuerst aufrufen.`,
+      `- get_entity(type="${entityType}", name="${entityName}"${
+        qualifier ? `, qualifier="${qualifier}"` : ''
+      }, includeHistory=true): Returns the summary, currently valid knowledge, no-longer-valid history, and linked diary entries (with game day) for the entity. You MUST call this first.`
+    ),
+    t(
+      '- list_entities(type?): Listet alle bekannten Entitäten inklusive Qualifier (Unterscheidung bei Namensgleichheit) auf.',
+      '- list_entities(type?): Lists all known entities, including qualifiers (to distinguish namesakes).'
+    ),
+    t(
+      '- search_diary_entries(query, limit?): Durchsucht die Tagebucheinträge aller Spieler nach einem Begriff, um Aussagen zu verifizieren.',
+      "- search_diary_entries(query, limit?): Searches every player's diary entries for a term to verify claims."
+    ),
+    t(
+      '- get_diary_entry(entryId): Liefert einen vollständigen Tagebucheintrag.',
+      '- get_diary_entry(entryId): Returns a complete diary entry.'
+    ),
+    t(
+      '- get_previous_diary_entries(entryId, limit?): Liefert frühere Einträge desselben Autors.',
+      '- get_previous_diary_entries(entryId, limit?): Returns earlier entries by the same author.'
+    ),
+    t(
+      '- get_session_summary(sessionId): Liefert kurze und lange Zusammenfassung einer Session (inkl. Transkript-Codes wie 000003, 696969).',
+      '- get_session_summary(sessionId): Returns the short and long summary of a session (including transcript codes such as 000003 and 696969).'
+    ),
+    t(
+      '- get_previous_session_summaries(sessionId, limit?): Liefert vorherige Session-Zusammenfassungen (grob).',
+      '- get_previous_session_summaries(sessionId, limit?): Returns previous session summaries (brief).'
+    ),
+    t(
+      '- list_recent_sessions(limit?): Listet die letzten Sessions ohne bekannte ID auf (Einstieg für Session-Suche). Danach get_session_summary(sessionId) für Details.',
+      '- list_recent_sessions(limit?): Lists recent sessions without a known ID (an entry point for session searches). Then use get_session_summary(sessionId) for details.'
+    ),
+    t(
+      '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Erstellt einen Wissenseintrag; validFrom/validUntil sind optionale Spieltage für zeitgebundene Fakten.',
+      '- create_knowledge(type, name, content, title?, qualifier?, validFrom?, validUntil?): Creates a knowledge entry; validFrom/validUntil are optional game days for time-bound facts.'
+    ),
+    t(
+      '- end_knowledge(id, until, reason?): Beendet einen aktiven Fakt ab einem Spieltag (zeitliche Änderung, bleibt als Historie).',
+      '- end_knowledge(id, until, reason?): Ends an active fact from a game day onward (a change over time, retained as history).'
+    ),
+    t(
+      '- delete_knowledge(id, reason?): Markiert einen Wissenseintrag als gelöscht (Widerruf: der Fakt war falsch).',
+      '- delete_knowledge(id, reason?): Marks a knowledge entry as deleted (retraction: the fact was false).'
+    ),
     '',
-    'Vorgehen:',
-    '1. Rufe get_entity für die Fokus-Entität auf (includeHistory=true), um das komplette Wissen inkl. Historie und die verknüpften Tagebucheinträge (mit Spieltag) zu sehen.',
-    '2. Lies bei Bedarf die relevanten Kontext-Einträge vollständig: Tagebücher via search_diary_entries/get_diary_entry UND grob Sessions via list_recent_sessions / get_session_summary / get_previous_session_summaries (wichtig für Kreide-Codes, Transkript-Hinweise wie 000003, die nur in Sessions vorkommen), um den zeitlichen Verlauf und den aktuellen Stand der Entität zu verstehen.',
-    '3. Gleiche jeden aktiven Wissenseintrag gegen diesen Kontext (Diary primär, Sessions grob ergänzend) ab:',
-    '   - Zeitlich überholt (der Fakt stimmt, gilt aber seit einem Spieltag nicht mehr): beende ihn mit end_knowledge(id, until=<Spieltag>, reason).',
-    '   - Grundsätzlich falsch (Widerspruch zum belegten Kontext): markiere ihn mit delete_knowledge(id, reason).',
-    '   - Korrekt und aktuell: lasse ihn unangetastet.',
-    '4. Ergänze mit create_knowledge Fakten, die durch den Kontext belegt sind und im gespeicherten Wissen fehlen; setze bei zeitgebundenen Fakten validFrom/validUntil anhand der Spieltage.',
-    '   - Extrahiere nur Fakten, die tatsächlich durch die Kontext-Einträge belegt sind. Erfinde keine Details.',
-    '5. Prüfe auch beendete/gelöschte Einträge: Hat sich der Zustand erneut geändert (z. B. lebt eine "verstorbene" Person doch wieder), lege den korrigierten Fakt neu mit passendem Gültigkeitsfenster an.',
+    t('Vorgehen:', 'Procedure:'),
+    t(
+      '1. Rufe get_entity für die Fokus-Entität auf (includeHistory=true), um das komplette Wissen inkl. Historie und die verknüpften Tagebucheinträge (mit Spieltag) zu sehen.',
+      '1. Call get_entity for the focus entity (includeHistory=true) to see all knowledge, its history, and linked diary entries (with game day).'
+    ),
+    t(
+      '2. Lies bei Bedarf die relevanten Kontext-Einträge vollständig: Tagebücher via search_diary_entries/get_diary_entry UND grob Sessions via list_recent_sessions / get_session_summary / get_previous_session_summaries (wichtig für Kreide-Codes, Transkript-Hinweise wie 000003, die nur in Sessions vorkommen), um den zeitlichen Verlauf und den aktuellen Stand der Entität zu verstehen.',
+      "2. As needed, read the relevant context entries completely: diaries via search_diary_entries/get_diary_entry AND sessions approximately via list_recent_sessions / get_session_summary / get_previous_session_summaries (important for chalk codes and transcript hints such as 000003 that occur only in sessions), to understand the timeline and the entity's current state."
+    ),
+    t(
+      '3. Gleiche jeden aktiven Wissenseintrag gegen diesen Kontext (Diary primär, Sessions grob ergänzend) ab:',
+      '3. Compare every active knowledge entry with this context (diary first, sessions as a rough supplement):'
+    ),
+    t(
+      '   - Zeitlich überholt (der Fakt stimmt, gilt aber seit einem Spieltag nicht mehr): beende ihn mit end_knowledge(id, until=<Spieltag>, reason).',
+      '   - Outdated over time (the fact is true but has not applied since a game day): end it with end_knowledge(id, until=<game day>, reason).'
+    ),
+    t(
+      '   - Grundsätzlich falsch (Widerspruch zum belegten Kontext): markiere ihn mit delete_knowledge(id, reason).',
+      '   - Fundamentally false (contradicted by the documented context): mark it with delete_knowledge(id, reason).'
+    ),
+    t(
+      '   - Korrekt und aktuell: lasse ihn unangetastet.',
+      '   - Correct and current: leave it untouched.'
+    ),
+    t(
+      '4. Ergänze mit create_knowledge Fakten, die durch den Kontext belegt sind und im gespeicherten Wissen fehlen; setze bei zeitgebundenen Fakten validFrom/validUntil anhand der Spieltage.',
+      '4. Add with create_knowledge facts supported by the context but missing from stored knowledge; set validFrom/validUntil for time-bound facts according to the game days.'
+    ),
+    t(
+      '   - Extrahiere nur Fakten, die tatsächlich durch die Kontext-Einträge belegt sind. Erfinde keine Details.',
+      '   - Extract only facts actually supported by the context entries. Do not invent details.'
+    ),
+    t(
+      '5. Prüfe auch beendete/gelöschte Einträge: Hat sich der Zustand erneut geändert (z. B. lebt eine "verstorbene" Person doch wieder), lege den korrigierten Fakt neu mit passendem Gültigkeitsfenster an.',
+      '5. Also check ended/deleted entries: if the state has changed again (for example, a "deceased" person is alive again), recreate the corrected fact with an appropriate validity window.'
+    ),
     '',
-    'Regeln:',
-    '- Arbeite nur an der Fokus-Entität; ändere kein Wissen anderer Entitäten.',
-    '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
-    '- In delete_knowledge und end_knowledge muss reason kurz erklären, warum der Eintrag falsch bzw. beendet ist, mit Bezug zum belegten Kontext.',
-    '- In delete_knowledge und end_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
-    '- Verwende die exakte Schreibweise aus der Datenbank (Qualifier bei Namensgleichheit).',
-    '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
+    t('Regeln:', 'Rules:'),
+    t(
+      '- Arbeite nur an der Fokus-Entität; ändere kein Wissen anderer Entitäten.',
+      '- Work only on the focus entity; do not change knowledge for other entities.'
+    ),
+    t(
+      '- validUntil ist EXKLUSIV: Der Fakt gilt bis einschließlich Spieltag (validUntil - 1) und ab validUntil nicht mehr. Endet ein Fakt am Spieltag X und beginnt der Ersatz mit validFrom=X, überlappen sich beide niemals.',
+      '- validUntil is EXCLUSIVE: the fact holds through game day (validUntil - 1) and no longer applies from validUntil onward. If a fact ends on game day X and its replacement starts with validFrom=X, they never overlap.'
+    ),
+    t(
+      '- In delete_knowledge und end_knowledge muss reason kurz erklären, warum der Eintrag falsch bzw. beendet ist, mit Bezug zum belegten Kontext.',
+      '- In delete_knowledge and end_knowledge, reason must briefly explain why the entry is false or ended, with reference to the documented context.'
+    ),
+    t(
+      '- In delete_knowledge und end_knowledge dürfen nur IDs aus dem bestehenden Wissen stehen.',
+      '- delete_knowledge and end_knowledge may use only IDs from existing knowledge.'
+    ),
+    t(
+      '- Verwende die exakte Schreibweise aus der Datenbank (Qualifier bei Namensgleichheit).',
+      '- Use the exact database spelling (including the qualifier for namesakes).'
+    ),
+    t(
+      '- title ist optional und sollte eine Kategorie wie "Zugehörigkeit", "Beziehungen", "Herkunft", "Beruf", "Ziele" oder "Notizen" sein.',
+      '- title is optional and should be a category such as "Affiliation", "Relationships", "Origin", "Occupation", "Goals", or "Notes".'
+    ),
     '',
-    'Wenn das gesamte bestehende Wissen bereits korrekt und aktuell ist, beende die Aufgabe ohne weitere Tool-Aufrufe.',
+    t(
+      'Wenn das gesamte bestehende Wissen bereits korrekt und aktuell ist, beende die Aufgabe ohne weitere Tool-Aufrufe.',
+      'If all existing knowledge is already correct and current, finish without further tool calls.'
+    ),
   ].join('\n');
 
   log.info(`Reviewing knowledge for ${typeLabel}/${qualifiedName}`);
@@ -527,11 +831,12 @@ export async function reviewEntityKnowledge(
     user,
     knowledgeTarget: { entityType, entityName, entityQualifier: qualifier },
     arcId: arcContext?.arcId,
+    language: runLanguage,
     onLog,
   });
 
   const allAfter = listAllKnowledge();
-  const diff = computeDistributionDiff(snapshotBefore, allAfter);
+  const diff = computeDistributionDiff(snapshotBefore, allAfter, runLanguage);
 
   if (!result.success) {
     log.warn(`Knowledge review failed: exitCode=${result.exitCode}`);
@@ -558,6 +863,7 @@ export async function reviewEntityKnowledge(
       onLog,
       user,
       qualifier: target.entityQualifier ?? '',
+      language: runLanguage,
       knowledgeTarget: {
         entityType,
         entityName,
@@ -597,6 +903,8 @@ export interface EntitySummaryOptions {
   qualifier?: string;
   /** Restricts summary writes to the requested entity. */
   knowledgeTarget?: KnowledgeTarget;
+  /** Language captured once for this summary run. */
+  language?: Language;
 }
 
 export async function generateEntitySummary(
@@ -605,38 +913,81 @@ export async function generateEntitySummary(
   options: EntitySummaryOptions = {}
 ): Promise<GeneratedEntitySummary | null> {
   const { model, onLog, user, qualifier = '', knowledgeTarget } = options;
-  const typeLabel = entityTypeLabel(entityType);
+  const runLanguage = options.language ?? getAiLanguage();
+  const typeLabel = entityTypeLabel(entityType, runLanguage);
   const qualifiedName = qualifier ? `${entityName} (${qualifier})` : entityName;
 
   const summaryRow = getEntitySummary(entityType, entityName, qualifier);
+  const t = (german: string, english: string) => localize(runLanguage, german, english);
   const previousSummary = summaryRow?.summary
-    ? `Vorherige Zusammenfassung (korrigiere oder erweitere sie bei Bedarf):\n${summaryRow.summary}\n\n`
+    ? `${t(
+        'Vorherige Zusammenfassung (korrigiere oder erweitere sie bei Bedarf):',
+        'Previous summary (correct or expand it if needed):'
+      )}\n${summaryRow.summary}\n\n`
     : '';
 
   const prompt = [
-    'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+    t(
+      'Du bist ein Assistent für ein D&D-Tagebuch-System. Du arbeitest ausschließlich über die bereitgestellten Tools und antwortest prägnant auf Deutsch.',
+      'You are an assistant for a D&D diary system. You work exclusively through the provided tools and respond concisely in English.'
+    ),
+    outputLanguageInstruction(runLanguage),
     '',
-    `Aufgabe: Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${qualifiedName}" und zusätzlich eine sehr kurze Mini-Zusammenfassung (1 Satz, maximal 150 Zeichen) für Tooltips.`,
+    t(
+      `Aufgabe: Erstelle eine knappe, aber aussagekräftige Zusammenfassung für die ${typeLabel} "${qualifiedName}" und zusätzlich eine sehr kurze Mini-Zusammenfassung (1 Satz, maximal 150 Zeichen) für Tooltips.`,
+      `Task: Create a concise but informative summary for the ${typeLabel} "${qualifiedName}" and also a very short mini-summary (one sentence, at most 150 characters) for tooltips.`
+    ),
     '',
-    'Verfügbare Tools:',
-    `- get_entity(type="${entityType}", name="${entityName}"${
-      qualifier ? `, qualifier="${qualifier}"` : ''
-    }): Liefert alle Informationen zur Entität. DU MUSST dieses Tool aufrufen, bevor du die Zusammenfassung erstellst.`,
-    `- set_entity_summary(type="${entityType}", name="${entityName}", summary, miniSummary${
-      qualifier ? `, qualifier="${qualifier}"` : ''
-    }): Speichert die Zusammenfassung und Mini-Zusammenfassung. Verwende type und name (und qualifier, falls angegeben) genau so.`,
+    t('Verfügbare Tools:', 'Available tools:'),
+    t(
+      `- get_entity(type="${entityType}", name="${entityName}"${
+        qualifier ? `, qualifier="${qualifier}"` : ''
+      }): Liefert alle Informationen zur Entität. DU MUSST dieses Tool aufrufen, bevor du die Zusammenfassung erstellst.`,
+      `- get_entity(type="${entityType}", name="${entityName}"${
+        qualifier ? `, qualifier="${qualifier}"` : ''
+      }): Returns all information about the entity. You MUST call this tool before creating the summary.`
+    ),
+    t(
+      `- set_entity_summary(type="${entityType}", name="${entityName}", summary, miniSummary${
+        qualifier ? `, qualifier="${qualifier}"` : ''
+      }): Speichert die Zusammenfassung und Mini-Zusammenfassung. Verwende type und name (und qualifier, falls angegeben) genau so.`,
+      `- set_entity_summary(type="${entityType}", name="${entityName}", summary, miniSummary${
+        qualifier ? `, qualifier="${qualifier}"` : ''
+      }): Saves the summary and mini-summary. Use type and name (and qualifier, if provided) exactly as written.`
+    ),
     '',
-    'Regeln:',
-    '- Rufe get_entity auf, um Wissen und verknüpfte Tagebucheinträge zu erhalten.',
-    '- Beschreibe die wichtigsten Eigenschaften, Beziehungen und Ereignisse.',
-    '- Vermeide Spekulation; nutze nur die gegebenen Informationen.',
-    '- Korrigiere die vorherige Zusammenfassung, falls neue Informationen sie widerlegen.',
-    '- Die normale Zusammenfassung soll maximal 3-5 Sätze haben.',
-    '- Die Mini-Zusammenfassung soll 1 Satz mit maximal 150 Zeichen sein und ideal als Tooltip verwendet werden können.',
-    '- Speichere beides zusammen mit set_entity_summary, nachdem du get_entity aufgerufen hast.',
+    t('Regeln:', 'Rules:'),
+    t(
+      '- Rufe get_entity auf, um Wissen und verknüpfte Tagebucheinträge zu erhalten.',
+      '- Call get_entity to obtain knowledge and linked diary entries.'
+    ),
+    t(
+      '- Beschreibe die wichtigsten Eigenschaften, Beziehungen und Ereignisse.',
+      '- Describe the most important characteristics, relationships, and events.'
+    ),
+    t(
+      '- Vermeide Spekulation; nutze nur die gegebenen Informationen.',
+      '- Avoid speculation; use only the supplied information.'
+    ),
+    t(
+      '- Korrigiere die vorherige Zusammenfassung, falls neue Informationen sie widerlegen.',
+      '- Correct the previous summary if new information contradicts it.'
+    ),
+    t(
+      '- Die normale Zusammenfassung soll maximal 3-5 Sätze haben.',
+      '- The regular summary should contain at most 3–5 sentences.'
+    ),
+    t(
+      '- Die Mini-Zusammenfassung soll 1 Satz mit maximal 150 Zeichen sein und ideal als Tooltip verwendet werden können.',
+      '- The mini-summary should be one sentence of at most 150 characters and suitable for use as a tooltip.'
+    ),
+    t(
+      '- Speichere beides zusammen mit set_entity_summary, nachdem du get_entity aufgerufen hast.',
+      '- Save both together with set_entity_summary after calling get_entity.'
+    ),
     '',
     previousSummary,
-    `Zusammenfassung für ${qualifiedName}:`,
+    t(`Zusammenfassung für ${qualifiedName}:`, `Summary for ${qualifiedName}:`),
   ].join('\n');
 
   log.info(`Generating summary for ${entityType}/${qualifiedName}`);
@@ -649,6 +1000,7 @@ export async function generateEntitySummary(
     scopes: ['entity:read', 'entity:summary', 'diary:read', 'diary:read-all'],
     user,
     knowledgeTarget,
+    language: runLanguage,
     onLog,
   });
 

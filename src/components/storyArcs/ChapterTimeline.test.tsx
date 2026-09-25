@@ -1,7 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
+import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { ChapterTimeline } from './ChapterTimeline';
+import { renderWithProviders } from '../../test-utils';
 import type { StoryArc } from '../../../shared/types';
+import { ChapterTimeline } from './ChapterTimeline';
 
 function arc(partial: Partial<StoryArc>): StoryArc {
   return {
@@ -27,9 +29,16 @@ const arcs = [
   arc({ id: 3, name: 'Sonderarc', chapterNumber: null }),
 ];
 
+function renderChapterTimeline(
+  props: ComponentProps<typeof ChapterTimeline>,
+  language: 'de' | 'en' = 'de'
+) {
+  return renderWithProviders(<ChapterTimeline {...props} />, { language, router: false });
+}
+
 describe('ChapterTimeline', () => {
   it('lists chapters chronologically with "Alle Kapitel" and "Ohne Kapitel"', () => {
-    render(<ChapterTimeline arcs={arcs} selected={null} onSelect={() => {}} />);
+    renderChapterTimeline({ arcs, selected: null, onSelect: () => {} });
     const text = screen.getByRole('group', { name: 'Kapitel wählen' }).textContent ?? '';
     expect(text.indexOf('Erstes Kapitel')).toBeLessThan(text.indexOf('Zweites Kapitel'));
     expect(text.indexOf('Zweites Kapitel')).toBeLessThan(text.indexOf('Sonderarc'));
@@ -39,7 +48,7 @@ describe('ChapterTimeline', () => {
 
   it('hides "Alle Kapitel" in assign mode and reports selections', () => {
     const onSelect = vi.fn();
-    render(<ChapterTimeline arcs={arcs} selected={2} mode="assign" onSelect={onSelect} />);
+    renderChapterTimeline({ arcs, selected: 2, mode: 'assign', onSelect });
     expect(screen.queryByText('Alle Kapitel')).toBeNull();
 
     screen.getByText('Erstes Kapitel').click();
@@ -50,7 +59,7 @@ describe('ChapterTimeline', () => {
   });
 
   it('marks the running chapter with a green "Aktiv" badge instead of a green frame', () => {
-    render(<ChapterTimeline arcs={arcs} selected={null} onSelect={() => {}} />);
+    renderChapterTimeline({ arcs, selected: null, onSelect: () => {} });
 
     expect(screen.getByText('Aktiv')).toBeDefined();
     expect(screen.queryByText('Aktuell')).toBeNull();
@@ -62,7 +71,7 @@ describe('ChapterTimeline', () => {
   });
 
   it('marks the picked segment with a gold frame and a check badge', () => {
-    const { container } = render(<ChapterTimeline arcs={arcs} selected={3} onSelect={() => {}} />);
+    const { container } = renderChapterTimeline({ arcs, selected: 3, onSelect: () => {} });
 
     const pickedButton = screen.getByText('Sonderarc').closest('button');
     expect(pickedButton?.className).toContain('outline-amber-400');
@@ -71,7 +80,7 @@ describe('ChapterTimeline', () => {
   });
 
   it('shows the green "Aktiv" badge and the gold check on a chapter that is both', () => {
-    render(<ChapterTimeline arcs={arcs} selected={2} onSelect={() => {}} />);
+    renderChapterTimeline({ arcs, selected: 2, onSelect: () => {} });
 
     expect(screen.getByText('Aktiv')).toBeDefined();
     const activeButton = screen.getByText('Zweites Kapitel').closest('button');
@@ -80,9 +89,40 @@ describe('ChapterTimeline', () => {
   });
 
   it('marks "Alle Kapitel" as picked when no chapter is selected', () => {
-    render(<ChapterTimeline arcs={arcs} selected={null} onSelect={() => {}} />);
+    renderChapterTimeline({ arcs, selected: null, onSelect: () => {} });
 
     const allButton = screen.getByText('Alle Kapitel').closest('button');
     expect(allButton?.className).toContain('outline-amber-400');
+  });
+
+  it('localizes chapter controls, statuses, and formatted game days in English', () => {
+    renderChapterTimeline(
+      {
+        arcs: [
+          arc({
+            id: 1,
+            name: 'English Chapter',
+            chapterNumber: 1234,
+            status: 'active',
+            gameDayStart: 1234,
+            gameDayEnd: 1240,
+          }),
+          arc({ id: 2, name: 'Planned Chapter', status: 'planned' }),
+        ],
+        selected: null,
+        onSelect: () => {},
+      },
+      'en'
+    );
+
+    expect(screen.getByText('All chapters')).toBeDefined();
+    expect(screen.getByText('Chapter 1,234')).toBeDefined();
+    expect(screen.getByRole('button', { name: /English Chapter/ }).textContent).toContain(
+      'Game day 1,234–1,240'
+    );
+    expect(screen.getByText('Active')).toBeDefined();
+    expect(screen.getByText('Planned')).toBeDefined();
+    expect(screen.getByText('No chapter')).toBeDefined();
+    expect(screen.getByText('One-shots')).toBeDefined();
   });
 });

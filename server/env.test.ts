@@ -8,6 +8,7 @@ describe('env validation', () => {
     expect(result.data?.PORT).toBe(3001);
     expect(result.data?.NODE_ENV).toBe('development');
     expect(result.data?.DB_PATH).toBe('dnd.db');
+    expect(result.data?.WHISPER_LANGUAGE).toBe('de');
     expect(result.data?.LOG_RETENTION_MAX).toBe(100000);
     expect(result.data?.DND_RUN_MIGRATIONS_ON_STARTUP).toBe(false);
   });
@@ -27,6 +28,12 @@ describe('env validation', () => {
   it('rejects a non-numeric PORT', () => {
     const result = parseEnv({ PORT: 'not-a-port' });
     expect(result.success).toBe(false);
+  });
+
+  it('accepts de/en and the legacy auto Whisper bootstrap language', () => {
+    expect(parseEnv({ WHISPER_LANGUAGE: 'de' }).data?.WHISPER_LANGUAGE).toBe('de');
+    expect(parseEnv({ WHISPER_LANGUAGE: 'en' }).data?.WHISPER_LANGUAGE).toBe('en');
+    expect(parseEnv({ WHISPER_LANGUAGE: 'auto' }).data?.WHISPER_LANGUAGE).toBe('auto');
   });
 
   it('parses TRUST_PROXY boolean-ish values', () => {

@@ -12,7 +12,9 @@ export interface TimelineRunProgress {
   status: string;
   done: boolean;
   total: number;
+  current: number;
   currentSessionName: string | null;
+  statusCode?: 'progress' | 'up-to-date' | 'completed';
 }
 
 let running = false;
@@ -53,7 +55,9 @@ export async function processPendingTimelineSessions(
       status: 'Zeitleiste ist bereits aktuell.',
       done: true,
       total: 0,
+      current: 0,
       currentSessionName: null,
+      statusCode: 'up-to-date',
     });
     return;
   }
@@ -64,7 +68,9 @@ export async function processPendingTimelineSessions(
       status: `Session „${session.name}“ (${index + 1}/${pending.length}) wird verarbeitet...`,
       done: false,
       total: pending.length,
+      current: index + 1,
       currentSessionName: session.name,
+      statusCode: 'progress',
     });
     try {
       const ok = await generateTimelineForSession(session.id, SCHEDULER_USER, undefined);
@@ -95,7 +101,9 @@ export function runTimelineGenerationNow(
         status: 'Aktualisierung der Zeitleiste abgeschlossen.',
         done: true,
         total: 0,
+        current: 0,
         currentSessionName: null,
+        statusCode: 'completed',
       });
     });
   return true;

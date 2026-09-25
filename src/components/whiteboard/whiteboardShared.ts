@@ -4,6 +4,7 @@ import type {
   WhiteboardShapeKind,
   WhiteboardTaskStatus,
 } from '../../../shared/types';
+import type { TFunction } from '../../i18n/messages';
 
 /** Image targets render as previews and must not open in a new tab. */
 const BOARD_IMAGE_URL_RE = /\.(png|jpe?g|gif|webp|avif|svg)(\?.*)?$/i;
@@ -109,12 +110,21 @@ export const ARROW_COLOR = '#94a3b8';
 
 export const TASK_STATUS_ORDER: readonly WhiteboardTaskStatus[] = ['open', 'in_progress', 'done'];
 
-export const TASK_STATUS_META: Record<WhiteboardTaskStatus, { label: string; className: string }> =
-  {
-    open: { label: 'Offen', className: 'bg-slate-600 text-slate-100' },
-    in_progress: { label: 'In Arbeit', className: 'bg-[var(--warning)] text-slate-900' },
-    done: { label: 'Erledigt', className: 'bg-[var(--accent)] text-[var(--accent-contrast)]' },
-  };
+export const TASK_STATUS_CLASS_NAMES: Record<WhiteboardTaskStatus, string> = {
+  open: 'bg-slate-600 text-slate-100',
+  in_progress: 'bg-[var(--warning)] text-slate-900',
+  done: 'bg-[var(--accent)] text-[var(--accent-contrast)]',
+};
+
+const TASK_STATUS_LABEL_KEYS = {
+  open: 'whiteboard.taskStatus.open',
+  in_progress: 'whiteboard.taskStatus.inProgress',
+  done: 'whiteboard.taskStatus.done',
+} as const;
+
+export function getTaskStatusLabel(status: WhiteboardTaskStatus, t: TFunction): string {
+  return t(TASK_STATUS_LABEL_KEYS[status]);
+}
 
 export function nextTaskStatus(status: WhiteboardTaskStatus): WhiteboardTaskStatus {
   const index = TASK_STATUS_ORDER.indexOf(status);

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { SafeUser } from '../../shared/types';
+import { useI18n } from '../hooks/useI18n';
 import { Avatar } from './Avatar';
 
 interface UserCheckboxListProps {
@@ -19,12 +20,15 @@ export function UserCheckboxList({
   onChange,
   disabledIds = [],
   title,
-  placeholder = 'Suchen…',
-  emptyMessage = 'Keine Benutzer.',
+  placeholder,
+  emptyMessage,
   className,
 }: UserCheckboxListProps) {
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const disabledSet = useMemo(() => new Set(disabledIds), [disabledIds]);
+  const resolvedPlaceholder = placeholder ?? t('shared.searchUsers');
+  const resolvedEmptyMessage = emptyMessage ?? t('shared.noUsers');
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -49,12 +53,13 @@ export function UserCheckboxList({
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
+        aria-label={title ?? t('shared.searchUsers')}
         className="w-full px-3 py-1.5 mb-2 rounded bg-slate-900 border border-[var(--border)] text-sm text-[var(--text-h)] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
       />
       <div className="max-h-40 overflow-auto space-y-1 pr-1">
         {filtered.length === 0 ? (
-          <p className="text-xs text-slate-500 italic">{emptyMessage}</p>
+          <p className="text-xs text-slate-500 italic">{resolvedEmptyMessage}</p>
         ) : (
           filtered.map((u) => {
             const isDisabled = disabledSet.has(u.id);
@@ -86,7 +91,7 @@ export function UserCheckboxList({
                 </span>
                 <Avatar src={u.avatarUrl} name={u.displayName} className="w-6 h-6" />
                 <span className="flex-1 text-[var(--text-h)]">{u.displayName}</span>
-                {isDisabled && <span className="text-xs text-slate-500">(Du)</span>}
+                {isDisabled && <span className="text-xs text-slate-500">{t('shared.you')}</span>}
               </button>
             );
           })
@@ -109,7 +114,7 @@ export function UserCheckboxList({
                     type="button"
                     onClick={() => toggle(id)}
                     className="hover:text-white leading-none"
-                    aria-label="Entfernen"
+                    aria-label={t('shared.removeUser', { name: user.displayName })}
                   >
                     ×
                   </button>

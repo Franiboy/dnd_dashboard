@@ -2,19 +2,21 @@ import { useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
+import { useI18n } from '../hooks/useI18n';
 import { useStoryArcs } from '../hooks/useStoryArcs';
-import { arcStatusLabel } from '../lib/storyArcs';
 import { EntityRichText } from './EntityRichText';
 import { Loading } from './Loading';
 import { Modal } from './Modal';
 import { ChapterStatusDot } from './storyArcs/ChapterStatusDot';
-import { formatEntityLabel, typeLabels } from '../lib/entityLabels';
+import { formatEntityLabel, getEntityTypeLabel } from '../lib/entityLabels';
+import type { TFunction } from '../i18n';
 import type { EntityDialogTab } from '../contexts/EntityDialogContext';
 import type {
   EntityDetail,
   EntityType,
   EntityUpdatePayload,
   EntityKnowledgeEntry,
+  StoryArcStatus,
 } from '../../shared/types';
 
 interface EntityEditDialogProps {
@@ -48,6 +50,16 @@ function parseOptionalDay(raw: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+function localizedArcStatus(status: StoryArcStatus, t: TFunction): string {
+  return t(
+    status === 'active'
+      ? 'world.arcStatus.active'
+      : status === 'planned'
+        ? 'world.arcStatus.planned'
+        : 'world.arcStatus.completed'
+  );
+}
+
 interface CorrectKnowledgeDialogProps {
   type: EntityType;
   name: string;
@@ -65,6 +77,7 @@ function CorrectKnowledgeDialog({
 }: CorrectKnowledgeDialogProps) {
   const { request } = useApi();
   const { showSuccess, showError } = useError();
+  const { t, formatNumber } = useI18n();
   const [text, setText] = useState('');
   const [working, setWorking] = useState(false);
 
@@ -82,11 +95,29 @@ function CorrectKnowledgeDialog({
     setWorking(false);
     if (!error && data) {
       const parts: string[] = [];
-      if (data.created.length) parts.push(`${data.created.length} neu`);
-      if (data.deleted.length) parts.push(`${data.deleted.length} als gelöscht markiert`);
-      if (data.summaries.some((s) => s.summary)) parts.push('Zusammenfassungen aktualisiert');
+      if (data.created.length) {
+        parts.push(
+          t('world.entity.correction.created', {
+            count: data.created.length,
+            formattedCount: formatNumber(data.created.length),
+          })
+        );
+      }
+      if (data.deleted.length) {
+        parts.push(
+          t('world.entity.correction.deleted', {
+            count: data.deleted.length,
+            formattedCount: formatNumber(data.deleted.length),
+          })
+        );
+      }
+      if (data.summaries.some((s) => s.summary)) {
+        parts.push(t('world.entity.correction.summariesUpdated'));
+      }
       showSuccess(
-        parts.length ? `Wissen berichtigt: ${parts.join(', ')}.` : 'Keine Änderungen erkannt.'
+        parts.length
+          ? t('world.entity.correction.success', { parts: parts.join(', ') })
+          : t('world.entity.correction.noChanges')
       );
       onCorrected(data);
       onClose();
@@ -98,7 +129,7 @@ function CorrectKnowledgeDialog({
   return (
     <Modal
       isOpen
-      title="Wissen korrigieren"
+      title={t('world.entity.correction.title')}
       onClose={onClose}
       actions={
         <>
@@ -108,7 +139,7 @@ function CorrectKnowledgeDialog({
             disabled={working}
             className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
           >
-            Abbrechen
+            {t('shared.cancel')}
           </button>
           <button
             type="button"
@@ -116,25 +147,22 @@ function CorrectKnowledgeDialog({
             disabled={working || !text.trim()}
             className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
           >
-            {working ? 'Wird berichtigt...' : 'Berichtigen'}
+            {working
+              ? t('world.entity.correction.processing')
+              : t('world.entity.correction.action')}
           </button>
         </>
       }
     >
       <div className="space-y-4">
-        <p className="text-sm text-slate-400">
-          Beschreibe, was am gespeicherten Wissen falsch ist. Die KI prüft die betroffenen
-          Entitäten, durchsucht die Tagebucheinträge zur Verifikation (z. B. um „wann“ etwas
-          passiert ist), setzt Zeitpunkte und Gültigkeitsfenster sauber, markiert widersprüchliche
-          Einträge als gelöscht, legt korrigierte Einträge an und aktualisiert die
-          Zusammenfassungen.
-        </p>
+        <p className="text-sm text-slate-400">{t('world.entity.correction.description')}</p>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={6}
           autoFocus
-          placeholder="z. B. Vimak gehört nicht der Wagenwacht an, sondern den Silberkrähen."
+          aria-label={t('world.entity.correction.title')}
+          placeholder={t('world.entity.correction.placeholder')}
           className="w-full px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
         />
       </div>
@@ -153,6 +181,7 @@ export function EntityEditDialog({
   const { request } = useApi();
   const { mappings, refresh } = useEntityMappings();
   const { showSuccess, showError } = useError();
+  const { t, formatNumber } = useI18n();
   const [detail, setDetail] = useState<EntityDetail | null>(null);
   const [canonical, setCanonical] = useState('');
   const [qualifierValue, setQualifierValue] = useState(qualifier);
@@ -344,7 +373,7 @@ export function EntityEditDialog({
       // oxlint-disable-next-line react/set-state-in-effect
       setAutoSaveStatus('error');
       // oxlint-disable-next-line react/set-state-in-effect
-      setAutoSaveError('Hauptname ist erforderlich.');
+      setAutoSaveError(t('world.entity.autosave.required'));
       return;
     }
     setAutoSaveError(null);
@@ -430,6 +459,7 @@ export function EntityEditDialog({
     onSaved,
     refresh,
     request,
+    t,
     type,
   ]);
 
@@ -452,11 +482,11 @@ export function EntityEditDialog({
     const normalized = newAlias.trim();
     if (!normalized) return;
     if (normalized.toLowerCase() === canonical.trim().toLowerCase()) {
-      showError('Synonym darf nicht gleich dem Hauptnamen sein.');
+      showError(t('world.entity.aliases.sameAsCanonical'));
       return;
     }
     if (aliases.some((a) => a.toLowerCase() === normalized.toLowerCase())) {
-      showError('Dieses Synonym existiert bereits.');
+      showError(t('world.entity.aliases.duplicate'));
       return;
     }
     setAliases((prev) => [...prev, normalized]);
@@ -491,13 +521,13 @@ export function EntityEditDialog({
 
   async function saveEditKnowledge(id: number) {
     if (!editingKnowledgeContent.trim()) {
-      showError('Inhalt ist erforderlich');
+      showError(t('world.entity.knowledge.contentRequired'));
       return;
     }
     const validUntil =
       editingKnowledgeValidUntil.trim() === '' ? null : Number(editingKnowledgeValidUntil);
     if (validUntil !== null && (!Number.isInteger(validUntil) || validUntil <= 0)) {
-      showError('Gültig-bis-Spieltag muss eine positive ganze Zahl sein');
+      showError(t('world.entity.knowledge.validUntilPositive'));
       return;
     }
     const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(
@@ -517,7 +547,7 @@ export function EntityEditDialog({
       setKnowledge((prev) => prev.map((k) => (k.id === id ? data.entry : k)));
       cancelEditKnowledge();
       setSummaryDirty(true);
-      showSuccess('Wissen aktualisiert.');
+      showSuccess(t('world.entity.knowledge.updatedSuccess'));
     }
   }
 
@@ -530,19 +560,19 @@ export function EntityEditDialog({
     if (!error && data) {
       setKnowledge((prev) => prev.map((k) => (k.id === id ? data.entry : k)));
       setSummaryDirty(true);
-      showSuccess('Wissen als gelöscht markiert.');
+      showSuccess(t('world.entity.knowledge.deletedSuccess'));
     }
   }
 
   async function handleAddKnowledge() {
     if (!newKnowledgeContent.trim()) {
-      showError('Inhalt ist erforderlich');
+      showError(t('world.entity.knowledge.contentRequired'));
       return;
     }
     const validFrom = parseOptionalDay(newKnowledgeValidFrom);
     const validUntil = parseOptionalDay(newKnowledgeValidUntil);
     if (validFrom !== null && validUntil !== null && validUntil < validFrom) {
-      showError('Gültig-bis-Spieltag darf nicht vor Gültig-ab-Spieltag liegen');
+      showError(t('world.entity.knowledge.validRangeOrder'));
       return;
     }
     const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(
@@ -569,13 +599,13 @@ export function EntityEditDialog({
       setNewKnowledgeValidFrom('');
       setNewKnowledgeValidUntil('');
       setSummaryDirty(true);
-      showSuccess('Wissen hinzugefügt.');
+      showSuccess(t('world.entity.knowledge.addedSuccess'));
     }
   }
 
   async function handleEndKnowledge(id: number) {
     if (currentGameDay == null) {
-      showError('Noch kein Spieltag gesetzt – Gültigkeit kann nicht beendet werden.');
+      showError(t('world.entity.knowledge.noCurrentDay'));
       return;
     }
     const { data, error } = await request<{ entry: EntityKnowledgeEntry }>(
@@ -590,7 +620,7 @@ export function EntityEditDialog({
     if (!error && data) {
       setKnowledge((prev) => prev.map((k) => (k.id === id ? data.entry : k)));
       setSummaryDirty(true);
-      showSuccess(`Fakt bis Spieltag ${currentGameDay} beendet (bleibt als Historie).`);
+      showSuccess(t('world.entity.knowledge.ended', { day: formatNumber(currentGameDay) }));
     }
   }
 
@@ -614,7 +644,7 @@ export function EntityEditDialog({
       setSummary(data.summary);
       setMiniSummary(data.miniSummary);
       setSummaryDirty(false);
-      showSuccess('Zusammenfassung generiert.');
+      showSuccess(t('world.entity.knowledge.summarySuccess'));
     }
   }
 
@@ -663,14 +693,37 @@ export function EntityEditDialog({
     setReviewing(false);
     if (!error && data) {
       const parts: string[] = [];
-      if (data.created.length) parts.push(`${data.created.length} ergänzt`);
-      if (data.ended.length) parts.push(`${data.ended.length} beendet`);
-      if (data.deleted.length) parts.push(`${data.deleted.length} als ungültig markiert`);
-      if (data.summaries.some((s) => s.summary)) parts.push('Zusammenfassung aktualisiert');
+      if (data.created.length) {
+        parts.push(
+          t('world.entity.knowledge.reviewChanges.created', {
+            count: data.created.length,
+            formattedCount: formatNumber(data.created.length),
+          })
+        );
+      }
+      if (data.ended.length) {
+        parts.push(
+          t('world.entity.knowledge.reviewChanges.ended', {
+            count: data.ended.length,
+            formattedCount: formatNumber(data.ended.length),
+          })
+        );
+      }
+      if (data.deleted.length) {
+        parts.push(
+          t('world.entity.knowledge.reviewChanges.deleted', {
+            count: data.deleted.length,
+            formattedCount: formatNumber(data.deleted.length),
+          })
+        );
+      }
+      if (data.summaries.some((s) => s.summary)) {
+        parts.push(t('world.entity.knowledge.reviewChanges.summaryUpdated'));
+      }
       showSuccess(
         parts.length
-          ? `Wissen geprüft: ${parts.join(', ')}.`
-          : 'Wissen ist aktuell – keine Änderungen nötig.'
+          ? t('world.entity.knowledge.reviewSuccess', { parts: parts.join(', ') })
+          : t('world.entity.knowledge.reviewNoChanges')
       );
       await handleCorrected(data);
     } else if (error) {
@@ -728,7 +781,7 @@ export function EntityEditDialog({
   async function saveMiniSummary() {
     const text = editingMiniSummaryText.trim();
     if (text.length > 200) {
-      showError('Mini-Zusammenfassung darf maximal 200 Zeichen haben');
+      showError(t('world.entity.miniSummary.maxLength', { count: formatNumber(200) }));
       return;
     }
     const { data, error } = await request<{ miniSummary: string | null }>(
@@ -748,7 +801,7 @@ export function EntityEditDialog({
     if (!error && data) {
       setMiniSummary(data.miniSummary);
       setEditingMiniSummary(false);
-      showSuccess('Mini-Zusammenfassung gespeichert.');
+      showSuccess(t('world.entity.miniSummary.saved'));
     }
   }
 
@@ -756,7 +809,7 @@ export function EntityEditDialog({
     <>
       <Modal
         isOpen
-        title={`${typeLabels[type]}: ${formatEntityLabel(detail?.canonical ?? name, detail?.qualifier ?? qualifier)}`}
+        title={`${getEntityTypeLabel(type, t)}: ${formatEntityLabel(detail?.canonical ?? name, detail?.qualifier ?? qualifier)}`}
         className="max-w-xl"
         onClose={handleClose}
       >
@@ -765,59 +818,67 @@ export function EntityEditDialog({
             <Loading size="md" />
           </div>
         ) : !detail ? (
-          <p className="text-slate-400">Entität konnte nicht geladen werden.</p>
+          <p className="text-slate-400">{t('world.entity.loadError')}</p>
         ) : (
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
-                Hauptname
+                {t('world.entity.canonicalName')}
               </label>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={canonical}
+                  aria-label={t('world.entity.canonicalName')}
                   onChange={(e) => setCanonical(e.target.value)}
                   className="flex-1 min-w-0 px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                  placeholder="Name"
+                  placeholder={t('world.entity.namePlaceholder')}
                 />
                 <button
                   type="button"
                   onClick={() => setCorrectionOpen(true)}
-                  title="Falsches Wissen per KI berichtigen"
+                  title={t('world.entity.correctKnowledgeTitle')}
                   className="text-xs px-3 py-2 rounded bg-[var(--accent)]/10 border border-[var(--accent)] text-[var(--accent)] font-semibold hover:bg-[var(--accent)]/20 transition whitespace-nowrap"
                 >
-                  Wissen korrigieren
+                  {t('world.entity.correctKnowledgeButton')}
                 </button>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Unter diesem Namen wird die {typeLabels[type]} in den Einträgen geführt.
+                {t('world.entity.identityDescription', { type: getEntityTypeLabel(type, t) })}
               </p>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-[var(--text-h)] mb-1">
-                Qualifier <span className="font-normal text-slate-500">(optional)</span>
+                {t('world.entity.qualifier')}{' '}
+                <span className="font-normal text-slate-500">{t('world.entity.optional')}</span>
               </label>
               <input
                 type="text"
                 value={qualifierValue}
+                aria-label={t('world.entity.qualifier')}
                 onChange={(e) => setQualifierValue(e.target.value)}
                 className="w-full px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
-                placeholder="z. B. Begleiter von Calzone"
+                placeholder={t('world.entity.qualifierPlaceholder')}
               />
               <p className="text-xs text-slate-500 mt-1">
-                Unterscheidet Entitäten mit gleichem Namen. Anzeige:{' '}
+                {t('world.entity.qualifierDescription')}{' '}
                 <span className="text-slate-400">
-                  {formatEntityLabel(canonical.trim() || 'Name', qualifierValue.trim())}
+                  {formatEntityLabel(
+                    canonical.trim() || t('world.entity.namePlaceholder'),
+                    qualifierValue.trim()
+                  )}
                 </span>
               </p>
             </div>
 
             {!loading && detail && (
               <div className="text-xs min-h-[1rem]">
-                {autoSaveStatus === 'saving' && <span className="text-slate-400">Speichert…</span>}
+                {autoSaveStatus === 'saving' && (
+                  <span className="text-slate-400">{t('world.entity.autosave.saving')}</span>
+                )}
                 {autoSaveStatus === 'saved' && (
-                  <span className="text-emerald-400">Gespeichert ✓</span>
+                  <span className="text-emerald-400">{t('world.entity.autosave.saved')}</span>
                 )}
                 {autoSaveStatus === 'error' && autoSaveError && (
                   <span className="text-[var(--danger)]">{autoSaveError}</span>
@@ -826,9 +887,15 @@ export function EntityEditDialog({
             )}
 
             <div className="border-b border-[var(--border)]">
-              <div className="flex gap-2">
+              <div
+                className="flex gap-2"
+                role="tablist"
+                aria-label={t('world.entity.tabs.summary')}
+              >
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'summary'}
                   onClick={() => setActiveTab('summary')}
                   className={`px-3 py-1.5 text-sm font-medium border-b-2 transition ${
                     activeTab === 'summary'
@@ -836,10 +903,12 @@ export function EntityEditDialog({
                       : 'border-transparent text-slate-400 hover:text-[var(--text-h)]'
                   }`}
                 >
-                  Zusammenfassung
+                  {t('world.entity.tabs.summary')}
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'aliases'}
                   onClick={() => setActiveTab('aliases')}
                   className={`px-3 py-1.5 text-sm font-medium border-b-2 transition ${
                     activeTab === 'aliases'
@@ -847,10 +916,12 @@ export function EntityEditDialog({
                       : 'border-transparent text-slate-400 hover:text-[var(--text-h)]'
                   }`}
                 >
-                  Synonyme
+                  {t('world.entity.tabs.aliases')}
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'knowledge'}
                   onClick={() => setActiveTab('knowledge')}
                   className={`px-3 py-1.5 text-sm font-medium border-b-2 transition ${
                     activeTab === 'knowledge'
@@ -858,10 +929,12 @@ export function EntityEditDialog({
                       : 'border-transparent text-slate-400 hover:text-[var(--text-h)]'
                   }`}
                 >
-                  Wissen
+                  {t('world.entity.tabs.knowledge')}
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'arcs'}
                   onClick={() => setActiveTab('arcs')}
                   className={`px-3 py-1.5 text-sm font-medium border-b-2 transition ${
                     activeTab === 'arcs'
@@ -869,7 +942,7 @@ export function EntityEditDialog({
                       : 'border-transparent text-slate-400 hover:text-[var(--text-h)]'
                   }`}
                 >
-                  Story Arcs
+                  {t('world.entity.tabs.arcs')}
                 </button>
               </div>
             </div>
@@ -885,10 +958,10 @@ export function EntityEditDialog({
                       className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
                     >
                       {generatingSummary
-                        ? 'Wird generiert...'
+                        ? t('world.entity.summary.generating')
                         : summary
-                          ? 'Aktualisieren'
-                          : 'Generieren'}
+                          ? t('world.entity.summary.update')
+                          : t('world.entity.summary.generate')}
                     </button>
                   )}
                 </div>
@@ -901,27 +974,30 @@ export function EntityEditDialog({
                     </p>
                     {summaryDirty && (
                       <p className="text-xs text-amber-500 mt-1 italic">
-                        Zusammenfassung ist veraltet und sollte aktualisiert werden.
+                        {t('world.entity.summary.stale')}
                       </p>
                     )}
                   </div>
                 ) : (
                   <div className="text-sm text-slate-500 italic p-2 rounded border border-dashed border-[var(--border)] bg-slate-900/30">
-                    Noch keine Zusammenfassung vorhanden.
+                    {t('world.entity.summary.empty')}
                   </div>
                 )}
 
                 <div className="mt-4">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm font-medium text-[var(--text-h)]">Mini-Zusammenfassung</p>
+                    <p className="text-sm font-medium text-[var(--text-h)]">
+                      {t('world.entity.miniSummary.title')}
+                    </p>
                     {!editingMiniSummary && (
                       <button
                         type="button"
                         onClick={startEditMiniSummary}
-                        title="Mini-Zusammenfassung bearbeiten"
+                        title={t('world.entity.miniSummary.editTitle')}
+                        aria-label={t('world.entity.miniSummary.label')}
                         className="text-xs text-slate-500 hover:text-[var(--accent)] transition"
                       >
-                        Bearbeiten
+                        {t('world.entity.miniSummary.edit')}
                       </button>
                     )}
                   </div>
@@ -932,6 +1008,7 @@ export function EntityEditDialog({
                         onChange={(e) => setEditingMiniSummaryText(e.target.value)}
                         rows={2}
                         maxLength={200}
+                        aria-label={t('world.entity.miniSummary.label')}
                         className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
                       />
                       <div className="flex gap-2">
@@ -941,14 +1018,14 @@ export function EntityEditDialog({
                           disabled={editingMiniSummaryText.trim().length > 200}
                           className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
                         >
-                          Speichern
+                          {t('world.entity.miniSummary.save')}
                         </button>
                         <button
                           type="button"
                           onClick={cancelEditMiniSummary}
                           className="text-xs px-2 py-1 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
                         >
-                          Abbrechen
+                          {t('shared.cancel')}
                         </button>
                       </div>
                     </div>
@@ -956,7 +1033,7 @@ export function EntityEditDialog({
                     <p className="text-sm text-slate-300 whitespace-pre-wrap">{miniSummary}</p>
                   ) : (
                     <p className="text-sm text-slate-500 italic">
-                      Noch keine Mini-Zusammenfassung vorhanden.
+                      {t('world.entity.miniSummary.empty')}
                     </p>
                   )}
                 </div>
@@ -967,20 +1044,24 @@ export function EntityEditDialog({
               <div>
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {aliases.length === 0 ? (
-                    <p className="text-slate-500 text-sm italic">Noch keine Synonyme vorhanden.</p>
+                    <p className="text-slate-500 text-sm italic">
+                      {t('world.entity.aliases.empty')}
+                    </p>
                   ) : (
                     aliases.map((alias, index) => (
                       <div key={index} className="flex items-center gap-2">
                         <input
                           type="text"
                           value={alias}
+                          aria-label={t('world.entity.aliases.newPlaceholder')}
                           onChange={(e) => updateAlias(index, e.target.value)}
                           className="flex-1 min-w-0 px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                         />
                         <button
                           type="button"
                           onClick={() => removeAlias(index)}
-                          title="Synonym entfernen"
+                          title={t('world.entity.aliases.removeTitle')}
+                          aria-label={t('world.entity.aliases.removeTitle')}
                           className="p-2 rounded text-slate-500 hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 transition"
                         >
                           <svg
@@ -1006,6 +1087,7 @@ export function EntityEditDialog({
                   <input
                     type="text"
                     value={newAlias}
+                    aria-label={t('world.entity.aliases.newPlaceholder')}
                     onChange={(e) => setNewAlias(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -1013,7 +1095,7 @@ export function EntityEditDialog({
                         addAlias();
                       }
                     }}
-                    placeholder="Neues Synonym"
+                    placeholder={t('world.entity.aliases.newPlaceholder')}
                     className="flex-1 min-w-0 px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                   />
                   <button
@@ -1022,7 +1104,7 @@ export function EntityEditDialog({
                     disabled={!newAlias.trim()}
                     className="px-3 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
                   >
-                    Hinzufügen
+                    {t('world.entity.aliases.add')}
                   </button>
                 </div>
               </div>
@@ -1031,25 +1113,37 @@ export function EntityEditDialog({
             {activeTab === 'knowledge' && (
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium text-[var(--text-h)]">Wissenseinträge</p>
+                  <p className="text-sm font-medium text-[var(--text-h)]">
+                    {t('world.entity.knowledge.title')}
+                  </p>
                   <button
                     type="button"
                     onClick={handleReviewKnowledge}
                     disabled={reviewing || loading}
-                    title="Alle Wissenseinträge der Entität per KI gegen die Tagebuch-Einträge prüfen und aktualisieren (veraltete beenden, Widersprüche löschen, fehlende ergänzen)"
+                    title={t('world.entity.knowledge.reviewTitle')}
+                    aria-label={t('world.entity.knowledge.reviewTitle')}
                     className="text-xs px-2 py-1 rounded bg-[var(--accent)]/10 border border-[var(--accent)] text-[var(--accent)] font-semibold hover:bg-[var(--accent)]/20 transition disabled:opacity-50 whitespace-nowrap"
                   >
-                    {reviewing ? 'Wird überprüft...' : 'Wissen überprüfen'}
+                    {reviewing
+                      ? t('world.entity.knowledge.reviewing')
+                      : t('world.entity.knowledge.review')}
                   </button>
                 </div>
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {knowledge.length === 0 ? (
                     <p className="text-slate-500 text-sm italic">
-                      Noch keine Wissenseinträge vorhanden.
+                      {t('world.entity.knowledge.empty')}
                     </p>
                   ) : (
                     knowledge.map((entry) => {
                       const isDeleted = entry.status === 'deleted';
+                      const validFromLabel =
+                        entry.validFrom === null
+                          ? t('world.entity.knowledge.beginning')
+                          : formatNumber(entry.validFrom);
+                      const lastValid = entry.validUntil !== null ? entry.validUntil - 1 : null;
+                      const lastValidLabel = lastValid === null ? '' : formatNumber(lastValid);
+                      const originTitle = entry.originTitle ? `: ${entry.originTitle}` : '';
                       return (
                         <div
                           key={entry.id}
@@ -1062,26 +1156,29 @@ export function EntityEditDialog({
                               <input
                                 type="text"
                                 value={editingKnowledgeTitle}
+                                aria-label={t('world.entity.knowledge.editTitle')}
                                 onChange={(e) => setEditingKnowledgeTitle(e.target.value)}
-                                placeholder="Titel (optional)"
+                                placeholder={t('world.entity.knowledge.newTitle')}
                                 className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                               />
                               <textarea
                                 value={editingKnowledgeContent}
+                                aria-label={t('world.entity.knowledge.contentLabel')}
                                 onChange={(e) => setEditingKnowledgeContent(e.target.value)}
                                 rows={2}
                                 className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
                               />
                               <div className="flex items-center gap-2">
                                 <label className="text-[10px] text-slate-500 whitespace-nowrap">
-                                  Gültig bis Spieltag
+                                  {t('world.entity.knowledge.validUntil')}
                                 </label>
                                 <input
                                   type="number"
                                   min={1}
                                   value={editingKnowledgeValidUntil}
+                                  aria-label={t('world.entity.knowledge.validUntil')}
                                   onChange={(e) => setEditingKnowledgeValidUntil(e.target.value)}
-                                  placeholder="offen"
+                                  placeholder={t('world.entity.knowledge.open')}
                                   className="w-24 px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                                 />
                               </div>
@@ -1091,14 +1188,14 @@ export function EntityEditDialog({
                                   onClick={() => saveEditKnowledge(entry.id)}
                                   className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition"
                                 >
-                                  Speichern
+                                  {t('world.entity.knowledge.save')}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={cancelEditKnowledge}
                                   className="text-xs px-2 py-1 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
                                 >
-                                  Abbrechen
+                                  {t('shared.cancel')}
                                 </button>
                               </div>
                             </>
@@ -1114,20 +1211,27 @@ export function EntityEditDialog({
                                 )}
                                 {isDeleted && (
                                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--danger)]/10 text-[var(--danger)] font-medium">
-                                    Gelöscht
+                                    {t('world.entity.knowledge.deleted')}
                                   </span>
                                 )}
                                 {entry.originType && (
                                   <span
                                     title={
                                       entry.originType === 'diary'
-                                        ? `Aus Tagebucheintrag übernommen${entry.originTitle ? `: „${entry.originTitle}“` : ''}`
-                                        : `Aus Session-Zusammenfassung übernommen${entry.originTitle ? `: ${entry.originTitle}` : ''}`
+                                        ? t('world.entity.knowledge.sourceDiaryTitle', {
+                                            title: originTitle,
+                                          })
+                                        : t('world.entity.knowledge.sourceSessionTitle', {
+                                            title: originTitle,
+                                          })
                                     }
                                     className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent)]/10 text-[var(--accent)] font-medium whitespace-nowrap"
                                   >
-                                    Quelle: {entry.originType === 'diary' ? 'Tagebuch' : 'Session'}
-                                    {entry.originTitle ? ` „${entry.originTitle}“` : ''}
+                                    {t('world.entity.knowledge.source')}{' '}
+                                    {entry.originType === 'diary'
+                                      ? t('world.entity.knowledge.sourceDiary')
+                                      : t('world.entity.knowledge.sourceSession')}
+                                    {originTitle}
                                   </span>
                                 )}
                                 {(entry.validFrom !== null ||
@@ -1141,14 +1245,18 @@ export function EntityEditDialog({
                                       entry.validUntil !== null &&
                                       currentGameDay != null &&
                                       entry.validUntil <= currentGameDay;
-                                    const lastValid =
-                                      entry.validUntil !== null ? entry.validUntil - 1 : null;
                                     return (
                                       <span
                                         title={
                                           entry.validUntil !== null
-                                            ? `Gültig von Spieltag ${entry.validFrom ?? 'Beginn'} bis einschließlich Spieltag ${lastValid}; ab Spieltag ${entry.validUntil} nicht mehr.`
-                                            : `Gültig ab Spieltag ${entry.validFrom ?? 'Beginn'}.`
+                                            ? t('world.entity.knowledge.validRangeTitle', {
+                                                from: validFromLabel,
+                                                to: lastValidLabel,
+                                                until: formatNumber(entry.validUntil ?? 0),
+                                              })
+                                            : t('world.entity.knowledge.validFromTitle', {
+                                                from: validFromLabel,
+                                              })
                                         }
                                         className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${
                                           isOver
@@ -1157,8 +1265,13 @@ export function EntityEditDialog({
                                         }`}
                                       >
                                         {entry.validUntil !== null
-                                          ? `Spieltag ${entry.validFrom ?? '…'} bis Tag ${lastValid}`
-                                          : `Spieltag ab ${entry.validFrom ?? '…'}`}
+                                          ? t('world.entity.knowledge.validRange', {
+                                              from: validFromLabel,
+                                              to: lastValidLabel,
+                                            })
+                                          : t('world.entity.knowledge.validFrom', {
+                                              from: validFromLabel,
+                                            })}
                                       </span>
                                     );
                                   })()}
@@ -1174,12 +1287,12 @@ export function EntityEditDialog({
                               </p>
                               {isDeleted && entry.statusReason && (
                                 <p className="text-xs text-slate-500 italic">
-                                  Grund: {entry.statusReason}
+                                  {t('world.entity.knowledge.reason')} {entry.statusReason}
                                 </p>
                               )}
                               {!isDeleted && entry.validUntil !== null && entry.statusReason && (
                                 <p className="text-xs text-slate-500 italic">
-                                  Grund: {entry.statusReason}
+                                  {t('world.entity.knowledge.reason')} {entry.statusReason}
                                 </p>
                               )}
                               {!isDeleted && (
@@ -1187,28 +1300,35 @@ export function EntityEditDialog({
                                   <button
                                     type="button"
                                     onClick={() => startEditKnowledge(entry)}
-                                    title="Bearbeiten"
+                                    title={t('world.entity.knowledge.editTitle')}
+                                    aria-label={t('world.entity.knowledge.edit')}
                                     className="text-xs text-slate-500 hover:text-[var(--accent)] transition"
                                   >
-                                    Bearbeiten
+                                    {t('world.entity.knowledge.edit')}
                                   </button>
                                   {entry.validUntil === null && currentGameDay != null && (
                                     <button
                                       type="button"
                                       onClick={() => handleEndKnowledge(entry.id)}
-                                      title={`Fakt endet am aktuellen Spieltag ${currentGameDay} (bleibt als Historie)`}
+                                      title={t('world.entity.knowledge.endTitle', {
+                                        day: formatNumber(currentGameDay),
+                                      })}
+                                      aria-label={t('world.entity.knowledge.endTitle', {
+                                        day: formatNumber(currentGameDay),
+                                      })}
                                       className="text-xs text-slate-500 hover:text-[var(--accent)] transition"
                                     >
-                                      Beenden
+                                      {t('world.entity.knowledge.end')}
                                     </button>
                                   )}
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteKnowledge(entry.id)}
-                                    title="Als ungültig markieren"
+                                    title={t('world.entity.knowledge.markInvalidTitle')}
+                                    aria-label={t('world.entity.knowledge.markInvalidTitle')}
                                     className="text-xs text-slate-500 hover:text-[var(--danger)] transition"
                                   >
-                                    Ungültig
+                                    {t('world.entity.knowledge.invalid')}
                                   </button>
                                 </div>
                               )}
@@ -1223,6 +1343,7 @@ export function EntityEditDialog({
                   <input
                     type="text"
                     value={newKnowledgeTitle}
+                    aria-label={t('world.entity.knowledge.newTitle')}
                     onChange={(e) => setNewKnowledgeTitle(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
@@ -1230,7 +1351,7 @@ export function EntityEditDialog({
                         handleAddKnowledge();
                       }
                     }}
-                    placeholder="Titel (optional)"
+                    placeholder={t('world.entity.knowledge.newTitle')}
                     className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                   />
                   <textarea
@@ -1243,29 +1364,36 @@ export function EntityEditDialog({
                       }
                     }}
                     rows={2}
-                    placeholder="Neuer Wissenseintrag"
+                    placeholder={t('world.entity.knowledge.newContent')}
+                    aria-label={t('world.entity.knowledge.newContent')}
                     className="w-full px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
                   />
                   {(currentGameDay ?? null) !== null && (
                     <div className="flex items-center gap-2">
                       <label className="text-[10px] text-slate-500 whitespace-nowrap">
-                        Gültig ab
+                        {t('world.entity.knowledge.validFromInput')}
                       </label>
                       <input
                         type="number"
                         min={1}
                         value={newKnowledgeValidFrom}
+                        aria-label={t('world.entity.knowledge.validFromInput')}
                         onChange={(e) => setNewKnowledgeValidFrom(e.target.value)}
-                        placeholder={`aktuell ${currentGameDay}`}
+                        placeholder={t('world.entity.knowledge.currently', {
+                          day: formatNumber(currentGameDay ?? 0),
+                        })}
                         className="w-24 px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                       />
-                      <label className="text-[10px] text-slate-500 whitespace-nowrap">bis</label>
+                      <label className="text-[10px] text-slate-500 whitespace-nowrap">
+                        {t('world.entity.knowledge.validUntilShort')}
+                      </label>
                       <input
                         type="number"
                         min={1}
                         value={newKnowledgeValidUntil}
+                        aria-label={t('world.entity.knowledge.validUntilShort')}
                         onChange={(e) => setNewKnowledgeValidUntil(e.target.value)}
-                        placeholder="offen"
+                        placeholder={t('world.entity.knowledge.open')}
                         className="w-24 px-2 py-1 text-sm rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none"
                       />
                     </div>
@@ -1276,7 +1404,7 @@ export function EntityEditDialog({
                     disabled={!newKnowledgeContent.trim()}
                     className="w-full text-xs px-3 py-1 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
                   >
-                    Hinzufügen
+                    {t('world.entity.knowledge.add')}
                   </button>
                 </div>
               </div>
@@ -1284,15 +1412,10 @@ export function EntityEditDialog({
             {activeTab === 'arcs' && (
               <div>
                 <p className="text-xs text-slate-500 mb-2">
-                  Zuordnung dieser {typeLabels[type]} zu Story Arcs. Einträge und Sessions gehören
-                  jeweils zu genau einem Arc; Entitäten können in mehreren Arcs auftreten. Die KI
-                  ordnet Entitäten automatisch dem Arc zu, in dem sie auftauchen – hier kannst du
-                  zusätzlich manuell zuordnen oder lösen.
+                  {t('world.entity.arcs.description', { type: getEntityTypeLabel(type, t) })}
                 </p>
                 {storyArcs.length === 0 ? (
-                  <p className="text-slate-500 text-sm italic">
-                    Noch keine Story Arcs vorhanden. Verwalte sie auf der Sessions-Seite.
-                  </p>
+                  <p className="text-slate-500 text-sm italic">{t('world.entity.arcs.empty')}</p>
                 ) : (
                   <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
                     {storyArcs.map((arc) => {
@@ -1308,6 +1431,7 @@ export function EntityEditDialog({
                           <input
                             type="checkbox"
                             checked={linked}
+                            aria-label={arc.name}
                             disabled={toggling}
                             onChange={(e) => void toggleArcLink(arc.id, e.target.checked)}
                             className="accent-[var(--accent)]"
@@ -1316,14 +1440,26 @@ export function EntityEditDialog({
                           <span className="flex-1 min-w-0 truncate">
                             {arc.chapterNumber !== null && (
                               <span className="chapter-caps mr-1.5 text-[9.5px] text-amber-200/60">
-                                Kapitel {arc.chapterNumber} ·
+                                {t('world.entity.arcs.chapter', {
+                                  number: formatNumber(arc.chapterNumber),
+                                })}{' '}
+                                ·
                               </span>
                             )}
                             <span className="chapter-serif">{arc.name}</span>
                             <span className="ml-2 text-xs text-slate-500">
-                              {arcStatusLabel(arc)}
+                              {localizedArcStatus(arc.status, t)}
                               {arc.gameDayStart !== null
-                                ? ` · Spieltag ${arc.gameDayStart}${arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart ? `–${arc.gameDayEnd}` : ''}`
+                                ? ` · ${
+                                    arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart
+                                      ? t('shell.chapterFilter.gameDayRange', {
+                                          start: formatNumber(arc.gameDayStart),
+                                          end: formatNumber(arc.gameDayEnd),
+                                        })
+                                      : t('shell.chapterFilter.gameDay', {
+                                          day: formatNumber(arc.gameDayStart),
+                                        })
+                                  }`
                                 : ''}
                             </span>
                           </span>

@@ -1,6 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActionMenu, type ActionMenuItem } from './ActionMenu';
+import { renderWithProviders } from '../test-utils/renderWithProviders';
+import type { Language } from '../../shared/types';
 
 function createItems(): ActionMenuItem[] {
   return [
@@ -15,6 +17,17 @@ function createItems(): ActionMenuItem[] {
   ];
 }
 
+function renderMenu(
+  items: ActionMenuItem[],
+  language: Language = 'de',
+  ariaLabel: string | undefined = 'Session-Aktionen'
+) {
+  return renderWithProviders(<ActionMenu ariaLabel={ariaLabel} items={items} />, {
+    language,
+    router: false,
+  });
+}
+
 describe('ActionMenu', () => {
   let items: ActionMenuItem[];
 
@@ -23,14 +36,19 @@ describe('ActionMenu', () => {
   });
 
   it('renders only the trigger until clicked', () => {
-    render(<ActionMenu ariaLabel="Session-Aktionen" items={items} />);
+    renderMenu(items);
 
     expect(screen.getByRole('button', { name: 'Session-Aktionen' })).toBeDefined();
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('uses a localized default accessible name when none is supplied', () => {
+    renderWithProviders(<ActionMenu items={items} />, { language: 'en', router: false });
+    expect(screen.getByRole('button', { name: 'Actions' })).toBeDefined();
+  });
+
   it('lists all items when opened', () => {
-    render(<ActionMenu ariaLabel="Session-Aktionen" items={items} />);
+    renderMenu(items);
 
     fireEvent.click(screen.getByRole('button', { name: 'Session-Aktionen' }));
 
@@ -42,7 +60,7 @@ describe('ActionMenu', () => {
   });
 
   it('calls onSelect and closes the menu', () => {
-    render(<ActionMenu ariaLabel="Session-Aktionen" items={items} />);
+    renderMenu(items);
 
     fireEvent.click(screen.getByRole('button', { name: 'Session-Aktionen' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Jetzt transkribieren' }));
@@ -53,7 +71,7 @@ describe('ActionMenu', () => {
   });
 
   it('closes on Escape and returns focus to the trigger', () => {
-    render(<ActionMenu ariaLabel="Session-Aktionen" items={items} />);
+    renderMenu(items);
 
     const trigger = screen.getByRole('button', { name: 'Session-Aktionen' });
     fireEvent.click(trigger);
@@ -65,7 +83,7 @@ describe('ActionMenu', () => {
   });
 
   it('closes on a click outside the menu', () => {
-    render(<ActionMenu ariaLabel="Session-Aktionen" items={items} />);
+    renderMenu(items);
 
     fireEvent.click(screen.getByRole('button', { name: 'Session-Aktionen' }));
     expect(screen.getByRole('menu')).toBeDefined();
@@ -75,13 +93,17 @@ describe('ActionMenu', () => {
   });
 
   it('renders nothing without items', () => {
-    const { container } = render(<ActionMenu ariaLabel="Session-Aktionen" items={[]} />);
+    const { container } = renderMenu([]);
 
     expect(container.firstChild).toBeNull();
+    expect(container.querySelector('[role="menu"]')).toBeNull();
   });
 
   it('disables the trigger while disabled', () => {
-    render(<ActionMenu ariaLabel="Session-Aktionen" items={items} disabled />);
+    renderWithProviders(<ActionMenu ariaLabel="Session-Aktionen" items={items} disabled />, {
+      language: 'de',
+      router: false,
+    });
 
     const trigger = screen.getByRole('button', { name: 'Session-Aktionen' });
     expect((trigger as HTMLButtonElement).disabled).toBe(true);

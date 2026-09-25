@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { Loading } from '../components/Loading';
+import { useI18n } from '../hooks/useI18n';
+import { localizeServerMessage } from '../i18n/serverMessages';
 
 interface LoginProps {
   onDiscordLogin: () => Promise<string | null>;
@@ -8,10 +11,12 @@ interface LoginProps {
 }
 
 export function Login({ onDiscordLogin, error }: LoginProps) {
+  const { t } = useI18n();
   const [localError, setLocalError] = useState<string | null>(null);
   const [clickCount, setClickCount] = useState(0);
   const [showAdmin, setShowAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
+  const visibleError = error ? localizeServerMessage(error, t) : localError;
 
   const handleDiscord = async () => {
     setLocalError(null);
@@ -36,13 +41,16 @@ export function Login({ onDiscordLogin, error }: LoginProps) {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 shadow-xl text-center">
+        <div className="mb-5 flex justify-center">
+          <LanguageSwitcher />
+        </div>
         <h1
           className="text-3xl font-bold text-[var(--text-h)] mb-2 cursor-default select-none"
           onClick={handleLogoClick}
         >
           DnD Dashboard
         </h1>
-        <p className="mb-6 text-slate-400">Melde dich mit Discord an</p>
+        <p className="mb-6 text-slate-400">{t('auth.loginPrompt')}</p>
 
         <button
           onClick={handleDiscord}
@@ -50,9 +58,9 @@ export function Login({ onDiscordLogin, error }: LoginProps) {
           className="w-full py-3 rounded-lg bg-[#5865F2] text-white font-semibold hover:bg-[#4752C4] transition mb-3 disabled:opacity-50"
         >
           {loading ? (
-            <Loading text="Weiterleitung..." size="sm" className="justify-center text-white" />
+            <Loading text={t('auth.redirecting')} size="sm" className="justify-center text-white" />
           ) : (
-            'Mit Discord anmelden'
+            t('auth.loginWithDiscord')
           )}
         </button>
 
@@ -61,13 +69,11 @@ export function Login({ onDiscordLogin, error }: LoginProps) {
             to="/admin-login"
             className="inline-block text-sm text-slate-500 hover:text-[var(--text-h)] underline"
           >
-            Admin Login
+            {t('auth.adminLogin')}
           </Link>
         )}
 
-        {(error || localError) && (
-          <p className="text-[var(--danger)] text-sm mt-4">{error || localError}</p>
-        )}
+        {visibleError && <p className="text-[var(--danger)] text-sm mt-4">{visibleError}</p>}
       </div>
     </div>
   );

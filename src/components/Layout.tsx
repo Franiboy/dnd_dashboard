@@ -4,6 +4,7 @@ import { GlobalSearch } from './GlobalSearch';
 import { StoryArcFilter } from './StoryArcFilter';
 import { UserMenu } from './UserMenu';
 import { useAuth } from '../hooks/useAuth';
+import { useI18n } from '../hooks/useI18n';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 
 interface LayoutProps {
@@ -17,6 +18,7 @@ interface LayoutProps {
 export function Layout({ user, realUser, version, onLogout, children }: LayoutProps) {
   const isSimulating = realUser !== undefined && realUser !== null && realUser.id !== user.id;
   const { clearViewAsUser } = useAuth();
+  const { t } = useI18n();
   const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -38,6 +40,7 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
     <div className="h-screen supports-[height:100dvh]:h-dvh flex flex-col overflow-hidden">
       <header
         ref={headerRef}
+        aria-label={t('shell.layout.header')}
         className="relative z-50 flex shrink-0 flex-col border-b border-[var(--border)] bg-[var(--panel)]"
       >
         <div className="flex flex-wrap items-center gap-2 px-3 sm:px-6 py-2">
@@ -70,14 +73,14 @@ export function Layout({ user, realUser, version, onLogout, children }: LayoutPr
         {isSimulating && (
           <div className="bg-[var(--warning)]/20 border-t border-[var(--warning)]/40 px-6 py-2 flex items-center justify-between">
             <span className="text-sm text-[var(--text-h)]">
-              Du simulierst die Ansicht von <strong>{user.displayName}</strong>.
+              {t('common.simulating', { name: user.displayName })}
             </span>
             <button
               type="button"
               onClick={clearViewAsUser}
               className="text-sm font-semibold text-[var(--warning)] hover:underline"
             >
-              Zurück zu {realUser?.displayName}
+              {t('common.backTo', { name: realUser?.displayName ?? '' })}
             </button>
           </div>
         )}

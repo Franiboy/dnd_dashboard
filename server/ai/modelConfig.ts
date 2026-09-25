@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { getAiModelSettings } from '../repositories/aiSettings.js';
+import { getAiSettings } from '../repositories/aiSettings.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('model-config');
@@ -20,7 +20,7 @@ function getOpenCodeBin(): string {
 }
 
 export function getModel(): string {
-  const settings = getAiModelSettings();
+  const settings = getAiSettings();
   if (isValidModel(settings.model)) return settings.model!.trim();
   if (isValidModel(process.env.AI_MODEL)) return process.env.AI_MODEL.trim();
   return DEFAULT_MODEL;

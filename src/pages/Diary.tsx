@@ -6,12 +6,14 @@ import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import { useEntityMappings } from '../hooks/useEntityMappings';
 import { useError } from '../hooks/useError';
+import { useI18n } from '../hooks/useI18n';
 import { useStoryArcs } from '../hooks/useStoryArcs';
 import { useDiaryEntries } from '../hooks/useDiaryEntries';
 import { useDiaryDrafts } from '../hooks/useDiaryDrafts';
 import { useDiaryAiStatus } from '../hooks/useDiaryAiStatus';
 import { arcMatchesFilter } from '../lib/storyArcs';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
+import { getEntityTypeLabel } from '../lib/entityLabels';
 import { BadgeLink } from '../components/BadgeLink';
 import { BadgeList } from '../components/diary/BadgeList';
 import { Button } from '../components/Button';
@@ -22,18 +24,26 @@ import { ArcAssignPicker } from '../components/storyArcs/ArcAssignPicker';
 import { DiaryCreateModal } from '../components/diary/DiaryCreateModal';
 import { DiarySummaryPanel } from '../components/diary/DiarySummaryPanel';
 import { isEmptyHtml, normalizeDraftHtml } from '../lib/diaryDraft';
-import { ensureHtml, stripHtml, quillFormats, quillModules } from '../components/quillConfig';
+import { createQuillModules, ensureHtml, stripHtml, quillFormats } from '../components/quillConfig';
+import type { ServerMessageLike } from '../i18n/serverMessages';
+import type { TranslationKey } from '../i18n/messages';
 
 import type { DiaryEntry } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 const SUMMARY_MAX_LENGTH = 500;
 
+function localAiStatus(key: TranslationKey, message: string): ServerMessageLike {
+  return { message, messageKey: key };
+}
+
 export function Diary() {
   const { request } = useApi();
   const { user } = useAuth();
   const { mappings } = useEntityMappings();
   const { showSuccess, showError } = useError();
+  const { t, formatNumber } = useI18n();
+  const diaryQuillModules = useMemo(() => createQuillModules(t), [t]);
   const [searchParams] = useSearchParams();
   const [working, setWorking] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -79,12 +89,12 @@ export function Diary() {
     const existing = highlightTimeouts.current[entryId];
     if (existing) clearTimeout(existing);
     highlightTimeouts.current[entryId] = setTimeout(() => {
-      applyEntityHighlights(quill, mappings);
+      applyEntityHighlights(quill, mappings, (entityType) => getEntityTypeLabel(entityType, t));
       delete highlightTimeouts.current[entryId];
     }, 300);
   }
 
-  // Deep link (?entry=<id>): expand, prefer the KI version and scroll into view.
+  // Deep link (?entry=<id>): expand, prefer the AI version and scroll into view.
   // Both adjustments are derived during render instead of syncing state in an
   // effect, so no cascading render is needed.
   const deepLinkEntryId = useMemo(() => {
@@ -158,11 +168,12 @@ export function Diary() {
         const reactQuill = quillRefs.current[id];
         if (!reactQuill) continue;
         const quill = reactQuill.getEditor();
-        if (quill) applyEntityHighlights(quill, mappings);
+        if (quill)
+          applyEntityHighlights(quill, mappings, (entityType) => getEntityTypeLabel(entityType, t));
       }
     }, 100);
     return () => clearTimeout(timer);
-  }, [mappings, expandedIds, entriesRef]);
+  }, [mappings, expandedIds, entriesRef, t]);
 
   async function handleDelete(id: number) {
     setWorking(true);
@@ -171,7 +182,7 @@ export function Diary() {
     if (!error) {
       removeEntry(id);
       purgeDrafts(id);
-      showSuccess('Eintrag gelöscht.');
+      showSuccess(t('diary.deleted'));
     }
   }
 
@@ -183,14 +194,14 @@ export function Diary() {
     });
     if (data) {
       replaceEntry(data.entry);
-      showSuccess('Story Arc gespeichert.');
+      showSuccess(t('diary.arcSaved'));
     } else if (error) {
       showError(error);
     }
   }
 
   /** Shared sequence for AI actions: wait for the SSE stream, flag busy. */
-  async function beginAiAction(status: string) {
+  async function beginAiAction(status: string | ServerMessageLike) {
     setAiOperation(true);
     setAiStatus(status);
     await Promise.race([
@@ -224,7 +235,7 @@ export function Diary() {
 
   async function handleRewrite(entry: DiaryEntry) {
     setProcessingRewriteId(entry.id);
-    await beginAiAction('Text wird von KI umgeschrieben...');
+    await beginAiAction(localAiStatus('diary.rewriteStatus', t('diary.rewriteStatus')));
     const { data, error } = await request<{ entry: DiaryEntry }>(
       `/api/diary/entries/${entry.id}/rewrite`,
       {
@@ -238,7 +249,7 @@ export function Diary() {
       replaceEntry(data.entry);
       setViewRewritten(entry.id, true);
       setAiStatus(null);
-      showSuccess('KI-Version aktualisiert.');
+      showSuccess(t('diary.rewriteSuccess'));
     } else if (error) {
       setAiStatus(null);
       showError(error);
@@ -248,7 +259,7 @@ export function Diary() {
   async function handleRewriteCommand(entry: DiaryEntry, command: string) {
     if (!command.trim() || !entry.rewriteSessionId) return;
     setProcessingCommandId(entry.id);
-    await beginAiAction('KI führt Befehl aus...');
+    await beginAiAction(localAiStatus('diary.commandStatus', t('diary.commandStatus')));
     const { data, error } = await request<{ entry: DiaryEntry }>(
       `/api/diary/entries/${entry.id}/rewrite-command`,
       {
@@ -265,7 +276,7 @@ export function Diary() {
       setViewRewritten(entry.id, true);
       setRewriteCommands((prev) => ({ ...prev, [entry.id]: '' }));
       setAiStatus(null);
-      showSuccess('KI-Version angepasst.');
+      showSuccess(t('diary.commandSuccess'));
     } else if (error) {
       setAiStatus(null);
       showError(error);
@@ -274,7 +285,7 @@ export function Diary() {
 
   async function handleGenerateSummary(entry: DiaryEntry) {
     setProcessingSummaryId(entry.id);
-    await beginAiAction('Zusammenfassung und Personen werden neu generiert...');
+    await beginAiAction(localAiStatus('diary.summaryStatus', t('diary.summaryStatus')));
     const { data, error } = await request<{ entry: DiaryEntry }>(
       `/api/diary/entries/${entry.id}/summarize`,
       {
@@ -286,7 +297,7 @@ export function Diary() {
     if (data) {
       replaceEntry(data.entry);
       setAiStatus(null);
-      showSuccess('Zusammenfassung erstellt.');
+      showSuccess(t('diary.summarySuccess'));
     } else if (error) {
       showError(error);
     }
@@ -313,9 +324,10 @@ export function Diary() {
       setTimeout(() => {
         const reactQuill = quillRefs.current[entry.id];
         const quill = reactQuill?.getEditor();
-        if (quill) applyEntityHighlights(quill, mappings);
+        if (quill)
+          applyEntityHighlights(quill, mappings, (entityType) => getEntityTypeLabel(entityType, t));
       }, 50);
-      showSuccess('Überarbeitung übernommen.');
+      showSuccess(t('diary.acceptSuccess'));
     } else if (error) {
       showError(error);
     }
@@ -340,7 +352,8 @@ export function Diary() {
       setTimeout(() => {
         const reactQuill = quillRefs.current[entry.id];
         const quill = reactQuill?.getEditor();
-        if (quill) applyEntityHighlights(quill, mappings);
+        if (quill)
+          applyEntityHighlights(quill, mappings, (entityType) => getEntityTypeLabel(entityType, t));
       }, 50);
     } else if (error) {
       showError(error);
@@ -401,7 +414,7 @@ export function Diary() {
 
   async function saveSummaryEdit(entry: DiaryEntry) {
     if (editingSummaryText.trim().length > SUMMARY_MAX_LENGTH) {
-      showError(`Zusammenfassung darf maximal ${SUMMARY_MAX_LENGTH} Zeichen haben`);
+      showError(t('diary.summary.maxLength', { count: formatNumber(SUMMARY_MAX_LENGTH) }));
       return;
     }
 
@@ -415,7 +428,7 @@ export function Diary() {
 
     if (data) {
       replaceEntry(data.entry);
-      showSuccess('Zusammenfassung aktualisiert.');
+      showSuccess(t('diary.summary.updated'));
       cancelSummaryEdit();
     }
     // Errors are already displayed by useApi.
@@ -434,7 +447,7 @@ export function Diary() {
       <SideDrawer side="right">
         <SideDrawerItem
           id="create"
-          label="Neuer Eintrag"
+          label={t('diary.newEntry')}
           icon={
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -458,7 +471,7 @@ export function Diary() {
               onClick={() => setIsModalOpen(true)}
               className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition"
             >
-              Neuer Eintrag
+              {t('diary.newEntry')}
             </button>
           </div>
         </SideDrawerItem>
@@ -477,11 +490,11 @@ export function Diary() {
       <div className="flex-1 min-h-0 overflow-auto -mx-4 px-4 sm:-mx-6 sm:px-6">
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <p className="text-slate-400">Noch keine Tagebucheinträge vorhanden.</p>
+            <p className="text-slate-400">{t('diary.noEntries')}</p>
           </div>
         ) : visibleEntries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <p className="text-slate-400">Keine Einträge im gewählten Kapitel vorhanden.</p>
+            <p className="text-slate-400">{t('diary.noEntriesInChapter')}</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -496,7 +509,9 @@ export function Diary() {
                 <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-3">
                   <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
                     <h3 className="text-lg font-semibold text-[var(--text-h)]">
-                      Spieltag {entry.gameDay ?? '—'}
+                      {t('diary.gameDay', {
+                        day: entry.gameDay == null ? '—' : formatNumber(entry.gameDay),
+                      })}
                     </h3>
                     {storyArcs.length > 0 && (
                       <ArcAssignPicker
@@ -514,15 +529,15 @@ export function Diary() {
                         to={`/sessions?session=${entry.sessionDraftFor}`}
                         title={
                           entry.sessionDraftForName
-                            ? `Springe zu Session „${entry.sessionDraftForName}“`
-                            : 'Springe zur Session'
+                            ? t('diary.sessionLinkTitle', { name: entry.sessionDraftForName })
+                            : t('diary.sessionLinkFallback')
                         }
                         className="max-w-full"
                       >
                         <span className="truncate">
                           {entry.sessionDraftForName
-                            ? `Session: ${entry.sessionDraftForName}`
-                            : 'Session-Vorschlag'}
+                            ? t('diary.sessionLabel', { name: entry.sessionDraftForName })
+                            : t('diary.sessionSuggestion')}
                         </span>
                       </BadgeLink>
                     )}
@@ -531,12 +546,12 @@ export function Diary() {
                     <Button
                       variant="danger"
                       onClick={() => {
-                        if (!confirm('Eintrag wirklich löschen?')) return;
+                        if (!confirm(t('diary.deleteConfirm'))) return;
                         handleDelete(entry.id);
                       }}
                       disabled={working}
                     >
-                      Löschen
+                      {t('diary.delete')}
                     </Button>
                   </div>
                 </div>
@@ -582,7 +597,7 @@ export function Diary() {
                                 : 'text-slate-300 hover:text-[var(--text-h)]'
                             }`}
                           >
-                            Original
+                            {t('diary.original')}
                           </button>
                           <button
                             type="button"
@@ -594,11 +609,11 @@ export function Diary() {
                                 : 'text-slate-300 hover:text-[var(--text-h)]'
                             }`}
                           >
-                            KI-Version
+                            {t('diary.aiVersion')}
                           </button>
                         </div>
                       ) : (
-                        <span className="text-sm text-slate-400">Original</span>
+                        <span className="text-sm text-slate-400">{t('diary.original')}</span>
                       )}
                       <div className="flex items-center gap-2">
                         {aiEnabled && (
@@ -606,11 +621,7 @@ export function Diary() {
                             variant="secondary"
                             onClick={() => handleRewrite(entry)}
                             disabled={working || processingRewriteId === entry.id}
-                            title={
-                              entry.rewrittenFilePath
-                                ? 'Weitere Verbesserung der KI-Version anfordern'
-                                : undefined
-                            }
+                            title={entry.rewrittenFilePath ? t('diary.rewriteTooltip') : undefined}
                             icon={
                               processingRewriteId === entry.id ? (
                                 <svg
@@ -646,10 +657,10 @@ export function Diary() {
                             }
                           >
                             {processingRewriteId === entry.id
-                              ? 'Wird verarbeitet...'
+                              ? t('diary.processing')
                               : entry.rewrittenFilePath
-                                ? 'KI verbessern'
-                                : 'KI umschreiben'}
+                                ? t('diary.improve')
+                                : t('diary.rewrite')}
                           </Button>
                         )}
                       </div>
@@ -668,13 +679,14 @@ export function Diary() {
                           <input
                             type="text"
                             value={rewriteCommands[entry.id] || ''}
+                            aria-label={t('diary.commandPlaceholder')}
                             onChange={(e) =>
                               setRewriteCommands((prev) => ({
                                 ...prev,
                                 [entry.id]: e.target.value,
                               }))
                             }
-                            placeholder="Befehl für KI (z. B. formeller)"
+                            placeholder={t('diary.commandPlaceholder')}
                             className="px-2 py-1 rounded-md text-sm bg-slate-900 border border-[var(--border)] text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[var(--accent)] w-full max-w-md"
                             disabled={working || processingCommandId === entry.id}
                           />
@@ -687,7 +699,9 @@ export function Diary() {
                               !(rewriteCommands[entry.id] || '').trim()
                             }
                           >
-                            {processingCommandId === entry.id ? 'Wird verarbeitet...' : 'Ausführen'}
+                            {processingCommandId === entry.id
+                              ? t('diary.processing')
+                              : t('diary.execute')}
                           </Button>
                         </form>
                         <QuillWithEntityMention
@@ -706,9 +720,11 @@ export function Diary() {
                               quillRefOf(entry.id)
                             )
                           }
-                          modules={quillModules}
+                          modules={diaryQuillModules}
                           formats={quillFormats}
                           readOnly={working}
+                          aria-label={t('diary.editor.label')}
+                          placeholder={t('diary.editor.placeholder')}
                           className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--accent)]/30 mb-4"
                         />
                         <div className="flex items-center justify-end gap-2">
@@ -717,14 +733,14 @@ export function Diary() {
                             onClick={() => handleAcceptRewritten(entry)}
                             disabled={working || !stripHtml(getEditingContent(entry)).trim()}
                           >
-                            Übernehmen
+                            {t('diary.accept')}
                           </Button>
                           <Button
                             variant="ghost"
                             onClick={() => handleDiscardRewritten(entry)}
                             disabled={working}
                           >
-                            Verwerfen
+                            {t('diary.discard')}
                           </Button>
                         </div>
                       </div>
@@ -746,21 +762,23 @@ export function Diary() {
                               quillRefOf(entry.id)
                             )
                           }
-                          modules={quillModules}
+                          modules={diaryQuillModules}
                           formats={quillFormats}
                           readOnly={working}
+                          aria-label={t('diary.editor.label')}
+                          placeholder={t('diary.editor.placeholder')}
                           className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)] mb-2"
                         />
                       </div>
                     )}
 
                     <Button variant="ghost" onClick={() => toggleExpanded(entry.id)}>
-                      Weniger anzeigen
+                      {t('diary.showLess')}
                     </Button>
                   </>
                 ) : (
                   <Button variant="secondary" onClick={() => toggleExpanded(entry.id)}>
-                    Mehr anzeigen
+                    {t('diary.showMore')}
                   </Button>
                 )}
               </article>
@@ -777,7 +795,7 @@ export function Diary() {
         aiStatus={aiStatus}
         onClose={() => setIsModalOpen(false)}
         onCreated={(entry) => {
-          showSuccess('Eintrag erstellt.');
+          showSuccess(t('diary.created'));
           setAiStatus(null);
           addEntry(entry);
           void loadEntries();

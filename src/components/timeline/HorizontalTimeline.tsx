@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EntityMapping, StoryArc, TimelineEvent } from '../../../shared/types';
 import { useEntityMappings } from '../../hooks/useEntityMappings';
+import { useI18n } from '../../hooks/useI18n';
 import { EntityRichText } from '../EntityRichText';
 import { BadgeLink } from '../BadgeLink';
 import {
@@ -54,6 +55,7 @@ const posTransition = 'transition-[left,top,bottom,width,opacity] duration-300 e
 
 /** Session + diary badges of an event; diaryLimit caps the badges with a "+x". */
 function EventLinkBadges({ event, diaryLimit }: { event: TimelineEvent; diaryLimit?: number }) {
+  const { t, formatNumber } = useI18n();
   const diaryLinks =
     diaryLimit === undefined ? event.diaryLinks : event.diaryLinks.slice(0, diaryLimit);
   return (
@@ -64,7 +66,7 @@ function EventLinkBadges({ event, diaryLimit }: { event: TimelineEvent; diaryLim
         to={`/sessions?session=${event.sessionId}`}
         onClick={(e) => e.stopPropagation()}
       >
-        Session
+        {t('timeline.links.session')}
       </BadgeLink>
       {diaryLinks.map((link) => (
         <BadgeLink
@@ -72,14 +74,20 @@ function EventLinkBadges({ event, diaryLimit }: { event: TimelineEvent; diaryLim
           size="sm"
           variant="diary"
           to={`/tagebuch?entry=${link.entryId}`}
-          title={link.displayName ? `Tagebuch von ${link.displayName}` : 'Tagebuch öffnen'}
+          title={
+            link.displayName
+              ? t('timeline.links.diaryByUser', { name: link.displayName })
+              : t('timeline.links.openDiary')
+          }
           onClick={(e) => e.stopPropagation()}
         >
-          Tagebuch
+          {t('timeline.links.diary')}
         </BadgeLink>
       ))}
       {diaryLimit !== undefined && event.diaryLinks.length > diaryLimit && (
-        <span className="text-[10px] text-slate-500">+{event.diaryLinks.length - diaryLimit}</span>
+        <span className="text-[10px] text-slate-500">
+          +{formatNumber(event.diaryLinks.length - diaryLimit)}
+        </span>
       )}
     </>
   );
@@ -99,10 +107,11 @@ function ExtraEventList({
   mappings: EntityMapping[];
   compact?: boolean;
 }) {
+  const { t } = useI18n();
   if (extras.length === 0) return null;
   return (
     <div className="mt-2 border-t border-dashed border-violet-400/30 pt-2">
-      <p className="chapter-caps text-[10px] text-violet-300">Weitere Ereignisse an diesem Tag</p>
+      <p className="chapter-caps text-[10px] text-violet-300">{t('timeline.events.moreOnDay')}</p>
       {extras.map((extra) => (
         <div
           key={extra.id}
@@ -130,6 +139,7 @@ function ExtraEventList({
 }
 
 export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTimelineProps) {
+  const { t, formatNumber } = useI18n();
   const { mappings } = useEntityMappings();
   const stageRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -367,14 +377,16 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
         {/* Interaction legend (bottom-right corner) */}
         <div className="pointer-events-none absolute bottom-2 right-3 z-30 rounded-lg border border-[var(--border)] bg-[#0e0b21]/85 px-2.5 py-1.5 text-[10px] leading-relaxed text-slate-400 backdrop-blur-sm">
           <p>
-            <b className="text-slate-300">Mausrad / Wischen</b> · Ausschnitt bewegen
+            <b className="text-slate-300">{t('timeline.events.panGesture')}</b> ·{' '}
+            {t('timeline.events.panAction')}
           </p>
           <p>
-            <b className="text-slate-300">Strg+Mausrad / 2 Finger</b> · Zoom: Unter-Ereignisse
-            aufklappen
+            <b className="text-slate-300">{t('timeline.events.zoomGesture')}</b> ·{' '}
+            {t('timeline.events.zoomAction')}
           </p>
           <p>
-            <b className="text-slate-300">Klick</b> · Details öffnen
+            <b className="text-slate-300">{t('timeline.events.clickGesture')}</b> ·{' '}
+            {t('timeline.events.clickAction')}
           </p>
         </div>
         {/* Leyline */}
@@ -398,7 +410,14 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
           const label = chapterBoxes.get(arc.id);
           const rangeLabel =
             arc.gameDayStart !== null
-              ? `Spieltag ${arc.gameDayStart}${arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart ? `–${arc.gameDayEnd}` : ''}`
+              ? arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart
+                ? t('sessions.storyArcs.gameDayRange', {
+                    start: formatNumber(arc.gameDayStart),
+                    end: formatNumber(arc.gameDayEnd),
+                  })
+                : t('sessions.storyArcs.gameDay', {
+                    day: formatNumber(arc.gameDayStart),
+                  })
               : '';
           return (
             <div key={arc.id}>
@@ -424,7 +443,11 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
                 }}
               >
                 <span className="chapter-caps block text-[10px] leading-none text-violet-300/90">
-                  {arc.chapterNumber !== null ? `Kapitel ${arc.chapterNumber}` : 'Sonderkapitel'}
+                  {arc.chapterNumber !== null
+                    ? t('sessions.storyArcs.chapterNumber', {
+                        number: formatNumber(arc.chapterNumber),
+                      })
+                    : t('sessions.storyArcs.specialChapter')}
                 </span>
                 <span className="chapter-serif mt-0.5 block text-[13px] font-semibold leading-tight text-slate-100">
                   {arc.name}
@@ -460,7 +483,7 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
                   opacity: day >= Math.round(start) && day <= windowEnd ? 1 : 0,
                 }}
               >
-                Tag {day}
+                {t('timeline.events.day', { day: formatNumber(day) })}
               </b>
             );
           }
@@ -508,7 +531,7 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
                 />
                 <button
                   type="button"
-                  aria-label={primary.title}
+                  aria-label={t('timeline.events.eventDetails', { title: primary.title })}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (level >= 2) return; // the group frame carries the details
@@ -567,12 +590,12 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
                 >
                   <p className="chapter-caps flex items-center justify-between gap-2 text-[10px] text-violet-300">
                     <span>
-                      Spieltag {day}
-                      {isLatest ? ' · aktuell' : ''}
+                      {t('sessions.storyArcs.gameDay', { day: formatNumber(day) })}
+                      {isLatest ? ` · ${t('timeline.events.current')}` : ''}
                     </span>
                     {!open && (
                       <span
-                        title="Klicken für Details"
+                        title={t('timeline.events.clickForDetails')}
                         className="flex shrink-0 items-center text-violet-300/70"
                       >
                         <svg
@@ -615,7 +638,7 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
                               key={scene.id}
                               className="flex gap-2 py-0.5 text-[11px] text-slate-400"
                             >
-                              <b className="shrink-0 text-slate-200">{index + 1}</b>
+                              <b className="shrink-0 text-slate-200">{formatNumber(index + 1)}</b>
                               <span>
                                 <span className="font-semibold text-slate-200">{scene.title}</span>
                                 {scene.description && (
@@ -665,8 +688,8 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
                 />
                 <div className="mb-2 flex items-baseline gap-2 border-b border-dashed border-violet-400/35 pb-2">
                   <span className="chapter-caps whitespace-nowrap text-[10px] text-violet-300">
-                    Spieltag {day}
-                    {isLatest ? ' · aktuell' : ''}
+                    {t('sessions.storyArcs.gameDay', { day: formatNumber(day) })}
+                    {isLatest ? ` · ${t('timeline.events.current')}` : ''}
                   </span>
                   <span className="chapter-serif truncate text-[13px] font-semibold text-slate-100">
                     {primary.title}
@@ -682,7 +705,9 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
                       className="min-w-[140px] flex-1 rounded-lg border border-violet-400/30 border-l-2 border-l-violet-500 bg-violet-100/[.04] p-2 transition hover:border-l-violet-300 hover:bg-violet-100/[.08]"
                     >
                       <p className="text-[11px] font-semibold leading-snug text-slate-100">
-                        <small className="mr-1 font-normal text-slate-500">{index + 1}</small>
+                        <small className="mr-1 font-normal text-slate-500">
+                          {formatNumber(index + 1)}
+                        </small>
                         {scene.title}
                       </p>
                       {scene.description && (
@@ -695,7 +720,7 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
                     </div>
                   ))}
                   {primary.scenes.length === 0 && (
-                    <p className="text-[11px] text-slate-500">Keine Unter-Ereignisse erfasst.</p>
+                    <p className="text-[11px] text-slate-500">{t('timeline.events.noScenes')}</p>
                   )}
                 </div>
                 <ExtraEventList extras={extras} mappings={mappings} compact />
@@ -706,19 +731,23 @@ export function HorizontalTimeline({ events, arcs, focusEventId }: HorizontalTim
               {visible && extras.length > 0 && level === 1 && (
                 <button
                   type="button"
-                  aria-label={`Weitere Ereignisse: ${extras.map((o) => o.title).join(', ')}`}
+                  aria-label={t('timeline.events.moreEvents', {
+                    titles: extras.map((event) => event.title).join(', '),
+                  })}
                   onClick={(e) => {
                     e.stopPropagation();
                     setOpenEventId(primary.id);
                   }}
-                  title={`Weitere Ereignisse: ${extras.map((o) => o.title).join(', ')}`}
+                  title={t('timeline.events.moreEvents', {
+                    titles: extras.map((event) => event.title).join(', '),
+                  })}
                   className="absolute z-20 -translate-x-1/2 cursor-pointer rounded-full border border-violet-400/50 bg-[#221a4d] px-2 py-0.5 text-[10px] font-bold text-violet-200 shadow-lg hover:brightness-110"
                   style={{
                     left: x,
                     ...(side === 'up' ? { top: frameOffset } : { bottom: frameOffset }),
                   }}
                 >
-                  +{extras.length}
+                  +{formatNumber(extras.length)}
                 </button>
               )}
             </div>

@@ -39,6 +39,31 @@ describe('AppError', () => {
     expect(err.isOperational).toBe(true);
     expect(err.message).toBe('Missing');
   });
+
+  it('infers a stable code for a known legacy producer message', () => {
+    const err = new AppError(401, 'Falsche Anmeldedaten');
+    const res = makeRes();
+    errorHandler(err, {} as Request, res as unknown as Response, () => {});
+    expect(res.body).toMatchObject({
+      errorCode: 'auth.invalidCredentials',
+      messageKey: 'auth.invalidCredentials',
+    });
+  });
+
+  it('keeps structured message metadata for API clients', () => {
+    const err = new AppError(400, 'Zu viele Aufgaben', {
+      messageKey: 'errors.bingo.minimumTasks',
+      params: { count: 3 },
+    });
+    const res = makeRes();
+    errorHandler(err, {} as Request, res as unknown as Response, () => {});
+    expect(res.body).toEqual({
+      error: 'Zu viele Aufgaben',
+      errorCode: 'errors.bingo.minimumTasks',
+      messageKey: 'errors.bingo.minimumTasks',
+      params: { count: 3 },
+    });
+  });
 });
 
 describe('notFoundHandler', () => {
@@ -46,7 +71,11 @@ describe('notFoundHandler', () => {
     const res = makeRes();
     notFoundHandler({} as Request, res as unknown as Response);
     expect(res.statusCode).toBe(404);
-    expect(res.body).toEqual({ error: 'Not Found' });
+    expect(res.body).toEqual({
+      error: 'Not Found',
+      errorCode: 'errors.notFound',
+      messageKey: 'errors.notFound',
+    });
   });
 });
 
@@ -72,6 +101,10 @@ describe('errorHandler', () => {
     const res = makeRes();
     errorHandler(new Error('boom'), req, res as unknown as Response, next);
     expect(res.statusCode).toBe(500);
-    expect(res.body).toEqual({ error: 'Internal Server Error' });
+    expect(res.body).toEqual({
+      error: 'Internal Server Error',
+      errorCode: 'errors.internal',
+      messageKey: 'errors.internal',
+    });
   });
 });

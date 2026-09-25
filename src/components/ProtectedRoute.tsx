@@ -2,7 +2,7 @@ import { Navigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { SafeUser, VersionInfo } from '../../shared/types';
 import { Loading } from './Loading';
-import { APPS, isAppVisible } from '../lib/apps';
+import { getAppById, isAppVisible } from '../lib/apps';
 
 interface ProtectedRouteProps {
   user: SafeUser;
@@ -22,7 +22,7 @@ export function ProtectedRoute({ user, adminOnly, appId, version, children }: Pr
   }
 
   if (appId) {
-    const app = APPS.find((a) => a.id === appId);
+    const app = getAppById(appId);
     if (!app) {
       return <Navigate to="/" replace />;
     }

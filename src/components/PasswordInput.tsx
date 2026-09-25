@@ -4,10 +4,19 @@ interface PasswordInputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  showLabel?: string;
+  hideLabel?: string;
   className?: string;
 }
 
-export function PasswordInput({ value, onChange, placeholder, className }: PasswordInputProps) {
+export function PasswordInput({
+  value,
+  onChange,
+  placeholder,
+  showLabel = 'Anzeigen',
+  hideLabel = 'Verbergen',
+  className,
+}: PasswordInputProps) {
   const [visible, setVisible] = useState(false);
 
   return (
@@ -25,7 +34,7 @@ export function PasswordInput({ value, onChange, placeholder, className }: Passw
         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[var(--text-h)] text-sm"
         tabIndex={-1}
       >
-        {visible ? 'Verbergen' : 'Anzeigen'}
+        {visible ? hideLabel : showLabel}
       </button>
     </div>
   );

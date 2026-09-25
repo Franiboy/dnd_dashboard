@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
+import { useI18n } from '../../hooks/useI18n';
+import type { TranslationKey } from '../../i18n/messages';
 import {
   NOTE_COLORS,
   NO_BORDER,
@@ -28,19 +30,21 @@ interface WhiteboardToolbarProps {
   onUpdateSelected: (patch: WhiteboardPatch) => void;
 }
 
-const TOOL_BUTTONS: {
+interface ToolButton {
   id: WhiteboardTool;
-  label: string;
+  labelKey: TranslationKey;
   icon: ReactNode;
-}[] = [
+}
+
+const TOOL_BUTTONS: ToolButton[] = [
   {
     id: 'select',
-    label: 'Auswählen & verschieben',
+    labelKey: 'whiteboard.toolbar.tools.select',
     icon: <path d="M4 3l7 17 2.5-6.5L20 11z" />,
   },
   {
     id: 'note',
-    label: 'Haftnotiz',
+    labelKey: 'whiteboard.toolbar.tools.note',
     icon: (
       <>
         <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -50,7 +54,7 @@ const TOOL_BUTTONS: {
   },
   {
     id: 'text',
-    label: 'Text',
+    labelKey: 'whiteboard.toolbar.tools.text',
     icon: (
       <>
         <polyline points="4 7 4 4 20 4 20 7" />
@@ -61,34 +65,30 @@ const TOOL_BUTTONS: {
   },
 ];
 
-const DRAWING_TOOLS: {
-  id: WhiteboardTool;
-  label: string;
-  icon: ReactNode;
-}[] = [
+const DRAWING_TOOLS: ToolButton[] = [
   {
     id: 'draw',
-    label: 'Freihand',
+    labelKey: 'whiteboard.toolbar.tools.draw',
     icon: <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />,
   },
   {
     id: 'rect',
-    label: 'Rechteck',
+    labelKey: 'whiteboard.toolbar.tools.rectangle',
     icon: <rect x="4" y="5" width="16" height="14" rx="1" />,
   },
   {
     id: 'ellipse',
-    label: 'Ellipse',
+    labelKey: 'whiteboard.toolbar.tools.ellipse',
     icon: <ellipse cx="12" cy="12" rx="9" ry="7" />,
   },
   {
     id: 'triangle',
-    label: 'Dreieck',
+    labelKey: 'whiteboard.toolbar.tools.triangle',
     icon: <polygon points="12,4 21,20 3,20" />,
   },
   {
     id: 'diamond',
-    label: 'Raute',
+    labelKey: 'whiteboard.toolbar.tools.diamond',
     icon: <polygon points="12,3 21,12 12,21 3,12" />,
   },
 ];
@@ -105,7 +105,7 @@ const COMMON_PROPS = {
   height: 18,
 };
 
-/** Labeled cluster for appearance controls ("Rand", "Füllung", …). */
+/** Labeled cluster for appearance controls. */
 function ControlGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
@@ -129,6 +129,7 @@ export function WhiteboardToolbar({
   selectedElement,
   onUpdateSelected,
 }: WhiteboardToolbarProps) {
+  const { t, formatNumber } = useI18n();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const penButtonRef = useRef<HTMLButtonElement | null>(null);
   const flyoutRef = useRef<HTMLDivElement | null>(null);
@@ -216,23 +217,26 @@ export function WhiteboardToolbar({
     onStrokeWidthChange(w);
   };
 
-  const renderToolButton = (button: { id: WhiteboardTool; label: string; icon: ReactNode }) => (
-    <button
-      key={button.id}
-      type="button"
-      title={button.label}
-      aria-label={button.label}
-      onClick={() => onToolChange(button.id)}
-      onMouseDown={(e) => e.preventDefault()}
-      className={`flex h-9 w-9 cursor-pointer select-none items-center justify-center rounded-lg transition-colors ${
-        tool === button.id
-          ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
-          : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
-      }`}
-    >
-      <svg {...COMMON_PROPS}>{button.icon}</svg>
-    </button>
-  );
+  const renderToolButton = (button: ToolButton) => {
+    const label = t(button.labelKey);
+    return (
+      <button
+        key={button.id}
+        type="button"
+        title={label}
+        aria-label={label}
+        onClick={() => onToolChange(button.id)}
+        onMouseDown={(e) => e.preventDefault()}
+        className={`flex h-9 w-9 cursor-pointer select-none items-center justify-center rounded-lg transition-colors ${
+          tool === button.id
+            ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
+            : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+        }`}
+      >
+        <svg {...COMMON_PROPS}>{button.icon}</svg>
+      </button>
+    );
+  };
 
   const swatchButtonClass = (active: boolean, outlined = false) =>
     `h-6 w-6 cursor-pointer select-none rounded-full border-2 transition-transform ${
@@ -251,9 +255,12 @@ export function WhiteboardToolbar({
           key={c}
           type="button"
           aria-label={`${titleFor} ${c}`}
-          title={
-            selectedElement ? `${titleFor} des Elements ändern` : `${titleFor} für neue Elemente`
-          }
+          title={t(
+            selectedElement
+              ? 'whiteboard.toolbar.colors.changeSelected'
+              : 'whiteboard.toolbar.colors.changeNew',
+            { color: titleFor }
+          )}
           onClick={() => onPick(c)}
           onMouseDown={(e) => e.preventDefault()}
           style={{ backgroundColor: c }}
@@ -269,12 +276,12 @@ export function WhiteboardToolbar({
       {withNoBorder && (
         <button
           type="button"
-          aria-label="Kein Rahmen"
-          title={
+          aria-label={t('whiteboard.toolbar.noBorder')}
+          title={t(
             selectedElement && selectedType === 'shape'
-              ? 'Rahmen ausblenden'
-              : 'Ohne Rahmen zeichnen'
-          }
+              ? 'whiteboard.toolbar.hideBorder'
+              : 'whiteboard.toolbar.drawWithoutBorder'
+          )}
           onClick={() => handleWidth(NO_BORDER)}
           onMouseDown={(e) => e.preventDefault()}
           className={`relative h-6 w-6 cursor-pointer select-none overflow-hidden rounded-md transition-colors ${
@@ -286,29 +293,32 @@ export function WhiteboardToolbar({
           <span className="absolute inset-x-[-25%] top-1/2 h-0.5 -translate-y-1/2 rotate-45 bg-current" />
         </button>
       )}
-      {STROKE_WIDTHS.map((w) => (
-        <button
-          key={w}
-          type="button"
-          aria-label={`Strichstärke ${w}`}
-          title={`Strichstärke ${w}`}
-          onClick={() => handleWidth(w)}
-          onMouseDown={(e) => e.preventDefault()}
-          className={`flex h-6 w-6 cursor-pointer select-none items-center justify-center rounded-md text-slate-300 transition-colors ${
-            activeWidth === w
-              ? 'bg-[var(--accent)]/30 ring-1 ring-[var(--accent)]'
-              : 'hover:bg-slate-700/60 hover:text-white'
-          }`}
-        >
-          <span
-            className="rounded-full bg-current"
-            style={{
-              width: Math.min(18, w * 1.5),
-              height: Math.max(3, w * 0.75),
-            }}
-          />
-        </button>
-      ))}
+      {STROKE_WIDTHS.map((w) => {
+        const label = t('whiteboard.toolbar.strokeWidth', { width: formatNumber(w) });
+        return (
+          <button
+            key={w}
+            type="button"
+            aria-label={label}
+            title={label}
+            onClick={() => handleWidth(w)}
+            onMouseDown={(e) => e.preventDefault()}
+            className={`flex h-6 w-6 cursor-pointer select-none items-center justify-center rounded-md text-slate-300 transition-colors ${
+              activeWidth === w
+                ? 'bg-[var(--accent)]/30 ring-1 ring-[var(--accent)]'
+                : 'hover:bg-slate-700/60 hover:text-white'
+            }`}
+          >
+            <span
+              className="rounded-full bg-current"
+              style={{
+                width: Math.min(18, w * 1.5),
+                height: Math.max(3, w * 0.75),
+              }}
+            />
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -317,8 +327,8 @@ export function WhiteboardToolbar({
       ref={penButtonRef}
       key="pen"
       type="button"
-      title="Zeichnen"
-      aria-label="Zeichnen"
+      title={t('whiteboard.toolbar.drawing')}
+      aria-label={t('whiteboard.toolbar.drawing')}
       onClick={() => setDrawingToolsOpen((open) => !open)}
       onMouseDown={(e) => e.preventDefault()}
       className={`flex h-9 w-9 cursor-pointer select-none items-center justify-center rounded-lg transition-colors ${
@@ -333,29 +343,32 @@ export function WhiteboardToolbar({
     </button>
   );
 
-  const renderFlyoutItem = (item: { id: WhiteboardTool; label: string; icon: ReactNode }) => (
-    <button
-      key={item.id}
-      type="button"
-      title={item.label}
-      aria-label={item.label}
-      onClick={() => {
-        onToolChange(item.id);
-        setDrawingToolsOpen(false);
-      }}
-      onMouseDown={(e) => e.preventDefault()}
-      className={`flex cursor-pointer select-none items-center gap-2 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
-        tool === item.id
-          ? 'bg-[var(--accent)]/25 text-[var(--text-h)] ring-1 ring-[var(--accent)]'
-          : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
-      }`}
-    >
-      <span className={tool === item.id ? 'text-[var(--accent)]' : ''}>
-        <svg {...COMMON_PROPS}>{item.icon}</svg>
-      </span>
-      {item.label}
-    </button>
-  );
+  const renderFlyoutItem = (item: ToolButton) => {
+    const label = t(item.labelKey);
+    return (
+      <button
+        key={item.id}
+        type="button"
+        title={label}
+        aria-label={label}
+        onClick={() => {
+          onToolChange(item.id);
+          setDrawingToolsOpen(false);
+        }}
+        onMouseDown={(e) => e.preventDefault()}
+        className={`flex cursor-pointer select-none items-center gap-2 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+          tool === item.id
+            ? 'bg-[var(--accent)]/25 text-[var(--text-h)] ring-1 ring-[var(--accent)]'
+            : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+        }`}
+      >
+        <span className={tool === item.id ? 'text-[var(--accent)]' : ''}>
+          <svg {...COMMON_PROPS}>{item.icon}</svg>
+        </span>
+        {label}
+      </button>
+    );
+  };
 
   return (
     <div ref={rootRef}>
@@ -376,12 +389,16 @@ export function WhiteboardToolbar({
           <div className="mt-1 flex flex-col gap-3 border-t border-[var(--border)] pt-2">
             {shapeContext ? (
               <>
-                <ControlGroup label="Füllung">
+                <ControlGroup label={t('whiteboard.toolbar.groups.fill')}>
                   <div className="grid grid-cols-2 gap-1">
                     <button
                       type="button"
-                      aria-label="Keine Füllung"
-                      title={selectedElement ? 'Füllung entfernen' : 'Keine Füllung'}
+                      aria-label={t('whiteboard.toolbar.noFill')}
+                      title={t(
+                        selectedElement
+                          ? 'whiteboard.toolbar.removeFill'
+                          : 'whiteboard.toolbar.noFill'
+                      )}
                       onClick={() => handleFill(null)}
                       onMouseDown={(e) => e.preventDefault()}
                       className={`relative h-6 w-6 cursor-pointer select-none overflow-hidden rounded-full border-2 transition-transform ${
@@ -396,12 +413,12 @@ export function WhiteboardToolbar({
                       <button
                         key={c}
                         type="button"
-                        aria-label={`Füllung ${c}`}
-                        title={
+                        aria-label={`${t('whiteboard.toolbar.colors.fill')} ${c}`}
+                        title={t(
                           selectedElement
-                            ? 'Füllfarbe des Elements setzen'
-                            : 'Füllfarbe für neue Formen'
-                        }
+                            ? 'whiteboard.toolbar.colors.setSelectedFill'
+                            : 'whiteboard.toolbar.colors.setNewFill'
+                        )}
                         onClick={() => handleFill(c)}
                         onMouseDown={(e) => e.preventDefault()}
                         style={{ backgroundColor: c }}
@@ -410,24 +427,28 @@ export function WhiteboardToolbar({
                     ))}
                   </div>
                 </ControlGroup>
-                <ControlGroup label="Rand">
-                  {renderColorGrid(activeColor, handleColor, 'Rahmenfarbe')}
+                <ControlGroup label={t('whiteboard.toolbar.groups.border')}>
+                  {renderColorGrid(activeColor, handleColor, t('whiteboard.toolbar.colors.border'))}
                   {renderWidthRow(true)}
                 </ControlGroup>
               </>
             ) : drawContext ? (
-              <ControlGroup label="Strich">
-                {renderColorGrid(activeColor, handleColor, 'Strichfarbe')}
+              <ControlGroup label={t('whiteboard.toolbar.groups.stroke')}>
+                {renderColorGrid(activeColor, handleColor, t('whiteboard.toolbar.colors.stroke'))}
                 {renderWidthRow(false)}
               </ControlGroup>
             ) : textContext ? (
-              <ControlGroup label="Text">
-                {renderColorGrid(activeColor, handleColor, 'Textfarbe')}
+              <ControlGroup label={t('whiteboard.toolbar.groups.text')}>
+                {renderColorGrid(activeColor, handleColor, t('whiteboard.toolbar.colors.text'))}
               </ControlGroup>
             ) : (
               noteContext && (
-                <ControlGroup label="Hintergrund">
-                  {renderColorGrid(activeColor, handleColor, 'Hintergrundfarbe')}
+                <ControlGroup label={t('whiteboard.toolbar.groups.background')}>
+                  {renderColorGrid(
+                    activeColor,
+                    handleColor,
+                    t('whiteboard.toolbar.colors.background')
+                  )}
                 </ControlGroup>
               )
             )}
@@ -443,7 +464,7 @@ export function WhiteboardToolbar({
             className="wb-flyout-in fixed z-20 flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--panel)]/95 p-2 shadow-lg backdrop-blur"
           >
             <span className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              Zeichnen
+              {t('whiteboard.toolbar.drawing')}
             </span>
             {DRAWING_TOOLS.map(renderFlyoutItem)}
             {/* Caret connecting the flyout to the pen button */}

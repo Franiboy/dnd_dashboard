@@ -1,4 +1,8 @@
 import type { StoryArc } from '../../shared/types';
+import { createTranslator, type TranslationKey, type TFunction } from '../i18n/messages';
+
+type NumberFormatter = (value: number) => string;
+const defaultStoryArcTranslator = createTranslator('de');
 
 /** Pure filter predicate shared by all arc-filtered pages. */
 export function arcMatchesFilter(
@@ -13,20 +17,41 @@ export function arcMatchesFilter(
 /**
  * Display form of an arc: "Kapitel 2 · Name · Spieltag 3–7" (used for titles
  * and aria labels; the chapter chips show the same information visually).
+ * The legacy defaults keep this pure helper usable by callers that have not
+ * migrated to the i18n context yet.
  */
-export function formatArcLabel(arc: StoryArc): string {
-  const chapter = arc.chapterNumber !== null ? `Kapitel ${arc.chapterNumber} · ` : '';
+export function formatArcLabel(
+  arc: StoryArc,
+  t: TFunction = defaultStoryArcTranslator,
+  formatNumber: NumberFormatter = String
+): string {
+  const chapter =
+    arc.chapterNumber !== null
+      ? `${t('sessions.storyArcs.chapterNumber', {
+          number: formatNumber(arc.chapterNumber),
+        })} · `
+      : '';
   const range =
     arc.gameDayStart !== null
-      ? ` · Spieltag ${arc.gameDayStart}${arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart ? `–${arc.gameDayEnd}` : ''}`
+      ? ` · ${
+          arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart
+            ? t('sessions.storyArcs.gameDayRange', {
+                start: formatNumber(arc.gameDayStart),
+                end: formatNumber(arc.gameDayEnd),
+              })
+            : t('sessions.storyArcs.gameDay', { day: formatNumber(arc.gameDayStart) })
+        }`
       : '';
   return `${chapter}${arc.name}${range}`;
 }
 
-/** German status label of an arc ("Aktuell" / "Geplant" / "Abgeschlossen"). */
-export function arcStatusLabel(arc: StoryArc): string {
-  if (arc.status === 'active') return 'Aktuell';
-  return arc.status === 'planned' ? 'Geplant' : 'Abgeschlossen';
+export function arcStatusKey(arc: StoryArc): TranslationKey {
+  return `sessions.storyArcs.status.${arc.status}`;
+}
+
+/** Localized lifecycle label of an arc. */
+export function arcStatusLabel(arc: StoryArc, t: TFunction = defaultStoryArcTranslator): string {
+  return t(arcStatusKey(arc));
 }
 
 /**

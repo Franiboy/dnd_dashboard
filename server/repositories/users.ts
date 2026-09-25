@@ -1,6 +1,13 @@
 import bcrypt from 'bcrypt';
 import crypto from 'node:crypto';
-import { USER_ROLES, type SafeUser, type User, type UserRole } from '../../shared/types.js';
+import {
+  SUPPORTED_LANGUAGES,
+  USER_ROLES,
+  type Language,
+  type SafeUser,
+  type User,
+  type UserRole,
+} from '../../shared/types.js';
 import { db } from '../database.js';
 import { createLogger } from '../logger.js';
 import { decrypt, encrypt, isEncryptionConfigured } from '../encryption.js';
@@ -11,7 +18,7 @@ export const INITIAL_ADMIN_USERNAME = 'admin';
 
 // Column list for user rows; avoid loading encrypted Discord token columns when they are not needed.
 const USER_COLUMNS =
-  'id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, role, disabled_apps, active_person, auto_session_to_diary, auto_accept_session_diary, theme_primary, failed_login_attempts, locked_until, created_at';
+  'id, username, display_name, password_hash, discord_id, avatar_url, is_admin, is_approved, role, disabled_apps, active_person, auto_session_to_diary, auto_accept_session_diary, theme_primary, ui_language, failed_login_attempts, locked_until, created_at';
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 const MAX_FAILED_ATTEMPTS = 5;
@@ -38,6 +45,12 @@ function normalizeThemeColor(value: unknown): string | null {
   return typeof value === 'string' && /^#[0-9a-f]{6}$/.test(value) ? value : null;
 }
 
+function normalizeUiLanguage(value: unknown): Language | null {
+  return typeof value === 'string' && SUPPORTED_LANGUAGES.includes(value as Language)
+    ? (value as Language)
+    : null;
+}
+
 function rowToUser(row: any): User {
   return {
     id: row.id,
@@ -54,6 +67,7 @@ function rowToUser(row: any): User {
     autoSessionToDiary: !!row.auto_session_to_diary,
     autoAcceptSessionDiary: !!row.auto_accept_session_diary,
     themePrimary: normalizeThemeColor(row.theme_primary),
+    uiLanguage: normalizeUiLanguage(row.ui_language),
     failedLoginAttempts: row.failed_login_attempts || 0,
     lockedUntil: row.locked_until || null,
     createdAt: row.created_at,
@@ -74,6 +88,7 @@ export function toSafeUser(user: User): SafeUser {
     autoSessionToDiary: user.autoSessionToDiary,
     autoAcceptSessionDiary: user.autoAcceptSessionDiary,
     themePrimary: user.themePrimary,
+    uiLanguage: user.uiLanguage,
     isInitialAdmin: isInitialAdmin(user),
   };
 }
@@ -267,6 +282,15 @@ export function setUserTheme(id: string, themePrimary: string | null): SafeUser 
   );
 }
 
+export function setUserUiLanguage(id: string, language: Language | null): SafeUser | null {
+  const user = findUserById(id);
+  if (!user) return null;
+  db.prepare('UPDATE users SET ui_language = ? WHERE id = ?').run(language, id);
+  return toSafeUser(
+    rowToUser(db.prepare('SELECT ' + USER_COLUMNS + ' FROM users WHERE id = ?').get(id))!
+  );
+}
+
 export function updateDiscordProfile(
   id: string,
   displayName: string,
@@ -391,13 +415,22 @@ export function resetFailedLogins(user: User): void {
   );
 }
 
-export function checkLoginAllowed(
-  user: User
-): { allowed: true } | { allowed: false; reason: string } {
+export function checkLoginAllowed(user: User):
+  | { allowed: true }
+  | {
+      allowed: false;
+      /** Legacy human-readable fallback; clients should use the code and params. */
+      reason: string;
+      messageKey: 'auth.accountLocked';
+      params: { until: string };
+    } {
   if (isLocked(user)) {
+    const until = new Date(user.lockedUntil!).toISOString();
     return {
       allowed: false,
       reason: `Account ist gesperrt bis ${new Date(user.lockedUntil!).toLocaleString('de-DE')}`,
+      messageKey: 'auth.accountLocked',
+      params: { until },
     };
   }
   return { allowed: true };

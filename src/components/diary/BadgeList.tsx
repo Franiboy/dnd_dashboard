@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useEntityDialog } from '../../hooks/useEntityDialog';
+import { useI18n } from '../../hooks/useI18n';
 import { splitEntityLabel } from '../../lib/entityLabels';
 
 import type { EntityType } from '../../../shared/types';
@@ -34,6 +35,7 @@ const badgePillClass =
  */
 export function BadgeList({ items, variant }: BadgeListProps) {
   const { openEntity } = useEntityDialog();
+  const { t, formatNumber } = useI18n();
   const [expanded, setExpanded] = useState(false);
   if (items.length === 0) return null;
   return (
@@ -43,22 +45,36 @@ export function BadgeList({ items, variant }: BadgeListProps) {
       <button
         type="button"
         aria-expanded={expanded}
+        aria-label={t('diary.badges.count', {
+          count: items.length,
+          formattedCount: formatNumber(items.length),
+        })}
         onClick={() => setExpanded((value) => !value)}
         className={`md:hidden ${badgePillClass} ${badgeStyles[variant]}`}
       >
         {expanded ? '−' : '+'}
-        {items.length}
+        {formatNumber(items.length)}
       </button>
       <div className={`flex-wrap gap-2 ${expanded ? 'contents' : 'hidden md:flex'}`}>
         {items.map((item) => {
           // Items are qualified labels ("Name (Qualifier)") - parse before
           // opening so homonyms resolve to the exact entity.
           const { name, qualifier } = splitEntityLabel(item);
+          const open = () => openEntity(name, badgeTypeMap[variant], undefined, qualifier);
           return (
             <span
               key={item}
-              onClick={() => openEntity(name, badgeTypeMap[variant], undefined, qualifier)}
-              title="Öffnen"
+              role="button"
+              tabIndex={0}
+              onClick={open}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  open();
+                }
+              }}
+              aria-label={t('diary.badges.openEntity', { name: item })}
+              title={t('diary.badges.open')}
               className={`${badgePillClass} ${badgeStyles[variant]}`}
             >
               {item}

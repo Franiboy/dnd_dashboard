@@ -1,17 +1,46 @@
 import type { EntityType } from '../../shared/types';
+import { translate, type TFunction, type TranslationKey } from '../i18n/messages';
 
+export const entityTypeLabelKeys: Record<EntityType, TranslationKey> = {
+  persons: 'shared.entityTypes.persons',
+  organizations: 'shared.entityTypes.organizations',
+  locations: 'shared.entityTypes.locations',
+  items: 'shared.entityTypes.items',
+};
+
+export const entityTypePluralLabelKeys: Record<EntityType, TranslationKey> = {
+  persons: 'world.entityTypePlural.persons',
+  organizations: 'world.entityTypePlural.organizations',
+  locations: 'world.entityTypePlural.locations',
+  items: 'world.entityTypePlural.items',
+};
+
+/** Localized singular entity type label. */
+export function getEntityTypeLabel(type: EntityType, t: TFunction): string {
+  return t(entityTypeLabelKeys[type]);
+}
+
+/** Localized plural entity type label for list and confirmation copy. */
+export function getEntityTypePluralLabel(type: EntityType, t: TFunction): string {
+  return t(entityTypePluralLabelKeys[type]);
+}
+
+/**
+ * German fallback labels for non-React callers. UI components should use the
+ * translator-aware helpers above instead.
+ */
 export const typeLabels: Record<EntityType, string> = {
-  persons: 'Person',
-  organizations: 'Organisation',
-  locations: 'Ort',
-  items: 'Gegenstand',
+  persons: translate('de', entityTypeLabelKeys.persons),
+  organizations: translate('de', entityTypeLabelKeys.organizations),
+  locations: translate('de', entityTypeLabelKeys.locations),
+  items: translate('de', entityTypeLabelKeys.items),
 };
 
 export const typeAccusative: Record<EntityType, string> = {
-  persons: 'Personen',
-  organizations: 'Organisationen',
-  locations: 'Orte',
-  items: 'Gegenstände',
+  persons: translate('de', entityTypePluralLabelKeys.persons),
+  organizations: translate('de', entityTypePluralLabelKeys.organizations),
+  locations: translate('de', entityTypePluralLabelKeys.locations),
+  items: translate('de', entityTypePluralLabelKeys.items),
 };
 
 /** Display form of an entity: "Name" or "Name (Qualifier)". */

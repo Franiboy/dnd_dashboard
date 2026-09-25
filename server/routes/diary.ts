@@ -74,14 +74,16 @@ const editableArcIdSchema = z.union([z.null(), z.coerce.number().int().positive(
 function requireOwnEntry(id: number, userId: string) {
   const entry = getDiaryEntryById(id);
   if (!entry || entry.userId !== userId) {
-    throw new AppError(404, 'Eintrag nicht gefunden');
+    throw new AppError(404, 'Eintrag nicht gefunden', { messageKey: 'errors.diary.entryNotFound' });
   }
   return entry;
 }
 
 function requireAiEnabled(): void {
   if (!isAiEnabled()) {
-    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert', {
+      messageKey: 'errors.ai.disabled',
+    });
   }
 }
 
@@ -127,7 +129,7 @@ router.get('/entries/:id', (req: AuthRequest, res) => {
   log.info(`Fetching diary entry ${id}`);
   const entry = getDiaryEntryById(id);
   if (!entry || entry.userId !== user.id) {
-    throw new AppError(404, 'Eintrag nicht gefunden');
+    throw new AppError(404, 'Eintrag nicht gefunden', { messageKey: 'errors.diary.entryNotFound' });
   }
   res.json({ entry });
 });
@@ -136,12 +138,17 @@ router.post('/entries', (req: AuthRequest, res) => {
   const user = requireUser(req);
   const { content, gameDay, arcId } = parseWith(createEntrySchema, req.body);
   if (arcId !== undefined && !getStoryArc(arcId)) {
-    throw new AppError(404, 'Story Arc nicht gefunden');
+    throw new AppError(404, 'Story Arc nicht gefunden', {
+      messageKey: 'errors.storyArc.notFound',
+    });
   }
 
   const entry = createDiaryEntryOncePerDay(user.id, content, gameDay, arcId);
   if (!entry) {
-    throw new AppError(409, `Spieltag ${gameDay} existiert bereits`);
+    throw new AppError(409, `Spieltag ${gameDay} existiert bereits`, {
+      messageKey: 'errors.diary.duplicateDay',
+      params: { day: gameDay },
+    });
   }
   res.status(201).json({ entry });
 });
@@ -157,13 +164,17 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
   if (arcId !== undefined) {
     const resolved = parseWith(editableArcIdSchema, arcId);
     if (resolved !== null && !getStoryArc(resolved)) {
-      throw new AppError(404, 'Story Arc nicht gefunden');
+      throw new AppError(404, 'Story Arc nicht gefunden', {
+        messageKey: 'errors.storyArc.notFound',
+      });
     }
     updates.arcId = resolved;
   }
   if (content !== undefined) {
     if (typeof content !== 'string' || !content.trim()) {
-      throw new AppError(400, 'Inhalt darf nicht leer sein');
+      throw new AppError(400, 'Inhalt darf nicht leer sein', {
+        messageKey: 'errors.validation.contentRequired',
+      });
     }
     updates.content = content;
     if (existing.rewrittenFilePath || existing.rewrittenContent) {
@@ -178,7 +189,10 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
         ? true
         : typeof summary === 'string' && summary.length <= SUMMARY_MAX_LENGTH)
     ) {
-      throw new AppError(400, `Zusammenfassung darf maximal ${SUMMARY_MAX_LENGTH} Zeichen haben`);
+      throw new AppError(400, `Zusammenfassung darf maximal ${SUMMARY_MAX_LENGTH} Zeichen haben`, {
+        messageKey: 'errors.diary.summaryTooLong',
+        params: { max: SUMMARY_MAX_LENGTH },
+      });
     }
     updates.summary = summary;
   }
@@ -210,7 +224,9 @@ router.put('/entries/:id', (req: AuthRequest, res) => {
   const entry = updateDiaryEntry(id, updates);
   if (!entry) {
     log.error(`Failed to update entry ${id}`);
-    throw new AppError(500, 'Aktualisieren fehlgeschlagen');
+    throw new AppError(500, 'Aktualisieren fehlgeschlagen', {
+      messageKey: 'errors.diary.updateFailed',
+    });
   }
   if (existing.sessionDraftFor && updates.content) {
     recordSessionToDiaryTransfer(existing.sessionDraftFor, user.id, entry.id, true);
@@ -246,7 +262,11 @@ router.post('/entries/:id/rewrite', aiRateLimit, async (req: AuthRequest, res) =
   log.info(`Rewrite requested for entry ${id}`);
   const existing = requireOwnEntry(id, user.id);
 
-  const stopProgress = startProgressMessages(user.id, 'KI schreibt den Text um...');
+  const stopProgress = startProgressMessages(user.id, {
+    message: 'KI schreibt den Text um...',
+    messageKey: 'errors.status.rewriteStarted',
+    errorCode: 'errors.status.rewriteStarted',
+  });
   try {
     const onLog = (line: string) => notifyDiaryAiLog(user.id, line);
     log.info(
@@ -263,11 +283,17 @@ router.post('/entries/:id/rewrite', aiRateLimit, async (req: AuthRequest, res) =
     );
     if (rewritten === null) {
       log.error(`rewriteTextWithAi returned null for entry ${id}`);
-      throw new AppError(500, 'KI-Umschreiben ist fehlgeschlagen');
+      throw new AppError(500, 'KI-Umschreiben ist fehlgeschlagen', {
+        messageKey: 'errors.diary.rewriteFailed',
+      });
     }
 
     log.info(`Saving rewritten file path and session for entry ${id}`);
-    sendDiaryAiStatus(user.id, 'Ergebnis wird gespeichert...');
+    sendDiaryAiStatus(user.id, {
+      message: 'Ergebnis wird gespeichert...',
+      messageKey: 'errors.status.savingResult',
+      errorCode: 'errors.status.savingResult',
+    });
     const entry = updateDiaryEntry(id, {
       rewrittenContent: null,
       rewrittenFilePath: getRewrittenFilePath(id),
@@ -275,14 +301,19 @@ router.post('/entries/:id/rewrite', aiRateLimit, async (req: AuthRequest, res) =
     });
     if (!entry) {
       log.error(`Failed to update diary entry ${id}`);
-      throw new AppError(500, 'Speichern fehlgeschlagen');
+      throw new AppError(500, 'Speichern fehlgeschlagen', {
+        messageKey: 'common.saveFailed',
+      });
     }
     log.info(`Rewrite completed for entry ${id}`);
     res.json({ entry });
   } catch (err) {
     if (err instanceof AppError) throw err;
     log.error(`Unexpected error during rewrite of entry ${id}:`, err);
-    throw new AppError(500, 'KI-Umschreiben ist fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Umschreiben ist fehlgeschlagen', {
+      messageKey: 'errors.diary.rewriteFailed',
+      cause: err,
+    });
   } finally {
     stopProgress();
   }
@@ -295,19 +326,29 @@ router.post('/entries/:id/rewrite-command', aiRateLimit, async (req: AuthRequest
   const id = parseWith(idParamSchema, req.params.id);
   const { command } = req.body;
   if (typeof command !== 'string' || !command.trim()) {
-    throw new AppError(400, 'Befehl ist erforderlich');
+    throw new AppError(400, 'Befehl ist erforderlich', {
+      messageKey: 'errors.diary.commandRequired',
+    });
   }
 
   log.info(`Rewrite command requested for entry ${id}: ${command.trim()}`);
   const existing = requireOwnEntry(id, user.id);
   if (!existing.rewriteSessionId) {
-    throw new AppError(400, 'Keine aktive KI-Session vorhanden');
+    throw new AppError(400, 'Keine aktive KI-Session vorhanden', {
+      messageKey: 'errors.diary.noActiveAiSession',
+    });
   }
   if (!existing.rewrittenFilePath) {
-    throw new AppError(400, 'Keine KI-Version vorhanden');
+    throw new AppError(400, 'Keine KI-Version vorhanden', {
+      messageKey: 'errors.diary.noAiVersion',
+    });
   }
 
-  const stopProgress = startProgressMessages(user.id, 'KI bearbeitet den Text...');
+  const stopProgress = startProgressMessages(user.id, {
+    message: 'KI bearbeitet den Text...',
+    messageKey: 'errors.status.commandStarted',
+    errorCode: 'errors.status.commandStarted',
+  });
   try {
     const onLog = (line: string) => notifyDiaryAiLog(user.id, line);
     const { content: rewritten, sessionId } = await improveRewrittenWithCommand(
@@ -322,10 +363,16 @@ router.post('/entries/:id/rewrite-command', aiRateLimit, async (req: AuthRequest
     );
     if (rewritten === null) {
       log.error(`improveRewrittenWithCommand returned null for entry ${id}`);
-      throw new AppError(500, 'KI-Befehl ist fehlgeschlagen');
+      throw new AppError(500, 'KI-Befehl ist fehlgeschlagen', {
+        messageKey: 'errors.diary.commandFailed',
+      });
     }
 
-    sendDiaryAiStatus(user.id, 'Ergebnis wird gespeichert...');
+    sendDiaryAiStatus(user.id, {
+      message: 'Ergebnis wird gespeichert...',
+      messageKey: 'errors.status.savingResult',
+      errorCode: 'errors.status.savingResult',
+    });
     const entry = updateDiaryEntry(id, {
       rewrittenContent: null,
       rewrittenFilePath: getRewrittenFilePath(id),
@@ -333,14 +380,19 @@ router.post('/entries/:id/rewrite-command', aiRateLimit, async (req: AuthRequest
     });
     if (!entry) {
       log.error(`Failed to update diary entry ${id} after command`);
-      throw new AppError(500, 'Speichern fehlgeschlagen');
+      throw new AppError(500, 'Speichern fehlgeschlagen', {
+        messageKey: 'common.saveFailed',
+      });
     }
     log.info(`Rewrite command completed for entry ${id}`);
     res.json({ entry });
   } catch (err) {
     if (err instanceof AppError) throw err;
     log.error(`Unexpected error during rewrite command of entry ${id}:`, err);
-    throw new AppError(500, 'KI-Befehl ist fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Befehl ist fehlgeschlagen', {
+      messageKey: 'errors.diary.commandFailed',
+      cause: err,
+    });
   } finally {
     stopProgress();
   }
@@ -353,25 +405,40 @@ router.post('/entries/:id/summarize', aiRateLimit, async (req: AuthRequest, res)
   const id = parseWith(idParamSchema, req.params.id);
   const existing = requireOwnEntry(id, user.id);
 
-  const stopProgress = startProgressMessages(user.id, 'KI analysiert den Tagebucheintrag...');
+  const stopProgress = startProgressMessages(user.id, {
+    message: 'KI analysiert den Tagebucheintrag...',
+    messageKey: 'errors.status.processingStarted',
+    errorCode: 'errors.status.processingStarted',
+  });
   try {
     const onLog = (line: string) => notifyDiaryAiLog(user.id, line);
     const success = await processDiaryEntryAi(existing.id, user, undefined, onLog);
     if (!success) {
-      throw new AppError(500, 'KI-Verarbeitung ist fehlgeschlagen');
+      throw new AppError(500, 'KI-Verarbeitung ist fehlgeschlagen', {
+        messageKey: 'errors.diary.processingFailed',
+      });
     }
 
-    sendDiaryAiStatus(user.id, 'Ergebnisse werden gespeichert...');
+    sendDiaryAiStatus(user.id, {
+      message: 'Ergebnisse werden gespeichert...',
+      messageKey: 'errors.status.savingResults',
+      errorCode: 'errors.status.savingResults',
+    });
     const entry = getDiaryEntryById(id);
     if (!entry) {
-      throw new AppError(500, 'Speichern fehlgeschlagen');
+      throw new AppError(500, 'Speichern fehlgeschlagen', {
+        messageKey: 'common.saveFailed',
+      });
     }
 
     res.json({ entry });
   } catch (err) {
     if (err instanceof AppError) throw err;
     log.error(`Unexpected error during summarize of entry ${id}:`, err);
-    throw new AppError(500, 'KI-Verarbeitung ist fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Verarbeitung ist fehlgeschlagen', {
+      messageKey: 'errors.diary.processingFailed',
+      cause: err,
+    });
   } finally {
     stopProgress();
   }

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import ReactQuill from 'react-quill-new';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
-import { ensureHtml, isEmptyHtml, quillFormats, quillModules } from '../quillConfig';
+import { createQuillModules, ensureHtml, isEmptyHtml, quillFormats } from '../quillConfig';
 import { QuillWithEntityMention } from '../QuillWithEntityMention';
 import { useEntityMappings } from '../../hooks/useEntityMappings';
+import { useI18n } from '../../hooks/useI18n';
 import { useFitFontSize } from './useFitFontSize';
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -42,35 +43,60 @@ function StrokePath({ d }: { d: string }) {
  * so the full diary feature set stays available without a floating panel.
  */
 export function NoteQuillToolbarMarkup() {
+  const { t, formatNumber } = useI18n();
   return (
     <>
       <span className="ql-formats">
-        <select className="ql-header" title="Überschrift">
-          <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
+        <select
+          className="ql-header"
+          title={t('whiteboard.editor.heading')}
+          aria-label={t('whiteboard.editor.heading')}
+        >
+          <option value="1">{formatNumber(1)}</option>
+          <option value="2">{formatNumber(2)}</option>
+          <option value="3">{formatNumber(3)}</option>
           <option selected />
         </select>
-        <button type="button" className="ql-bold" title="Fett">
+        <button
+          type="button"
+          className="ql-bold"
+          title={t('whiteboard.editor.bold')}
+          aria-label={t('whiteboard.editor.bold')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="M7 4h6a4 4 0 0 1 0 8H7z" />
             <StrokePath d="M7 12h7a4 4 0 0 1 0 8H7z" />
           </svg>
         </button>
-        <button type="button" className="ql-italic" title="Kursiv">
+        <button
+          type="button"
+          className="ql-italic"
+          title={t('whiteboard.editor.italic')}
+          aria-label={t('whiteboard.editor.italic')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="M19 4h-9" />
             <StrokePath d="M14 20H5" />
             <StrokePath d="M15 4 9 20" />
           </svg>
         </button>
-        <button type="button" className="ql-underline" title="Unterstrichen">
+        <button
+          type="button"
+          className="ql-underline"
+          title={t('whiteboard.editor.underline')}
+          aria-label={t('whiteboard.editor.underline')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="M6 3v7a6 6 0 0 0 12 0V3" />
             <StrokePath d="M4 21h16" />
           </svg>
         </button>
-        <button type="button" className="ql-strike" title="Durchgestrichen">
+        <button
+          type="button"
+          className="ql-strike"
+          title={t('whiteboard.editor.strikeThrough')}
+          aria-label={t('whiteboard.editor.strikeThrough')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="M16 4H9a3 3 0 0 0-2.6 4.5" />
             <StrokePath d="M15 12a4 4 0 0 1-.5 8H6" />
@@ -79,11 +105,23 @@ export function NoteQuillToolbarMarkup() {
         </button>
       </span>
       <span className="ql-formats">
-        <select className="ql-color" title="Textfarbe" />
-        <select className="ql-background" title="Hervorheben" />
+        <select
+          className="ql-color"
+          title={t('whiteboard.editor.textColor')}
+          aria-label={t('whiteboard.editor.textColor')}
+        />
+        <select
+          className="ql-background"
+          title={t('whiteboard.editor.highlight')}
+          aria-label={t('whiteboard.editor.highlight')}
+        />
       </span>
       <span className="ql-formats">
-        <select className="ql-align" title="Ausrichtung">
+        <select
+          className="ql-align"
+          title={t('whiteboard.editor.alignment')}
+          aria-label={t('whiteboard.editor.alignment')}
+        >
           <option value="" />
           <option value="center" />
           <option value="right" />
@@ -91,7 +129,13 @@ export function NoteQuillToolbarMarkup() {
         </select>
       </span>
       <span className="ql-formats">
-        <button type="button" className="ql-list" value="ordered" title="Nummerierte Liste">
+        <button
+          type="button"
+          className="ql-list"
+          value="ordered"
+          title={t('whiteboard.editor.numberedList')}
+          aria-label={t('whiteboard.editor.numberedList')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="M9 6h12" />
             <StrokePath d="M9 12h12" />
@@ -100,7 +144,13 @@ export function NoteQuillToolbarMarkup() {
             <StrokePath d="M4 11h2v6H4z" />
           </svg>
         </button>
-        <button type="button" className="ql-list" value="bullet" title="Aufzählung">
+        <button
+          type="button"
+          className="ql-list"
+          value="bullet"
+          title={t('whiteboard.editor.bulletList')}
+          aria-label={t('whiteboard.editor.bulletList')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="M9 6h12" />
             <StrokePath d="M9 12h12" />
@@ -110,7 +160,13 @@ export function NoteQuillToolbarMarkup() {
             <circle cx="4.5" cy="18" r="1" className="ql-fill" stroke="none" />
           </svg>
         </button>
-        <button type="button" className="ql-indent" value="-1" title="Einzug verkleinern">
+        <button
+          type="button"
+          className="ql-indent"
+          value="-1"
+          title={t('whiteboard.editor.decreaseIndent')}
+          aria-label={t('whiteboard.editor.decreaseIndent')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="M10 8h11" />
             <StrokePath d="M10 16h11" />
@@ -119,7 +175,13 @@ export function NoteQuillToolbarMarkup() {
             <StrokePath d="m8 10-3 2 3 2" />
           </svg>
         </button>
-        <button type="button" className="ql-indent" value="+1" title="Einzug vergrößern">
+        <button
+          type="button"
+          className="ql-indent"
+          value="+1"
+          title={t('whiteboard.editor.increaseIndent')}
+          aria-label={t('whiteboard.editor.increaseIndent')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="M13 8h8" />
             <StrokePath d="M13 16h8" />
@@ -130,7 +192,12 @@ export function NoteQuillToolbarMarkup() {
         </button>
       </span>
       <span className="ql-formats">
-        <button type="button" className="ql-blockquote" title="Zitat">
+        <button
+          type="button"
+          className="ql-blockquote"
+          title={t('whiteboard.editor.blockquote')}
+          aria-label={t('whiteboard.editor.blockquote')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="M4 6h16" />
             <StrokePath d="M4 11h10" />
@@ -142,13 +209,23 @@ export function NoteQuillToolbarMarkup() {
             />
           </svg>
         </button>
-        <button type="button" className="ql-code-block" title="Codeblock">
+        <button
+          type="button"
+          className="ql-code-block"
+          title={t('whiteboard.editor.codeBlock')}
+          aria-label={t('whiteboard.editor.codeBlock')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="m8 7-5 5 5 5" />
             <StrokePath d="m16 7 5 5-5 5" />
           </svg>
         </button>
-        <button type="button" className="ql-link" title="Link">
+        <button
+          type="button"
+          className="ql-link"
+          title={t('whiteboard.editor.link')}
+          aria-label={t('whiteboard.editor.link')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <path
               d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"
@@ -166,7 +243,12 @@ export function NoteQuillToolbarMarkup() {
             />
           </svg>
         </button>
-        <button type="button" className="ql-table" title="Tabelle einfügen">
+        <button
+          type="button"
+          className="ql-table"
+          title={t('whiteboard.editor.insertTable')}
+          aria-label={t('whiteboard.editor.insertTable')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <rect x="3" y="4" width="18" height="16" rx="1" />
             <StrokePath d="M3 10h18" />
@@ -175,7 +257,12 @@ export function NoteQuillToolbarMarkup() {
             <StrokePath d="M15 4v16" />
           </svg>
         </button>
-        <button type="button" className="ql-clean" title="Formatierung entfernen">
+        <button
+          type="button"
+          className="ql-clean"
+          title={t('whiteboard.editor.clearFormatting')}
+          aria-label={t('whiteboard.editor.clearFormatting')}
+        >
           <svg {...STROKE_ICON_PROPS}>
             <StrokePath d="m7 21-4-4 11-11 4 4z" />
             <StrokePath d="m13 6 4 4" />
@@ -196,6 +283,7 @@ interface DockedNoteToolbarProps {
  * while a note is being edited; the inline editor connects to it by id.
  */
 export function DockedNoteToolbar({ visible }: DockedNoteToolbarProps) {
+  const { t } = useI18n();
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -211,6 +299,8 @@ export function DockedNoteToolbar({ visible }: DockedNoteToolbarProps) {
     <div
       ref={ref}
       id={NOTE_QUILL_TOOLBAR_ID}
+      role="toolbar"
+      aria-label={t('whiteboard.editor.toolbarLabel')}
       className="whiteboard-note-toolbar ql-toolbar ql-snow absolute left-1/2 top-14 z-30 -translate-x-1/2 rounded-lg border border-[var(--border)] shadow-lg backdrop-blur"
       style={{ maxWidth: 'calc(100% - 1.5rem)', touchAction: 'auto' }}
       onPointerDown={(e) => e.stopPropagation()}
@@ -240,6 +330,18 @@ export function NoteQuillEditor({
   boxWidth,
   boxHeight,
 }: NoteQuillEditorProps) {
+  const { t } = useI18n();
+  const translatedQuillModules = useMemo(() => createQuillModules(t), [t]);
+  const noteQuillModules = useMemo(
+    () => ({
+      toolbar: {
+        container: `#${NOTE_QUILL_TOOLBAR_ID}`,
+        handlers: translatedQuillModules.toolbar.handlers,
+      },
+      keyboard: translatedQuillModules.keyboard,
+    }),
+    [translatedQuillModules]
+  );
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<ReactQuill | null>(null);
   const mountedAt = useRef<number | null>(null);
@@ -347,15 +449,9 @@ export function NoteQuillEditor({
             setDraft(value);
             scheduleSave(value);
           }}
-          modules={{
-            toolbar: {
-              container: `#${NOTE_QUILL_TOOLBAR_ID}`,
-              handlers: quillModules.toolbar.handlers,
-            },
-            keyboard: quillModules.keyboard,
-          }}
+          modules={noteQuillModules}
           formats={quillFormats}
-          placeholder="Notiz schreiben…"
+          placeholder={t('whiteboard.editor.notePlaceholder')}
         />
       </div>
     </div>

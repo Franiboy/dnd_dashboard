@@ -1,9 +1,34 @@
 import { useRef, useState } from 'react';
+import type { StoryArc } from '../../shared/types';
+import { useI18n } from '../hooks/useI18n';
 import { useStoryArcs } from '../hooks/useStoryArcs';
-import { formatArcLabel } from '../lib/storyArcs';
+import type { TFunction } from '../i18n';
 import { ChapterStatusDot } from './storyArcs/ChapterStatusDot';
 import { ChapterTimeline } from './storyArcs/ChapterTimeline';
 import { useDismiss } from './storyArcs/useDismiss';
+
+function localizedArcLabel(
+  arc: StoryArc,
+  t: TFunction,
+  formatNumber: (value: number) => string
+): string {
+  const parts: string[] = [];
+  if (arc.chapterNumber !== null) {
+    parts.push(t('shell.chapterFilter.chapterNumber', { number: formatNumber(arc.chapterNumber) }));
+  }
+  parts.push(arc.name);
+  if (arc.gameDayStart !== null) {
+    parts.push(
+      arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart
+        ? t('shell.chapterFilter.gameDayRange', {
+            start: formatNumber(arc.gameDayStart),
+            end: formatNumber(arc.gameDayEnd),
+          })
+        : t('shell.chapterFilter.gameDay', { day: formatNumber(arc.gameDayStart) })
+    );
+  }
+  return parts.join(' · ');
+}
 
 /**
  * Global story-arc chapter filter, rendered in the header between the user
@@ -12,6 +37,7 @@ import { useDismiss } from './storyArcs/useDismiss';
  * anchors to the relative <header> and spans its full width).
  */
 export function StoryArcFilter() {
+  const { t, formatNumber } = useI18n();
   const { arcs, selectedArcId, setSelectedArcId } = useStoryArcs();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -21,15 +47,17 @@ export function StoryArcFilter() {
     typeof selectedArcId === 'number' ? (arcs.find((a) => a.id === selectedArcId) ?? null) : null;
 
   const triggerTitle = selectedArc
-    ? `Kapitel-Filter – ${formatArcLabel(selectedArc)}`
-    : 'Kapitel-Filter (wirkt auf Sessions, Tagebuch und Welt)';
+    ? t('shell.chapterFilter.title', { label: localizedArcLabel(selectedArc, t, formatNumber) })
+    : t('shell.chapterFilter.defaultTitle');
 
   return (
     <div ref={ref} className="flex min-w-0 max-w-full items-center">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        aria-haspopup="true"
         aria-expanded={open}
+        aria-label={triggerTitle}
         title={triggerTitle}
         className={`inline-flex min-h-11 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition hover:brightness-110 ${
           selectedArc
@@ -46,8 +74,10 @@ export function StoryArcFilter() {
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="chapter-caps whitespace-nowrap text-[10px] leading-none text-amber-200/70">
               {selectedArc.chapterNumber !== null
-                ? `Kapitel ${selectedArc.chapterNumber}`
-                : 'Kapitel'}
+                ? t('shell.chapterFilter.chapterNumber', {
+                    number: formatNumber(selectedArc.chapterNumber),
+                  })
+                : t('shell.chapterFilter.chapter')}
             </span>
             <span className="chapter-serif truncate text-[13px] font-semibold leading-none">
               {selectedArc.name}
@@ -56,14 +86,15 @@ export function StoryArcFilter() {
           </span>
         ) : selectedArcId === 'none' ? (
           <span className="chapter-serif whitespace-nowrap text-[13px] font-semibold leading-none">
-            Ohne Kapitel
+            {t('shell.chapterFilter.none')}
           </span>
         ) : (
           <span className="chapter-serif whitespace-nowrap text-[13px] font-semibold leading-none">
-            Alle Kapitel
+            {t('shell.chapterFilter.all')}
           </span>
         )}
         <svg
+          aria-hidden="true"
           xmlns="http://www.w3.org/2000/svg"
           width="12"
           height="12"
@@ -80,12 +111,17 @@ export function StoryArcFilter() {
       </button>
 
       {open && (
-        <div className="menu-pop-in absolute left-3 right-3 top-full z-50 mt-1 rounded-xl border border-amber-500/30 bg-gradient-to-b from-[#101a2e] to-[#0b1220] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.5)] sm:left-6 sm:right-6">
+        <div
+          role="region"
+          aria-label={t('shell.chapterFilter.campaign')}
+          className="menu-pop-in absolute left-3 right-3 top-full z-50 mt-1 rounded-xl border border-amber-500/30 bg-gradient-to-b from-[#101a2e] to-[#0b1220] p-4 shadow-[0_22px_44px_rgba(0,0,0,0.5)] sm:left-6 sm:right-6"
+        >
           <div className="mb-3 flex items-center justify-between gap-3">
-            <span className="chapter-caps text-[12px] text-amber-200/75">✦ Die Kampagne</span>
+            <span className="chapter-caps text-[12px] text-amber-200/75">
+              {t('shell.chapterFilter.campaign')}
+            </span>
             <span className="hidden text-xs text-slate-500 sm:inline">
-              Goldener Rahmen = ausgewählt · Grün = läuft gerade · Filter gilt für Sessions ·
-              Tagebuch · Welt
+              {t('shell.chapterFilter.legend')}
             </span>
           </div>
           <ChapterTimeline

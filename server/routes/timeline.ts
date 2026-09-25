@@ -75,9 +75,11 @@ router.post('/generate', requireAdmin, aiRateLimit, async (req: AuthRequest, res
     // SSE progress so the request stays responsive for long runs. The run
     // slot is reserved atomically inside runTimelineGenerationNow.
     const pendingCount = listSessionsPendingTimeline().length;
-    const started = runTimelineGenerationNow((progress) => sendTimelineStatus(progress.status));
+    const started = runTimelineGenerationNow((progress) => sendTimelineStatus(progress));
     if (!started) {
-      throw new AppError(409, 'Die Zeitleiste wird bereits aktualisiert');
+      throw new AppError(409, 'Die Zeitleiste wird bereits aktualisiert', {
+        messageKey: 'errors.timeline.alreadyUpdating',
+      });
     }
     log.info(`Manual timeline generation started (${pendingCount} pending sessions)`);
     res.json({ started: true, pendingCount });
@@ -90,14 +92,18 @@ router.post('/generate', requireAdmin, aiRateLimit, async (req: AuthRequest, res
   // session's events concurrently.
   const releaseTimelineRun = acquireTimelineRun();
   if (!releaseTimelineRun) {
-    throw new AppError(409, 'Die Zeitleiste wird bereits aktualisiert');
+    throw new AppError(409, 'Die Zeitleiste wird bereits aktualisiert', {
+      messageKey: 'errors.timeline.alreadyUpdating',
+    });
   }
   try {
     const ok = await generateTimelineForSession(sessionId, req.user!, undefined, (line) => {
       log.info(`Timeline AI: ${line.trim()}`);
     });
     if (!ok) {
-      throw new AppError(500, 'Aktualisierung der Zeitleiste ist fehlgeschlagen');
+      throw new AppError(500, 'Aktualisierung der Zeitleiste ist fehlgeschlagen', {
+        messageKey: 'errors.timeline.updateFailed',
+      });
     }
   } finally {
     releaseTimelineRun();
@@ -110,7 +116,9 @@ router.post('/generate', requireAdmin, aiRateLimit, async (req: AuthRequest, res
 
 function requireAiEnabled(): void {
   if (!isAiEnabled()) {
-    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert', {
+      messageKey: 'errors.ai.disabled',
+    });
   }
 }
 

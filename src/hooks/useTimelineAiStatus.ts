@@ -1,20 +1,36 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from './useI18n';
+import {
+  getServerMessagePayload,
+  isCompletedServerMessage,
+  localizeServerStatus,
+  type ServerMessageLike,
+} from '../i18n/serverMessages';
 
 /**
  * Timeline generation progress fed by the global SSE stream: a status toast
- * plus a readiness promise the manual "Zeitleiste aktualisieren" action waits
- * on so early status messages are not lost before the stream is connected
- * (same pattern as the diary AI status hook). The completion message clears
- * the status itself; `onDone` only triggers the reload.
+ * plus a readiness promise the manual "Update timeline" action waits on so
+ * early status messages are not lost before the stream is connected. The
+ * completion marker is structured and does not depend on translated text.
  */
 export function useTimelineAiStatus(onDone?: () => void): {
   aiStatus: string | null;
-  setAiStatus: (status: string | null) => void;
+  setAiStatus: (status: string | ServerMessageLike | null) => void;
   sseReadyRef: React.RefObject<Promise<void>>;
 } {
-  const [aiStatus, setAiStatus] = useState<string | null>(null);
+  const { t } = useI18n();
+  const [statusPayload, setStatusPayload] = useState<string | ServerMessageLike | null>(null);
   const sseReadyRef = useRef(Promise.resolve());
   const onDoneRef = useRef(onDone);
+  const aiStatus = useMemo(
+    () =>
+      typeof statusPayload === 'string'
+        ? statusPayload
+        : statusPayload
+          ? (localizeServerStatus(statusPayload, t) ?? null)
+          : null,
+    [statusPayload, t]
+  );
 
   useEffect(() => {
     onDoneRef.current = onDone;
@@ -32,17 +48,18 @@ export function useTimelineAiStatus(onDone?: () => void): {
     });
     es.addEventListener('log', (event) => {
       try {
-        const { message } = JSON.parse(event.data);
-        if (typeof message === 'string') {
-          if (message.includes('abgeschlossen')) {
-            setAiStatus(null);
-            onDoneRef.current?.();
-          } else {
-            setAiStatus(message);
-          }
+        const parsed = JSON.parse((event as MessageEvent<string>).data) as unknown;
+        const payload = getServerMessagePayload(parsed);
+        if (!payload) return;
+        if (isCompletedServerMessage(payload)) {
+          setStatusPayload(null);
+          onDoneRef.current?.();
+          return;
         }
+        setStatusPayload(payload);
       } catch {
-        // ignore malformed SSE messages
+        // Ignore malformed SSE messages; a later structured event can still
+        // provide a useful status.
       }
     });
     return () => {
@@ -51,5 +68,5 @@ export function useTimelineAiStatus(onDone?: () => void): {
     };
   }, []);
 
-  return { aiStatus, setAiStatus, sseReadyRef };
+  return { aiStatus, setAiStatus: setStatusPayload, sseReadyRef };
 }

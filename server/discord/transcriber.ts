@@ -12,14 +12,20 @@ import {
 } from '../repositories/recordings.js';
 import { emitSessionsUpdated, emitProgressUpdated } from './recordingsEvents.js';
 import { createLogger } from '../logger.js';
-import type { RecordingFile, RecordingSession, TranscriptionProgress } from '../../shared/types.js';
+import { getWhisperBootstrapLanguage } from '../ai/languageConfig.js';
+import { normalizeWhisperLanguage } from '../ai/promptLanguage.js';
+import { buildWhisperSpawnArgs } from './whisperArgs.js';
+import type {
+  RecordingFile,
+  RecordingSession,
+  TranscriptionProgress,
+  WhisperLanguage,
+} from '../../shared/types.js';
 
 const log = createLogger('transcriber');
 
 const WHISPER_MODEL = process.env.WHISPER_MODEL || 'base';
-const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE || 'de';
 const WHISPER_FP16 = process.env.WHISPER_FP16 === 'true';
-const WHISPER_INITIAL_PROMPT = process.env.WHISPER_INITIAL_PROMPT || undefined;
 const WHISPER_NOISE_REDUCE = process.env.WHISPER_NOISE_REDUCE !== 'false';
 function envNumber(name: string, defaultValue: number): number {
   const value = process.env[name];
@@ -245,7 +251,8 @@ function runTranscriptionScript(
   files: RecordingFile[],
   trimStart: number,
   trimEnd: number,
-  completedFiles: RecordingFile[]
+  completedFiles: RecordingFile[],
+  language: WhisperLanguage
 ): Promise<{
   transcript: string | null;
   transcriptPath: string | null;
@@ -270,40 +277,20 @@ function runTranscriptionScript(
       })),
   });
 
-  const args = [
-    '--',
-    TRANSCRIBE_SCRIPT,
-    '--manifest',
-    '-',
-    '--model',
-    WHISPER_MODEL,
-    '--language',
-    WHISPER_LANGUAGE,
-    '--fp16',
-    String(WHISPER_FP16),
-    '--trim-start',
-    String(trimStart),
-    '--noise-reduce',
-    String(WHISPER_NOISE_REDUCE),
-    '--vad-min-silence',
-    String(WHISPER_VAD_MIN_SILENCE),
-    '--vad-min-speech',
-    String(WHISPER_VAD_MIN_SPEECH),
-    '--compute-type',
-    WHISPER_COMPUTE_TYPE,
-    '--condition-on-previous',
-    String(WHISPER_CONDITION_ON_PREVIOUS),
-    '--filter-no-speech-prob',
-    String(WHISPER_FILTER_NO_SPEECH_PROB),
-  ];
-
-  if (trimEnd !== Infinity) {
-    args.push('--trim-end', String(trimEnd));
-  }
-
-  if (WHISPER_INITIAL_PROMPT) {
-    args.push('--initial-prompt', WHISPER_INITIAL_PROMPT);
-  }
+  const args = buildWhisperSpawnArgs({
+    script: TRANSCRIBE_SCRIPT,
+    model: WHISPER_MODEL,
+    language,
+    fp16: WHISPER_FP16,
+    trimStart,
+    trimEnd,
+    noiseReduce: WHISPER_NOISE_REDUCE,
+    vadMinSilence: WHISPER_VAD_MIN_SILENCE,
+    vadMinSpeech: WHISPER_VAD_MIN_SPEECH,
+    computeType: WHISPER_COMPUTE_TYPE,
+    conditionOnPrevious: WHISPER_CONDITION_ON_PREVIOUS,
+    filterNoSpeechProb: WHISPER_FILTER_NO_SPEECH_PROB,
+  });
 
   return new Promise((resolve, reject) => {
     let currentFileName = '';
@@ -437,6 +424,20 @@ export async function runTranscription(
 
   const trimStart = session.trimStartSeconds ?? 0;
   const trimEnd = session.trimEndSeconds ?? Infinity;
+  // Legacy or malformed rows have no trustworthy captured value. Resolve it
+  // once, persist it, and use the same value for every resumed child process.
+  const storedLanguage = session.transcriptionLanguage;
+  const transcriptionLanguage = normalizeWhisperLanguage(
+    storedLanguage ?? getWhisperBootstrapLanguage()
+  );
+  const languageNeedsRepair = storedLanguage == null || storedLanguage !== transcriptionLanguage;
+  if (languageNeedsRepair) {
+    updateSession(sessionId, { transcriptionLanguage });
+    // Completed files from a legacy row may have been produced with another
+    // language. Re-transcribe them together with the pending files.
+    clearFileTranscriptPathsBySession(sessionId);
+    files = files.map((file) => ({ ...file, transcriptPath: null }));
+  }
 
   if (force || trimValuesChanged(session, trimStart, trimEnd)) {
     clearFileTranscriptPathsBySession(session.id);
@@ -475,7 +476,8 @@ export async function runTranscription(
       files,
       trimStart,
       trimEnd,
-      completedFiles
+      completedFiles,
+      transcriptionLanguage
     );
 
     for (const file of result.files) {
@@ -506,10 +508,10 @@ export async function runTranscription(
     if (shuttingDown) {
       updateSession(sessionId, { status: resetStatus, error: originalError });
     } else {
-      const message = err instanceof Error ? err.message : String(err);
+      log.error(`Transcription session ${sessionId} failed:`, err);
       updateSession(sessionId, {
         status: 'error',
-        error: `Transkription fehlgeschlagen: ${message}`,
+        error: 'Transkription fehlgeschlagen',
       });
     }
     emitSessionsUpdated();

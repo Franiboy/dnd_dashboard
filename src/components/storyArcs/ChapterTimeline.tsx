@@ -1,4 +1,6 @@
 import type { StoryArc } from '../../../shared/types';
+import { useI18n } from '../../hooks/useI18n';
+import type { TFunction } from '../../i18n/messages';
 import { arcStatusLabel, sortArcsChronologically } from '../../lib/storyArcs';
 import { ChapterStatusDot } from './ChapterStatusDot';
 
@@ -12,11 +14,14 @@ interface ChapterTimelineProps {
   className?: string;
 }
 
-function rangeLabel(arc: StoryArc): string {
+function rangeLabel(arc: StoryArc, t: TFunction, formatNumber: (value: number) => string): string {
   if (arc.gameDayStart === null) return '';
-  const end =
-    arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart ? `–${arc.gameDayEnd}` : '';
-  return `Spieltag ${arc.gameDayStart}${end}`;
+  return arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart
+    ? t('sessions.storyArcs.gameDayRange', {
+        start: formatNumber(arc.gameDayStart),
+        end: formatNumber(arc.gameDayEnd),
+      })
+    : t('sessions.storyArcs.gameDay', { day: formatNumber(arc.gameDayStart) });
 }
 
 const segmentStyles = {
@@ -39,13 +44,14 @@ const pickedStyles = 'outline outline-2 outline-offset-2 outline-amber-400/90';
 
 /** Green pill marking the currently running chapter. */
 function ActiveBadge() {
+  const { t } = useI18n();
   return (
     <span
       className="chapter-caps inline-flex items-center gap-1 rounded-full border border-[var(--accent)]/50 bg-[var(--accent)]/15 px-1.5 py-px text-[9px] font-semibold text-[var(--accent)]"
-      title="Dieses Kapitel läuft gerade"
+      title={t('sessions.storyArcs.currentlyRunning')}
     >
       <span className="h-[5px] w-[5px] rounded-full bg-[var(--accent)] shadow-[0_0_6px_rgba(34,197,94,0.9)]" />
-      Aktiv
+      {t('sessions.storyArcs.activeBadge')}
     </span>
   );
 }
@@ -74,13 +80,14 @@ export function ChapterTimeline({
   mode = 'filter',
   className = '',
 }: ChapterTimelineProps) {
+  const { t, formatNumber } = useI18n();
   const sorted = sortArcsChronologically(arcs);
   const nonePicked = mode === 'assign' ? selected === null : selected === 'none';
 
   return (
     <div
       role="group"
-      aria-label="Kapitel wählen"
+      aria-label={t('sessions.storyArcs.chooseChapter')}
       className={`flex items-stretch gap-2 overflow-x-auto p-1.5 ${className}`}
     >
       {mode === 'filter' && (
@@ -92,7 +99,7 @@ export function ChapterTimeline({
             selected === null ? pickedStyles : ''
           }`}
         >
-          Alle Kapitel
+          {t('sessions.storyArcs.allChapters')}
           {selected === null && <PickedBadge />}
         </button>
       )}
@@ -107,7 +114,9 @@ export function ChapterTimeline({
           } ${selected === arc.id ? pickedStyles : ''}`}
         >
           <span className="chapter-caps block text-[9.5px] text-amber-200/60">
-            {arc.chapterNumber !== null ? `Kapitel ${arc.chapterNumber}` : 'Sonderkapitel'}
+            {arc.chapterNumber !== null
+              ? t('sessions.storyArcs.chapterNumber', { number: formatNumber(arc.chapterNumber) })
+              : t('sessions.storyArcs.specialChapter')}
           </span>
           <span
             className={`chapter-serif mt-0.5 block truncate text-[13.5px] font-semibold ${segmentNameStyles[arc.status]}`}
@@ -115,8 +124,8 @@ export function ChapterTimeline({
             {arc.name}
           </span>
           <span className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-slate-500">
-            {arc.status === 'active' ? <ActiveBadge /> : arcStatusLabel(arc)}
-            {rangeLabel(arc) ? ` · ${rangeLabel(arc)}` : ''}
+            {arc.status === 'active' ? <ActiveBadge /> : arcStatusLabel(arc, t)}
+            {rangeLabel(arc, t, formatNumber) ? ` · ${rangeLabel(arc, t, formatNumber)}` : ''}
           </span>
           {arc.status !== 'active' && (
             <span className="absolute right-2.5 top-3">
@@ -130,16 +139,20 @@ export function ChapterTimeline({
         type="button"
         onClick={() => onSelect('none')}
         aria-pressed={nonePicked}
-        title="Einträge und Sessions ohne Kapitelzuordnung (One-Shots)"
+        title={t('sessions.storyArcs.noChapterDescription')}
         className={`relative min-w-[8.5rem] flex-1 rounded-md border border-dashed border-[var(--border)] bg-transparent px-3 pb-2.5 pt-2 text-left transition hover:brightness-110 ${
           nonePicked ? pickedStyles : ''
         }`}
       >
-        <span className="chapter-caps block text-[9.5px] text-slate-500">Ohne Kapitel</span>
-        <span className="mt-0.5 block truncate text-[13.5px] font-semibold text-slate-300">
-          One-Shots
+        <span className="chapter-caps block text-[9.5px] text-slate-500">
+          {t('sessions.storyArcs.noChapter')}
         </span>
-        <span className="mt-0.5 block text-[10.5px] text-slate-600">Sonderabende</span>
+        <span className="mt-0.5 block truncate text-[13.5px] font-semibold text-slate-300">
+          {t('sessions.storyArcs.oneShots')}
+        </span>
+        <span className="mt-0.5 block text-[10.5px] text-slate-600">
+          {t('sessions.storyArcs.specialSessions')}
+        </span>
         {nonePicked && <PickedBadge />}
       </button>
     </div>

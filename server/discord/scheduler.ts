@@ -48,9 +48,8 @@ async function processPendingTranscriptions(): Promise<void> {
       await runTranscription(session.id, files);
       log.info(`[transcription scheduler] Completed session ${session.id}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
       log.error(`[transcription scheduler] Failed session ${session.id}:`, err);
-      updateSession(session.id, { status: 'error', error: message });
+      updateSession(session.id, { status: 'error', error: 'Transkription fehlgeschlagen' });
     }
   }
 }

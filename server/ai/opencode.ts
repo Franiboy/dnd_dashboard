@@ -6,6 +6,9 @@ import {
   type McpScope,
   type McpSessionUser,
 } from '../mcp/tokens.js';
+import type { Language } from '../../shared/types.js';
+import { getAiLanguage } from './languageConfig.js';
+import { AI_OUTPUT_LANGUAGE_ENV } from './promptLanguage.js';
 
 const log = createLogger('opencode');
 
@@ -36,6 +39,8 @@ export interface OpenCodeOptions {
   knowledgeTarget?: KnowledgeTarget;
   /** Scopes all context-reading MCP tools to one story arc. */
   arcId?: number;
+  /** Output language captured when this run's prompt was built. */
+  language?: Language;
   onLog?: (line: string) => void;
 }
 
@@ -44,6 +49,30 @@ export interface OpenCodeResult {
   output: string;
   exitCode: number;
   sessionId: string | null;
+}
+
+/**
+ * Builds the private environment for one model run. The language is always
+ * present, including for runs without an MCP token, so local and MCP tools
+ * observe the same configuration.
+ */
+export function buildOpenCodeEnvironment(
+  language: Language,
+  mcpToken?: string,
+  scopes?: McpScope[]
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    [AI_OUTPUT_LANGUAGE_ENV]: language,
+  };
+  if (mcpToken) {
+    env.MCP_SESSION_TOKEN = mcpToken;
+    env.MCP_SCOPES = scopes?.join(',') ?? '';
+  } else {
+    delete env.MCP_SESSION_TOKEN;
+    delete env.MCP_SCOPES;
+  }
+  return env;
 }
 
 export function runOpenCode({
@@ -57,8 +86,10 @@ export function runOpenCode({
   recordingSessionId,
   knowledgeTarget,
   arcId,
+  language,
   onLog,
 }: OpenCodeOptions): Promise<OpenCodeResult> {
+  const runLanguage = language ?? getAiLanguage();
   if (prompt.length > 50_000) {
     log.warn(
       `Prompt is very long (${prompt.length} chars) and is passed as a CLI argument; read large content via MCP tools instead`
@@ -107,9 +138,7 @@ export function runOpenCode({
     const child = spawn(bin, args, {
       cwd: worktreePath,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: mcpToken
-        ? { ...process.env, MCP_SESSION_TOKEN: mcpToken, MCP_SCOPES: scopes?.join(',') }
-        : process.env,
+      env: buildOpenCodeEnvironment(runLanguage, mcpToken, scopes),
     });
 
     let output = '';

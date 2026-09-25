@@ -1,10 +1,81 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useError } from '../hooks/useError';
-import { AuthContext } from '../hooks/useAuth';
+import { AuthContext, type AuthCallbackResult } from '../hooks/useAuth';
 import type { SafeUser } from '../../shared/types';
+import { getBrowserLanguage, getEffectiveLanguage, useStoredLanguage } from '../i18n/language';
+import { createTranslator, type TranslationKey } from '../i18n/messages';
+import {
+  getServerMessageCode,
+  getServerMessageKey,
+  localizeServerMessage,
+  type ServerMessageLike,
+} from '../i18n/serverMessages';
 
 interface AuthProviderProps {
   children: ReactNode;
+}
+
+type AuthErrorState =
+  | { kind: 'key'; key: TranslationKey; params?: ServerMessageLike['params'] }
+  | { kind: 'message'; message: string };
+
+interface AuthErrorResponse {
+  error?: string;
+  message?: string;
+  errorCode?: string;
+  messageKey?: string;
+  params?: ServerMessageLike['params'];
+}
+
+function responsePayload(data: AuthErrorResponse): ServerMessageLike | null {
+  if (
+    typeof data.error !== 'string' &&
+    typeof data.message !== 'string' &&
+    typeof data.errorCode !== 'string' &&
+    typeof data.messageKey !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    message: data.message ?? data.error,
+    error: data.error ?? data.message,
+    errorCode: data.errorCode,
+    messageKey: data.messageKey,
+    params: data.params,
+  };
+}
+
+function makeErrorState(
+  message: string | ServerMessageLike | null | undefined,
+  fallbackKey: TranslationKey
+): AuthErrorState {
+  if (!message) return { kind: 'key', key: fallbackKey };
+  if (typeof message === 'string') {
+    const key = getServerMessageKey(message);
+    return key ? { kind: 'key', key } : { kind: 'message', message };
+  }
+  const key = getServerMessageKey(message);
+  if (key) return { kind: 'key', key, params: message.params };
+  // A structured code is intentionally not guessed from its fallback text.
+  if (getServerMessageCode(message))
+    return { kind: 'key', key: fallbackKey, params: message.params };
+  return typeof message.message === 'string'
+    ? { kind: 'message', message: message.message }
+    : { kind: 'key', key: fallbackKey };
+}
+
+function resolveError(
+  state: AuthErrorState | null,
+  t: ReturnType<typeof createTranslator>
+): string | null {
+  if (!state) return null;
+  if (state.kind === 'message') return state.message;
+  return (
+    localizeServerMessage({ messageKey: state.key, params: state.params }, t, {
+      fallbackKey: state.key,
+      fallback: t(state.key, state.params),
+    }) ?? t(state.key, state.params)
+  );
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
@@ -12,8 +83,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<SafeUser | null>(null);
   const [viewAsUser, setViewAsUser] = useState<SafeUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [errorState, setErrorState] = useState<AuthErrorState | null>(null);
   const effectiveUser = viewAsUser ?? user;
+  // I18nProvider is nested below this provider, so auth errors use the same
+  // shared language resolver until that context is available to descendants.
+  const storedLanguage = useStoredLanguage();
+  const language = getEffectiveLanguage(viewAsUser, user, storedLanguage ?? getBrowserLanguage());
+  const t = useMemo(() => createTranslator(language), [language]);
+  const error = resolveError(errorState, t);
+
+  const setError = useCallback((message: string | null) => {
+    if (!message) {
+      setErrorState(null);
+      return;
+    }
+    setErrorState(makeErrorState(message, 'auth.loginFailed'));
+  }, []);
+
+  const reportError = useCallback(
+    (
+      message: string | ServerMessageLike | null | undefined,
+      fallbackKey: TranslationKey
+    ): string => {
+      const next = makeErrorState(message, fallbackKey);
+      const resolved = resolveError(next, t) ?? t(fallbackKey);
+      setErrorState(next);
+      showError(resolved);
+      return resolved;
+    },
+    [showError, t]
+  );
 
   const loginAdmin = useCallback(
     async (username: string, password: string): Promise<boolean> => {
@@ -24,29 +123,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
           body: JSON.stringify({ username, password }),
           credentials: 'include',
         });
-        const data = await res.json();
-        if (res.ok) {
+        const data = (await res.json()) as AuthErrorResponse & { user?: SafeUser };
+        if (res.ok && data.user) {
           setUser(data.user);
-          setError(null);
+          setErrorState(null);
           return true;
         }
-        setError(data.error || 'Login fehlgeschlagen');
-        showError(data.error || 'Login fehlgeschlagen');
+        reportError(responsePayload(data), 'auth.loginFailed');
         return false;
       } catch {
-        setError('Server nicht erreichbar');
-        showError('Server nicht erreichbar');
+        reportError(null, 'common.serverUnavailable');
         return false;
       }
     },
-    [showError]
+    [reportError]
   );
 
   const handleDiscordCallback = useCallback(
-    async (
-      code: string,
-      state: string
-    ): Promise<{ ok: boolean; pending?: boolean; message?: string }> => {
+    async (code: string, state: string): Promise<AuthCallbackResult> => {
       try {
         const res = await fetch('/api/auth/discord/callback', {
           method: 'POST',
@@ -54,53 +148,63 @@ export function AuthProvider({ children }: AuthProviderProps) {
           body: JSON.stringify({ code, state }),
           credentials: 'include',
         });
-        const data = await res.json();
-        if (res.ok) {
+        const data = (await res.json()) as AuthErrorResponse & { user?: SafeUser };
+        if (res.ok && data.user) {
           setUser(data.user);
-          setError(null);
+          setErrorState(null);
           return { ok: true };
         }
         if (res.status === 403 && data.user) {
           setUser(data.user);
+          const pendingPayload = responsePayload(data);
+          const pendingError = makeErrorState(pendingPayload, 'auth.accountPending');
+          setErrorState(pendingError);
           return {
             ok: false,
             pending: true,
-            message: data.error || 'Account wurde noch nicht freigegeben',
+            message: resolveError(pendingError, t) ?? t('auth.accountPending'),
+            ...(getServerMessageCode(pendingPayload)
+              ? { errorCode: getServerMessageCode(pendingPayload) }
+              : {}),
+            ...(getServerMessageKey(pendingPayload)
+              ? { messageKey: getServerMessageKey(pendingPayload) }
+              : {}),
+            ...(pendingPayload?.params !== undefined ? { params: pendingPayload.params } : {}),
           };
         }
-        const message = data.error || 'Discord Login fehlgeschlagen';
-        setError(message);
-        showError(message);
-        return { ok: false, message };
+        const payload = responsePayload(data);
+        return {
+          ok: false,
+          message: reportError(payload, 'auth.discordLoginFailed'),
+          ...(getServerMessageCode(payload) ? { errorCode: getServerMessageCode(payload) } : {}),
+          ...(getServerMessageKey(payload) ? { messageKey: getServerMessageKey(payload) } : {}),
+          ...(payload?.params !== undefined ? { params: payload.params } : {}),
+        };
       } catch {
-        setError('Server nicht erreichbar');
-        showError('Server nicht erreichbar');
-        return { ok: false };
+        return { ok: false, message: reportError(null, 'common.serverUnavailable') };
       }
     },
-    [showError]
+    [reportError, t]
   );
 
   const startDiscordLogin = useCallback(async (): Promise<string | null> => {
     try {
       const res = await fetch('/api/auth/discord', { credentials: 'include' });
-      const data = await res.json();
-      if (res.ok) return data.url;
-      setError(data.error || 'Discord Login nicht verfügbar');
-      showError(data.error || 'Discord Login nicht verfügbar');
+      const data = (await res.json()) as AuthErrorResponse & { url?: string };
+      if (res.ok && data.url) return data.url;
+      reportError(responsePayload(data), 'auth.discordLoginUnavailable');
       return null;
     } catch {
-      setError('Server nicht erreichbar');
-      showError('Server nicht erreichbar');
+      reportError(null, 'common.serverUnavailable');
       return null;
     }
-  }, [showError]);
+  }, [reportError]);
 
   const logout = useCallback(async () => {
     await fetch('/api/logout', { method: 'POST', credentials: 'include' });
     setUser(null);
     setViewAsUser(null);
-    setError(null);
+    setErrorState(null);
   }, []);
 
   const updateUser = useCallback((updates: Partial<SafeUser>) => {
@@ -111,7 +215,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const res = await fetch('/api/me', { credentials: 'include' });
       if (!res.ok) return false;
-      const data = await res.json();
+      const data = (await res.json()) as { user?: SafeUser & { isApproved: boolean } };
       if (data.user?.isApproved) {
         setUser(data.user);
         return true;
@@ -126,9 +230,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const res = await fetch('/api/me', { credentials: 'include' });
       if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
-        setError(null);
+        const data = (await res.json()) as { user?: SafeUser };
+        setUser(data.user ?? null);
+        setErrorState(null);
         setLoading(false);
         return;
       }
@@ -150,9 +254,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
             credentials: 'include',
           });
           if (devRes.ok) {
-            const data = await devRes.json();
-            setUser(data.user);
-            setError(null);
+            const data = (await devRes.json()) as { user?: SafeUser };
+            setUser(data.user ?? null);
+            setErrorState(null);
           }
         }
       }
@@ -198,6 +302,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       logout,
       checkApproved,
       updateUser,
+      setError,
     ]
   );
 

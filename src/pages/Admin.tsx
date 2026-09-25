@@ -2,19 +2,35 @@ import { useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import { useError } from '../hooks/useError';
+import { useI18n } from '../hooks/useI18n';
+import {
+  getServerMessageKey,
+  getServerMessageParams,
+  type ServerMessageLike,
+} from '../i18n/serverMessages';
+import type { TFunction } from '../i18n/messages';
 import { ActionMenu, type ActionMenuItem } from '../components/ActionMenu';
 import { Loading } from '../components/Loading';
 import { LogPanel } from '../components/LogPanel';
 import { Modal } from '../components/Modal';
 import { AppIcon } from '../components/AppIcon';
-import { APPS } from '../lib/apps';
+import { APPS, getAppUiText } from '../lib/apps';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
-import type { RecordingChannel, SafeUser, UserRole } from '../../shared/types';
+import type {
+  Language,
+  RecordingChannel,
+  SafeUser,
+  ServerMessageParams,
+  UserRole,
+} from '../../shared/types';
 
-const USER_ROLE_LABELS: Record<UserRole, string> = {
-  guest: 'Gast',
-  dungeon_master: 'Dungeon Master',
-  player: 'Spieler',
+const USER_ROLE_MESSAGE_KEYS: Record<
+  UserRole,
+  'common.roles.guest' | 'common.roles.dungeonMaster' | 'common.roles.player'
+> = {
+  guest: 'common.roles.guest',
+  dungeon_master: 'common.roles.dungeonMaster',
+  player: 'common.roles.player',
 };
 
 const USER_ROLE_OPTIONS: UserRole[] = ['guest', 'dungeon_master', 'player'];
@@ -37,7 +53,22 @@ interface JobStatus {
   bingoSuggestion: boolean;
 }
 
+interface JobTriggerResponse {
+  started: boolean;
+  message?: string;
+  messageKey?: string | null;
+  errorCode?: string | null;
+  params?: ServerMessageParams;
+}
+
+function localizeJobMessage(payload: ServerMessageLike, t: TFunction): string | null {
+  const key = getServerMessageKey(payload);
+  return key ? t(key, getServerMessageParams(payload)) : null;
+}
+
 function JobStatusBadge({ running }: { running: boolean }) {
+  const { t } = useI18n();
+
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -54,7 +85,7 @@ function JobStatusBadge({ running }: { running: boolean }) {
           }`}
         />
       </span>
-      {running ? 'Läuft' : 'Bereit'}
+      {running ? t('admin.jobs.status.running') : t('admin.jobs.status.ready')}
     </span>
   );
 }
@@ -67,6 +98,7 @@ export function Admin({ currentUser }: AdminProps) {
   const { request } = useApi();
   const { setViewAsUser } = useAuth();
   const { showError } = useError();
+  const { t, formatNumber } = useI18n();
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [persons, setPersons] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,6 +107,12 @@ export function Admin({ currentUser }: AdminProps) {
   const [managingAppsFor, setManagingAppsFor] = useState<SafeUser | null>(null);
   const [aiModels, setAiModels] = useState<AiModelConfig | null>(null);
   const [aiSaveState, setAiSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [aiLanguage, setAiLanguage] = useState<Language | null>(null);
+  const [aiLanguageLoading, setAiLanguageLoading] = useState(true);
+  const [aiLanguageError, setAiLanguageError] = useState<string | null>(null);
+  const [aiLanguageSaveState, setAiLanguageSaveState] = useState<'idle' | 'saving' | 'saved'>(
+    'idle'
+  );
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus | null>(null);
   const [recordingChannels, setRecordingChannels] = useState<RecordingChannel[]>([]);
@@ -87,6 +125,11 @@ export function Admin({ currentUser }: AdminProps) {
   const [transcriptionJobMessage, setTranscriptionJobMessage] = useState<string | null>(null);
   const [bingoSuggestionLoading, setBingoSuggestionLoading] = useState(false);
   const [bingoSuggestionMessage, setBingoSuggestionMessage] = useState<string | null>(null);
+  const aiLanguageSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const aiLanguageSelectionIdRef = useRef(0);
+  const latestAiLanguageSelectionRef = useRef<{ id: number; language: Language } | null>(null);
+  const desiredAiLanguageRef = useRef<Language | null>(null);
+  const confirmedAiLanguageRef = useRef<Language | null>(null);
 
   const isActionLoading = (id: string, endpoint: string) =>
     actionLoading?.id === id && actionLoading?.endpoint === endpoint;
@@ -147,16 +190,53 @@ export function Admin({ currentUser }: AdminProps) {
     if (data) setAiModels(data);
   };
 
+  const loadAiLanguage = async () => {
+    setAiLanguageLoading(true);
+    setAiLanguageError(null);
+    try {
+      const { data, error: languageError } = await request<{ language: Language }>(
+        '/api/admin/ai/language',
+        undefined,
+        false
+      );
+      if (data) {
+        confirmedAiLanguageRef.current = data.language;
+        if (latestAiLanguageSelectionRef.current === null) {
+          desiredAiLanguageRef.current = data.language;
+          setAiLanguage(data.language);
+        }
+        setAiLanguageLoading(false);
+        return;
+      }
+      if (languageError) {
+        setAiLanguageError(languageError);
+        setError(languageError);
+        setAiLanguageLoading(false);
+        return;
+      }
+    } catch {
+      // The inline error below keeps the loading state consistent.
+    }
+
+    const message = t('admin.aiLanguageLoadError');
+    setAiLanguageError(message);
+    setError(message);
+    setAiLanguageLoading(false);
+  };
+
   useEffect(() => {
-    loadAiModels();
+    void loadAiModels();
+    void loadAiLanguage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const aiSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiLanguageSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
     () => () => {
       if (aiSavedTimerRef.current) clearTimeout(aiSavedTimerRef.current);
+      if (aiLanguageSavedTimerRef.current) clearTimeout(aiLanguageSavedTimerRef.current);
     },
     []
   );
@@ -183,6 +263,63 @@ export function Admin({ currentUser }: AdminProps) {
       setError(saveError);
       setAiSaveState('idle');
     }
+  };
+
+  const selectAiLanguage = async (language: Language) => {
+    if (desiredAiLanguageRef.current === language) return;
+
+    const selectionId = ++aiLanguageSelectionIdRef.current;
+    latestAiLanguageSelectionRef.current = { id: selectionId, language };
+    desiredAiLanguageRef.current = language;
+    if (aiLanguageSavedTimerRef.current) {
+      clearTimeout(aiLanguageSavedTimerRef.current);
+      aiLanguageSavedTimerRef.current = null;
+    }
+    setAiLanguage(language);
+    setAiLanguageSaveState('saving');
+    setAiLanguageError(null);
+
+    const save = async () => {
+      let data: { language: Language } | null = null;
+      let languageError: string | null = null;
+      try {
+        const result = await request<{ language: Language }>(
+          '/api/admin/ai/language',
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ language }),
+          },
+          false
+        );
+        data = result.data;
+        languageError = result.error;
+      } catch {
+        // The rollback below keeps the selector and status consistent.
+      }
+
+      if (data) {
+        confirmedAiLanguageRef.current = data.language;
+        if (latestAiLanguageSelectionRef.current?.id === selectionId) {
+          setAiLanguage(data.language);
+          setAiLanguageSaveState('saved');
+          if (aiLanguageSavedTimerRef.current) clearTimeout(aiLanguageSavedTimerRef.current);
+          aiLanguageSavedTimerRef.current = setTimeout(() => setAiLanguageSaveState('idle'), 2000);
+        }
+      } else if (latestAiLanguageSelectionRef.current?.id === selectionId) {
+        const confirmedLanguage = confirmedAiLanguageRef.current;
+        setAiLanguage(confirmedLanguage);
+        desiredAiLanguageRef.current = confirmedLanguage;
+        setAiLanguageSaveState('idle');
+        const message = languageError ?? t('admin.aiLanguageSaveError');
+        setAiLanguageError(message);
+        setError(message);
+      }
+    };
+
+    const queuedSave = aiLanguageSaveQueueRef.current.then(save, save);
+    aiLanguageSaveQueueRef.current = queuedSave.catch(() => undefined);
+    await queuedSave;
   };
 
   const loadRecordingConfig = async () => {
@@ -225,16 +362,34 @@ export function Admin({ currentUser }: AdminProps) {
   ) => {
     setLoading(true);
     setMessage(null);
-    const { data, error: jobError } = await request<{
-      started: boolean;
-      message?: string;
-      error?: string;
-    }>(`/api/admin/${endpoint}`, { method: 'POST' }, false);
+    const result = await request<JobTriggerResponse>(
+      `/api/admin/${endpoint}`,
+      { method: 'POST' },
+      false
+    );
     setLoading(false);
-    if (data?.message) {
-      setMessage(data.message);
-    } else if (jobError) {
-      setMessage(jobError);
+    if (result.data) {
+      const localizedMessage = localizeJobMessage(
+        {
+          message: result.data.message,
+          messageKey: result.data.messageKey,
+          errorCode: result.data.errorCode,
+          params: result.data.params,
+        },
+        t
+      );
+      setMessage(localizedMessage ?? result.data.message ?? t('common.unknownError'));
+    } else if (result.error) {
+      const localizedMessage = localizeJobMessage(
+        {
+          message: result.error,
+          messageKey: result.messageKey,
+          errorCode: result.errorCode,
+          params: result.errorParams ?? result.params,
+        },
+        t
+      );
+      setMessage(localizedMessage ?? result.error);
     }
   };
 
@@ -251,7 +406,7 @@ export function Admin({ currentUser }: AdminProps) {
   };
 
   const deleteU = async (id: string) => {
-    if (!confirm('Wirklich löschen?')) return;
+    if (!confirm(t('admin.users.confirmDelete'))) return;
     setActionLoading({ id, endpoint: '/delete' });
     const { error: deleteError } = await request(`/api/admin/users/${id}`, {
       method: 'DELETE',
@@ -270,7 +425,7 @@ export function Admin({ currentUser }: AdminProps) {
     if (u.isApproved) {
       items.push({
         id: 'view-as',
-        label: 'Ansicht simulieren',
+        label: t('common.simulation'),
         onSelect: () => setViewAsUser(u),
       });
     }
@@ -279,23 +434,27 @@ export function Admin({ currentUser }: AdminProps) {
       id: 'toggle-admin',
       label: isActionLoading(u.id, '/admin')
         ? u.isAdmin
-          ? 'Admin entfernen...'
-          : 'Zum Admin...'
+          ? t('admin.users.menu.removeAdminLoading')
+          : t('admin.users.menu.makeAdminLoading')
         : u.isAdmin
-          ? 'Admin entfernen'
-          : 'Zum Admin',
+          ? t('admin.users.menu.removeAdmin')
+          : t('admin.users.menu.makeAdmin'),
       disabled: isActionLoading(u.id, '/admin'),
       onSelect: () => action(u.id, '/admin', { isAdmin: !u.isAdmin }),
     });
     items.push({
       id: 'apps',
-      label: isActionLoading(u.id, '/disabled-apps') ? 'Apps...' : 'Apps',
+      label: isActionLoading(u.id, '/disabled-apps')
+        ? t('admin.users.menu.appsLoading')
+        : t('admin.users.menu.apps'),
       disabled: isActionLoading(u.id, '/disabled-apps'),
       onSelect: () => setManagingAppsFor(u),
     });
     items.push({
       id: 'delete',
-      label: isActionLoading(u.id, '/delete') ? 'Löschen...' : 'Löschen',
+      label: isActionLoading(u.id, '/delete')
+        ? t('admin.users.menu.deleteLoading')
+        : t('admin.users.menu.delete'),
       danger: true,
       disabled: isActionLoading(u.id, '/delete'),
       onSelect: () => deleteU(u.id),
@@ -324,7 +483,7 @@ export function Admin({ currentUser }: AdminProps) {
     return (
       <Modal
         isOpen
-        title={`Apps für ${user.displayName}`}
+        title={t('admin.appAccess.title', { name: user.displayName })}
         onClose={onClose}
         contentClassName="max-h-[65vh] overflow-y-auto"
         actions={
@@ -334,7 +493,7 @@ export function Admin({ currentUser }: AdminProps) {
               onClick={onClose}
               className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition"
             >
-              Abbrechen
+              {t('shared.cancel')}
             </button>
             <button
               type="button"
@@ -342,7 +501,7 @@ export function Admin({ currentUser }: AdminProps) {
               disabled={isActionLoading(user.id, '/disabled-apps')}
               className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
             >
-              Speichern
+              {t('admin.appAccess.save')}
             </button>
           </>
         }
@@ -350,7 +509,10 @@ export function Admin({ currentUser }: AdminProps) {
         <div className="space-y-4">
           <div className="flex items-center justify-between text-sm">
             <span className="text-slate-400">
-              {enabledCount} von {disableableApps.length} Apps aktiv
+              {t('admin.appAccess.activeCount', {
+                enabled: formatNumber(enabledCount),
+                total: formatNumber(disableableApps.length),
+              })}
             </span>
             <div className="flex gap-2">
               <button
@@ -358,14 +520,14 @@ export function Admin({ currentUser }: AdminProps) {
                 onClick={enableAll}
                 className="px-2 py-1 rounded text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition"
               >
-                Alle aktivieren
+                {t('admin.appAccess.enableAll')}
               </button>
               <button
                 type="button"
                 onClick={disableAll}
                 className="px-2 py-1 rounded text-xs font-medium text-red-400 hover:bg-red-500/10 transition"
               >
-                Alle deaktivieren
+                {t('admin.appAccess.disableAll')}
               </button>
             </div>
           </div>
@@ -393,7 +555,9 @@ export function Admin({ currentUser }: AdminProps) {
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold text-[var(--text-h)]">{app.label}</span>
+                      <span className="font-semibold text-[var(--text-h)]">
+                        {getAppUiText(app, t).label}
+                      </span>
                       <span
                         className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
                           isDisabled
@@ -401,13 +565,13 @@ export function Admin({ currentUser }: AdminProps) {
                             : 'bg-[var(--accent)]/20 text-[var(--accent)]'
                         }`}
                       >
-                        {isDisabled ? 'Deaktiviert' : 'Aktiv'}
+                        {isDisabled ? t('admin.appAccess.disabled') : t('admin.appAccess.active')}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 mt-1">
                       {isDisabled
-                        ? 'Klicke, um den Zugriff auf diese App freizugeben.'
-                        : 'Klicke, um den Zugriff auf diese App zu sperren.'}
+                        ? t('admin.appAccess.enableHint')
+                        : t('admin.appAccess.disableHint')}
                     </p>
                   </div>
                 </button>
@@ -419,12 +583,17 @@ export function Admin({ currentUser }: AdminProps) {
     );
   }
 
+  const monitoredChannelName =
+    recordingStatus?.monitoredChannel?.channelName ??
+    recordingStatus?.monitoredChannel?.channelId ??
+    t('admin.sessions.unknownChannel');
+
   return (
     <div className="min-h-full p-4 sm:p-6">
       <SideDrawer side="right">
         <SideDrawerItem
           id="jobs"
-          label="Hintergrundjobs"
+          label={t('admin.jobs.title')}
           icon={
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -445,17 +614,17 @@ export function Admin({ currentUser }: AdminProps) {
           <div className="space-y-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-[var(--text-h)]">Nightly-Job</h2>
+                <h2 className="text-lg font-semibold text-[var(--text-h)]">
+                  {t('admin.jobs.nightly.title')}
+                </h2>
                 <JobStatusBadge running={jobStatus?.nightly === true} />
               </div>
-              <p className="text-sm text-slate-400">
-                Startet alle Schritte des nächtlichen Hintergrundjobs manuell in dieser Reihenfolge:
-              </p>
+              <p className="text-sm text-slate-400">{t('admin.jobs.nightly.description')}</p>
               <ol className="text-sm text-slate-300 list-decimal list-inside space-y-1">
-                <li>Sessions: Transkripte verbessern, Zusammenfassungen & Entitäten erzeugen</li>
-                <li>Sessions ins Tagebuch überführen</li>
-                <li>Tagebucheinträge zusammenfassen</li>
-                <li>Entitäts-Summaries aktualisieren</li>
+                <li>{t('admin.jobs.nightly.stepSessions')}</li>
+                <li>{t('admin.jobs.nightly.stepDiary')}</li>
+                <li>{t('admin.jobs.nightly.stepSummaries')}</li>
+                <li>{t('admin.jobs.nightly.stepEntities')}</li>
               </ol>
               <button
                 type="button"
@@ -468,9 +637,9 @@ export function Admin({ currentUser }: AdminProps) {
                 {nightlyJobLoading ? (
                   <Loading text="" size="sm" />
                 ) : jobStatus?.nightly ? (
-                  'Läuft bereits...'
+                  t('admin.jobs.status.alreadyRunning')
                 ) : (
-                  'Nightly-Job starten'
+                  t('admin.jobs.nightly.start')
                 )}
               </button>
               {nightlyJobMessage && (
@@ -480,13 +649,12 @@ export function Admin({ currentUser }: AdminProps) {
 
             <div className="border-t border-[var(--border)] pt-4 space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-[var(--text-h)]">Transkription</h2>
+                <h2 className="text-lg font-semibold text-[var(--text-h)]">
+                  {t('admin.jobs.transcription.title')}
+                </h2>
                 <JobStatusBadge running={jobStatus?.transcription === true} />
               </div>
-              <p className="text-sm text-slate-400">
-                Verarbeitet alle Sessions im Status „pending_transcription“ manuell. Dies läuft
-                normalerweise separat und unabhängig vom Nightly-Job.
-              </p>
+              <p className="text-sm text-slate-400">{t('admin.jobs.transcription.description')}</p>
               <button
                 type="button"
                 onClick={() =>
@@ -502,9 +670,9 @@ export function Admin({ currentUser }: AdminProps) {
                 {transcriptionJobLoading ? (
                   <Loading text="" size="sm" />
                 ) : jobStatus?.transcription ? (
-                  'Läuft bereits...'
+                  t('admin.jobs.status.alreadyRunning')
                 ) : (
-                  'Transkription starten'
+                  t('admin.jobs.transcription.start')
                 )}
               </button>
               {transcriptionJobMessage && (
@@ -514,13 +682,13 @@ export function Admin({ currentUser }: AdminProps) {
 
             <div className="border-t border-[var(--border)] pt-4 space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-[var(--text-h)]">Bingo-Vorschläge</h2>
+                <h2 className="text-lg font-semibold text-[var(--text-h)]">
+                  {t('admin.jobs.bingoSuggestions.title')}
+                </h2>
                 <JobStatusBadge running={jobStatus?.bingoSuggestion === true} />
               </div>
               <p className="text-sm text-slate-400">
-                Füllt den Pool der ausstehenden Bingo-Vorschläge manuell auf. Normalerweise läuft
-                dies automatisch jede Minute, wenn weniger als der konfigurierte Threshold vorhanden
-                ist.
+                {t('admin.jobs.bingoSuggestions.description')}
               </p>
               <button
                 type="button"
@@ -537,9 +705,9 @@ export function Admin({ currentUser }: AdminProps) {
                 {bingoSuggestionLoading ? (
                   <Loading text="" size="sm" />
                 ) : jobStatus?.bingoSuggestion ? (
-                  'Läuft bereits...'
+                  t('admin.jobs.status.alreadyRunning')
                 ) : (
-                  'Bingo-Vorschläge generieren'
+                  t('admin.jobs.bingoSuggestions.start')
                 )}
               </button>
               {bingoSuggestionMessage && (
@@ -551,7 +719,7 @@ export function Admin({ currentUser }: AdminProps) {
 
         <SideDrawerItem
           id="ai-model"
-          label="KI-Modell"
+          label={t('admin.aiModel')}
           icon={
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -579,9 +747,9 @@ export function Admin({ currentUser }: AdminProps) {
         >
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold text-[var(--text-h)]">KI-Modell</h2>
+              <h2 className="text-lg font-semibold text-[var(--text-h)]">{t('admin.aiModel')}</h2>
               {aiSaveState === 'saving' && (
-                <span className="text-xs text-slate-400">Speichern...</span>
+                <span className="text-xs text-slate-400">{t('common.saving')}</span>
               )}
               {aiSaveState === 'saved' && (
                 <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
@@ -598,24 +766,24 @@ export function Admin({ currentUser }: AdminProps) {
                   >
                     <path d="M20 6 9 17l-5-5" />
                   </svg>
-                  Gespeichert
+                  {t('common.saved')}
                 </span>
               )}
             </div>
 
             {!aiModels ? (
-              <Loading text="Modelle werden geladen..." />
+              <Loading text={t('admin.loadingModels')} />
             ) : (
               <div className="space-y-4">
                 {aiModels.models.length === 0 && (
-                  <p className="text-sm text-slate-500">
-                    Keine Modelle verfügbar. Prüfe, dass opencode installiert ist und erreichbar
-                    ist.
-                  </p>
+                  <p className="text-sm text-slate-500">{t('admin.noModels')}</p>
                 )}
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Modell</label>
+                  <label className="block text-sm text-slate-400 mb-1" htmlFor="admin-ai-model">
+                    {t('admin.model')}
+                  </label>
                   <select
+                    id="admin-ai-model"
                     value={aiModels.model}
                     onChange={(e) => selectAiModel(e.target.value)}
                     className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
@@ -628,22 +796,48 @@ export function Admin({ currentUser }: AdminProps) {
                   </select>
                   {aiModels.modelOverridden && (
                     <p className="text-xs text-[var(--accent)] mt-1">
-                      Überschreibt die .env-Konfiguration
+                      {t('admin.modelOverridden')}
                     </p>
                   )}
                 </div>
-                <p className="text-xs text-slate-500">
-                  Das Modell wird beim Auswählen automatisch gespeichert und für alle KI-Funktionen
-                  verwendet (Tagebuch, Zusammenfassungen, Entitäten, Bingo-Vorschläge).
-                </p>
+                <p className="text-xs text-slate-500">{t('admin.modelDescription')}</p>
               </div>
             )}
+
+            <div className="space-y-2 border-t border-[var(--border)] pt-4">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm text-slate-400" htmlFor="admin-ai-language">
+                  {t('admin.aiLanguage')}
+                </label>
+                {aiLanguageSaveState === 'saving' && (
+                  <span className="text-xs text-slate-400">{t('common.saving')}</span>
+                )}
+                {aiLanguageSaveState === 'saved' && (
+                  <span className="text-xs text-emerald-400">{t('common.saved')}</span>
+                )}
+              </div>
+              {aiLanguageLoading ? (
+                <Loading text={t('admin.loadingAiLanguage')} />
+              ) : aiLanguage ? (
+                <select
+                  id="admin-ai-language"
+                  value={aiLanguage}
+                  onChange={(event) => void selectAiLanguage(event.target.value as Language)}
+                  className="w-full bg-slate-800 border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)]"
+                >
+                  <option value="de">{t('common.german')}</option>
+                  <option value="en">{t('common.english')}</option>
+                </select>
+              ) : null}
+              {aiLanguageError && <p className="text-sm text-[var(--danger)]">{aiLanguageError}</p>}
+              <p className="text-xs text-slate-500">{t('admin.aiLanguageDescription')}</p>
+            </div>
           </div>
         </SideDrawerItem>
 
         <SideDrawerItem
           id="sessions"
-          label="Sessions"
+          label={t('admin.sessions.title')}
           icon={
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -663,29 +857,32 @@ export function Admin({ currentUser }: AdminProps) {
           }
         >
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-[var(--text-h)]">Sessions</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-h)]">
+              {t('admin.sessions.title')}
+            </h2>
             {recordingLoading ? (
-              <Loading text="Konfiguration wird geladen..." />
+              <Loading text={t('admin.sessions.loading')} />
             ) : (
               <>
                 {!recordingStatus?.bot.enabled && (
-                  <p className="text-sm text-slate-500">
-                    Discord-Bot ist nicht konfiguriert. Trage DISCORD_BOT_TOKEN und DISCORD_GUILD_ID
-                    in die .env ein.
-                  </p>
+                  <p className="text-sm text-slate-500">{t('admin.sessions.notConfigured')}</p>
                 )}
 
                 {recordingStatus?.bot.enabled && !recordingStatus.bot.ready && (
-                  <p className="text-sm text-slate-500">Discord-Bot verbindet...</p>
+                  <p className="text-sm text-slate-500">{t('admin.sessions.connecting')}</p>
                 )}
 
                 {recordingStatus?.bot.enabled && recordingStatus.bot.ready && (
                   <>
                     <div>
-                      <label className="block text-sm text-slate-400 mb-1">
-                        Überwachter Voice-Channel
+                      <label
+                        className="block text-sm text-slate-400 mb-1"
+                        htmlFor="admin-recording-channel"
+                      >
+                        {t('admin.sessions.monitoredChannel')}
                       </label>
                       <select
+                        id="admin-recording-channel"
                         value={selectedRecordingChannel}
                         onChange={(e) => setSelectedRecordingChannel(e.target.value)}
                         disabled={recordingChannels.length === 0}
@@ -693,12 +890,16 @@ export function Admin({ currentUser }: AdminProps) {
                       >
                         <option value="">
                           {recordingChannels.length === 0
-                            ? 'Keine Voice-Channels verfügbar'
-                            : 'Bitte wählen'}
+                            ? t('admin.sessions.noChannels')
+                            : t('admin.sessions.chooseChannel')}
                         </option>
                         {recordingChannels.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.name} ({c.participants.length} online)
+                            {c.name} (
+                            {t('admin.sessions.onlineCount', {
+                              count: formatNumber(c.participants.length),
+                            })}
+                            )
                           </option>
                         ))}
                       </select>
@@ -709,14 +910,14 @@ export function Admin({ currentUser }: AdminProps) {
                       disabled={recordingSaving}
                       className="w-full px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
                     >
-                      {recordingSaving ? <Loading text="" size="sm" /> : 'Speichern'}
+                      {recordingSaving ? <Loading text="" size="sm" /> : t('admin.sessions.save')}
                     </button>
                     <p className="text-sm text-slate-400">
                       {recordingStatus.active
-                        ? `Aktuell wird in ${recordingStatus.monitoredChannel?.channelName ?? recordingStatus.monitoredChannel?.channelId ?? 'Unbekannt'} aufgezeichnet.`
+                        ? t('admin.sessions.recordingNow', { channel: monitoredChannelName })
                         : recordingStatus.monitoredChannel?.channelId
-                          ? `Bereit für Aufnahme in ${recordingStatus.monitoredChannel.channelName ?? recordingStatus.monitoredChannel.channelId}. Die Aufnahme startet automatisch, sobald jemand den Channel betritt.`
-                          : 'Wähle einen Channel aus, damit Aufnahmen automatisch gestartet werden.'}
+                          ? t('admin.sessions.readyForRecording', { channel: monitoredChannelName })
+                          : t('admin.sessions.chooseChannelHint')}
                     </p>
                   </>
                 )}
@@ -730,20 +931,20 @@ export function Admin({ currentUser }: AdminProps) {
         <>
           <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-5 overflow-auto">
             {loading ? (
-              <Loading text="Verbinde..." />
+              <Loading text={t('admin.users.loading')} />
             ) : users.length === 0 ? (
-              <p className="text-slate-400">Keine Benutzer vorhanden.</p>
+              <p className="text-slate-400">{t('admin.users.empty')}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-left text-sm">
                   <thead>
                     <tr className="border-b border-[var(--border)]">
-                      <th className="p-3">Anzeigename</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Rolle</th>
-                      <th className="p-3">Charakter</th>
-                      <th className="p-3">Admin</th>
-                      <th className="p-3">Aktionen</th>
+                      <th className="p-3">{t('admin.users.table.displayName')}</th>
+                      <th className="p-3">{t('admin.users.table.status')}</th>
+                      <th className="p-3">{t('admin.users.table.role')}</th>
+                      <th className="p-3">{t('admin.users.table.character')}</th>
+                      <th className="p-3">{t('admin.users.table.admin')}</th>
+                      <th className="p-3">{t('admin.users.table.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -757,19 +958,26 @@ export function Admin({ currentUser }: AdminProps) {
                             <span>
                               {u.displayName}{' '}
                               {u.isInitialAdmin && (
-                                <span className="text-xs text-slate-500">(Ursprungsadmin)</span>
+                                <span className="text-xs text-slate-500">
+                                  {t('admin.users.initialAdmin')}
+                                </span>
                               )}
                               {isOwn(u) && !u.isInitialAdmin && (
-                                <span className="text-xs text-slate-500"> (Du)</span>
+                                <span className="text-xs text-slate-500">
+                                  {' '}
+                                  {t('admin.users.you')}
+                                </span>
                               )}
                             </span>
                           </div>
                         </td>
                         <td className="p-3">
                           {u.isApproved ? (
-                            <span className="text-[var(--accent)]">Freigegeben</span>
+                            <span className="text-[var(--accent)]">
+                              {t('admin.users.approved')}
+                            </span>
                           ) : (
-                            <span className="text-[var(--danger)]">Wartend</span>
+                            <span className="text-[var(--danger)]">{t('admin.users.pending')}</span>
                           )}
                         </td>
                         <td className="p-3">
@@ -777,12 +985,12 @@ export function Admin({ currentUser }: AdminProps) {
                             value={u.role}
                             onChange={(e) => action(u.id, '/role', { role: e.target.value })}
                             disabled={isActionLoading(u.id, '/role')}
-                            aria-label={`Rolle von ${u.displayName}`}
+                            aria-label={t('admin.users.roleFor', { name: u.displayName })}
                             className="bg-slate-800 border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
                           >
                             {USER_ROLE_OPTIONS.map((role) => (
                               <option key={role} value={role}>
-                                {USER_ROLE_LABELS[role]}
+                                {t(USER_ROLE_MESSAGE_KEYS[role])}
                               </option>
                             ))}
                           </select>
@@ -795,10 +1003,10 @@ export function Admin({ currentUser }: AdminProps) {
                                 action(u.id, '/active-person', { name: e.target.value || null })
                               }
                               disabled={isActionLoading(u.id, '/active-person')}
-                              aria-label={`Charakter von ${u.displayName}`}
+                              aria-label={t('admin.users.characterFor', { name: u.displayName })}
                               className="bg-slate-800 border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-h)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50 max-w-[10rem]"
                             >
-                              <option value="">Kein Charakter</option>
+                              <option value="">{t('admin.users.noCharacter')}</option>
                               {persons.map((p) => (
                                 <option key={p} value={p}>
                                   {p}
@@ -809,7 +1017,9 @@ export function Admin({ currentUser }: AdminProps) {
                             <span className="text-slate-500 text-xs">–</span>
                           )}
                         </td>
-                        <td className="p-3">{u.isAdmin ? 'Ja' : 'Nein'}</td>
+                        <td className="p-3">
+                          {u.isAdmin ? t('admin.users.yes') : t('admin.users.no')}
+                        </td>
                         <td className="p-3 flex flex-wrap gap-2">
                           {!u.isInitialAdmin && !isOwn(u) && (
                             <>
@@ -822,7 +1032,7 @@ export function Admin({ currentUser }: AdminProps) {
                                   {isActionLoading(u.id, '/approve') ? (
                                     <Loading text="" size="sm" />
                                   ) : (
-                                    'Freigeben'
+                                    t('admin.users.approve')
                                   )}
                                 </button>
                               )}
@@ -835,18 +1045,20 @@ export function Admin({ currentUser }: AdminProps) {
                                   {isActionLoading(u.id, '/reject') ? (
                                     <Loading text="" size="sm" />
                                   ) : (
-                                    'Sperren'
+                                    t('admin.users.reject')
                                   )}
                                 </button>
                               )}
                               <ActionMenu
-                                ariaLabel={`Weitere Aktionen für ${u.displayName}`}
+                                ariaLabel={t('admin.users.moreActionsFor', { name: u.displayName })}
                                 items={userMenuItems(u)}
                               />
                             </>
                           )}
                           {(u.isInitialAdmin || isOwn(u)) && (
-                            <span className="text-slate-500 text-xs">Geschützt</span>
+                            <span className="text-slate-500 text-xs">
+                              {t('admin.users.protected')}
+                            </span>
                           )}
                         </td>
                       </tr>

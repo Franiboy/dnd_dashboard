@@ -2,9 +2,15 @@ import { Router } from 'express';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { AppError, parseWith } from '../errors.js';
+import { AppError, errorPayload, messagePayload, parseWith } from '../errors.js';
 import { aiRateLimit } from '../utils/rateLimits.js';
-import { authMiddleware, requireAdmin, requireApproved, type AuthRequest } from '../auth.js';
+import {
+  authMiddleware,
+  requireAdmin,
+  requireApproved,
+  resolveViewAsUser,
+  type AuthRequest,
+} from '../auth.js';
 import {
   getBotStatus,
   getAllVoiceChannels,
@@ -20,7 +26,10 @@ import { improveSessionTranscriptWithAi } from '../ai/sessionRewrite.js';
 import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
 import { generateSessionDiaryDraft } from '../ai/sessionToDiary.js';
 import { detectSessionGameDay } from '../ai/sessionGameDay.js';
-import { annotateTranscriptSpeakers } from '../ai/transcriptSpeakers.js';
+import {
+  annotateTranscriptSpeakers,
+  resolveTranscriptDisplayLanguage,
+} from '../ai/transcriptSpeakers.js';
 import { getAllUsers } from '../repositories/users.js';
 import {
   onSessionsUpdated,
@@ -44,7 +53,7 @@ import {
 import { assignSessionToArc } from '../repositories/storyArcs.js';
 import { createLogger } from '../logger.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
-import type { RecordingSession } from '../../shared/types.js';
+import type { RecordingSession, ServerMessagePayload } from '../../shared/types.js';
 
 const log = createLogger('recordings-routes');
 const SESSION_DELETE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
@@ -66,11 +75,26 @@ const nullableInt = (message: string) =>
     z.number({ error: message }).int(message).positive(message)
   );
 
-function withAnnotatedTranscript(session: RecordingSession, viewerId?: string): RecordingSession {
+type TranscriptRequest = Pick<AuthRequest, 'headers' | 'user' | 'viewAsUser'>;
+
+function withAnnotatedTranscript(
+  session: RecordingSession,
+  req: TranscriptRequest
+): RecordingSession {
   if (!session.transcript) return session;
   try {
     const users = getAllUsers();
-    const annotated = annotateTranscriptSpeakers(session.transcript, users, viewerId);
+    const displayUser = req.viewAsUser ?? req.user;
+    const language = resolveTranscriptDisplayLanguage(
+      displayUser?.uiLanguage,
+      req.headers['accept-language']
+    );
+    const annotated = annotateTranscriptSpeakers(
+      session.transcript,
+      users,
+      displayUser?.id,
+      language
+    );
     return { ...session, transcript: annotated.transcript };
   } catch (err) {
     log.warn('Failed to annotate transcript for display:', err);
@@ -98,19 +122,39 @@ function broadcastProgress(sessionId: number, progress: unknown): void {
   sseClients.broadcast('progress', JSON.stringify({ sessionId, progress }));
 }
 
-function broadcastAiLog(message: string): void {
-  sseClients.broadcast('aiLog', JSON.stringify({ message }));
+function broadcastAiLog(input: string | ServerMessagePayload): void {
+  // Keep structured metadata intact; older string producers still get a safe
+  // messagePayload fallback with a progress status marker.
+  const payload = messagePayload(input, { statusCode: 'progress' });
+  sseClients.broadcast('aiLog', JSON.stringify(payload));
 }
 
-function mapOpencodeStatus(line: string): string | null {
+function progressPayload(message: string, messageKey: string): ServerMessagePayload {
+  return { message, messageKey, errorCode: messageKey };
+}
+
+function mapOpencodeStatus(line: string): ServerMessagePayload | null {
   const [action] = line.split('·').map((s) => s.trim());
   switch (action.toLowerCase()) {
     case 'build':
-      return 'KI-Modell wird geladen...';
+      return messagePayload({
+        message: 'KI-Modell wird geladen...',
+        messageKey: 'errors.ai.modelLoading',
+        errorCode: 'errors.ai.modelLoading',
+      });
     case 'run':
-      return 'KI-Anfrage wird ausgeführt...';
+      return messagePayload({
+        message: 'KI-Anfrage wird ausgeführt...',
+        messageKey: 'errors.ai.requestRunning',
+        errorCode: 'errors.ai.requestRunning',
+      });
     default:
-      return `KI arbeitet: ${action}`;
+      return messagePayload({
+        message: `KI arbeitet: ${action}`,
+        messageKey: 'errors.ai.workingAction',
+        errorCode: 'errors.ai.workingAction',
+        params: { action },
+      });
   }
 }
 
@@ -126,7 +170,8 @@ function notifyAiLog(raw: string): void {
         return mapped ? [mapped] : [];
       }
       if (/^(error|fehler|warn|warning|opencode|spawn)/i.test(line)) {
-        return [line];
+        // Preserve provider/Python diagnostics as explicitly technical data.
+        return [messagePayload(line, { statusCode: 'diagnostic', technical: true })];
       }
       return [];
     });
@@ -136,12 +181,15 @@ function notifyAiLog(raw: string): void {
   }
 }
 
-function startProgressMessages(initialMessage: string, messages?: string[]): () => void {
-  const defaultMessages = [
-    'KI prüft Entitäten und Tagebücher...',
-    'KI verbessert das Transkript...',
-    'KI arbeitet noch...',
-    'Fast fertig...',
+function startProgressMessages(
+  initialMessage: string | ServerMessagePayload,
+  messages?: Array<string | ServerMessagePayload>
+): () => void {
+  const defaultMessages: ServerMessagePayload[] = [
+    progressPayload('KI prüft Entitäten und Tagebücher...', 'errors.ai.working'),
+    progressPayload('KI verbessert das Transkript...', 'errors.status.transcriptImproving'),
+    progressPayload('KI arbeitet noch...', 'errors.ai.working'),
+    progressPayload('Fast fertig...', 'errors.ai.almostDone'),
   ];
   const cycle = messages ?? defaultMessages;
   let index = 0;
@@ -163,18 +211,24 @@ function requireRecordingFeature(
   next: import('express').NextFunction
 ): void {
   if (!isRecordingFeatureEnabled()) {
-    res.status(503).json({ error: 'Aufnahme-Feature ist nicht konfiguriert' });
+    res.status(503).json(
+      errorPayload('Aufnahme-Feature ist nicht konfiguriert', {
+        fallbackCode: 'errors.recordings.featureDisabled',
+      })
+    );
     return;
   }
   next();
 }
 
-router.use(authMiddleware, requireApproved, requireRecordingFeature);
+router.use(authMiddleware, requireApproved, resolveViewAsUser, requireRecordingFeature);
 
 function requireSession(id: number) {
   const session = getSessionById(id);
   if (!session) {
-    throw new AppError(404, 'Aufnahme nicht gefunden');
+    throw new AppError(404, 'Aufnahme nicht gefunden', {
+      messageKey: 'errors.recordings.notFound',
+    });
   }
   return session;
 }
@@ -183,14 +237,18 @@ function requireSession(id: number) {
 function requireCompletedTranscript(id: number) {
   const session = requireSession(id);
   if (session.status !== 'completed' || !session.transcript) {
-    throw new AppError(400, 'Kein Transkript vorhanden');
+    throw new AppError(400, 'Kein Transkript vorhanden', {
+      messageKey: 'errors.recordings.noTranscript',
+    });
   }
   return session;
 }
 
 function requireAiEnabled(): void {
   if (!isAiEnabled()) {
-    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert', {
+      messageKey: 'errors.ai.disabled',
+    });
   }
 }
 
@@ -226,7 +284,10 @@ router.get('/channels', requireAdmin, async (_req, res) => {
     const channels = await getAllVoiceChannels();
     res.json({ channels });
   } catch (err) {
-    throw new AppError(500, err instanceof Error ? err.message : String(err), { cause: err });
+    throw new AppError(500, 'Aufnahme-Kanäle konnten nicht geladen werden', {
+      messageKey: 'errors.recordings.channelsLoadFailed',
+      cause: err,
+    });
   }
 });
 
@@ -273,7 +334,7 @@ router.get('/:id', (req: AuthRequest, res) => {
   const session = requireSession(id);
   const files = getFilesBySessionId(id);
   const wantRaw = req.query.raw === 'true' || req.query.raw === '1';
-  const outSession = wantRaw ? session : withAnnotatedTranscript(session, req.user?.id);
+  const outSession = wantRaw ? session : withAnnotatedTranscript(session, req);
   res.json({ session: { ...outSession, files } });
 });
 
@@ -281,9 +342,12 @@ router.post('/:id/stop', requireAdmin, async (req: AuthRequest, res) => {
   const id = parseWith(idParamSchema, req.params.id);
   try {
     const session = await finishRecording(id);
-    res.json({ session: withAnnotatedTranscript(session, req.user?.id) });
+    res.json({ session: withAnnotatedTranscript(session, req) });
   } catch (err) {
-    throw new AppError(500, err instanceof Error ? err.message : String(err), { cause: err });
+    throw new AppError(500, 'Aufnahme konnte nicht beendet werden', {
+      messageKey: 'errors.recordings.finishFailed',
+      cause: err,
+    });
   }
 });
 
@@ -298,7 +362,9 @@ router.put('/:id/trim', requireAdmin, (req: AuthRequest, res) => {
 
   const { trimStartSeconds, trimEndSeconds } = parseWith(trimSchema, req.body);
   if (trimStartSeconds != null && trimEndSeconds != null && trimStartSeconds >= trimEndSeconds) {
-    throw new AppError(400, 'Start muss vor Ende liegen');
+    throw new AppError(400, 'Start muss vor Ende liegen', {
+      messageKey: 'errors.recordings.trimOrder',
+    });
   }
 
   updateSession(id, {
@@ -309,7 +375,7 @@ router.put('/:id/trim', requireAdmin, (req: AuthRequest, res) => {
   emitSessionsUpdated();
   const updated = getSessionById(id);
   res.json({
-    session: updated ? withAnnotatedTranscript(updated, req.user?.id) : updated,
+    session: updated ? withAnnotatedTranscript(updated, req) : updated,
   });
 });
 
@@ -334,7 +400,9 @@ router.post('/:id/trim-transcript', requireAdmin, async (req: AuthRequest, res) 
 
   const { startSeconds, endSeconds } = parseWith(trimTranscriptSchema, req.body);
   if (!session.transcript) {
-    throw new AppError(400, 'Kein Transkript vorhanden');
+    throw new AppError(400, 'Kein Transkript vorhanden', {
+      messageKey: 'errors.recordings.noTranscript',
+    });
   }
 
   const lines = session.transcript.split('\n');
@@ -351,7 +419,10 @@ router.post('/:id/trim-transcript', requireAdmin, async (req: AuthRequest, res) 
   try {
     await writeFile(transcriptPath, newTranscript);
   } catch (err) {
-    throw new AppError(500, 'Transkript konnte nicht gespeichert werden', { cause: err });
+    throw new AppError(500, 'Transkript konnte nicht gespeichert werden', {
+      messageKey: 'errors.recordings.transcriptSaveFailed',
+      cause: err,
+    });
   }
 
   updateSession(id, {
@@ -367,7 +438,7 @@ router.post('/:id/trim-transcript', requireAdmin, async (req: AuthRequest, res) 
 
   const updated = getSessionById(id);
   res.json({
-    session: updated ? withAnnotatedTranscript(updated, req.user?.id) : updated,
+    session: updated ? withAnnotatedTranscript(updated, req) : updated,
   });
 });
 
@@ -379,30 +450,46 @@ router.post('/:id/transcribe', requireAdmin, aiRateLimit, (req, res) => {
     session.status !== 'error' &&
     session.status !== 'completed'
   ) {
-    throw new AppError(400, 'Session kann aktuell nicht transkribiert werden');
+    throw new AppError(400, 'Session kann aktuell nicht transkribiert werden', {
+      messageKey: 'errors.recordings.cannotTranscribe',
+    });
   }
 
   const files = getFilesBySessionId(id).filter((f) => f.wavPath);
   if (files.length === 0) {
-    throw new AppError(400, 'Keine Audio-Dateien für diese Session vorhanden');
+    throw new AppError(400, 'Keine Audio-Dateien für diese Session vorhanden', {
+      messageKey: 'errors.recordings.noAudioFiles',
+    });
   }
 
   runTranscription(id, files, { force: true }).catch((err) => {
     log.error(`Manual transcription failed for session ${id}:`, err);
   });
 
-  res.json({ message: 'Transkription wird im Hintergrund gestartet' });
+  res.json({
+    message: 'Transkription wird im Hintergrund gestartet',
+    messageKey: 'errors.status.transcriptionStarted',
+    errorCode: 'errors.status.transcriptionStarted',
+  });
 });
 
 router.post('/:id/delete-audio', requireAdmin, async (req, res) => {
   const id = parseWith(idParamSchema, req.params.id);
   const session = requireSession(id);
   if (session.status === 'recording' || session.status === 'processing') {
-    throw new AppError(409, 'Audiodateien können während der Verarbeitung nicht gelöscht werden');
+    throw new AppError(409, 'Audiodateien können während der Verarbeitung nicht gelöscht werden', {
+      messageKey: 'errors.recordings.deleteWhileProcessing',
+    });
   }
 
   const deleted = await deleteSessionAudioFiles(id);
-  res.json({ message: `${deleted} Audiodatei(en) gelöscht`, deleted });
+  res.json({
+    message: `${deleted} Audiodatei(en) gelöscht`,
+    messageKey: 'errors.status.audioFilesDeleted',
+    errorCode: 'errors.status.audioFilesDeleted',
+    params: { count: deleted },
+    deleted,
+  });
 });
 
 router.post('/:id/improve-transcript', requireAdmin, aiRateLimit, async (req: AuthRequest, res) => {
@@ -410,21 +497,32 @@ router.post('/:id/improve-transcript', requireAdmin, aiRateLimit, async (req: Au
   requireCompletedTranscript(id);
   requireAiEnabled();
 
-  const stopProgress = startProgressMessages('KI verbessert das Transkript...');
+  const stopProgress = startProgressMessages(
+    progressPayload('KI verbessert das Transkript...', 'errors.status.transcriptImproving')
+  );
   try {
     const result = await improveSessionTranscriptWithAi(id, req.user!, undefined, notifyAiLog);
     if (result.transcript === null) {
       log.error(`improveSessionTranscriptWithAi returned null for session ${id}`);
-      throw new AppError(500, 'KI-Verbesserung ist fehlgeschlagen');
+      throw new AppError(500, 'KI-Verbesserung ist fehlgeschlagen', {
+        messageKey: 'errors.recordings.transcriptImprovementFailed',
+      });
     }
-    broadcastAiLog('Transkript verbessert.');
+    broadcastAiLog({
+      message: 'Transkript verbessert.',
+      messageKey: 'errors.status.transcriptImproved',
+      errorCode: 'errors.status.transcriptImproved',
+    });
     emitSessionsUpdated();
     const updated = getSessionById(id);
-    res.json({ session: updated ? withAnnotatedTranscript(updated, req.user!.id) : updated });
+    res.json({ session: updated ? withAnnotatedTranscript(updated, req) : updated });
   } catch (err) {
     if (err instanceof AppError) throw err;
     log.error(`Unexpected error during transcript improvement of session ${id}:`, err);
-    throw new AppError(500, 'KI-Verbesserung ist fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Verbesserung ist fehlgeschlagen', {
+      messageKey: 'errors.recordings.transcriptImprovementFailed',
+      cause: err,
+    });
   } finally {
     stopProgress();
   }
@@ -435,12 +533,21 @@ router.post('/:id/summary', requireAdmin, aiRateLimit, async (req: AuthRequest, 
   requireCompletedTranscript(id);
   requireAiEnabled();
 
-  const stopProgress = startProgressMessages('KI erstellt die Zusammenfassung...', [
-    'KI prüft vorherige Sessions, Entitäten und Tagebücher...',
-    'KI erstellt die ausführliche Zusammenfassung...',
-    'KI erstellt die Kurz-Zusammenfassung...',
-    'Fast fertig...',
-  ]);
+  const stopProgress = startProgressMessages(
+    progressPayload('KI erstellt die Zusammenfassung...', 'errors.status.summaryCreating'),
+    [
+      progressPayload(
+        'KI prüft vorherige Sessions, Entitäten und Tagebücher...',
+        'errors.ai.working'
+      ),
+      progressPayload(
+        'KI erstellt die ausführliche Zusammenfassung...',
+        'errors.status.summaryCreating'
+      ),
+      progressPayload('KI erstellt die Kurz-Zusammenfassung...', 'errors.status.summaryCreating'),
+      progressPayload('Fast fertig...', 'errors.ai.almostDone'),
+    ]
+  );
   try {
     // Ensure game days are known before summarizing – the scheduler normally
     // does this automatically after transcription, but a manual summary call
@@ -448,7 +555,9 @@ router.post('/:id/summary', requireAdmin, aiRateLimit, async (req: AuthRequest, 
     // campaign day.
     const fresh = getSessionById(id);
     if (fresh && fresh.gameDay === null) {
-      broadcastAiLog('KI ermittelt fehlende Spieltage...');
+      broadcastAiLog(
+        progressPayload('KI ermittelt fehlende Spieltage...', 'errors.status.gameDayDetecting')
+      );
       try {
         await detectSessionGameDay(id, req.user!, undefined, notifyAiLog);
       } catch (err) {
@@ -458,17 +567,26 @@ router.post('/:id/summary', requireAdmin, aiRateLimit, async (req: AuthRequest, 
     const result = await processSessionSummaryEntities(id, req.user!, undefined, notifyAiLog);
     if (!result.longSummary || !result.summary) {
       log.error(`processSessionSummaryEntities returned incomplete result for session ${id}`);
-      throw new AppError(500, 'KI-Zusammenfassung ist fehlgeschlagen');
+      throw new AppError(500, 'KI-Zusammenfassung ist fehlgeschlagen', {
+        messageKey: 'errors.recordings.summaryFailed',
+      });
     }
 
-    broadcastAiLog('Zusammenfassung erstellt.');
+    broadcastAiLog({
+      message: 'Zusammenfassung erstellt.',
+      messageKey: 'errors.status.summaryCreated',
+      errorCode: 'errors.status.summaryCreated',
+    });
     emitSessionsUpdated();
     const updated = getSessionById(id);
-    res.json({ session: updated ? withAnnotatedTranscript(updated, req.user!.id) : updated });
+    res.json({ session: updated ? withAnnotatedTranscript(updated, req) : updated });
   } catch (err) {
     if (err instanceof AppError) throw err;
     log.error(`Unexpected error during session summary of session ${id}:`, err);
-    throw new AppError(500, 'KI-Zusammenfassung ist fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Zusammenfassung ist fehlgeschlagen', {
+      messageKey: 'errors.recordings.summaryFailed',
+      cause: err,
+    });
   } finally {
     stopProgress();
   }
@@ -479,27 +597,39 @@ router.post('/:id/diary-draft', aiRateLimit, async (req: AuthRequest, res) => {
   requireCompletedTranscript(id);
   requireAiEnabled();
 
-  const stopProgress = startProgressMessages('KI überführt Session ins Tagebuch...', [
-    'KI prüft Session und bestehende Tagebucheinträge...',
-    'KI schreibt den Tagebucheintrag...',
-    'KI arbeitet noch...',
-    'Fast fertig...',
-  ]);
+  const stopProgress = startProgressMessages(
+    progressPayload('KI überführt Session ins Tagebuch...', 'errors.status.diaryDraftCreating'),
+    [
+      progressPayload('KI prüft Session und bestehende Tagebucheinträge...', 'errors.ai.working'),
+      progressPayload('KI schreibt den Tagebucheintrag...', 'errors.status.diaryDraftCreating'),
+      progressPayload('KI arbeitet noch...', 'errors.ai.working'),
+      progressPayload('Fast fertig...', 'errors.ai.almostDone'),
+    ]
+  );
   try {
     const entry = await generateSessionDiaryDraft(id, req.user!, undefined, notifyAiLog);
     if (!entry) {
       log.error(`generateSessionDiaryDraft returned null for session ${id}`);
-      throw new AppError(500, 'KI-Überführung ins Tagebuch ist fehlgeschlagen');
+      throw new AppError(500, 'KI-Überführung ins Tagebuch ist fehlgeschlagen', {
+        messageKey: 'errors.recordings.diaryTransferFailed',
+      });
     }
 
-    broadcastAiLog('Tagebucheintrag-Entwurf erstellt.');
+    broadcastAiLog({
+      message: 'Tagebucheintrag-Entwurf erstellt.',
+      messageKey: 'errors.status.diaryDraftCreated',
+      errorCode: 'errors.status.diaryDraftCreated',
+    });
     recordSessionToDiaryTransfer(id, req.user!.id, entry.id, false);
     const transfer = getSessionToDiaryTransfer(id, req.user!.id);
     res.json({ entry, transfer });
   } catch (err) {
     if (err instanceof AppError) throw err;
     log.error(`Unexpected error during session-to-diary draft of session ${id}:`, err);
-    throw new AppError(500, 'KI-Überführung ins Tagebuch ist fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Überführung ins Tagebuch ist fehlgeschlagen', {
+      messageKey: 'errors.recordings.diaryTransferFailed',
+      cause: err,
+    });
   } finally {
     stopProgress();
   }
@@ -518,33 +648,48 @@ router.post('/:id/detect-game-day', requireAdmin, aiRateLimit, async (req: AuthR
   if (session.gameDay !== null && !force) {
     const existing = getSessionById(id);
     res.status(409).json({
-      error: 'Spieltag bereits gesetzt. Mit ?force=true überschreiben.',
-      session: existing ? withAnnotatedTranscript(existing, req.user!.id) : existing,
+      ...errorPayload('Spieltag bereits gesetzt. Mit ?force=true überschreiben.', {
+        fallbackCode: 'errors.recordings.gameDayAlreadySet',
+      }),
+      session: existing ? withAnnotatedTranscript(existing, req) : existing,
     });
     return;
   }
 
-  const stopProgress = startProgressMessages('KI ermittelt Spieltage...', [
-    'KI prüft Transkript und vorherige Sessions...',
-    'KI bestimmt Spieltag-Bereich...',
-    'Fast fertig...',
-  ]);
+  const stopProgress = startProgressMessages(
+    progressPayload('KI ermittelt Spieltage...', 'errors.status.gameDayDetecting'),
+    [
+      progressPayload('KI prüft Transkript und vorherige Sessions...', 'errors.ai.working'),
+      progressPayload('KI bestimmt Spieltag-Bereich...', 'errors.status.gameDayDetecting'),
+      progressPayload('Fast fertig...', 'errors.ai.almostDone'),
+    ]
+  );
   try {
     const result = await detectSessionGameDay(id, req.user!, undefined, notifyAiLog, {
       force: !!force,
     });
     if (result.gameDay === null) {
       log.error(`detectSessionGameDay returned null for session ${id}`);
-      throw new AppError(500, 'KI-Ermittlung des Spieltags ist fehlgeschlagen');
+      throw new AppError(500, 'KI-Ermittlung des Spieltags ist fehlgeschlagen', {
+        messageKey: 'errors.recordings.gameDayDetectionFailed',
+      });
     }
-    broadcastAiLog(`Spieltag ermittelt: ${result.gameDay}–${result.gameDayEnd ?? result.gameDay}.`);
+    broadcastAiLog({
+      message: `Spieltag ermittelt: ${result.gameDay}–${result.gameDayEnd ?? result.gameDay}.`,
+      messageKey: 'errors.status.gameDayDetected',
+      errorCode: 'errors.status.gameDayDetected',
+      params: { start: result.gameDay, end: result.gameDayEnd ?? result.gameDay },
+    });
     emitSessionsUpdated();
     const updated = getSessionById(id);
-    res.json({ session: updated ? withAnnotatedTranscript(updated, req.user!.id) : updated });
+    res.json({ session: updated ? withAnnotatedTranscript(updated, req) : updated });
   } catch (err) {
     if (err instanceof AppError) throw err;
     log.error(`Unexpected error during game day detection of session ${id}:`, err);
-    throw new AppError(500, 'KI-Ermittlung des Spieltags ist fehlgeschlagen', { cause: err });
+    throw new AppError(500, 'KI-Ermittlung des Spieltags ist fehlgeschlagen', {
+      messageKey: 'errors.recordings.gameDayDetectionFailed',
+      cause: err,
+    });
   } finally {
     stopProgress();
   }
@@ -563,27 +708,33 @@ const gameDaySchema = z.object({
   gameDayEnd: nullableInt('Spieltag-Ende muss eine positive ganze Zahl oder null sein'),
 });
 
-router.put('/:id/game-day', requireAdmin, (req, res) => {
+router.put('/:id/game-day', requireAdmin, (req: AuthRequest, res) => {
   const id = parseWith(idParamSchema, req.params.id);
   requireSession(id);
 
   const { gameDay, gameDayEnd } = parseWith(gameDaySchema, req.body);
   const end = gameDay === null ? null : (gameDayEnd ?? gameDay);
   if (end !== null && (!Number.isInteger(end) || end <= 0)) {
-    throw new AppError(400, 'Spieltag-Ende muss eine positive ganze Zahl oder null sein');
+    throw new AppError(400, 'Spieltag-Ende muss eine positive ganze Zahl oder null sein', {
+      messageKey: 'errors.validation.gameDayEnd',
+    });
   }
   if (gameDay !== null && end !== null && end < gameDay) {
-    throw new AppError(400, 'Endtag darf nicht vor Starttag liegen');
+    throw new AppError(400, 'Endtag darf nicht vor Starttag liegen', {
+      messageKey: 'errors.validation.endBeforeStart',
+    });
   }
   if (gameDay !== null && end !== null && end - gameDay > 30) {
-    throw new AppError(400, 'Zeitraum zu groß (max 30 Tage)');
+    throw new AppError(400, 'Zeitraum zu groß (max 30 Tage)', {
+      messageKey: 'errors.validation.rangeTooLarge',
+    });
   }
 
   updateSession(id, { gameDay, gameDayEnd: end });
   emitSessionsUpdated();
   const updated = getSessionById(id);
   res.json({
-    session: updated ? withAnnotatedTranscript(updated, (req as AuthRequest).user?.id) : updated,
+    session: updated ? withAnnotatedTranscript(updated, req) : updated,
   });
 });
 
@@ -596,7 +747,7 @@ const arcSchema = z.object({
   ),
 });
 
-router.put('/:id/arc', requireAdmin, (req, res) => {
+router.put('/:id/arc', requireAdmin, (req: AuthRequest, res) => {
   const id = parseWith(idParamSchema, req.params.id);
   requireSession(id);
 
@@ -606,7 +757,7 @@ router.put('/:id/arc', requireAdmin, (req, res) => {
   emitSessionsUpdated();
   const updated = getSessionById(id);
   res.json({
-    session: updated ? withAnnotatedTranscript(updated, (req as AuthRequest).user?.id) : updated,
+    session: updated ? withAnnotatedTranscript(updated, req) : updated,
   });
 });
 
@@ -614,7 +765,9 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   const id = parseWith(idParamSchema, req.params.id);
   const session = requireSession(id);
   if (Date.now() - new Date(session.startedAt).getTime() >= SESSION_DELETE_WINDOW_MS) {
-    throw new AppError(403, 'Aufnahmen älter als 14 Tage können nicht gelöscht werden');
+    throw new AppError(403, 'Aufnahmen älter als 14 Tage können nicht gelöscht werden', {
+      messageKey: 'errors.recordings.deleteTooOld',
+    });
   }
 
   const { directory } = deleteSession(id);
@@ -627,7 +780,11 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   }
 
   emitSessionsUpdated();
-  res.json({ message: 'Aufnahme gelöscht' });
+  res.json({
+    message: 'Aufnahme gelöscht',
+    messageKey: 'errors.status.recordingDeleted',
+    errorCode: 'errors.status.recordingDeleted',
+  });
 });
 
 export default router;

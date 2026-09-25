@@ -7,6 +7,7 @@ import type {
   SessionDiaryTransfer,
 } from '../../shared/types.js';
 import { ensureCampaignDay } from './gameTimeline.js';
+import { getWhisperBootstrapLanguage } from '../ai/languageConfig.js';
 
 interface CreateSessionInput {
   name: string;
@@ -25,6 +26,7 @@ interface CreateFileInput {
 
 export function createSession(input: CreateSessionInput): RecordingSession {
   const startedAt = new Date().toISOString();
+  const transcriptionLanguage = getWhisperBootstrapLanguage();
   // New sessions are filed into the currently active story arc (NULL when no
   // arc is active, e.g. after an admin deliberately deactivated all of them).
   const activeArcId = db
@@ -32,7 +34,7 @@ export function createSession(input: CreateSessionInput): RecordingSession {
     .get() as { id: number } | undefined;
   const result = db
     .prepare(
-      'INSERT INTO recording_sessions (name, status, guild_id, channel_id, created_by, started_at, directory, arc_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO recording_sessions (name, status, guild_id, channel_id, created_by, started_at, transcription_language, directory, arc_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
     .run(
       input.name,
@@ -41,6 +43,7 @@ export function createSession(input: CreateSessionInput): RecordingSession {
       input.channelId,
       input.createdBy,
       startedAt,
+      transcriptionLanguage,
       input.directory,
       activeArcId?.id ?? null,
       startedAt
@@ -55,6 +58,7 @@ export function createSession(input: CreateSessionInput): RecordingSession {
     channelId: input.channelId,
     createdBy: input.createdBy,
     startedAt,
+    transcriptionLanguage,
     stoppedAt: null,
     directory: input.directory,
     transcript: null,
@@ -80,7 +84,7 @@ export function createSession(input: CreateSessionInput): RecordingSession {
 export function getSessionById(id: number): RecordingSession | null {
   const row = db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt, game_day as gameDay, game_day_end as gameDayEnd, arc_id as arcId FROM recording_sessions WHERE id = ?'
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, transcription_language as transcriptionLanguage, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt, game_day as gameDay, game_day_end as gameDayEnd, arc_id as arcId FROM recording_sessions WHERE id = ?'
     )
     .get(id) as RecordingSession | undefined;
   return row ?? null;
@@ -178,7 +182,7 @@ export function listSessions(arcId?: number): RecordingSession[] {
     .prepare(
       `SELECT
         s.id, s.name, s.status, s.guild_id as guildId, s.channel_id as channelId,
-        s.created_by as createdBy, s.started_at as startedAt, s.stopped_at as stoppedAt,
+        s.created_by as createdBy, s.started_at as startedAt, s.transcription_language as transcriptionLanguage, s.stopped_at as stoppedAt,
         s.directory, NULL as transcript, s.error, s.trim_start_seconds as trimStartSeconds, s.trim_end_seconds as trimEndSeconds,
         s.transcribed_trim_start_seconds as transcribedTrimStartSeconds, s.transcribed_trim_end_seconds as transcribedTrimEndSeconds,
         s.transcript_improved_at as transcriptImprovedAt, s.summary, s.summary_generated_at as summaryGeneratedAt,
@@ -200,7 +204,7 @@ export function listSessions(arcId?: number): RecordingSession[] {
 export function listPendingTranscriptionSessions(): RecordingSession[] {
   return db
     .prepare(
-      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt, game_day as gameDay, game_day_end as gameDayEnd, arc_id as arcId FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC"
+      "SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, transcription_language as transcriptionLanguage, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt, game_day as gameDay, game_day_end as gameDayEnd, arc_id as arcId FROM recording_sessions WHERE status = 'pending_transcription' ORDER BY stopped_at ASC"
     )
     .all() as RecordingSession[];
 }
@@ -208,7 +212,7 @@ export function listPendingTranscriptionSessions(): RecordingSession[] {
 export function listSessionsByStatus(status: RecordingStatus): RecordingSession[] {
   return db
     .prepare(
-      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt, game_day as gameDay, game_day_end as gameDayEnd, arc_id as arcId FROM recording_sessions WHERE status = ? ORDER BY started_at ASC'
+      'SELECT id, name, status, guild_id as guildId, channel_id as channelId, created_by as createdBy, started_at as startedAt, transcription_language as transcriptionLanguage, stopped_at as stoppedAt, directory, transcript, error, trim_start_seconds as trimStartSeconds, trim_end_seconds as trimEndSeconds, transcribed_trim_start_seconds as transcribedTrimStartSeconds, transcribed_trim_end_seconds as transcribedTrimEndSeconds, transcript_improved_at as transcriptImprovedAt, summary, summary_generated_at as summaryGeneratedAt, long_summary as longSummary, long_summary_generated_at as longSummaryGeneratedAt, game_start_seconds as gameStartSeconds, game_end_seconds as gameEndSeconds, game_boundary_detected_at as gameBoundaryDetectedAt, game_day as gameDay, game_day_end as gameDayEnd, arc_id as arcId FROM recording_sessions WHERE status = ? ORDER BY started_at ASC'
     )
     .all(status) as RecordingSession[];
 }
@@ -219,6 +223,7 @@ export function updateSession(
     Pick<
       RecordingSession,
       | 'status'
+      | 'transcriptionLanguage'
       | 'stoppedAt'
       | 'transcript'
       | 'error'
@@ -246,6 +251,10 @@ export function updateSession(
   if (updates.status !== undefined) {
     fields.push('status = ?');
     values.push(updates.status);
+  }
+  if (updates.transcriptionLanguage !== undefined) {
+    fields.push('transcription_language = ?');
+    values.push(updates.transcriptionLanguage);
   }
   if (updates.stoppedAt !== undefined) {
     fields.push('stopped_at = ?');

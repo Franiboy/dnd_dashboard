@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { useEntityDialog } from '../hooks/useEntityDialog';
-import { typeLabels } from '../lib/entityLabels';
+import { useI18n } from '../hooks/useI18n';
+import { getEntityTypeLabel } from '../lib/entityLabels';
 import { Tooltip } from './Tooltip';
 import { EntityChooserModal, type EntityCandidate } from './EntityChooserModal';
 import type { EntityType, EntityMapping } from '../../shared/types';
+import type { TFunction } from '../i18n';
 import { buildTriggers, findMatches, type Match, type Trigger } from '../lib/entityMatching';
 
 type Segment =
@@ -45,6 +47,7 @@ function segmentText(input: string, matches: Match[]): Segment[] {
 interface EntityBadgeProps {
   text: string;
   candidates: Trigger[];
+  t: TFunction;
   onOpen: (candidate: EntityCandidate) => void;
   onNeedChoice: (candidates: EntityCandidate[]) => void;
 }
@@ -58,8 +61,9 @@ function toCandidate(trigger: Trigger): EntityCandidate {
   };
 }
 
-function EntityBadge({ text, candidates, onOpen, onNeedChoice }: EntityBadgeProps) {
+function EntityBadge({ text, candidates, t, onOpen, onNeedChoice }: EntityBadgeProps) {
   const first = candidates[0];
+  const typeLabel = getEntityTypeLabel(first.type, t);
   const tooltipContent = (
     <div className="space-y-1">
       {first.miniSummary && (
@@ -67,8 +71,8 @@ function EntityBadge({ text, candidates, onOpen, onNeedChoice }: EntityBadgeProp
       )}
       <p className={`text-xs font-medium ${entityTextStyles[first.type]}`}>
         {candidates.length > 1
-          ? `${typeLabels[first.type]} auswählen`
-          : `${typeLabels[first.type]} öffnen`}
+          ? t('world.richText.select', { type: typeLabel })
+          : t('world.richText.open', { type: typeLabel })}
       </p>
     </div>
   );
@@ -76,6 +80,7 @@ function EntityBadge({ text, candidates, onOpen, onNeedChoice }: EntityBadgeProp
     <Tooltip content={tooltipContent}>
       <button
         type="button"
+        aria-label={t('world.richText.openEntity', { type: typeLabel, name: text })}
         onClick={() => {
           if (candidates.length === 1) {
             onOpen(toCandidate(first));
@@ -95,6 +100,7 @@ function EntityBadge({ text, candidates, onOpen, onNeedChoice }: EntityBadgeProp
 function renderSegments(
   segments: Segment[],
   baseKey: string,
+  t: TFunction,
   onOpen: (candidate: EntityCandidate) => void,
   onNeedChoice: (candidates: EntityCandidate[]) => void
 ): React.ReactNode[] {
@@ -106,6 +112,7 @@ function renderSegments(
         key={key}
         text={seg.text}
         candidates={seg.candidates}
+        t={t}
         onOpen={onOpen}
         onNeedChoice={onNeedChoice}
       />
@@ -118,7 +125,7 @@ function parseStyle(styleAttr: string): React.CSSProperties {
   for (const declaration of styleAttr.split(';')) {
     const [prop, value] = declaration.split(':', 2);
     if (!prop || value === undefined) continue;
-    const camelProp = prop.trim().replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    const camelProp = prop.trim().replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
     (style as Record<string, unknown>)[camelProp] = value.trim();
   }
   return style;
@@ -164,6 +171,7 @@ function elementToReact(
   el: HTMLElement,
   triggers: Trigger[],
   key: string,
+  t: TFunction,
   onOpen: (candidate: EntityCandidate) => void,
   onNeedChoice: (candidates: EntityCandidate[]) => void
 ): React.ReactNode {
@@ -172,7 +180,7 @@ function elementToReact(
 
   const children: React.ReactNode[] = [];
   el.childNodes.forEach((child, idx) => {
-    const childResult = nodeToReact(child, triggers, `${key}-${idx}`, onOpen, onNeedChoice);
+    const childResult = nodeToReact(child, triggers, `${key}-${idx}`, t, onOpen, onNeedChoice);
     if (childResult !== null && childResult !== undefined) {
       children.push(childResult);
     }
@@ -199,6 +207,7 @@ function nodeToReact(
   node: Node,
   triggers: Trigger[],
   key: string,
+  t: TFunction,
   onOpen: (candidate: EntityCandidate) => void,
   onNeedChoice: (candidates: EntityCandidate[]) => void
 ): React.ReactNode {
@@ -206,11 +215,11 @@ function nodeToReact(
     const text = node.textContent ?? '';
     const matches = findMatches(text, triggers);
     const segments = segmentText(text, matches);
-    return renderSegments(segments, key, onOpen, onNeedChoice);
+    return renderSegments(segments, key, t, onOpen, onNeedChoice);
   }
 
   if (node.nodeType === Node.ELEMENT_NODE) {
-    return elementToReact(node as HTMLElement, triggers, key, onOpen, onNeedChoice);
+    return elementToReact(node as HTMLElement, triggers, key, t, onOpen, onNeedChoice);
   }
 
   return null;
@@ -219,6 +228,7 @@ function nodeToReact(
 function parseHtmlToReact(
   html: string,
   triggers: Trigger[],
+  t: TFunction,
   onOpen: (candidate: EntityCandidate) => void,
   onNeedChoice: (candidates: EntityCandidate[]) => void
 ): React.ReactNode[] {
@@ -229,7 +239,7 @@ function parseHtmlToReact(
   const doc = new DOMParser().parseFromString(sanitized, 'text/html');
   const result: React.ReactNode[] = [];
   doc.body.childNodes.forEach((child, idx) => {
-    const processed = nodeToReact(child, triggers, `root-${idx}`, onOpen, onNeedChoice);
+    const processed = nodeToReact(child, triggers, `root-${idx}`, t, onOpen, onNeedChoice);
     if (processed !== null && processed !== undefined) {
       result.push(processed);
     }
@@ -251,6 +261,7 @@ export function EntityRichText({
   className,
 }: EntityRichTextProps) {
   const { openEntity } = useEntityDialog();
+  const { t } = useI18n();
   const [choiceCandidates, setChoiceCandidates] = useState<EntityCandidate[] | null>(null);
   const triggers = useMemo(() => buildTriggers(mappings), [mappings]);
 
@@ -259,13 +270,13 @@ export function EntityRichText({
 
   const nodes = useMemo(() => {
     if (isHtml) {
-      return parseHtmlToReact(content, triggers, handleOpen, setChoiceCandidates);
+      return parseHtmlToReact(content, triggers, t, handleOpen, setChoiceCandidates);
     }
     const matches = findMatches(content, triggers);
     const segments = segmentText(content, matches);
-    return renderSegments(segments, 'plain', handleOpen, setChoiceCandidates);
+    return renderSegments(segments, 'plain', t, handleOpen, setChoiceCandidates);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, triggers, isHtml, openEntity]);
+  }, [content, triggers, isHtml, openEntity, t]);
 
   return (
     <>

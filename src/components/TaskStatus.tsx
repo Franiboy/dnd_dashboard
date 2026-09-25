@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { BingoGame, SafeUser } from '../../shared/types';
 import type { Socket } from '../types';
-import { useApi } from '../hooks/useApi';
+import { useApi, type ApiResponse } from '../hooks/useApi';
+import { useI18n } from '../hooks/useI18n';
+import { localizeServerMessage } from '../i18n/serverMessages';
+import type { TFunction, TranslationKey } from '../i18n/messages';
 import { Loading } from './Loading';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Toggle } from './Toggle';
@@ -12,8 +15,37 @@ interface TaskStatusProps {
   socket: Socket | null;
 }
 
+type LocalizedApiError = Pick<
+  ApiResponse<unknown>,
+  'error' | 'errorCode' | 'messageKey' | 'errorParams' | 'params'
+>;
+
+function localizeApiError(
+  response: LocalizedApiError,
+  t: TFunction,
+  fallbackKey: TranslationKey
+): string | null {
+  const { error, errorCode, messageKey, errorParams, params } = response;
+  if (!error) return null;
+  if (!messageKey && !errorCode) return error;
+
+  return (
+    localizeServerMessage(
+      {
+        message: error,
+        errorCode,
+        messageKey,
+        params: errorParams ?? params,
+      },
+      t,
+      { fallback: error, fallbackKey }
+    ) ?? t(fallbackKey)
+  );
+}
+
 export function TaskStatus({ game, socket }: TaskStatusProps) {
   const { request } = useApi();
+  const { t } = useI18n();
   const [pendingTask, setPendingTask] = useState<{
     id: string;
     action: 'confirm' | 'unconfirm';
@@ -21,14 +53,16 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
   const [showHidden, setShowHidden] = useState(false);
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
+  const [usersError, setUsersError] = useState<string | null>(null);
   const taskMap = new Map(game.tasks.map((t) => [t.id, t]));
 
   useEffect(() => {
-    request<SafeUser[]>('/api/admin/users').then(({ data }) => {
-      setUsers(data ?? []);
+    request<SafeUser[]>('/api/admin/users', undefined, false).then((response) => {
+      setUsers(response.data ?? []);
+      setUsersError(localizeApiError(response, t, 'bingo.taskPool.usersError'));
       setUsersLoading(false);
     });
-  }, [request]);
+  }, [request, t]);
 
   const taskStatus = game.tasks
     // DM-pool tasks are marked by the dungeon masters themselves.
@@ -66,11 +100,18 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
     <div className="h-full flex flex-col">
       {usersLoading && (
         <div className="mb-2">
-          <Loading text="Benutzer laden..." size="sm" />
+          <Loading text={t('bingo.taskPool.loadingUsers')} size="sm" />
         </div>
       )}
+      {usersError && (
+        <p role="alert" className="mb-2 text-sm text-[var(--danger)]">
+          {usersError}
+        </p>
+      )}
       <ul className="flex-1 min-h-0 space-y-2 overflow-auto">
-        {taskStatus.length === 0 && <li className="text-slate-500 italic">Noch keine Aufgaben.</li>}
+        {taskStatus.length === 0 && (
+          <li className="text-slate-500 italic">{t('bingo.tasks.empty')}</li>
+        )}
         {taskStatus.map(({ task, confirmedBy }) => (
           <li
             key={task.id}
@@ -83,7 +124,12 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
               {task.text}
               {task.isPrivate && (
                 <span className="ml-2 inline-flex items-center gap-1 text-xs text-slate-400">
-                  <span>🔒</span>
+                  <span
+                    title={t('bingo.grid.privateTask')}
+                    aria-label={t('bingo.grid.privateTask')}
+                  >
+                    🔒
+                  </span>
                   <UserInline users={users} userIds={task.assignedTo} />
                 </span>
               )}
@@ -91,7 +137,7 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
             <span
               className={`text-sm font-semibold ${confirmedBy ? 'text-[var(--accent)]' : 'text-slate-500'}`}
             >
-              {confirmedBy ? `✓ ${confirmedBy}` : 'Offen'}
+              {confirmedBy ? `✓ ${confirmedBy}` : t('bingo.tasks.open')}
             </span>
           </li>
         ))}
@@ -101,23 +147,37 @@ export function TaskStatus({ game, socket }: TaskStatusProps) {
         <Toggle
           checked={showHidden}
           onChange={setShowHidden}
-          label="Versteckte Aufgaben anzeigen"
+          label={t('bingo.taskPool.showHidden')}
         />
       </div>
 
       {pendingTaskData && pendingTask && (
         <ConfirmDialog
-          title={pendingTask.action === 'confirm' ? 'Aufgabe bestätigen' : 'Bestätigung entfernen'}
-          confirmLabel={pendingTask.action === 'confirm' ? 'Erledigt' : 'Entfernen'}
+          title={
+            pendingTask.action === 'confirm'
+              ? t('bingo.tasks.confirmTitle')
+              : t('bingo.tasks.removeConfirmationTitle')
+          }
+          confirmLabel={
+            pendingTask.action === 'confirm' ? t('bingo.tasks.done') : t('bingo.tasks.remove')
+          }
           variant={pendingTask.action === 'confirm' ? 'accent' : 'danger'}
           onConfirm={submit}
           onCancel={() => setPendingTask(null)}
         >
           <p>
-            Soll <span className="text-[var(--text-h)] font-medium">{pendingTaskData.text}</span>{' '}
-            {pendingTask.action === 'confirm'
-              ? 'als erledigt markiert werden? Dies gilt für alle Spieler.'
-              : 'nicht mehr als erledigt gelten? Dies gilt für alle Spieler.'}
+            {t(
+              pendingTask.action === 'confirm'
+                ? 'bingo.tasks.confirmQuestionStart'
+                : 'bingo.tasks.unconfirmQuestionStart'
+            )}
+            <span className="text-[var(--text-h)] font-medium">{pendingTaskData.text}</span>
+            {t(
+              pendingTask.action === 'confirm'
+                ? 'bingo.tasks.confirmQuestionEnd'
+                : 'bingo.tasks.unconfirmQuestionEnd',
+              { scope: t('bingo.tasks.allPlayersScope') }
+            )}
           </p>
         </ConfirmDialog>
       )}

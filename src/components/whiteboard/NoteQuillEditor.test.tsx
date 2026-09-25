@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Quill } from 'react-quill-new';
@@ -6,6 +6,7 @@ import type { WhiteboardElement } from '../../../shared/types';
 import { NOTE_QUILL_TOOLBAR_ID, NoteQuillEditor } from './NoteQuillEditor';
 import { MappingsContext } from '../../contexts/MappingsContext';
 import { WhiteboardElementView } from './WhiteboardElementView';
+import { renderWithProviders } from '../../test-utils';
 
 // Quill's mount focus reads layout metrics that jsdom does not implement.
 beforeAll(() => {
@@ -69,7 +70,7 @@ function EditorHarness({ children }: { children: ReactNode }) {
 describe('NoteQuillEditor', () => {
   it('saves real editor HTML so list markers survive into display view', async () => {
     const onUpdate = vi.fn();
-    render(
+    renderWithProviders(
       <EditorHarness>
         <NoteQuillEditor
           element={noteWithText('<p>Alt</p>')}
@@ -111,7 +112,7 @@ describe('NoteQuillEditor', () => {
 describe('WhiteboardElementView note display parity', () => {
   it('renders saved notes inside the snow theme context like the editor', () => {
     const noop = vi.fn();
-    render(
+    renderWithProviders(
       <WhiteboardElementView
         element={noteWithText(
           '<ul><li data-list="bullet"><span class="ql-ui"></span>Punkt</li></ul>'

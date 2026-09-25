@@ -687,12 +687,11 @@ async function recoverAllRecordingsInternal(): Promise<void> {
         await recoverRecording(session.id);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
       log.error(`Failed to recover recording session ${session.id}:`, err);
       updateSession(session.id, {
         status: 'error',
         stoppedAt: new Date().toISOString(),
-        error: message,
+        error: 'Aufnahme konnte nicht wiederhergestellt werden',
       });
       emitSessionsUpdated();
     }

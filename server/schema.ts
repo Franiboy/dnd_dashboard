@@ -57,6 +57,7 @@ export const schema: Record<string, TableDef> = {
       auto_session_to_diary: { type: 'INTEGER', notNull: true, default: '0' },
       auto_accept_session_diary: { type: 'INTEGER', notNull: true, default: '0' },
       theme_primary: { type: 'TEXT' },
+      ui_language: { type: 'TEXT' },
     },
   },
 
@@ -76,6 +77,8 @@ export const schema: Record<string, TableDef> = {
       channel_id: { type: 'TEXT', notNull: true },
       created_by: { type: 'TEXT', notNull: true },
       started_at: { type: 'TEXT', notNull: true },
+      // Captured once so an interrupted transcription resumes in the same language.
+      transcription_language: { type: 'TEXT' },
       stopped_at: { type: 'TEXT' },
       directory: { type: 'TEXT', notNull: true },
       transcript: { type: 'TEXT' },
@@ -567,6 +570,7 @@ export const schema: Record<string, TableDef> = {
     columns: {
       id: { type: 'INTEGER', primaryKey: true },
       model: { type: 'TEXT' },
+      language: { type: 'TEXT', notNull: true, default: "'de'" },
       updated_at: { type: 'TEXT' },
     },
   },

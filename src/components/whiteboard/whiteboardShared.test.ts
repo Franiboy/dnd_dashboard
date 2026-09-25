@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { WhiteboardElement } from '../../../shared/types';
+import { createTranslator } from '../../i18n/messages';
 import {
   WB_CLIPBOARD_PREFIX,
   buildStrokeGeometry,
   compareStackOrder,
+  getTaskStatusLabel,
   groupLayerMovePatches,
   isShapeTool,
   layerMovePatches,
   nextTopZIndex,
+  nextTaskStatus,
   parseBoardClipboard,
   selectionBounds,
   shapeKindForTool,
@@ -259,6 +262,21 @@ describe('groupLayerMovePatches', () => {
       { id: 'b', patch: { zIndex: 1 } },
       { id: 'a', patch: { zIndex: 1 } },
     ]);
+  });
+});
+
+describe('localized task status helper', () => {
+  it('keeps the stored status values while translating their labels', () => {
+    const de = createTranslator('de');
+    const en = createTranslator('en');
+
+    expect(getTaskStatusLabel('open', de)).toBe('Offen');
+    expect(getTaskStatusLabel('in_progress', de)).toBe('In Arbeit');
+    expect(getTaskStatusLabel('done', de)).toBe('Erledigt');
+    expect(getTaskStatusLabel('open', en)).toBe('Open');
+    expect(getTaskStatusLabel('in_progress', en)).toBe('In progress');
+    expect(getTaskStatusLabel('done', en)).toBe('Done');
+    expect(nextTaskStatus('in_progress')).toBe('done');
   });
 });
 

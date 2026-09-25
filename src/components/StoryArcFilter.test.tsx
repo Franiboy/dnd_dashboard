@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { StoryArcContext, type StoryArcContextValue } from '../contexts/StoryArcContext';
 import type { StoryArc } from '../../shared/types';
+import { renderWithProviders, TestProviders } from '../test-utils/renderWithProviders';
 import { StoryArcFilter } from './StoryArcFilter';
 
 function arc(partial: Partial<StoryArc>): StoryArc {
@@ -38,11 +39,12 @@ function contextValue(overrides: Partial<StoryArcContextValue> = {}): StoryArcCo
   };
 }
 
-function renderFilter(overrides: Partial<StoryArcContextValue> = {}) {
-  return render(
+function renderFilter(overrides: Partial<StoryArcContextValue> = {}, language: 'de' | 'en' = 'de') {
+  return renderWithProviders(
     <StoryArcContext.Provider value={contextValue(overrides)}>
       <StoryArcFilter />
-    </StoryArcContext.Provider>
+    </StoryArcContext.Provider>,
+    { language, router: false }
   );
 }
 
@@ -58,6 +60,13 @@ describe('StoryArcFilter', () => {
     expect(screen.getByText('Ohne Kapitel')).toBeDefined();
     // The panel is an absolute full-width strip anchored below the header.
     expect(container.querySelector('.absolute.top-full')).not.toBeNull();
+  });
+
+  it('localizes the filter trigger and campaign heading in English', () => {
+    renderFilter({}, 'en');
+    expect(screen.getByText('All chapters')).toBeDefined();
+    fireEvent.click(screen.getByText('All chapters'));
+    expect(screen.getByText('✦ The campaign')).toBeDefined();
   });
 
   it('allows a long chapter selection to shrink without losing the full title', () => {
@@ -92,9 +101,11 @@ describe('StoryArcFilter', () => {
     expect(setSelectedArcId).toHaveBeenCalledWith(null);
 
     rerender(
-      <StoryArcContext.Provider value={contextValue({ selectedArcId: 1, setSelectedArcId })}>
-        <StoryArcFilter />
-      </StoryArcContext.Provider>
+      <TestProviders language="de" router={false}>
+        <StoryArcContext.Provider value={contextValue({ selectedArcId: 1, setSelectedArcId })}>
+          <StoryArcFilter />
+        </StoryArcContext.Provider>
+      </TestProviders>
     );
     fireEvent.click(screen.getByText('Erstes Kapitel'));
     fireEvent.click(screen.getByText('One-Shots'));
