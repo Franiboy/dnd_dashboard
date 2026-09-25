@@ -70,6 +70,11 @@ describe('LogPanel', () => {
     expect(screen.getByText('Auto-Scroll')).toBeDefined();
 
     await waitFor(() => expect(screen.getByText('[WARNUNG]')).toBeDefined());
+    // The log stream effect runs once the initial load settles. Without this
+    // the effect can fire after the test finished, when afterEach has already
+    // removed the EventSource stub, and fail with
+    // "ReferenceError: EventSource is not defined" depending on timing.
+    await waitFor(() => expect(MockEventSource.instances.length).toBeGreaterThan(0));
     expect(screen.getByText('[Authentifizierung]')).toBeDefined();
     expect(screen.getByText('Server message stays unchanged')).toBeDefined();
     expect(
