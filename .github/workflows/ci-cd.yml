@@ -62,14 +62,12 @@ jobs:
       - name: Build
         run: npm run build
 
-  # The review implementation and its write-capable automation live in the
-  # private deployment repository. The pull_request_target workflow definition
-  # comes from the base branch and passes credentials only to the pinned private
-  # reusable workflow. The AI job receives no write token; source install code
-  # runs only in a separate hosted validation job without credentials. No
-  # self-hosted job is defined in this repository.
+  # The trusted source workflow only dispatches the private review workflow.
+  # The private dispatcher is the caller of the self-hosted reusable workflow,
+  # so its repository-scoped JIT runner is eligible. No self-hosted job or
+  # write-capable AI credential is defined in this repository.
   trusted-ai-review:
-    name: Trusted AI review
+    name: Dispatch trusted AI review
     needs: ci
     if: >-
       github.event_name == 'pull_request_target' &&
@@ -79,24 +77,37 @@ jobs:
       vars.DND_AI_REVIEW_ENABLED == 'true' &&
       !contains(github.event.pull_request.labels.*.name, 'automerge') &&
       !contains(github.event.pull_request.labels.*.name, 'hold')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       actions: read
-      checks: read
       contents: read
-      issues: read
       pull-requests: read
-    uses: Franiboy/dnd_dashboard-deploy/.github/workflows/ai-review.yml@a9b2c14556944d736e18060389d88efc76cfd046
-    with:
-      pr_number: ${{ github.event.pull_request.number }}
-      head_sha: ${{ github.event.pull_request.head.sha }}
-      head_repository: ${{ github.event.pull_request.head.repo.full_name }}
-      head_branch: ${{ github.event.pull_request.head.ref }}
-      base_branch: ${{ github.base_ref }}
-      base_sha: ${{ github.event.pull_request.base.sha }}
-      source_repository: ${{ github.repository }}
-      automation_ref: a9b2c14556944d736e18060389d88efc76cfd046
-      pr_actor: ${{ github.event.pull_request.user.login }}
-    secrets:
-      AI_AUTOMATION_READ_TOKEN: ${{ secrets.AI_AUTOMATION_READ_TOKEN }}
-      AI_GITHUB_TOKEN: ${{ secrets.AI_GITHUB_TOKEN }}
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+    env:
+      GH_TOKEN: ${{ secrets.AI_DISPATCH_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      SOURCE_RUN_ID: ${{ github.run_id }}
+      SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}
+      PRIVATE_AUTOMATION_REF: ${{ vars.DND_PRIVATE_AUTOMATION_REF }}
+    steps:
+      - name: Dispatch private ephemeral AI review
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$SOURCE_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          [[ "$PRIVATE_AUTOMATION_REF" =~ ^[0-9a-f]{40}$ ]]
+          gh workflow run ai-review-dispatch.yml \
+            --repo Franiboy/dnd_dashboard-deploy \
+            --ref main \
+            -f source_run_id="$SOURCE_RUN_ID" \
+            -f source_run_attempt="$SOURCE_RUN_ATTEMPT" \
+            -f dispatch_ref="$PRIVATE_AUTOMATION_REF" \
+            -f pr_number="$PR_NUMBER" \
+            -f head_sha="$HEAD_SHA" \
+            -f base_sha="$BASE_SHA"

@@ -82,15 +82,18 @@ Do not run the legacy `scripts/dnd-deploy.sh`; it is intentionally disabled.
 ## Manual configuration
 
 1. **Private runners:** register the production runner in
-   `Franiboy/dnd_dashboard-deploy`, not in the source repository. Register a
-   second, unprivileged rootless-container runner with the additional label
-   `HomeServer-AI` for isolated AI review. The AI runner must not have access
-   to `/dnd_dashboard`, production secrets, the database, sudo, container
-   sockets or the local production application port.
-2. **AI runtime:** install the OpenCode CLI, the default-model plugin and its
-   API credential in the `HomeServer-AI` runner user's global OpenCode setup.
-   Add global hard policies denying shell, MCP tools, web access and external
-   directories. The review script intentionally does not select a model.
+   `Franiboy/dnd_dashboard-deploy`, not in the source repository. The
+   `HomeServer-AI` runner is not registered permanently: the private
+   deployment host runs a dedicated `dnd-ai` supervisor that creates one JIT
+   runner and one fresh rootless container per queued private review job. The
+   job has no access to `/dnd_dashboard`, production secrets, the database,
+   sudo, container sockets, host networking or the local production port.
+2. **AI runtime:** build the private, digest-pinned runner image with OpenCode,
+   the pinned default-model plugin, a root-owned read-only global policy and
+   the internal allowlist proxy. Store the GitHub App enrollment key only in
+   the host supervisor's systemd credential. Add the OpenCode provider key as
+   the private `OPENCODE_API_KEY` Actions secret; the review script never
+   selects a model.
 3. **TLS certificate:** `sudo certbot --nginx -d <your-domain>`.
 4. **DNS/firewall:** expose only HTTPS through the reverse proxy. The Node
    socket binds to `127.0.0.1:3001` and must not be forwarded externally.
