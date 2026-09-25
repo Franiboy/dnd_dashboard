@@ -5,18 +5,30 @@ on:
     branches:
       - main
   pull_request:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
+  actions: read
+  checks: read
   contents: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Keep pull-request and trusted-target runs alive while an AI fix commit
+  # starts its fresh CI run. Only main-push runs may cancel older runs.
+  cancel-in-progress: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' }}
 
 jobs:
   ci:
     name: CI
+    if: >-
+      github.event_name != 'pull_request_target' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.user.login == 'Franiboy')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -49,3 +61,53 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # The trusted source workflow only dispatches the private review workflow.
+  # The private dispatcher is the caller of the self-hosted reusable workflow,
+  # so its repository-scoped JIT runner is eligible. No self-hosted job or
+  # write-capable AI credential is defined in this repository.
+  trusted-ai-review:
+    name: Dispatch trusted AI review
+    needs: ci
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.base_ref == 'main' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == 'Franiboy' &&
+      vars.DND_AI_REVIEW_ENABLED == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'automerge') &&
+      !contains(github.event.pull_request.labels.*.name, 'hold')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ secrets.AI_DISPATCH_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      SOURCE_RUN_ID: ${{ github.run_id }}
+      SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}
+      PRIVATE_AUTOMATION_REF: ${{ vars.DND_PRIVATE_AUTOMATION_REF }}
+    steps:
+      - name: Dispatch private ephemeral AI review
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$SOURCE_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          [[ "$PRIVATE_AUTOMATION_REF" =~ ^[0-9a-f]{40}$ ]]
+          gh workflow run ai-review-dispatch.yml \
+            --repo Franiboy/dnd_dashboard-deploy \
+            --ref main \
+            -f source_run_id="$SOURCE_RUN_ID" \
+            -f source_run_attempt="$SOURCE_RUN_ATTEMPT" \
+            -f dispatch_ref="$PRIVATE_AUTOMATION_REF" \
+            -f pr_number="$PR_NUMBER" \
+            -f head_sha="$HEAD_SHA" \
+            -f base_sha="$BASE_SHA"

@@ -54,35 +54,73 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Check formatting
-        run: npm run format:check
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Test
-        run: npm test
-
-      - name: Build
-        run: npm run build
-
-      - name: Validate compiled server
+      # Native addons are resolved against the libc of the machine that runs
+      # `npm ci`. Production is Ubuntu 24.04 (glibc 2.39), so the dependency
+      # install must happen on this runner and not inside the disposable
+      # container, whose Debian bookworm base carries glibc 2.36. A mismatch
+      # publishes a release that cannot load its native modules on production.
+      - name: Install dependencies for the production target
         shell: bash
         run: |
-          node --check dist-server/server/index.js
-          node --check dist-server/scripts/db-migrate.js
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+
+      - name: Build and validate in disposable container
+        shell: bash
+        env:
+          RELEASE_IMAGE: node@sha256:107ceb6ad85808049dccef12414bf17b08eceb299eaf755c0339dc5fc8958d6b
+        run: |
+          set -euo pipefail
+          docker run --rm --init \
+            --user "$(id -u):$(id -g)" \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges \
+            --pids-limit=512 \
+            --memory=4g \
+            --cpus=2 \
+            --read-only \
+            --tmpfs /tmp:rw,nosuid,size=2g \
+            --tmpfs /run:rw,nosuid,nodev,size=64m \
+            -e HOME=/tmp/home \
+            -e CI=true \
+            -e npm_config_cache=/tmp/npm-cache \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            "$RELEASE_IMAGE" \
+            bash -c 'set -euo pipefail; mkdir -p /tmp/home /tmp/npm-cache; npm run format:check; npm run lint; npm test; npm run build; node --check dist-server/server/index.js; node --check dist-server/scripts/db-migrate.js'
+
+      - name: Verify source tree after container build
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --no-ext-diff --no-textconv --exit-code
+          test -z "$(git status --porcelain --untracked-files=all)"
 
       - name: Package release
         shell: bash
         env:
           DND_RELEASE_SHA: ${{ env.RELEASE_SHA }}
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_NOSYSTEM: '1'
+          GIT_TERMINAL_PROMPT: '0'
         run: bash scripts/package-release.sh "$RUNNER_TEMP/dnd-release.tar.gz"
+
+      - name: Verify release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd "$RUNNER_TEMP" && sha256sum -c dnd-release.tar.gz.sha256)
+          tar -tzf "$RUNNER_TEMP/dnd-release.tar.gz" >/dev/null
+
+      # Guards against publishing a release whose native addons cannot load on
+      # the production target. A glibc mismatch between the build host and
+      # production produced an undeployable release once already.
+      - name: Verify release native modules for the production target
+        shell: bash
+        env:
+          PRODUCTION_GLIBC: '2.39'
+        run: bash scripts/verify-release-native.sh "$RUNNER_TEMP/dnd-release.tar.gz" "$PRODUCTION_GLIBC"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -118,17 +156,48 @@ jobs:
           SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
+          (cd "$RUNNER_TEMP/release" && sha256sum -c dnd-release.tar.gz.sha256)
+          tar -tzf "$RUNNER_TEMP/release/dnd-release.tar.gz" >/dev/null
           tag="release-${RELEASE_SHA}"
-          if ! gh release view "$tag" --repo "$SOURCE_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$tag" \
-              --repo "$SOURCE_REPOSITORY" \
-              --target "$RELEASE_SHA" \
-              --title "Release ${RELEASE_SHA:0:12}" \
-              --notes "Automated immutable build for ${RELEASE_SHA}."
+          if gh release view "$tag" --repo "$SOURCE_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refusing to replace immutable assets" >&2
+            exit 1
           fi
+          gh release create "$tag" \
+            --repo "$SOURCE_REPOSITORY" \
+            --target "$RELEASE_SHA" \
+            --title "Release ${RELEASE_SHA:0:12}" \
+            --notes "Automated immutable build for ${RELEASE_SHA}."
           gh release upload "$tag" \
             --repo "$SOURCE_REPOSITORY" \
-            --clobber \
             "$RUNNER_TEMP/release/dnd-release.tar.gz" \
             "$RUNNER_TEMP/release/dnd-release.tar.gz.sha256"
-          printf 'Published release asset: %s\n' "$tag"
+          published_target="$(gh release view "$tag" --repo "$SOURCE_REPOSITORY" --json targetCommitish --jq '.targetCommitish')"
+          [ "$published_target" = "$RELEASE_SHA" ] || {
+            echo "Release target mismatch: $published_target" >&2
+            exit 1
+          }
+          published_commit="$(gh api "repos/${SOURCE_REPOSITORY}/commits/${tag}" --jq '.sha')"
+          [ "$published_commit" = "$RELEASE_SHA" ] || {
+            echo "Release tag resolves to an unexpected commit: $published_commit" >&2
+            exit 1
+          }
+          printf 'Published immutable release asset: %s\n' "$tag"
+
+      - name: Dispatch private production deployment
+        if: ${{ vars.DND_AUTO_DEPLOY_ENABLED == 'true' }}
+        shell: bash
+        env:
+          DEPLOY_DISPATCH_TOKEN: ${{ secrets.DEPLOY_DISPATCH_TOKEN }}
+          DEPLOY_REPOSITORY: Franiboy/dnd_dashboard-deploy
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_DISPATCH_TOKEN" ]; then
+            echo 'DEPLOY_DISPATCH_TOKEN is required when DND_AUTO_DEPLOY_ENABLED=true' >&2
+            exit 1
+          fi
+          GH_TOKEN="$DEPLOY_DISPATCH_TOKEN" gh workflow run deploy.yml \
+            --repo "$DEPLOY_REPOSITORY" \
+            --ref main \
+            -f "sha=$RELEASE_SHA"
+          printf 'Dispatched production deployment for %s\n' "$RELEASE_SHA"
