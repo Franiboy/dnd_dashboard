@@ -87,13 +87,31 @@ jobs:
       GH_TOKEN: ${{ secrets.AI_DISPATCH_TOKEN }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
       SOURCE_RUN_ID: ${{ github.run_id }}
       SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}
       PRIVATE_AUTOMATION_REF: ${{ vars.DND_PRIVATE_AUTOMATION_REF }}
     steps:
+      # github.event.pull_request.base.sha is the base commit recorded when the
+      # pull request was created or last synchronized. For a pull request that
+      # stays open across a merge it keeps pointing at an older main, and the
+      # review then refuses that stale base. The review must always run against
+      # the current main tip, and its own guard rejects the review if main moves
+      # again between this dispatch and the review job.
+      - name: Resolve the current base commit
+        id: base
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$BASE_BRANCH" == 'main' ]]
+          base_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${BASE_BRANCH}" --jq '.sha')"
+          [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]]
+          printf 'sha=%s\n' "$base_sha" >> "$GITHUB_OUTPUT"
+
       - name: Dispatch private ephemeral AI review
         shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
         run: |
           set -Eeuo pipefail
           [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
