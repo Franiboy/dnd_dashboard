@@ -294,4 +294,7 @@ Before changing the source repository from private to public:
   workspace;
 - confirm `SECURITY.md` and `.github/CODEOWNERS` exist and stay current. Both
   are advisory while branch protection is unavailable, `SECURITY.md` still gives
-  reporters a private channel.
+  reporters a private channel;
+- set `DND_CODEQL_ENABLED=true`. Code scanning is free for a public repository;
+  while the repository is private it requires GitHub Advanced Security and fails
+  with `CodeQL job status was configuration error`.
