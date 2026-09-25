@@ -20,7 +20,7 @@ COMMIT_TIME="$(git show -s --format=%cI "$RELEASE_SHA")"
 
 # Keep the production artifact self-contained. Native modules have already been
 # installed and tested by npm ci; pruning only removes development packages.
-npm prune --omit=dev
+npm prune --omit=dev --ignore-scripts
 
 mkdir -p "$STAGING"
 cp -a dist "$STAGING/dist"
@@ -29,7 +29,7 @@ cp -a node_modules "$STAGING/node_modules"
 cp package.json package-lock.json "$STAGING/"
 printf '%s\n' "$RELEASE_SHA" > "$STAGING/.release-sha"
 
-node - "$STAGING/manifest.json" "$RELEASE_SHA" "$LOCK_SHA" "$NODE_VERSION" "$COMMIT_TIME" <<'NODE'
+node --input-type=module - "$STAGING/manifest.json" "$RELEASE_SHA" "$LOCK_SHA" "$NODE_VERSION" "$COMMIT_TIME" <<'NODE'
 import { writeFileSync } from 'node:fs';
 const [output, commit, lockfileSha256, nodeVersion, commitTime] = process.argv.slice(2);
 writeFileSync(

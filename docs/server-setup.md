@@ -31,15 +31,20 @@ by the GitHub release workflow.
    The script installs nvm/Node from `.nvmrc`, stable systemd units, nginx,
    timers and narrowly scoped sudo rules. The production runner is registered
    separately to the private `Franiboy/dnd_dashboard-deploy` repository; it is
-   not installed by this public source repository.
+   not installed by this public source repository. A separate `HomeServer-AI`
+   runner must be registered as an unprivileged rootless container for trusted
+   AI review; see the private deployment repository for its isolation
+   checklist.
 
 The application is not started until the first immutable release exists.
 
 ## First release
 
 After the public release workflow has published an asset for an exact source
-commit, dispatch the private deployment workflow with that SHA. The private
-job will:
+commit, the release workflow can dispatch the private deployment automatically
+when `DND_AUTO_DEPLOY_ENABLED=true`. For the first release or a deliberate
+rollback, dispatch the private deployment workflow manually with that SHA. The
+private job will:
 
 - validate the artifact and checksum;
 - create `/dnd_dashboard/releases/<sha>`;
@@ -76,18 +81,24 @@ Do not run the legacy `scripts/dnd-deploy.sh`; it is intentionally disabled.
 
 ## Manual configuration
 
-1. **Private runner:** register the host runner in
-   `Franiboy/dnd_dashboard-deploy`, not in the public source repository. The
-   default labels are `self-hosted,Linux,X64,HomeServer`; the public source
-   repository must contain no self-hosted job.
-2. **TLS certificate:** `sudo certbot --nginx -d <your-domain>`.
-3. **DNS/firewall:** expose only HTTPS through the reverse proxy. The Node
+1. **Private runners:** register the production runner in
+   `Franiboy/dnd_dashboard-deploy`, not in the source repository. Register a
+   second, unprivileged rootless-container runner with the additional label
+   `HomeServer-AI` for isolated AI review. The AI runner must not have access
+   to `/dnd_dashboard`, production secrets, the database, sudo, container
+   sockets or the local production application port.
+2. **AI runtime:** install the OpenCode CLI, the default-model plugin and its
+   API credential in the `HomeServer-AI` runner user's global OpenCode setup.
+   Add global hard policies denying shell, MCP tools, web access and external
+   directories. The review script intentionally does not select a model.
+3. **TLS certificate:** `sudo certbot --nginx -d <your-domain>`.
+4. **DNS/firewall:** expose only HTTPS through the reverse proxy. The Node
    socket binds to `127.0.0.1:3001` and must not be forwarded externally.
-4. **Secrets:** keep `/dnd_dashboard/.env` outside release directories and set
+5. **Secrets:** keep `/dnd_dashboard/.env` outside release directories and set
    mode `0600`.
-5. **Data:** restore the latest backup before enabling the application. Keep
+6. **Data:** restore the latest backup before enabling the application. Keep
    `dnd.db`, `data/`, and `recordings/` outside immutable release directories.
-6. **Old-host teardown:** disable the old timers, socket, service and runner
+7. **Old-host teardown:** disable the old timers, socket, service and runner
    only after the new host is healthy.
 
 ## Verification
