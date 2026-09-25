@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from './useI18n';
 import {
   getServerMessagePayload,
   isCompletedServerMessage,
   localizeServerStatus,
+  type ServerMessageLike,
 } from '../i18n/serverMessages';
 
 /**
@@ -14,18 +15,22 @@ import {
  */
 export function useTimelineAiStatus(onDone?: () => void): {
   aiStatus: string | null;
-  setAiStatus: (status: string | null) => void;
+  setAiStatus: (status: string | ServerMessageLike | null) => void;
   sseReadyRef: React.RefObject<Promise<void>>;
 } {
   const { t } = useI18n();
-  const [aiStatus, setAiStatus] = useState<string | null>(null);
+  const [statusPayload, setStatusPayload] = useState<string | ServerMessageLike | null>(null);
   const sseReadyRef = useRef(Promise.resolve());
   const onDoneRef = useRef(onDone);
-  const tRef = useRef(t);
-
-  useEffect(() => {
-    tRef.current = t;
-  }, [t]);
+  const aiStatus = useMemo(
+    () =>
+      typeof statusPayload === 'string'
+        ? statusPayload
+        : statusPayload
+          ? (localizeServerStatus(statusPayload, t) ?? null)
+          : null,
+    [statusPayload, t]
+  );
 
   useEffect(() => {
     onDoneRef.current = onDone;
@@ -47,12 +52,11 @@ export function useTimelineAiStatus(onDone?: () => void): {
         const payload = getServerMessagePayload(parsed);
         if (!payload) return;
         if (isCompletedServerMessage(payload)) {
-          setAiStatus(null);
+          setStatusPayload(null);
           onDoneRef.current?.();
           return;
         }
-        const localized = localizeServerStatus(payload, tRef.current);
-        if (localized) setAiStatus(localized);
+        setStatusPayload(payload);
       } catch {
         // Ignore malformed SSE messages; a later structured event can still
         // provide a useful status.
@@ -64,5 +68,5 @@ export function useTimelineAiStatus(onDone?: () => void): {
     };
   }, []);
 
-  return { aiStatus, setAiStatus, sseReadyRef };
+  return { aiStatus, setAiStatus: setStatusPayload, sseReadyRef };
 }

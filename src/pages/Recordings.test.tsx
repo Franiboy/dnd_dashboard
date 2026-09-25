@@ -34,6 +34,7 @@ const session: RecordingSession = {
   channelId: 'channel',
   createdBy: 'user',
   startedAt: '2026-09-24T12:00:00.000Z',
+  transcriptionLanguage: 'de',
   stoppedAt: '2026-09-24T14:00:00.000Z',
   directory: '/tmp/session',
   transcript: null,

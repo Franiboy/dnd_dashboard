@@ -162,5 +162,6 @@ export const sessions = {
     noAudioFiles: 'Keine Audio-Dateien für diese Session vorhanden',
     noTranscriptionResults: 'Transkription lieferte keine Ergebnisse',
     transcriptionFailed: 'Transkription fehlgeschlagen: {error}',
+    recoveryFailed: 'Aufnahme konnte nicht wiederhergestellt werden',
   },
 } as const;

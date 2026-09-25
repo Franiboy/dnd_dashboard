@@ -141,6 +141,7 @@ export interface WhiteboardPatch {
  */
 export const WHITEBOARD_DIVIDER_Y = 0;
 
+export const SERVER_MESSAGE_PROTOCOL_VERSION = 2;
 export type ServerMessageParam = string | number | boolean | null | undefined;
 export type ServerMessageParams = Readonly<Record<string, ServerMessageParam>>;
 
@@ -172,6 +173,8 @@ export interface ServerToClientEvents {
 
 export const SUPPORTED_LANGUAGES = ['de', 'en'] as const;
 export type Language = (typeof SUPPORTED_LANGUAGES)[number];
+/** Whisper's legacy automatic detection is accepted for bootstrap settings. */
+export type WhisperLanguage = Language | 'auto';
 
 // Role of a user within the campaign. Every user starts as a guest;
 // admins can promote users to dungeon master or player in the admin panel.
@@ -411,6 +414,8 @@ export interface RecordingSession {
   channelId: string;
   createdBy: string;
   startedAt: string;
+  /** Language captured when the recording session was created. */
+  transcriptionLanguage: WhisperLanguage | null;
   stoppedAt: string | null;
   directory: string;
   transcript: string | null;

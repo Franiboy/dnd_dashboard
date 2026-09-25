@@ -1,5 +1,6 @@
 export const common = {
   language: 'Language',
+  automatic: 'Automatic',
   german: 'Deutsch',
   english: 'English',
   loading: 'Loading...',

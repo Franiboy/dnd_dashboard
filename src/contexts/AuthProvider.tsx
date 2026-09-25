@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useError } from '../hooks/useError';
-import { AuthContext } from '../hooks/useAuth';
+import { AuthContext, type AuthCallbackResult } from '../hooks/useAuth';
 import type { SafeUser } from '../../shared/types';
 import { getBrowserLanguage, getEffectiveLanguage, useStoredLanguage } from '../i18n/language';
 import { createTranslator, type TranslationKey } from '../i18n/messages';
 import {
   getServerMessageCode,
   getServerMessageKey,
+  localizeServerMessage,
   type ServerMessageLike,
 } from '../i18n/serverMessages';
 
@@ -20,6 +21,7 @@ type AuthErrorState =
 
 interface AuthErrorResponse {
   error?: string;
+  message?: string;
   errorCode?: string;
   messageKey?: string;
   params?: ServerMessageLike['params'];
@@ -28,14 +30,15 @@ interface AuthErrorResponse {
 function responsePayload(data: AuthErrorResponse): ServerMessageLike | null {
   if (
     typeof data.error !== 'string' &&
+    typeof data.message !== 'string' &&
     typeof data.errorCode !== 'string' &&
     typeof data.messageKey !== 'string'
   ) {
     return null;
   }
   return {
-    message: data.error,
-    error: data.error,
+    message: data.message ?? data.error,
+    error: data.error ?? data.message,
     errorCode: data.errorCode,
     messageKey: data.messageKey,
     params: data.params,
@@ -66,7 +69,13 @@ function resolveError(
   t: ReturnType<typeof createTranslator>
 ): string | null {
   if (!state) return null;
-  return state.kind === 'key' ? t(state.key, state.params) : state.message;
+  if (state.kind === 'message') return state.message;
+  return (
+    localizeServerMessage({ messageKey: state.key, params: state.params }, t, {
+      fallbackKey: state.key,
+      fallback: t(state.key, state.params),
+    }) ?? t(state.key, state.params)
+  );
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
@@ -131,10 +140,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   );
 
   const handleDiscordCallback = useCallback(
-    async (
-      code: string,
-      state: string
-    ): Promise<{ ok: boolean; pending?: boolean; message?: string }> => {
+    async (code: string, state: string): Promise<AuthCallbackResult> => {
       try {
         const res = await fetch('/api/auth/discord/callback', {
           method: 'POST',
@@ -150,17 +156,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
         if (res.status === 403 && data.user) {
           setUser(data.user);
-          const pendingError = makeErrorState(responsePayload(data), 'auth.accountPending');
+          const pendingPayload = responsePayload(data);
+          const pendingError = makeErrorState(pendingPayload, 'auth.accountPending');
           setErrorState(pendingError);
           return {
             ok: false,
             pending: true,
             message: resolveError(pendingError, t) ?? t('auth.accountPending'),
+            ...(getServerMessageCode(pendingPayload)
+              ? { errorCode: getServerMessageCode(pendingPayload) }
+              : {}),
+            ...(getServerMessageKey(pendingPayload)
+              ? { messageKey: getServerMessageKey(pendingPayload) }
+              : {}),
+            ...(pendingPayload?.params !== undefined ? { params: pendingPayload.params } : {}),
           };
         }
+        const payload = responsePayload(data);
         return {
           ok: false,
-          message: reportError(responsePayload(data), 'auth.discordLoginFailed'),
+          message: reportError(payload, 'auth.discordLoginFailed'),
+          ...(getServerMessageCode(payload) ? { errorCode: getServerMessageCode(payload) } : {}),
+          ...(getServerMessageKey(payload) ? { messageKey: getServerMessageKey(payload) } : {}),
+          ...(payload?.params !== undefined ? { params: payload.params } : {}),
         };
       } catch {
         return { ok: false, message: reportError(null, 'common.serverUnavailable') };

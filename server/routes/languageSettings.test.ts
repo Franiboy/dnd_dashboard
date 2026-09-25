@@ -134,6 +134,22 @@ describe('PUT /api/me/ui-language', () => {
   });
 });
 
+describe('PUT /api/me/theme', () => {
+  it('returns a localizable error for a wrong value type', async () => {
+    const result = await request<{ errorCode?: string; messageKey?: string }>('/api/me/theme', {
+      token: regularToken,
+      method: 'PUT',
+      body: { primary: 42 },
+    });
+
+    expect(result.status).toBe(400);
+    expect(result.body).toMatchObject({
+      errorCode: 'errors.validation.color',
+      messageKey: 'errors.validation.color',
+    });
+  });
+});
+
 describe('/api/admin/ai/language', () => {
   it('is restricted to admins', async () => {
     const response = await request<{ error: string }>('/api/admin/ai/language', {

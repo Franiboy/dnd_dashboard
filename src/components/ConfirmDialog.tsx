@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useI18n } from '../hooks/useI18n';
 
 interface ConfirmDialogProps {
@@ -24,6 +25,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const { t } = useI18n();
   const titleId = useId();
+  const dialogRef = useDialogFocus<HTMLDivElement>(true, onCancel);
   const resolvedConfirmLabel = confirmLabel ?? t('shared.confirm');
   const resolvedCancelLabel = cancelLabel ?? t('shared.cancel');
   const confirmClasses =
@@ -37,7 +39,9 @@ export function ConfirmDialog({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby={titleId}
         aria-busy={loading || undefined}

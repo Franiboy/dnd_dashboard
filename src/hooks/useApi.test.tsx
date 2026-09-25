@@ -64,6 +64,22 @@ describe('useApi server message localization', () => {
     expect(result.mock.calls[0][0].error).toBe('Der Spieler schrieb: abgeschlossen.');
   });
 
+  it('sends the simulation context only for an administrator viewing another account', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetchMock);
+    const admin = createTestUser({ id: 'admin', isAdmin: true });
+    const simulated = createTestUser({ id: 'simulated' });
+
+    renderWithProviders(<Probe onResult={vi.fn()} />, {
+      auth: { user: admin, viewAsUser: simulated, effectiveUser: simulated },
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.headers).toBeInstanceOf(Headers);
+    expect((init.headers as Headers).get('X-DND-View-As-User')).toBe('simulated');
+  });
+
   it('interpolates server parameters and keeps them available to callers', async () => {
     const result = vi.fn();
     vi.stubGlobal(

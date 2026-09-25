@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from './useI18n';
-import { getServerMessagePayload, localizeServerStatus } from '../i18n/serverMessages';
+import {
+  getServerMessagePayload,
+  localizeServerStatus,
+  type ServerMessageLike,
+} from '../i18n/serverMessages';
 
 /**
  * Diary AI progress state fed by the per-user SSE stream: a status toast,
@@ -9,14 +13,18 @@ import { getServerMessagePayload, localizeServerStatus } from '../i18n/serverMes
  */
 export function useDiaryAiStatus() {
   const { t } = useI18n();
-  const [aiStatus, setAiStatus] = useState<string | null>(null);
+  const [statusPayload, setStatusPayload] = useState<string | ServerMessageLike | null>(null);
   const [aiOperation, setAiOperation] = useState(false);
   const sseReadyRef = useRef(Promise.resolve());
-  const tRef = useRef(t);
-
-  useEffect(() => {
-    tRef.current = t;
-  }, [t]);
+  const aiStatus = useMemo(
+    () =>
+      typeof statusPayload === 'string'
+        ? statusPayload
+        : statusPayload
+          ? (localizeServerStatus(statusPayload, t) ?? null)
+          : null,
+    [statusPayload, t]
+  );
 
   useEffect(() => {
     let resolveReady: (() => void) | null = null;
@@ -33,8 +41,7 @@ export function useDiaryAiStatus() {
         const parsed = JSON.parse((event as MessageEvent<string>).data) as unknown;
         const payload = getServerMessagePayload(parsed);
         if (!payload) return;
-        const localized = localizeServerStatus(payload, tRef.current);
-        if (localized) setAiStatus(localized);
+        setStatusPayload(payload);
       } catch {
         // Ignore malformed SSE messages; the next structured event can still
         // provide a useful status.
@@ -46,5 +53,11 @@ export function useDiaryAiStatus() {
     };
   }, []);
 
-  return { aiStatus, setAiStatus, aiOperation, setAiOperation, sseReadyRef };
+  return {
+    aiStatus,
+    setAiStatus: setStatusPayload,
+    aiOperation,
+    setAiOperation,
+    sseReadyRef,
+  };
 }

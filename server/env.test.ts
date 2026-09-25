@@ -30,10 +30,10 @@ describe('env validation', () => {
     expect(result.success).toBe(false);
   });
 
-  it('accepts only de/en for the Whisper bootstrap language', () => {
+  it('accepts de/en and the legacy auto Whisper bootstrap language', () => {
     expect(parseEnv({ WHISPER_LANGUAGE: 'de' }).data?.WHISPER_LANGUAGE).toBe('de');
     expect(parseEnv({ WHISPER_LANGUAGE: 'en' }).data?.WHISPER_LANGUAGE).toBe('en');
-    expect(parseEnv({ WHISPER_LANGUAGE: 'auto' }).success).toBe(false);
+    expect(parseEnv({ WHISPER_LANGUAGE: 'auto' }).data?.WHISPER_LANGUAGE).toBe('auto');
   });
 
   it('parses TRUST_PROXY boolean-ish values', () => {

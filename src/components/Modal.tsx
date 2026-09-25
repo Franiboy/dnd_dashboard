@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useI18n } from '../hooks/useI18n';
 
 interface ModalProps {
@@ -25,6 +26,7 @@ export function Modal({
 }: ModalProps) {
   const { t } = useI18n();
   const titleId = useId();
+  const dialogRef = useDialogFocus<HTMLDivElement>(isOpen, onClose);
   const resolvedCloseLabel = closeLabel ?? t('shared.close');
 
   if (!isOpen) return null;
@@ -35,7 +37,9 @@ export function Modal({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby={titleId}
         className={`flex min-h-0 max-h-full min-w-0 flex-col overflow-y-auto bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-4 sm:p-6 max-w-2xl w-full shadow-2xl ${className}`}

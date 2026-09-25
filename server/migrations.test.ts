@@ -51,6 +51,7 @@ describe('schema migrations', () => {
     // Simulate a legacy database that still carries the old columns.
     db.exec('ALTER TABLE ai_settings ADD COLUMN normal_model TEXT');
     db.exec('ALTER TABLE ai_settings ADD COLUMN cheap_model TEXT');
+    db.prepare('DELETE FROM ai_settings WHERE id = 1').run();
     db.prepare('INSERT INTO ai_settings (id, model) VALUES (1, NULL)').run();
     db.prepare(
       "UPDATE ai_settings SET normal_model = 'opencode/legacy-normal', cheap_model = 'opencode/legacy-cheap' WHERE id = 1"
@@ -80,6 +81,30 @@ describe('schema migrations', () => {
       (db.prepare('SELECT language FROM ai_settings WHERE id = 1').get() as { language: string })
         .language
     ).toBe('de');
+  });
+
+  it('initializes a newly added language column from de/en environment values', () => {
+    const originalLanguage = process.env.WHISPER_LANGUAGE;
+    try {
+      db.exec('ALTER TABLE ai_settings DROP COLUMN language');
+      process.env.WHISPER_LANGUAGE = 'en';
+      runMigrations();
+      expect(
+        (db.prepare('SELECT language FROM ai_settings WHERE id = 1').get() as { language: string })
+          .language
+      ).toBe('en');
+
+      db.exec('ALTER TABLE ai_settings DROP COLUMN language');
+      process.env.WHISPER_LANGUAGE = 'auto';
+      runMigrations();
+      expect(
+        (db.prepare('SELECT language FROM ai_settings WHERE id = 1').get() as { language: string })
+          .language
+      ).toBe('de');
+    } finally {
+      if (originalLanguage === undefined) delete process.env.WHISPER_LANGUAGE;
+      else process.env.WHISPER_LANGUAGE = originalLanguage;
+    }
   });
 
   it('rebuilds whiteboard_elements so shape/stroke rows pass the type check', () => {

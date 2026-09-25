@@ -182,7 +182,8 @@ For the Discord voice recording bot:
 DISCORD_BOT_TOKEN=your-bot-token
 DISCORD_GUILD_ID=your-guild-id
 # Bootstrap fallback only; the Admin UI setting in ai_settings (de/en) wins
-# for every new transcription process. "auto" is not supported here.
+# for every new transcription process. Legacy "auto" is accepted and safely
+# normalizes to German when no persisted setting exists.
 WHISPER_LANGUAGE=de
 WHISPER_MODEL=base
 # Optional custom context prompt. If unset, a DE/EN prompt matching the

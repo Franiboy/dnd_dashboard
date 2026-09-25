@@ -77,6 +77,8 @@ export const schema: Record<string, TableDef> = {
       channel_id: { type: 'TEXT', notNull: true },
       created_by: { type: 'TEXT', notNull: true },
       started_at: { type: 'TEXT', notNull: true },
+      // Captured once so an interrupted transcription resumes in the same language.
+      transcription_language: { type: 'TEXT' },
       stopped_at: { type: 'TEXT' },
       directory: { type: 'TEXT', notNull: true },
       transcript: { type: 'TEXT' },

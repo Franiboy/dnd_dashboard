@@ -3,7 +3,11 @@ import { buildArcPromptLines } from './arcContext.js';
 import { buildPrompt } from './bingoSuggestions.js';
 import { personaLines } from './rewrite.js';
 import { annotateTranscriptSpeakers } from './transcriptSpeakers.js';
-import { getAiOutputLanguage, normalizeAiLanguage } from './promptLanguage.js';
+import {
+  getAiOutputLanguage,
+  normalizeAiLanguage,
+  normalizeWhisperLanguage,
+} from './promptLanguage.js';
 import type { SafeUser } from '../../shared/types.js';
 
 const originalOutputLanguage = process.env.AI_OUTPUT_LANGUAGE;
@@ -96,5 +100,7 @@ describe('prompt language helpers', () => {
     expect(getAiOutputLanguage()).toBe('de');
     expect(normalizeAiLanguage('en')).toBe('en');
     expect(normalizeAiLanguage(undefined)).toBe('de');
+    expect(normalizeWhisperLanguage('auto')).toBe('auto');
+    expect(normalizeWhisperLanguage('fr')).toBe('de');
   });
 });

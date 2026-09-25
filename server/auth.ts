@@ -22,6 +22,7 @@ const log = createLogger('auth');
 // first start. Existing HS256 tokens become invalid after the migration.
 const COOKIE_NAME = 'dnd_token';
 const OAUTH_STATE_COOKIE_NAME = 'dnd_oauth_state';
+export const VIEW_AS_USER_HEADER = 'x-dnd-view-as-user';
 const OAUTH_STATE_MAX_AGE_MS = 5 * 60 * 1000;
 
 // Session lifetime is configurable in days; defaults to 7 days.
@@ -123,6 +124,8 @@ export function getSessionPublicKey(): string {
 
 export interface AuthRequest extends Request {
   user?: User;
+  /** Validated admin simulation target; never used for authorization. */
+  viewAsUser?: User;
 }
 
 /**
@@ -314,6 +317,34 @@ export function requireApproved(req: AuthRequest, res: Response, next: NextFunct
     res.status(403).json(errorPayload('Forbidden: Account not approved'));
     return;
   }
+  next();
+}
+
+/**
+ * Validates the optional display context used by an administrator's simulated
+ * view. The requester's real account remains the authorization identity; this
+ * context only changes how approved, user-specific display data is rendered.
+ */
+export function resolveViewAsUser(req: AuthRequest, res: Response, next: NextFunction): void {
+  const raw = req.headers[VIEW_AS_USER_HEADER];
+  if (raw === undefined) {
+    next();
+    return;
+  }
+
+  const targetId = typeof raw === 'string' ? raw.trim() : '';
+  if (!req.user?.isAdmin || !targetId) {
+    res.status(403).json(errorPayload('Forbidden'));
+    return;
+  }
+
+  const target = findUserById(targetId);
+  if (!target || !target.isApproved) {
+    res.status(403).json(errorPayload('Forbidden'));
+    return;
+  }
+
+  req.viewAsUser = target;
   next();
 }
 

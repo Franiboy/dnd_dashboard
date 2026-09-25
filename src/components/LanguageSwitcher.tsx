@@ -23,11 +23,12 @@ export function LanguageSwitcher({
   selectClassName = '',
   disabled = false,
 }: LanguageSwitcherProps) {
-  const { language, setLanguage, t } = useI18n();
+  const { languagePreference, setLanguage, t } = useI18n();
   const resolvedLabel = label ?? t('common.language');
 
   const handleChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    void setLanguage(event.target.value as Language);
+    const value = event.target.value;
+    void setLanguage(value === 'auto' ? null : (value as Language));
   };
 
   return (
@@ -35,12 +36,13 @@ export function LanguageSwitcher({
       <span className="shrink-0 text-slate-400">{resolvedLabel}</span>
       <select
         id={id}
-        value={language}
+        value={languagePreference ?? 'auto'}
         onChange={handleChange}
         disabled={disabled}
         aria-label={resolvedLabel}
         className={`rounded-lg border border-[var(--border)] bg-slate-800 px-2 py-1.5 text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-50 ${selectClassName}`}
       >
+        <option value="auto">{t('common.automatic')}</option>
         {SUPPORTED_LANGUAGES.map((option) => (
           <option key={option} value={option}>
             {languageLabels[option]}

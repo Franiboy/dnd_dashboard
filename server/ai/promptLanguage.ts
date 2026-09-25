@@ -1,4 +1,6 @@
-import type { Language } from '../../shared/types.js';
+import type { Language, WhisperLanguage } from '../../shared/types.js';
+
+export type { WhisperLanguage } from '../../shared/types.js';
 
 export const AI_OUTPUT_LANGUAGE_ENV = 'AI_OUTPUT_LANGUAGE';
 export const DEFAULT_AI_LANGUAGE: Language = 'de';
@@ -6,6 +8,11 @@ export const DEFAULT_AI_LANGUAGE: Language = 'de';
 /** Returns a supported AI output language and safely falls back to German. */
 export function normalizeAiLanguage(value: unknown): Language {
   return value === 'en' || value === 'de' ? value : DEFAULT_AI_LANGUAGE;
+}
+
+/** Preserves the legacy Whisper `auto` value while normalizing all other input. */
+export function normalizeWhisperLanguage(value: unknown): WhisperLanguage {
+  return value === 'auto' ? 'auto' : normalizeAiLanguage(value);
 }
 
 /** Reads the language supplied to a model or MCP process for this run. */

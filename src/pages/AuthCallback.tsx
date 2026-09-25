@@ -5,20 +5,12 @@ import { useI18n } from '../hooks/useI18n';
 import {
   getServerMessageKey,
   getServerMessageParams,
+  localizeServerMessage,
   type ServerMessageLike,
 } from '../i18n/serverMessages';
 import type { ServerMessageParams } from '../../shared/types';
 import type { TranslationKey } from '../i18n/messages';
-
-interface AuthCallbackResult {
-  ok: boolean;
-  pending?: boolean;
-  message?: string;
-  error?: string;
-  messageKey?: string | null;
-  errorCode?: string | null;
-  params?: ServerMessageParams;
-}
+import type { AuthCallbackResult } from '../hooks/useAuth';
 
 interface AuthCallbackProps {
   onCallback: (code: string, state: string) => Promise<AuthCallbackResult>;
@@ -123,7 +115,13 @@ export function AuthCallback({ onCallback, onCheckApproved }: AuthCallbackProps)
     return () => clearInterval(interval);
   }, [waiting, navigate, onCheckApproved]);
 
-  const statusMessage = status.kind === 'key' ? t(status.key, status.params) : status.message;
+  const statusMessage =
+    status.kind === 'key'
+      ? (localizeServerMessage({ messageKey: status.key, params: status.params }, t, {
+          fallbackKey: status.key,
+          fallback: t(status.key, status.params),
+        }) ?? t(status.key, status.params))
+      : status.message;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">

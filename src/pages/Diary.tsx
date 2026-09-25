@@ -25,11 +25,17 @@ import { DiaryCreateModal } from '../components/diary/DiaryCreateModal';
 import { DiarySummaryPanel } from '../components/diary/DiarySummaryPanel';
 import { isEmptyHtml, normalizeDraftHtml } from '../lib/diaryDraft';
 import { createQuillModules, ensureHtml, stripHtml, quillFormats } from '../components/quillConfig';
+import type { ServerMessageLike } from '../i18n/serverMessages';
+import type { TranslationKey } from '../i18n/messages';
 
 import type { DiaryEntry } from '../../shared/types';
 import 'react-quill-new/dist/quill.snow.css';
 
 const SUMMARY_MAX_LENGTH = 500;
+
+function localAiStatus(key: TranslationKey, message: string): ServerMessageLike {
+  return { message, messageKey: key };
+}
 
 export function Diary() {
   const { request } = useApi();
@@ -195,7 +201,7 @@ export function Diary() {
   }
 
   /** Shared sequence for AI actions: wait for the SSE stream, flag busy. */
-  async function beginAiAction(status: string) {
+  async function beginAiAction(status: string | ServerMessageLike) {
     setAiOperation(true);
     setAiStatus(status);
     await Promise.race([
@@ -229,7 +235,7 @@ export function Diary() {
 
   async function handleRewrite(entry: DiaryEntry) {
     setProcessingRewriteId(entry.id);
-    await beginAiAction(t('diary.rewriteStatus'));
+    await beginAiAction(localAiStatus('diary.rewriteStatus', t('diary.rewriteStatus')));
     const { data, error } = await request<{ entry: DiaryEntry }>(
       `/api/diary/entries/${entry.id}/rewrite`,
       {
@@ -253,7 +259,7 @@ export function Diary() {
   async function handleRewriteCommand(entry: DiaryEntry, command: string) {
     if (!command.trim() || !entry.rewriteSessionId) return;
     setProcessingCommandId(entry.id);
-    await beginAiAction(t('diary.commandStatus'));
+    await beginAiAction(localAiStatus('diary.commandStatus', t('diary.commandStatus')));
     const { data, error } = await request<{ entry: DiaryEntry }>(
       `/api/diary/entries/${entry.id}/rewrite-command`,
       {
@@ -279,7 +285,7 @@ export function Diary() {
 
   async function handleGenerateSummary(entry: DiaryEntry) {
     setProcessingSummaryId(entry.id);
-    await beginAiAction(t('diary.summaryStatus'));
+    await beginAiAction(localAiStatus('diary.summaryStatus', t('diary.summaryStatus')));
     const { data, error } = await request<{ entry: DiaryEntry }>(
       `/api/diary/entries/${entry.id}/summarize`,
       {

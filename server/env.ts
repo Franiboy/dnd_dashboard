@@ -52,7 +52,9 @@ const envSchema = z.object({
   BINGO_SUGGESTION_BATCH: z.coerce.number().int().positive().optional(),
 
   // Bootstrap fallback only; the persisted Admin UI language is authoritative.
-  WHISPER_LANGUAGE: z.enum(['de', 'en']).default('de'),
+  // `auto` remains accepted as a legacy compatibility alias and normalizes to
+  // the safe German default when no persisted setting exists.
+  WHISPER_LANGUAGE: z.enum(['de', 'en', 'auto']).default('de'),
   WHISPER_MODEL: z.string().default('base'),
   PYTHON_COMMAND: z.string().optional(),
   WHISPER_FP16: booleanFromEnv,

@@ -214,13 +214,15 @@ const legacyMessageCodes: Readonly<Record<string, string>> = {
   'Endtag darf nicht vor Starttag liegen': 'errors.validation.endBeforeStart',
   'Zeitraum zu groß (max 30 Tage)': 'errors.validation.rangeTooLarge',
   'Vorschlag nicht gefunden': 'errors.bingo.suggestionNotFound',
+  'Vorschläge können nur während des Setups annehmen werden':
+    'errors.bingo.suggestionAcceptSetupOnly',
+  'Vorschläge können nur während des Setups ablehnen werden':
+    'errors.bingo.suggestionRejectSetupOnly',
+  'Vorschläge können nur während des Setups aktualisieren werden':
+    'errors.bingo.suggestionRefreshSetupOnly',
   'Nur Dungeon Master können DM-Vorschläge annehmen.': 'errors.bingo.dmSuggestionDenied',
   'Nur Dungeon Master können DM-Vorschläge ablehnen.': 'errors.bingo.dmSuggestionDenied',
   'Nur Dungeon Master können DM-Vorschläge aktualisieren.': 'errors.bingo.dmSuggestionDenied',
-  'Vorschläge können nur während des Setups annehmen werden': 'errors.bingo.suggestionSetupOnly',
-  'Vorschläge können nur während des Setups ablehnen werden': 'errors.bingo.suggestionSetupOnly',
-  'Vorschläge können nur während des Setups aktualisieren werden':
-    'errors.bingo.suggestionSetupOnly',
   'isAdmin muss ein Boolean sein': 'errors.validation.boolean',
   'disabledApps muss ein Array von Strings sein': 'errors.validation.stringArray',
   'Gültiger Typ ist erforderlich': 'errors.validation.entityType',

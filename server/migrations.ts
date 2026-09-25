@@ -357,15 +357,35 @@ function migrateAiSettingsSingleModel(): void {
   `);
 }
 
-// Keep stored AI languages valid, defaulting missing or unsupported values to German.
-function backfillAiSettingsLanguage(): void {
+// Keep stored AI languages valid. During the first migration from a legacy
+// database, initialize the new setting from the environment; later runs
+// preserve an administrator's explicit choice.
+function backfillAiSettingsLanguage(initializeFromEnvironment: boolean): void {
   if (!tableExists('ai_settings')) return;
   if (!getExistingColumns('ai_settings').has('language')) return;
-  db.exec(`
+
+  const environmentLanguage = process.env.WHISPER_LANGUAGE === 'en' ? 'en' : 'de';
+  if (initializeFromEnvironment) {
+    db.prepare(
+      `INSERT INTO ai_settings (id, language, updated_at)
+       VALUES (1, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET language = excluded.language, updated_at = excluded.updated_at`
+    ).run(environmentLanguage, new Date().toISOString());
+    return;
+  }
+
+  db.prepare(
+    `INSERT INTO ai_settings (id, language, updated_at)
+     VALUES (1, ?, ?)
+     ON CONFLICT(id) DO NOTHING`
+  ).run(environmentLanguage, new Date().toISOString());
+  db.prepare(
+    `
     UPDATE ai_settings
-    SET language = 'de'
+    SET language = ?
     WHERE language IS NULL OR language NOT IN ('de', 'en')
-  `);
+  `
+  ).run(environmentLanguage);
 }
 
 // Legacy persons/organizations/locations tables bake UNIQUE(name) into their
@@ -816,6 +836,8 @@ export function runMigrations(): void {
   // Captured before applySchema() so the story-arc seed runs exactly once,
   // on the first startup where the table is introduced.
   const storyArcsTableIsNew = !tableExists('story_arcs');
+  const aiLanguageColumnWasPresent =
+    tableExists('ai_settings') && getExistingColumns('ai_settings').has('language');
   db.transaction(() => {
     // Apply non-generative data migrations that reshape schema first.
     migrateEntityBlacklistTypes();
@@ -831,7 +853,7 @@ export function runMigrations(): void {
     setupSearchIndex();
     // Backfills that depend on the schema being present.
     migrateAiSettingsSingleModel();
-    backfillAiSettingsLanguage();
+    backfillAiSettingsLanguage(!aiLanguageColumnWasPresent);
     fillRecordingSessionUpdatedAt();
     backfillGameDays();
     backfillSessionGameDayEnd();

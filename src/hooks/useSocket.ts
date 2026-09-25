@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { useError } from './useError';
 import { useI18n } from './useI18n';
 import { getServerMessagePayload, localizeServerMessage } from '../i18n/serverMessages';
+import { SERVER_MESSAGE_PROTOCOL_VERSION } from '../../shared/types';
 import type {
   BingoGame,
   ClientToServerEvents,
@@ -38,6 +39,7 @@ export function useSocket(user: SafeUser | null) {
     if (!user) return;
 
     const socket = io(SERVER_URL || undefined, {
+      auth: { messageProtocol: SERVER_MESSAGE_PROTOCOL_VERSION },
       withCredentials: true,
       reconnection: true,
     });

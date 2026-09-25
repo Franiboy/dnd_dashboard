@@ -76,7 +76,7 @@ const sessionDiarySettingsSchema = z.object({
 const themeSchema = z.object({
   // null resets to the default theme; otherwise a strict #rrggbb color.
   primary: z
-    .string()
+    .string({ error: 'Ungültige Farbe' })
     .regex(/^#[0-9a-fA-F]{6}$/, 'Ungültige Farbe')
     .nullable(),
 });

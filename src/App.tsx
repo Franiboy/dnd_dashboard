@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { Loading } from './components/Loading';
-import { useAuth } from './hooks/useAuth';
+import { useAuth, type AuthCallbackResult } from './hooks/useAuth';
 import { useError } from './hooks/useError';
 import { useI18n } from './hooks/useI18n';
 import { Layout } from './components/Layout';
@@ -33,10 +33,7 @@ interface PublicRoutesProps {
   error: string | null;
   loginAdmin: (username: string, password: string) => Promise<boolean>;
   startDiscordLogin: () => Promise<string | null>;
-  handleDiscordCallback: (
-    code: string,
-    state: string
-  ) => Promise<{ ok: boolean; pending?: boolean; message?: string }>;
+  handleDiscordCallback: (code: string, state: string) => Promise<AuthCallbackResult>;
   checkApproved: () => Promise<boolean>;
 }
 

@@ -4,10 +4,14 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 import { I18nContext, type I18nContextValue } from '../i18n/I18nContext';
 import { createTranslator } from '../i18n/messages';
 
-function renderSwitcher(language: 'de' | 'en' = 'de') {
+function renderSwitcher(
+  language: 'de' | 'en' = 'de',
+  languagePreference: 'de' | 'en' | null = language
+) {
   const setLanguage = vi.fn().mockResolvedValue(undefined);
   const value: I18nContextValue = {
     language,
+    languagePreference,
     locale: language === 'de' ? 'de-DE' : 'en-US',
     t: createTranslator(language),
     setLanguage,
@@ -37,6 +41,21 @@ describe('LanguageSwitcher', () => {
     renderSwitcher('en');
 
     expect(screen.getByRole('combobox', { name: 'Language' })).toBeDefined();
+  });
+
+  it('allows returning to automatic browser selection', () => {
+    const setLanguage = renderSwitcher('en', null);
+
+    expect(screen.getByRole('option', { name: 'Automatic' })).toBeDefined();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), {
+      target: { value: 'de' },
+    });
+    expect(setLanguage).toHaveBeenCalledWith('de');
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), {
+      target: { value: 'auto' },
+    });
+    expect(setLanguage).toHaveBeenLastCalledWith(null);
   });
 
   it('saves the selected supported language', () => {

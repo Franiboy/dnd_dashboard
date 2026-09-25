@@ -371,16 +371,18 @@ export function Admin({ currentUser }: AdminProps) {
     if (result.data) {
       const localizedMessage = localizeJobMessage(
         {
+          message: result.data.message,
           messageKey: result.data.messageKey,
           errorCode: result.data.errorCode,
           params: result.data.params,
         },
         t
       );
-      setMessage(localizedMessage ?? t('common.unknownError'));
+      setMessage(localizedMessage ?? result.data.message ?? t('common.unknownError'));
     } else if (result.error) {
       const localizedMessage = localizeJobMessage(
         {
+          message: result.error,
           messageKey: result.messageKey,
           errorCode: result.errorCode,
           params: result.errorParams ?? result.params,

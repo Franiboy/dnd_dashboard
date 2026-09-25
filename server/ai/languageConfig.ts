@@ -1,6 +1,6 @@
 import type { Language } from '../../shared/types.js';
 import { getAiSettings } from '../repositories/aiSettings.js';
-import { normalizeAiLanguage } from './promptLanguage.js';
+import { normalizeAiLanguage, type WhisperLanguage } from './promptLanguage.js';
 
 function isMissingAiSettingsSchema(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -15,6 +15,18 @@ function isMissingAiSettingsSchema(error: unknown): boolean {
  * is authoritative and this environment value is ignored.
  */
 export function getAiLanguage(): Language {
+  try {
+    return getAiSettings().language;
+  } catch (error) {
+    if (isMissingAiSettingsSchema(error)) {
+      return normalizeAiLanguage(process.env.WHISPER_LANGUAGE);
+    }
+    throw error;
+  }
+}
+
+/** Returns the persisted language, or the legacy bootstrap value before schema setup. */
+export function getWhisperBootstrapLanguage(): WhisperLanguage {
   try {
     return getAiSettings().language;
   } catch (error) {

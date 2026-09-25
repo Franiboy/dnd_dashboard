@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -10,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGlobalSearch, type EntitySearchHit } from '../hooks/useGlobalSearch';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useI18n } from '../hooks/useI18n';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { getAppById, isAppVisible } from '../lib/apps';
 import type { TFunction, TranslationKey } from '../i18n';
 import type { DateInput } from '../i18n/format';
@@ -112,10 +114,12 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
   const navigate = useNavigate();
   const { openEntity } = useEntityDialog();
-  const { t, locale, formatDate } = useI18n();
+  const { t, locale, formatDate, formatNumber } = useI18n();
   const { entityHits, results, loading } = useGlobalSearch(query, open, locale);
 
   // Groups of disabled apps are hidden so the search never offers results the
@@ -160,6 +164,7 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
   // Derived clamp: results shrink while typing, so the stored index can point
   // past the end; computing it during render avoids a cascading setState.
   const currentIndex = Math.min(activeIndex, Math.max(entries.length - 1, 0));
+  const activeOptionId = entries.length > 0 ? `${listboxId}-option-${currentIndex}` : undefined;
 
   // Global Ctrl/Cmd+K toggles the palette.
   useEffect(() => {
@@ -173,13 +178,6 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // Opening resets the search and refocuses the input (DOM side effect only).
-  useEffect(() => {
-    if (open) {
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
-  }, [open]);
-
   // Keep the keyboard selection visible while arrowing through long lists.
   useEffect(() => {
     listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
@@ -187,7 +185,10 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
 
   function close() {
     setOpen(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
   }
+
+  const dialogRef = useDialogFocus<HTMLDivElement>(open, close);
 
   function openPalette() {
     setQuery('');
@@ -248,6 +249,7 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={openPalette}
         title={t('shell.search.title')}
@@ -270,7 +272,9 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
           }}
         >
           <div
+            ref={dialogRef}
             role="dialog"
+            tabIndex={-1}
             aria-modal="true"
             aria-label={t('shell.search.dialogLabel')}
             className="mx-auto mt-[10vh] w-full max-w-xl bg-[var(--panel)] border border-[var(--border)] rounded-2xl shadow-2xl overflow-hidden"
@@ -287,6 +291,8 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
                 onKeyDown={onInputKeyDown}
                 placeholder={t('shell.search.placeholder')}
                 aria-label={t('shell.search.inputLabel')}
+                aria-controls={listboxId}
+                aria-activedescendant={activeOptionId}
                 className="flex-1 bg-transparent text-[var(--text-h)] placeholder:text-slate-500 focus:outline-none text-sm"
               />
               {loading && (
@@ -311,6 +317,7 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
 
             <div
               ref={listRef}
+              id={listboxId}
               role="listbox"
               aria-label={t('shell.search.listLabel')}
               className="max-h-[55vh] overflow-y-auto p-2"
@@ -337,6 +344,7 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
                     )}
                     <button
                       type="button"
+                      id={`${listboxId}-option-${index}`}
                       role="option"
                       aria-selected={active}
                       data-active={active || undefined}
@@ -353,7 +361,7 @@ export function GlobalSearch({ user, version }: GlobalSearchProps) {
                         <span className="ml-auto shrink-0">{entryBadge(entry, t)}</span>
                       </div>
                       <div className="mt-0.5 text-xs text-slate-400 truncate">
-                        {entrySubtitle(entry, t, formatDate)}
+                        {entrySubtitle(entry, t, formatDate, formatNumber)}
                       </div>
                     </button>
                   </div>
@@ -388,7 +396,8 @@ function entryTitle(entry: FlatEntry): string {
 function entrySubtitle(
   entry: FlatEntry,
   t: TFunction,
-  formatDate: (value: DateInput) => string
+  formatDate: (value: DateInput) => string,
+  formatNumber: (value: number) => string
 ): ReactNode {
   if (entry.kind === 'entity') {
     const hit = entry.hit;
@@ -418,7 +427,7 @@ function entrySubtitle(
         )}
         {hit.gameDay !== null && (
           <span className="ml-2 text-slate-500">
-            {t('shell.search.gameDay', { day: hit.gameDay })}
+            {t('shell.search.gameDay', { day: formatNumber(hit.gameDay) })}
           </span>
         )}
       </>
@@ -430,7 +439,7 @@ function entrySubtitle(
       <>
         <Snippet text={hit.snippet} />
         <span className="ml-2 text-slate-500">
-          {t('shell.search.gameDay', { day: hit.gameDay })}
+          {t('shell.search.gameDay', { day: formatNumber(hit.gameDay) })}
           {hit.sessionName ? ` · ${hit.sessionName}` : ''}
         </span>
       </>
@@ -444,7 +453,7 @@ function entrySubtitle(
       {date && <span className="ml-2 text-slate-500">{t('shell.search.startedAt', { date })}</span>}
       {hit.gameDay !== null && (
         <span className="ml-2 text-slate-500">
-          {t('shell.search.gameDay', { day: hit.gameDay })}
+          {t('shell.search.gameDay', { day: formatNumber(hit.gameDay) })}
         </span>
       )}
     </>

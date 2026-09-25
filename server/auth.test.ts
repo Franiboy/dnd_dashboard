@@ -1,9 +1,20 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { createToken, getSessionPublicKey, requireActivePerson, verifyToken } from './auth.js';
+import {
+  createToken,
+  getSessionPublicKey,
+  requireActivePerson,
+  resolveViewAsUser,
+  verifyToken,
+} from './auth.js';
 import type { AuthRequest } from './auth.js';
 import type { User } from '../shared/types.js';
+import { db } from './database.js';
+
+function mockRes(): Response {
+  return { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
+}
 
 const baseUser = {
   id: 'user-123',
@@ -57,13 +68,53 @@ describe('auth tokens', () => {
   });
 });
 
+afterEach(() => {
+  db.prepare("DELETE FROM users WHERE id IN ('view-as-target', 'view-as-unapproved')").run();
+});
+
+describe('resolveViewAsUser', () => {
+  function insertTarget(id: string, approved: boolean): void {
+    db.prepare(
+      'INSERT INTO users (id, username, display_name, is_approved, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(id, id, id, approved ? 1 : 0, new Date().toISOString());
+  }
+
+  it('accepts an approved target only for an admin requester', () => {
+    insertTarget('view-as-target', true);
+    const req = {
+      user: { ...baseUser, id: 'admin', isAdmin: true },
+      headers: { 'x-dnd-view-as-user': 'view-as-target' },
+    } as unknown as AuthRequest;
+    const next = vi.fn();
+
+    resolveViewAsUser(req, mockRes(), next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.viewAsUser?.id).toBe('view-as-target');
+  });
+
+  it('rejects non-admin requesters and unapproved targets', () => {
+    insertTarget('view-as-unapproved', false);
+    const res = mockRes();
+    const next = vi.fn();
+
+    resolveViewAsUser(
+      {
+        user: { ...baseUser, id: 'regular' },
+        headers: { 'x-dnd-view-as-user': 'view-as-unapproved' },
+      } as unknown as AuthRequest,
+      res,
+      next
+    );
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+});
+
 describe('requireActivePerson', () => {
   function authed(user: User): AuthRequest {
     return { user } as AuthRequest;
-  }
-
-  function mockRes(): Response {
-    return { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
   }
 
   it('blocks players without an assigned character', () => {

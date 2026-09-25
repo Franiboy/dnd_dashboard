@@ -9,6 +9,7 @@ import { Login } from './Login';
 function context(language: 'de' | 'en'): I18nContextValue {
   return {
     language,
+    languagePreference: language,
     locale: language === 'de' ? 'de-DE' : 'en-US',
     t: createTranslator(language),
     setLanguage: vi.fn().mockResolvedValue(undefined),

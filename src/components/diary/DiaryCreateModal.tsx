@@ -8,6 +8,7 @@ import { QuillWithEntityMention } from '../QuillWithEntityMention';
 import { ArcAssignPicker } from '../storyArcs/ArcAssignPicker';
 import { createQuillModules, stripHtml, quillFormats } from '../quillConfig';
 import type { CampaignDay, DiaryEntry } from '../../../shared/types';
+import type { ServerMessageLike } from '../../i18n/serverMessages';
 
 interface DiaryCreateModalProps {
   isOpen: boolean;
@@ -19,7 +20,7 @@ interface DiaryCreateModalProps {
   onClose: () => void;
   onCreated: (entry: DiaryEntry) => void;
   onWorkingChange: (working: boolean) => void;
-  onAiStart: (status: string) => void;
+  onAiStart: (status: string | ServerMessageLike) => void;
   onAiEnd: () => void;
   /** Ref to the promise resolving once the AI status SSE stream is connected. */
   sseReadyRef: { readonly current: Promise<void> };
@@ -135,7 +136,7 @@ export function DiaryCreateModal({
       ...(createArcValue !== '' ? { arcId: Number(createArcValue) } : {}),
     };
 
-    onAiStart(t('diary.create.aiStatus'));
+    onAiStart({ message: t('diary.create.aiStatus'), messageKey: 'diary.create.aiStatus' });
     await Promise.race([
       sseReadyRef.current,
       new Promise<void>((resolve) => setTimeout(resolve, 500)),

@@ -73,10 +73,10 @@ function Probe() {
   );
 }
 
-function renderProvider(value: AuthContextValue) {
+function renderProvider(value: AuthContextValue, errorOverrides: Partial<ErrorContextValue> = {}) {
   return render(
     <AuthContext.Provider value={value}>
-      <ErrorContext.Provider value={errorValue}>
+      <ErrorContext.Provider value={{ ...errorValue, ...errorOverrides }}>
         <I18nProvider>
           <Probe />
         </I18nProvider>
@@ -113,8 +113,30 @@ describe('i18n messages', () => {
     expect(translate('en', 'common.items', { count: 2 })).toBe('2 items');
   });
 
+  it('formats numeric interpolation values in the active locale', () => {
+    expect(translate('de', 'shell.chapterFilter.gameDay', { day: 1234 })).toContain('1.234');
+    expect(translate('en', 'shell.chapterFilter.gameDay', { day: 1234 })).toContain('1,234');
+  });
+
   it('falls back to the other supported locale for missing keys', () => {
     expect(translate('en', 'common.germanOnly')).toBe('Nur auf Deutsch verfügbar');
+  });
+
+  it.each([
+    [
+      'Vorschläge können nur während des Setups annehmen werden',
+      'Suggestions can only be accepted during setup.',
+    ],
+    [
+      'Vorschläge können nur während des Setups ablehnen werden',
+      'Suggestions can only be rejected during setup.',
+    ],
+    [
+      'Vorschläge können nur während des Setups aktualisieren werden',
+      'Suggestions can only be refreshed during setup.',
+    ],
+  ])('maps legacy Bingo setup errors in English: %s', (fallback, expected) => {
+    expect(localizeServerMessage(fallback, createTranslator('en'))).toBe(expected);
   });
 
   it('formats structured lockout timestamps in the active locale', () => {
@@ -242,6 +264,23 @@ describe('I18nProvider', () => {
 
     await waitFor(() => expect(updateUser).toHaveBeenLastCalledWith({ uiLanguage: 'de' }));
     expect(screen.getByTestId('language').textContent).toBe('de');
+  });
+
+  it('passes a stable key when an account language save fails', async () => {
+    const showError = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({}),
+      })
+    );
+    const user = { ...baseUser, uiLanguage: 'de' as const };
+
+    renderProvider(authValue({ user, effectiveUser: user }), { showError });
+    fireEvent.click(screen.getByRole('button', { name: 'Set English' }));
+
+    await waitFor(() => expect(showError).toHaveBeenCalledWith('common.languageSaveError'));
   });
 
   it('persists an explicit pre-login selection after authentication', async () => {

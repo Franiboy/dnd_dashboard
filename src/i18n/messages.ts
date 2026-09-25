@@ -56,10 +56,12 @@ function selectPluralPattern(message: PluralMessage, language: Language, count: 
   return variant ?? message.other;
 }
 
-function interpolate(pattern: string, values: TranslationValues): string {
+function interpolate(pattern: string, values: TranslationValues, language: Language): string {
   return pattern.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, name: string) => {
     const value = values[name];
-    return value === null || value === undefined ? match : String(value);
+    if (value === null || value === undefined) return match;
+    if (typeof value === 'number') return new Intl.NumberFormat(localeTags[language]).format(value);
+    return String(value);
   });
 }
 
@@ -82,7 +84,7 @@ export function translate(
 
   for (const candidate of fallbackLanguages) {
     const pattern = resolvePattern(findMessage(locales[candidate], key), candidate, values);
-    if (pattern !== undefined) return interpolate(pattern, values);
+    if (pattern !== undefined) return interpolate(pattern, values, candidate);
   }
 
   return key;

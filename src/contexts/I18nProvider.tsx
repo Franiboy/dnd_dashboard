@@ -44,6 +44,13 @@ export function I18nProvider({ children }: I18nProviderProps) {
     accountOverride === undefined
       ? getEffectiveLanguage(viewAsUser, user, anonymousLanguage)
       : (accountOverride ?? anonymousLanguage);
+  const accountLanguage = viewAsUser ? viewAsUser.uiLanguage : user?.uiLanguage;
+  const languagePreference =
+    optimistic && optimistic.userId === user?.id && !viewAsUser
+      ? optimistic.language
+      : accountLanguage === undefined
+        ? storedLanguage
+        : normalizeLanguage(accountLanguage);
   const locale = language === 'de' ? 'de-DE' : 'en-US';
   const t = useMemo(() => createTranslator(language), [language]);
 
@@ -94,7 +101,8 @@ export function I18nProvider({ children }: I18nProviderProps) {
           }
         } catch {
           if (currentUserIdRef.current === userId) {
-            showError(t('common.languageSaveError'));
+            // Pass the stable key so ErrorProvider resolves it in the current UI language.
+            showError('common.languageSaveError');
           }
         } finally {
           setOptimistic((current) =>
@@ -107,7 +115,7 @@ export function I18nProvider({ children }: I18nProviderProps) {
       accountSaveQueueRef.current = queuedSave.catch(() => undefined);
       await queuedSave;
     },
-    [showError, t, updateUser, user]
+    [showError, updateUser, user]
   );
 
   useEffect(() => {
@@ -150,6 +158,7 @@ export function I18nProvider({ children }: I18nProviderProps) {
   const value = useMemo<I18nContextValue>(
     () => ({
       language,
+      languagePreference,
       locale,
       t,
       setLanguage,
@@ -158,7 +167,17 @@ export function I18nProvider({ children }: I18nProviderProps) {
       formatDateTime,
       formatNumber,
     }),
-    [formatDate, formatDateTime, formatNumber, formatTime, language, locale, setLanguage, t]
+    [
+      formatDate,
+      formatDateTime,
+      formatNumber,
+      formatTime,
+      language,
+      languagePreference,
+      locale,
+      setLanguage,
+      t,
+    ]
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

@@ -87,6 +87,12 @@ const legacyMessageKeys: Readonly<Record<string, TranslationKey>> = {
     'errors.bingo.boardIncomplete',
   'Board kann nur vor Spielstart entsperrt werden.': 'errors.bingo.unlockSetupOnly',
   'Vorschlag nicht gefunden': 'errors.bingo.suggestionNotFound',
+  'Vorschläge können nur während des Setups annehmen werden':
+    'errors.bingo.suggestionAcceptSetupOnly',
+  'Vorschläge können nur während des Setups ablehnen werden':
+    'errors.bingo.suggestionRejectSetupOnly',
+  'Vorschläge können nur während des Setups aktualisieren werden':
+    'errors.bingo.suggestionRefreshSetupOnly',
 
   // AI/domain errors.
   'KI-Feature ist nicht konfiguriert': 'errors.ai.disabled',

@@ -238,6 +238,22 @@ describe('Admin localization', () => {
     await waitFor(() => expect((selector as HTMLSelectElement).value).toBe('de'));
   });
 
+  it('falls back to a legacy job message when metadata is missing', async () => {
+    renderAdmin('en');
+    await finishInitialLoad();
+    requestMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === '/api/admin/nightly-job' && options?.method === 'POST') {
+        return response({ started: true, message: 'Nightly-Job wurde gestartet.' });
+      }
+      return response(null);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Background jobs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start nightly job' }));
+
+    expect(await screen.findByText('Nightly job started.')).toBeDefined();
+  });
+
   it('localizes job success messages from message metadata', async () => {
     renderAdmin('en');
     await finishInitialLoad();

@@ -22,6 +22,22 @@ const state = vi.hoisted(() => {
       uiLanguage: null,
       isInitialAdmin: false,
     },
+    {
+      id: 'simulated',
+      username: 'alex',
+      displayName: 'Alex',
+      avatarUrl: null,
+      isAdmin: false,
+      isApproved: true,
+      role: 'player',
+      disabledApps: [],
+      activePerson: 'Vimak',
+      autoSessionToDiary: false,
+      autoAcceptSessionDiary: false,
+      themePrimary: null,
+      uiLanguage: 'en',
+      isInitialAdmin: false,
+    },
   ];
   const session: RecordingSession = {
     id: 1,
@@ -31,9 +47,10 @@ const state = vi.hoisted(() => {
     channelId: 'channel',
     createdBy: 'dm',
     startedAt: '2026-01-01T00:00:00.000Z',
+    transcriptionLanguage: 'de',
     stoppedAt: '2026-01-01T01:00:00.000Z',
     directory: '/tmp/test-recording',
-    transcript: '[00:00] Marek: Welcome.',
+    transcript: '[00:00] Marek: Welcome.\n[00:01] Alex: I enter.',
     error: null,
     trimStartSeconds: null,
     trimEndSeconds: null,
@@ -53,7 +70,12 @@ const state = vi.hoisted(() => {
   };
 
   return {
-    user: { id: 'viewer', uiLanguage: null as Language | null },
+    user: {
+      id: 'viewer',
+      uiLanguage: null as Language | null,
+      isAdmin: false,
+      isApproved: true,
+    },
     session,
     users,
     broadcasts: [] as Array<{ event: string; data: Record<string, unknown> }>,
@@ -67,6 +89,24 @@ vi.mock('../auth.js', () => ({
   },
   requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
   requireApproved: (_req: unknown, _res: unknown, next: () => void) => next(),
+  resolveViewAsUser: (
+    req: { headers: Record<string, string>; user?: { isAdmin?: boolean }; viewAsUser?: unknown },
+    res: { status: (code: number) => { json: (body: unknown) => void } },
+    next: () => void
+  ) => {
+    const targetId = req.headers['x-dnd-view-as-user'];
+    if (targetId === undefined) {
+      next();
+      return;
+    }
+    const target = state.users.find((user) => user.id === targetId);
+    if (!req.user?.isAdmin || !target?.isApproved) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    req.viewAsUser = target;
+    next();
+  },
 }));
 
 vi.mock('../discord/bot.js', () => ({
@@ -162,6 +202,7 @@ vi.mock('../utils/sse.js', () => ({
 }));
 
 import { errorHandler } from '../errors.js';
+import { finishRecording, getAllVoiceChannels } from '../discord/bot.js';
 import { detectSessionGameDay } from '../ai/sessionGameDay.js';
 import { generateSessionDiaryDraft } from '../ai/sessionToDiary.js';
 import { processSessionSummaryEntities } from '../ai/sessionSummary.js';
@@ -204,7 +245,10 @@ beforeAll(async () => {
 
 beforeEach(() => {
   state.user.uiLanguage = null;
+  state.user.isAdmin = false;
   state.broadcasts.length = 0;
+  vi.mocked(getAllVoiceChannels).mockResolvedValue([]);
+  vi.mocked(finishRecording).mockResolvedValue(state.session);
   vi.mocked(improveSessionTranscriptWithAi).mockResolvedValue({
     transcript: state.session.transcript,
   });
@@ -219,6 +263,36 @@ beforeEach(() => {
 afterAll(async () => {
   await new Promise<void>((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
+  });
+});
+
+describe('recording error safety', () => {
+  it('does not expose channel loading exception details', async () => {
+    vi.mocked(getAllVoiceChannels).mockRejectedValueOnce(new Error('internal channel detail'));
+
+    const response = await request('/api/recordings/channels');
+
+    expect(response.status).toBe(500);
+    expect(response.body).toMatchObject({
+      error: 'Aufnahme-Kanäle konnten nicht geladen werden',
+      errorCode: 'errors.recordings.channelsLoadFailed',
+      messageKey: 'errors.recordings.channelsLoadFailed',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('internal channel detail');
+  });
+
+  it('does not expose stop exception details', async () => {
+    vi.mocked(finishRecording).mockRejectedValueOnce(new Error('internal stop detail'));
+
+    const response = await request('/api/recordings/1/stop', { method: 'POST' });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toMatchObject({
+      error: 'Aufnahme konnte nicht beendet werden',
+      errorCode: 'errors.recordings.finishFailed',
+      messageKey: 'errors.recordings.finishFailed',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('internal stop detail');
   });
 });
 
@@ -291,6 +365,22 @@ describe('recording transcript display language', () => {
     });
     expect((fallback.body.session as { transcript: string }).transcript).toContain(
       'Spielleiter (Marek)'
+    );
+  });
+
+  it('uses the validated simulated account for language and speaker ownership', async () => {
+    state.user.isAdmin = true;
+    state.user.uiLanguage = 'de';
+    const response = await request('/api/recordings/1', {
+      headers: { 'X-DND-View-As-User': 'simulated' },
+    });
+
+    expect(response.status).toBe(200);
+    expect((response.body.session as { transcript: string }).transcript).toContain(
+      'Dungeon Master (Marek)'
+    );
+    expect((response.body.session as { transcript: string }).transcript).toContain(
+      'Vimak (Alex) (you)'
     );
   });
 

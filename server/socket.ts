@@ -1,4 +1,5 @@
 import type { Server, Socket } from 'socket.io';
+import { SERVER_MESSAGE_PROTOCOL_VERSION } from '../shared/types.js';
 import type {
   BingoGame,
   ClientToServerEvents,
@@ -8,6 +9,7 @@ import type {
   User,
 } from '../shared/types.js';
 import { AppError, messagePayload } from './errors.js';
+import { createLogger } from './logger.js';
 
 /** Per-socket server-side data, filled by the connection middleware. */
 export interface SocketData {
@@ -22,6 +24,7 @@ export type TypedIoServer = Server<
 >;
 
 let ioServer: TypedIoServer | null = null;
+const log = createLogger('socket');
 
 /** The live Socket.io server instance, or null before `setupSocket` ran. */
 export function getIoServer(): TypedIoServer | null {
@@ -30,6 +33,17 @@ export function getIoServer(): TypedIoServer | null {
 
 type BingoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
+function supportsStructuredMessages(socket: BingoSocket): boolean {
+  const value = socket.handshake.auth?.messageProtocol;
+  const protocol = typeof value === 'number' ? value : Number(value);
+  return Number.isInteger(protocol) && protocol >= SERVER_MESSAGE_PROTOCOL_VERSION;
+}
+
+function emitSocketPayload(socket: BingoSocket, payload: ServerMessagePayload): void {
+  // Old bundles expect a string. New clients opt into structured metadata.
+  socket.emit('error', supportsStructuredMessages(socket) ? payload : payload.message);
+}
+
 /** Emit a stable, localizable product error while retaining its text fallback. */
 function emitSocketError(
   socket: BingoSocket,
@@ -37,26 +51,26 @@ function emitSocketError(
   messageKey: string,
   params?: ServerMessageParams
 ): void {
-  socket.emit('error', messagePayload({ message, messageKey, errorCode: messageKey, params }));
+  emitSocketPayload(socket, messagePayload({ message, messageKey, errorCode: messageKey, params }));
+}
+
+export function toSocketErrorPayload(error: unknown): ServerMessagePayload {
+  if (error instanceof AppError) return messagePayload(error);
+
+  const message = error instanceof Error ? error.message : 'Internal Server Error';
+  const known = messagePayload(message);
+  if (known.errorCode) return known;
+
+  log.error('Unexpected Bingo socket error:', error);
+  return messagePayload({
+    message: 'Internal Server Error',
+    messageKey: 'errors.internal',
+    errorCode: 'errors.internal',
+  });
 }
 
 function emitSocketException(socket: BingoSocket, error: unknown): void {
-  if (error instanceof AppError) {
-    socket.emit('error', messagePayload(error));
-    return;
-  }
-  const message = error instanceof Error ? error.message : 'Internal Server Error';
-  const known = messagePayload(message);
-  socket.emit(
-    'error',
-    known.errorCode
-      ? known
-      : messagePayload({
-          message,
-          messageKey: 'errors.internal',
-          errorCode: 'errors.internal',
-        })
-  );
+  emitSocketPayload(socket, toSocketErrorPayload(error));
 }
 
 function connectError(error: ServerMessagePayload): Error {

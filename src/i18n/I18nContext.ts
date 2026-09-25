@@ -7,6 +7,8 @@ export type I18nLocale = 'de-DE' | 'en-US';
 
 export interface I18nContextValue {
   language: Language;
+  /** Account preference; null means automatic browser-based selection. */
+  languagePreference: Language | null;
   locale: I18nLocale;
   t: TFunction;
   setLanguage: (language: Language | null) => Promise<void>;

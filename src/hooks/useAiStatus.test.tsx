@@ -1,8 +1,9 @@
-import { act, waitFor } from '@testing-library/react';
+import { act, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useDiaryAiStatus } from './useDiaryAiStatus';
 import { useTimelineAiStatus } from './useTimelineAiStatus';
 import { renderWithProviders } from '../test-utils/renderWithProviders';
+import { useI18n } from './useI18n';
 
 class MockEventSource {
   static instances: MockEventSource[] = [];
@@ -38,7 +39,15 @@ class MockEventSource {
 
 function DiaryProbe() {
   const { aiStatus } = useDiaryAiStatus();
-  return <output data-testid="diary-status">{aiStatus ?? ''}</output>;
+  const { setLanguage } = useI18n();
+  return (
+    <>
+      <output data-testid="diary-status">{aiStatus ?? ''}</output>
+      <button type="button" onClick={() => void setLanguage('de')}>
+        German
+      </button>
+    </>
+  );
 }
 
 function TimelineProbe({ onDone }: { onDone: () => void }) {
@@ -74,6 +83,33 @@ describe('AI SSE message localization', () => {
       );
     });
     expect(view.getByTestId('diary-status').textContent).toBe(expected);
+  });
+
+  it('re-localizes an active diary status after a language switch', async () => {
+    vi.stubGlobal('EventSource', MockEventSource);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ user: { uiLanguage: 'de' } }) })
+    );
+    const view = renderWithProviders(<DiaryProbe />, { language: 'en' });
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+
+    act(() => {
+      MockEventSource.instances[0].emit(
+        'log',
+        JSON.stringify({
+          message: 'KI schreibt den Text um...',
+          errorCode: 'errors.status.rewriteStarted',
+          messageKey: 'errors.status.rewriteStarted',
+        })
+      );
+    });
+    expect(view.getByTestId('diary-status').textContent).toBe('AI is rewriting the text...');
+
+    fireEvent.click(view.getByRole('button', { name: 'German' }));
+    await waitFor(() =>
+      expect(view.getByTestId('diary-status').textContent).toBe('KI schreibt den Text um...')
+    );
   });
 
   it('uses the structured completion marker instead of parsing translated text', async () => {

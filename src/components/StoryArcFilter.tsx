@@ -7,20 +7,24 @@ import { ChapterStatusDot } from './storyArcs/ChapterStatusDot';
 import { ChapterTimeline } from './storyArcs/ChapterTimeline';
 import { useDismiss } from './storyArcs/useDismiss';
 
-function localizedArcLabel(arc: StoryArc, t: TFunction): string {
+function localizedArcLabel(
+  arc: StoryArc,
+  t: TFunction,
+  formatNumber: (value: number) => string
+): string {
   const parts: string[] = [];
   if (arc.chapterNumber !== null) {
-    parts.push(t('shell.chapterFilter.chapterNumber', { number: arc.chapterNumber }));
+    parts.push(t('shell.chapterFilter.chapterNumber', { number: formatNumber(arc.chapterNumber) }));
   }
   parts.push(arc.name);
   if (arc.gameDayStart !== null) {
     parts.push(
       arc.gameDayEnd !== null && arc.gameDayEnd !== arc.gameDayStart
         ? t('shell.chapterFilter.gameDayRange', {
-            start: arc.gameDayStart,
-            end: arc.gameDayEnd,
+            start: formatNumber(arc.gameDayStart),
+            end: formatNumber(arc.gameDayEnd),
           })
-        : t('shell.chapterFilter.gameDay', { day: arc.gameDayStart })
+        : t('shell.chapterFilter.gameDay', { day: formatNumber(arc.gameDayStart) })
     );
   }
   return parts.join(' · ');
@@ -33,7 +37,7 @@ function localizedArcLabel(arc: StoryArc, t: TFunction): string {
  * anchors to the relative <header> and spans its full width).
  */
 export function StoryArcFilter() {
-  const { t } = useI18n();
+  const { t, formatNumber } = useI18n();
   const { arcs, selectedArcId, setSelectedArcId } = useStoryArcs();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -43,7 +47,7 @@ export function StoryArcFilter() {
     typeof selectedArcId === 'number' ? (arcs.find((a) => a.id === selectedArcId) ?? null) : null;
 
   const triggerTitle = selectedArc
-    ? t('shell.chapterFilter.title', { label: localizedArcLabel(selectedArc, t) })
+    ? t('shell.chapterFilter.title', { label: localizedArcLabel(selectedArc, t, formatNumber) })
     : t('shell.chapterFilter.defaultTitle');
 
   return (
@@ -70,7 +74,9 @@ export function StoryArcFilter() {
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="chapter-caps whitespace-nowrap text-[10px] leading-none text-amber-200/70">
               {selectedArc.chapterNumber !== null
-                ? t('shell.chapterFilter.chapterNumber', { number: selectedArc.chapterNumber })
+                ? t('shell.chapterFilter.chapterNumber', {
+                    number: formatNumber(selectedArc.chapterNumber),
+                  })
                 : t('shell.chapterFilter.chapter')}
             </span>
             <span className="chapter-serif truncate text-[13px] font-semibold leading-none">

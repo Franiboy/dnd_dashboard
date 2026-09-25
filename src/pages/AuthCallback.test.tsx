@@ -8,6 +8,7 @@ import { AuthCallback } from './AuthCallback';
 function context(language: 'de' | 'en'): I18nContextValue {
   return {
     language,
+    languagePreference: language,
     locale: language === 'de' ? 'de-DE' : 'en-US',
     t: createTranslator(language),
     setLanguage: vi.fn().mockResolvedValue(undefined),
@@ -37,6 +38,24 @@ afterEach(() => {
 });
 
 describe('AuthCallback', () => {
+  it('keeps structured callback metadata localizable after a language change', async () => {
+    const onCallback = vi.fn().mockResolvedValue({
+      ok: false,
+      message: 'Account ist gesperrt bis 2026-09-24T14:00:00.000Z',
+      errorCode: 'auth.accountLocked',
+      messageKey: 'auth.accountLocked',
+      params: { until: '2026-09-24T14:00:00.000Z' },
+    });
+    const view = render(callbackTree('de', onCallback));
+
+    await waitFor(() => expect(onCallback).toHaveBeenCalledOnce());
+    expect(screen.getByText(/24\.09\.2026/)).toBeDefined();
+
+    view.rerender(callbackTree('en', onCallback));
+    expect(screen.getByText(/Sep 24, 2026/)).toBeDefined();
+    expect(onCallback).toHaveBeenCalledOnce();
+  });
+
   it('does not reprocess the callback when the language changes', async () => {
     const onCallback = vi.fn().mockResolvedValue({
       ok: false,

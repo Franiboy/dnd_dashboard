@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { getAiSettings, setAiLanguageSettings } from '../repositories/aiSettings.js';
 import {
   DEFAULT_WHISPER_INITIAL_PROMPTS,
+  LEGACY_WHISPER_INITIAL_PROMPT,
   buildWhisperSpawnArgs,
   getWhisperInitialPrompt,
   type WhisperSpawnArgsOptions,
@@ -64,6 +65,19 @@ describe('Whisper spawn arguments', () => {
 
     expect(prompt).toBe(customPrompt);
     expect(getArgumentValue(args, '--initial-prompt')).toBe(customPrompt);
+  });
+
+  it('replaces the legacy example prompt with the active language prompt', () => {
+    expect(getWhisperInitialPrompt('en', LEGACY_WHISPER_INITIAL_PROMPT)).toBe(
+      DEFAULT_WHISPER_INITIAL_PROMPTS.en
+    );
+  });
+
+  it('preserves a custom prompt while allowing the legacy auto language', () => {
+    const args = buildWhisperSpawnArgs({ ...baseOptions, language: 'auto' });
+
+    expect(getArgumentValue(args, '--language')).toBe('auto');
+    expect(getArgumentValue(args, '--initial-prompt')).toBe(DEFAULT_WHISPER_INITIAL_PROMPTS.auto);
   });
 
   it('reads the admin language again for each new process', () => {

@@ -1,28 +1,33 @@
-import type { Language } from '../../shared/types.js';
-import { getAiLanguage } from '../ai/languageConfig.js';
+import { getWhisperBootstrapLanguage } from '../ai/languageConfig.js';
+import type { WhisperLanguage } from '../ai/promptLanguage.js';
 
-export const DEFAULT_WHISPER_INITIAL_PROMPTS: Readonly<Record<Language, string>> = {
+export const LEGACY_WHISPER_INITIAL_PROMPT = 'This is a German D&D session with English terms.';
+
+export const DEFAULT_WHISPER_INITIAL_PROMPTS: Readonly<Record<WhisperLanguage, string>> = {
   de: 'Dies ist eine deutsche D&D-Sitzung mit englischen Fachbegriffen.',
   en: 'This is an English D&D session with English terms.',
+  auto: 'This is a D&D session.',
 };
 
 /**
- * Selects the context prompt for one transcription process. A non-empty
- * environment value is an explicit operator override; otherwise the prompt
- * follows the captured admin language.
+ * Selects the context prompt for one transcription process. The old example
+ * prompt is treated as unset so an existing installation cannot force German
+ * context after the language setting changes. Other non-empty values remain
+ * explicit operator overrides.
  */
 export function getWhisperInitialPrompt(
-  language: Language,
+  language: WhisperLanguage,
   configuredPrompt: string | undefined = process.env.WHISPER_INITIAL_PROMPT
 ): string {
-  if (configuredPrompt?.trim()) return configuredPrompt;
+  const configured = configuredPrompt?.trim();
+  if (configured && configured !== LEGACY_WHISPER_INITIAL_PROMPT) return configuredPrompt!;
   return DEFAULT_WHISPER_INITIAL_PROMPTS[language];
 }
 
 export interface WhisperSpawnArgsOptions {
   script: string;
   model: string;
-  language?: Language;
+  language?: WhisperLanguage;
   fp16: boolean;
   trimStart: number;
   trimEnd: number;
@@ -37,10 +42,11 @@ export interface WhisperSpawnArgsOptions {
 
 /**
  * Builds the complete argv for one faster-whisper process. When no language is
- * supplied, it reads the persisted global admin setting at call time.
+ * supplied, it reads the persisted global setting or the legacy bootstrap
+ * fallback at call time.
  */
 export function buildWhisperSpawnArgs(options: WhisperSpawnArgsOptions): string[] {
-  const language = options.language ?? getAiLanguage();
+  const language = options.language ?? getWhisperBootstrapLanguage();
   const args = [
     '--',
     options.script,

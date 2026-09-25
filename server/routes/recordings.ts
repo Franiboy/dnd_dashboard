@@ -4,7 +4,13 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { AppError, errorPayload, messagePayload, parseWith } from '../errors.js';
 import { aiRateLimit } from '../utils/rateLimits.js';
-import { authMiddleware, requireAdmin, requireApproved, type AuthRequest } from '../auth.js';
+import {
+  authMiddleware,
+  requireAdmin,
+  requireApproved,
+  resolveViewAsUser,
+  type AuthRequest,
+} from '../auth.js';
 import {
   getBotStatus,
   getAllVoiceChannels,
@@ -69,7 +75,7 @@ const nullableInt = (message: string) =>
     z.number({ error: message }).int(message).positive(message)
   );
 
-type TranscriptRequest = Pick<AuthRequest, 'headers' | 'user'>;
+type TranscriptRequest = Pick<AuthRequest, 'headers' | 'user' | 'viewAsUser'>;
 
 function withAnnotatedTranscript(
   session: RecordingSession,
@@ -78,11 +84,17 @@ function withAnnotatedTranscript(
   if (!session.transcript) return session;
   try {
     const users = getAllUsers();
+    const displayUser = req.viewAsUser ?? req.user;
     const language = resolveTranscriptDisplayLanguage(
-      req.user?.uiLanguage,
+      displayUser?.uiLanguage,
       req.headers['accept-language']
     );
-    const annotated = annotateTranscriptSpeakers(session.transcript, users, req.user?.id, language);
+    const annotated = annotateTranscriptSpeakers(
+      session.transcript,
+      users,
+      displayUser?.id,
+      language
+    );
     return { ...session, transcript: annotated.transcript };
   } catch (err) {
     log.warn('Failed to annotate transcript for display:', err);
@@ -209,7 +221,7 @@ function requireRecordingFeature(
   next();
 }
 
-router.use(authMiddleware, requireApproved, requireRecordingFeature);
+router.use(authMiddleware, requireApproved, resolveViewAsUser, requireRecordingFeature);
 
 function requireSession(id: number) {
   const session = getSessionById(id);
@@ -272,7 +284,7 @@ router.get('/channels', requireAdmin, async (_req, res) => {
     const channels = await getAllVoiceChannels();
     res.json({ channels });
   } catch (err) {
-    throw new AppError(500, err instanceof Error ? err.message : String(err), {
+    throw new AppError(500, 'Aufnahme-Kanäle konnten nicht geladen werden', {
       messageKey: 'errors.recordings.channelsLoadFailed',
       cause: err,
     });
@@ -332,7 +344,7 @@ router.post('/:id/stop', requireAdmin, async (req: AuthRequest, res) => {
     const session = await finishRecording(id);
     res.json({ session: withAnnotatedTranscript(session, req) });
   } catch (err) {
-    throw new AppError(500, err instanceof Error ? err.message : String(err), {
+    throw new AppError(500, 'Aufnahme konnte nicht beendet werden', {
       messageKey: 'errors.recordings.finishFailed',
       cause: err,
     });

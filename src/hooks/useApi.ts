@@ -9,6 +9,7 @@ import {
 } from '../i18n/serverMessages';
 import { useError } from './useError';
 import { useI18n } from './useI18n';
+import { useAuth } from './useAuth';
 
 export interface ApiResponse<T> {
   data: T | null;
@@ -91,7 +92,10 @@ function makeResponseError(
 export function useApi() {
   const { showError } = useError();
   const { t } = useI18n();
+  const { user, viewAsUser } = useAuth();
   const tRef = useRef(t);
+  const simulatedUserId =
+    user?.isAdmin && viewAsUser && viewAsUser.id !== user.id ? viewAsUser.id : null;
 
   useEffect(() => {
     tRef.current = t;
@@ -100,10 +104,16 @@ export function useApi() {
   const request = useCallback(
     async <T>(path: string, options?: RequestInit, notify = true): Promise<ApiResponse<T>> => {
       try {
-        const res = await fetch(path, {
+        const requestInit: RequestInit = {
           ...options,
           credentials: options?.credentials ?? 'include',
-        });
+        };
+        if (simulatedUserId) {
+          const headers = new Headers(options?.headers);
+          headers.set('X-DND-View-As-User', simulatedUserId);
+          requestInit.headers = headers;
+        }
+        const res = await fetch(path, requestInit);
 
         if (res.ok) {
           const data = (await res.json()) as T;
@@ -126,7 +136,7 @@ export function useApi() {
         return { data: null, ...responseError };
       }
     },
-    [showError]
+    [showError, simulatedUserId]
   );
 
   return { request };

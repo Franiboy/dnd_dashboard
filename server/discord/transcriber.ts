@@ -12,9 +12,15 @@ import {
 } from '../repositories/recordings.js';
 import { emitSessionsUpdated, emitProgressUpdated } from './recordingsEvents.js';
 import { createLogger } from '../logger.js';
-import { getAiLanguage } from '../ai/languageConfig.js';
+import { getWhisperBootstrapLanguage } from '../ai/languageConfig.js';
+import { normalizeWhisperLanguage } from '../ai/promptLanguage.js';
 import { buildWhisperSpawnArgs } from './whisperArgs.js';
-import type { RecordingFile, RecordingSession, TranscriptionProgress } from '../../shared/types.js';
+import type {
+  RecordingFile,
+  RecordingSession,
+  TranscriptionProgress,
+  WhisperLanguage,
+} from '../../shared/types.js';
 
 const log = createLogger('transcriber');
 
@@ -245,7 +251,8 @@ function runTranscriptionScript(
   files: RecordingFile[],
   trimStart: number,
   trimEnd: number,
-  completedFiles: RecordingFile[]
+  completedFiles: RecordingFile[],
+  language: WhisperLanguage
 ): Promise<{
   transcript: string | null;
   transcriptPath: string | null;
@@ -270,13 +277,10 @@ function runTranscriptionScript(
       })),
   });
 
-  // Read the global admin language for each process. The captured value stays
-  // attached to this process even if an admin changes the setting later.
-  const runLanguage = getAiLanguage();
   const args = buildWhisperSpawnArgs({
     script: TRANSCRIBE_SCRIPT,
     model: WHISPER_MODEL,
-    language: runLanguage,
+    language,
     fp16: WHISPER_FP16,
     trimStart,
     trimEnd,
@@ -420,6 +424,20 @@ export async function runTranscription(
 
   const trimStart = session.trimStartSeconds ?? 0;
   const trimEnd = session.trimEndSeconds ?? Infinity;
+  // Legacy or malformed rows have no trustworthy captured value. Resolve it
+  // once, persist it, and use the same value for every resumed child process.
+  const storedLanguage = session.transcriptionLanguage;
+  const transcriptionLanguage = normalizeWhisperLanguage(
+    storedLanguage ?? getWhisperBootstrapLanguage()
+  );
+  const languageNeedsRepair = storedLanguage == null || storedLanguage !== transcriptionLanguage;
+  if (languageNeedsRepair) {
+    updateSession(sessionId, { transcriptionLanguage });
+    // Completed files from a legacy row may have been produced with another
+    // language. Re-transcribe them together with the pending files.
+    clearFileTranscriptPathsBySession(sessionId);
+    files = files.map((file) => ({ ...file, transcriptPath: null }));
+  }
 
   if (force || trimValuesChanged(session, trimStart, trimEnd)) {
     clearFileTranscriptPathsBySession(session.id);
@@ -458,7 +476,8 @@ export async function runTranscription(
       files,
       trimStart,
       trimEnd,
-      completedFiles
+      completedFiles,
+      transcriptionLanguage
     );
 
     for (const file of result.files) {
@@ -489,10 +508,10 @@ export async function runTranscription(
     if (shuttingDown) {
       updateSession(sessionId, { status: resetStatus, error: originalError });
     } else {
-      const message = err instanceof Error ? err.message : String(err);
+      log.error(`Transcription session ${sessionId} failed:`, err);
       updateSession(sessionId, {
         status: 'error',
-        error: `Transkription fehlgeschlagen: ${message}`,
+        error: 'Transkription fehlgeschlagen',
       });
     }
     emitSessionsUpdated();

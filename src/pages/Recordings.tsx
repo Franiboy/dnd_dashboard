@@ -20,6 +20,7 @@ import {
 } from '../lib/storyArcs';
 import { EntityRichText } from '../components/EntityRichText';
 import { applyEntityHighlights } from '../components/EntityQuillBlot';
+import { getEntityTypeLabel } from '../lib/entityLabels';
 import { EntityChooserModal, type EntityCandidate } from '../components/EntityChooserModal';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { ArcAssignPicker } from '../components/storyArcs/ArcAssignPicker';
@@ -123,6 +124,12 @@ function localizeRecordingError(message: string, t: TFunction): string {
   }
   if (message === 'Transkription lieferte keine Ergebnisse') {
     return t('sessions.errors.noTranscriptionResults');
+  }
+  if (message === 'Transkription fehlgeschlagen') {
+    return t('sessions.errors.transcriptionFailed', { error: t('common.internalError') });
+  }
+  if (message === 'Aufnahme konnte nicht wiederhergestellt werden') {
+    return t('sessions.errors.recoveryFailed');
   }
   const prefix = 'Transkription fehlgeschlagen: ';
   if (message.startsWith(prefix)) {
@@ -552,7 +559,7 @@ export function Sessions({ user }: SessionsProps) {
         if (!reactQuill) continue;
         const quill = reactQuill.getEditor();
         if (!quill) continue;
-        applyEntityHighlights(quill, mappings);
+        applyEntityHighlights(quill, mappings, (entityType) => getEntityTypeLabel(entityType, t));
 
         const handleClick = (event: MouseEvent) => {
           const target = (event.target as HTMLElement | null)?.closest(
@@ -597,7 +604,7 @@ export function Sessions({ user }: SessionsProps) {
         quill.root.removeEventListener('click', handler);
       }
     };
-  }, [expandedLongSummaries, mappings, openEntity, expandedSummaryHash]);
+  }, [expandedLongSummaries, mappings, openEntity, expandedSummaryHash, t]);
 
   async function improveTranscript(sessionId: number) {
     setWorking(true);
