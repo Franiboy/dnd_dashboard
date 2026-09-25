@@ -1,6 +1,6 @@
 # AGENTS.md – D&D Dashboard
 
-This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-09-24.
+This file describes the project, important conventions and working rules for assistants/developers. **Last updated:** 2026-09-25.
 
 ## Critical Working Rules for Assistants
 
@@ -8,7 +8,8 @@ These rules take precedence before every code change.
 
 - **Clarify before implementing.** Question every requirement for understanding and completeness and ask follow-up questions until the full context is clear (see "Requirements & Clarification Before Implementation" below).
 - **Finish every task with commit, push and pull request after coordinating with the user.** Commits and pushes each require explicit user approval; then open a PR against `main` so hosted CI and the private deployment workflow can validate the change. Never push directly to `main`.
-- **Watch CI on every PR until it is merged or blocked.** After opening a PR, actively monitor the pipeline (e.g. `gh pr checks --watch`). The public repository has no production runner or AI auto-merge job; any future automation must live in the private deployment repository (see [`docs/ci-cd.md`](./docs/ci-cd.md)).
+- **Watch CI on every PR until it is merged or blocked.** After opening a PR, actively monitor the hosted pipeline, the isolated AI review, credential-free validation and clean hosted promotion runs. The source workflow has no self-hosted job; write-capable AI and production automation live only in the private deployment repository (see [`docs/ci-cd.md`](./docs/ci-cd.md)).
+- The AI review may use the default model configured on the isolated `HomeServer-AI` runner; never hard-code a model in CI configuration. Source install/lifecycle code must never run with a write-capable token. The runner must remain isolated from `/dnd_dashboard`, production secrets, the production database, sudo, container sockets and the local production port.
 - **No commits without explicit user approval.**
 - **No push without explicit user approval.**
 - **No force-push, branch deletions or history rewrites without approval.**

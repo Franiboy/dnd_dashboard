@@ -112,13 +112,20 @@ sudo apt update && sudo apt install -y git curl sudo zstd nginx
 bash scripts/dnd-server-setup.sh   # as the deploy user
 ```
 
-Pull-request CI and release builds run on GitHub-hosted runners. The local
-production runner is registered only to the private
-`Franiboy/dnd_dashboard-deploy` repository; its manual workflow installs the
-published artifact under `/dnd_dashboard/releases/<sha>` and switches
+Pull-request CI and release builds run on GitHub-hosted runners. Trusted
+internal PRs additionally call the pinned private reusable AI-review workflow
+in `Franiboy/dnd_dashboard-deploy`; only OpenCode runs on the separately
+isolated `HomeServer-AI` runner, using its configured default model and no
+write credential. A hosted credential-free job validates the produced patch
+inside a disposable container, and a separate clean hosted promotion job
+independently checks the patch, waits for fresh CI and squash-merges the exact
+reviewed head. Successful releases can automatically dispatch the
+private `HomeServer` production deployment, which installs the published
+artifact under `/dnd_dashboard/releases/<sha>` and switches
 `/dnd_dashboard/current` after migration, readiness and rollback checks (see
-[`docs/ci-cd.md`](./docs/ci-cd.md)). Backups remain scheduled daily via
-`dnd-backup.timer` (`scripts/dnd-backup.sh`).
+[`docs/ci-cd.md`](./docs/ci-cd.md)).
+Backups remain scheduled daily via `dnd-backup.timer`
+(`scripts/dnd-backup.sh`).
 
 ## Discord OAuth2
 

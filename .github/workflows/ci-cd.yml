@@ -5,18 +5,30 @@ on:
     branches:
       - main
   pull_request:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
+  actions: read
+  checks: read
   contents: read
+  issues: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Keep pull-request and trusted-target runs alive while an AI fix commit
+  # starts its fresh CI run. Only main-push runs may cancel older runs.
+  cancel-in-progress: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' }}
 
 jobs:
   ci:
     name: CI
+    if: >-
+      github.event_name != 'pull_request_target' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.user.login == 'Franiboy')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -49,3 +61,42 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # The review implementation and its write-capable automation live in the
+  # private deployment repository. The pull_request_target workflow definition
+  # comes from the base branch and passes credentials only to the pinned private
+  # reusable workflow. The AI job receives no write token; source install code
+  # runs only in a separate hosted validation job without credentials. No
+  # self-hosted job is defined in this repository.
+  trusted-ai-review:
+    name: Trusted AI review
+    needs: ci
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.base_ref == 'main' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == 'Franiboy' &&
+      vars.DND_AI_REVIEW_ENABLED == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'automerge') &&
+      !contains(github.event.pull_request.labels.*.name, 'hold')
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      issues: read
+      pull-requests: read
+    uses: Franiboy/dnd_dashboard-deploy/.github/workflows/ai-review.yml@41d9040f030b9fde2840ccc7eb9ca37b3dd91b01
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      head_repository: ${{ github.event.pull_request.head.repo.full_name }}
+      head_branch: ${{ github.event.pull_request.head.ref }}
+      base_branch: ${{ github.base_ref }}
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      source_repository: ${{ github.repository }}
+      automation_ref: 41d9040f030b9fde2840ccc7eb9ca37b3dd91b01
+      pr_actor: ${{ github.event.pull_request.user.login }}
+    secrets:
+      AI_AUTOMATION_READ_TOKEN: ${{ secrets.AI_AUTOMATION_READ_TOKEN }}
+      AI_GITHUB_TOKEN: ${{ secrets.AI_GITHUB_TOKEN }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
