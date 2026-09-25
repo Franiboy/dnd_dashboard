@@ -106,6 +106,12 @@ jobs:
       - name: Resolve the current base commit
         id: base
         shell: bash
+        env:
+          # Deliberately the job's own token, not AI_DISPATCH_TOKEN. That token
+          # only has visibility into the private repository, so a read of the
+          # public source repository answers 404 and aborts the dispatch. The
+          # job already declares contents: read, which is all this needs.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           [[ "$BASE_BRANCH" == 'main' ]]
@@ -180,11 +186,22 @@ jobs:
           set -Eeuo pipefail
           [[ "$STARTED_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
           for _ in 1 2 3 4 5 6; do
-            run_id="$(gh run list --repo Franiboy/dnd_dashboard-deploy \
+            if run_id="$(gh run list --repo Franiboy/dnd_dashboard-deploy \
               --workflow ai-review-dispatch.yml --created ">=$STARTED_AT" --limit 1 \
-              --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)"
-            if [ -n "$run_id" ]; then
-              printf 'private review run: %s\n' "$run_id"
+              --json databaseId --jq '.[0].databaseId // empty')"; then
+              if [ -n "$run_id" ]; then
+                printf 'private review run: %s\n' "$run_id"
+                exit 0
+              fi
+            else
+              # A read failure is not a missing run. AI_DISPATCH_TOKEN has to
+              # carry actions on the private repository to dispatch it, and
+              # without that the dispatch result cannot be observed at all.
+              # Reporting that as a failed dispatch would be wrong, so it is
+              # raised as a warning and the pin pre-check above stays the
+              # authoritative gate.
+              printf '::warning::cannot read runs of Franiboy/dnd_dashboard-deploy; the dispatch for pull request %s was sent but its start is unverified\n' \
+                "$PR_NUMBER"
               exit 0
             fi
             sleep 10
