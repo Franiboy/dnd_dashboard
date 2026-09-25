@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserMenu } from './UserMenu';
 import { AuthContext, type AuthContextValue } from '../hooks/useAuth';
 import { ErrorContext, type ErrorContextValue } from '../contexts/ErrorContext';
 import { ThemeContext, type ThemeContextValue } from '../hooks/useTheme';
+import { I18nProvider } from '../contexts/I18nProvider';
+import { LANGUAGE_STORAGE_KEY } from '../i18n/language';
 import type { SafeUser } from '../../shared/types';
 
 const baseUser: SafeUser = {
@@ -19,6 +21,7 @@ const baseUser: SafeUser = {
   autoSessionToDiary: false,
   autoAcceptSessionDiary: false,
   themePrimary: null,
+  uiLanguage: null,
   isInitialAdmin: false,
 };
 
@@ -61,9 +64,11 @@ function renderMenu(user: SafeUser = baseUser, theme: ThemeContextValue = themeV
   return render(
     <AuthContext.Provider value={{ ...authValue, user }}>
       <ErrorContext.Provider value={errorValue}>
-        <ThemeContext.Provider value={theme}>
-          <UserMenu user={user} onLogout={() => {}} />
-        </ThemeContext.Provider>
+        <I18nProvider>
+          <ThemeContext.Provider value={theme}>
+            <UserMenu user={user} onLogout={() => {}} />
+          </ThemeContext.Provider>
+        </I18nProvider>
       </ErrorContext.Provider>
     </AuthContext.Provider>
   );
@@ -72,6 +77,10 @@ function renderMenu(user: SafeUser = baseUser, theme: ThemeContextValue = themeV
 function openMenu() {
   fireEvent.click(screen.getByRole('button', { name: 'Benutzermenü' }));
 }
+
+beforeEach(() => {
+  window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'de');
+});
 
 describe('UserMenu', () => {
   it('shows only the avatar trigger until clicked', () => {
@@ -90,6 +99,14 @@ describe('UserMenu', () => {
     expect(screen.getByText('Fenwick')).toBeDefined();
     expect(screen.getByText('Spieler')).toBeDefined();
     expect(screen.getByRole('menuitem', { name: /Logout/ })).toBeDefined();
+  });
+
+  it('localizes the role label and exposes the language selector', () => {
+    renderMenu({ ...baseUser, uiLanguage: 'en' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'User menu' }));
+    expect(screen.getByText('Player')).toBeDefined();
+    expect(screen.getByRole('combobox', { name: 'Language' })).toBeDefined();
   });
 
   it('shows the dungeon master role label', () => {
@@ -111,9 +128,11 @@ describe('UserMenu', () => {
     render(
       <AuthContext.Provider value={authValue}>
         <ErrorContext.Provider value={errorValue}>
-          <ThemeContext.Provider value={themeValue()}>
-            <UserMenu user={baseUser} onLogout={onLogout} />
-          </ThemeContext.Provider>
+          <I18nProvider>
+            <ThemeContext.Provider value={themeValue()}>
+              <UserMenu user={baseUser} onLogout={onLogout} />
+            </ThemeContext.Provider>
+          </I18nProvider>
         </ErrorContext.Provider>
       </AuthContext.Provider>
     );
@@ -135,9 +154,11 @@ describe('UserMenu', () => {
     rerender(
       <AuthContext.Provider value={authValue}>
         <ErrorContext.Provider value={errorValue}>
-          <ThemeContext.Provider value={themeValue()}>
-            <UserMenu user={baseUser} onLogout={() => {}} onExitSimulation={onExitSimulation} />
-          </ThemeContext.Provider>
+          <I18nProvider>
+            <ThemeContext.Provider value={themeValue()}>
+              <UserMenu user={baseUser} onLogout={() => {}} onExitSimulation={onExitSimulation} />
+            </ThemeContext.Provider>
+          </I18nProvider>
         </ErrorContext.Provider>
       </AuthContext.Provider>
     );

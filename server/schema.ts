@@ -57,6 +57,7 @@ export const schema: Record<string, TableDef> = {
       auto_session_to_diary: { type: 'INTEGER', notNull: true, default: '0' },
       auto_accept_session_diary: { type: 'INTEGER', notNull: true, default: '0' },
       theme_primary: { type: 'TEXT' },
+      ui_language: { type: 'TEXT' },
     },
   },
 
@@ -567,6 +568,7 @@ export const schema: Record<string, TableDef> = {
     columns: {
       id: { type: 'INTEGER', primaryKey: true },
       model: { type: 'TEXT' },
+      language: { type: 'TEXT', notNull: true, default: "'de'" },
       updated_at: { type: 'TEXT' },
     },
   },

@@ -1,4 +1,5 @@
-import type { SafeUser } from '../../shared/types.js';
+import type { Language, SafeUser } from '../../shared/types.js';
+import { DEFAULT_AI_LANGUAGE, localize } from './promptLanguage.js';
 
 export interface SpeakerAnnotation {
   discordName: string;
@@ -15,6 +16,7 @@ export interface SpeakerAnnotationResult {
 }
 
 const MIN_NAME_LENGTH = 4;
+const DEFAULT_TRANSCRIPT_DISPLAY_LANGUAGE: Language = 'de';
 
 const LINE_PREFIX_RE = /^\[(\d{1,3}:\d{2}(?::\d{2})?)\] ([^\n:]+):/gm;
 
@@ -23,6 +25,49 @@ const LINE_PREFIX_RE = /^\[(\d{1,3}:\d{2}(?::\d{2})?)\] ([^\n:]+):/gm;
 // dialogue, so they are replaced together with the line-level speaker labels.
 const IN_TEXT_NAME_RE = /([A-Za-zÄÖÜäöüß0-9][A-Za-zÄÖÜäöüß0-9 .,'|/-]*?)(?=:\s*"|=\s*"|\s*&\s*)/g;
 const IN_TEXT_AFTER_AMP_RE = /&\s*([A-Za-zÄÖÜäöüß0-9][A-Za-zÄÖÜäöüß0-9 .,'|/-]*?)\b/g;
+
+function normalizeLanguageTag(value: string): Language | null {
+  const primary = value.trim().toLowerCase().split(/[-_]/, 1)[0];
+  return primary === 'de' || primary === 'en' ? primary : null;
+}
+
+function languageFromAcceptLanguage(value: string | readonly string[] | undefined): Language {
+  const header = typeof value === 'string' ? value : value?.join(',');
+  if (!header) return DEFAULT_TRANSCRIPT_DISPLAY_LANGUAGE;
+
+  const candidates = header.split(',').map((part, order) => {
+    const [tag, ...parameters] = part.split(';');
+    const qualityParameter = parameters.find((parameter) => /^\s*q\s*=/i.test(parameter));
+    const parsedQuality = qualityParameter ? Number(qualityParameter.split('=')[1]?.trim()) : 1;
+    return {
+      language: normalizeLanguageTag(tag),
+      quality: Number.isFinite(parsedQuality) ? parsedQuality : 0,
+      order,
+    };
+  });
+
+  candidates.sort((a, b) => b.quality - a.quality || a.order - b.order);
+  for (const candidate of candidates) {
+    if (candidate.language && candidate.quality > 0) return candidate.language;
+  }
+  return DEFAULT_TRANSCRIPT_DISPLAY_LANGUAGE;
+}
+
+/**
+ * Resolves the language of the annotated transcript shown to a requesting
+ * account. An explicit account preference wins; automatic accounts use the
+ * browser's Accept-Language preference and otherwise fall back to German.
+ */
+export function resolveTranscriptDisplayLanguage(
+  accountLanguage: Language | null | undefined,
+  acceptLanguage?: string | readonly string[]
+): Language {
+  if (accountLanguage != null) {
+    const normalized = normalizeLanguageTag(accountLanguage);
+    if (normalized) return normalized;
+  }
+  return languageFromAcceptLanguage(acceptLanguage);
+}
 
 function normalizeName(name: string): string {
   return name
@@ -124,14 +169,23 @@ function collectNames(transcript: string): {
   return { lineNames, inTextNames };
 }
 
-function buildLabel(user: SafeUser, transcriptName: string, isAuthor: boolean): string {
+function buildLabel(
+  user: SafeUser,
+  transcriptName: string,
+  isAuthor: boolean,
+  language: Language
+): string {
   if (user.role === 'dungeon_master') {
-    return `Spielleiter (${transcriptName})`;
+    return localize(
+      language,
+      `Spielleiter (${transcriptName})`,
+      `Dungeon Master (${transcriptName})`
+    );
   }
   if (!user.activePerson) {
     return transcriptName;
   }
-  const suffix = isAuthor ? ' (du)' : '';
+  const suffix = isAuthor ? localize(language, ' (du)', ' (you)') : '';
   return `${user.activePerson} (${transcriptName})${suffix}`;
 }
 
@@ -150,15 +204,16 @@ function escapeRegExp(text: string): string {
 
 /**
  * Replaces Discord speaker labels in a transcript with character labels
- * (e.g. "Selene" -> "Vimak (Selene)", DM -> "Spielleiter (Marek)", the
- * author additionally marked with "(du)"). Also cleans Whisper attribution
+ * (e.g. "Selene" -> "Vimak (Selene)", DM -> "Dungeon Master (Marek)", the
+ * author additionally marked with "(you)"). Also cleans Whisper attribution
  * artifacts like `speaker:"..."` inside the text. Unresolved speakers stay
  * unchanged.
  */
 export function annotateTranscriptSpeakers(
   transcript: string,
   users: SafeUser[],
-  authorUserId?: string
+  authorUserId?: string,
+  language: Language = DEFAULT_AI_LANGUAGE
 ): SpeakerAnnotationResult {
   const { lineNames, inTextNames } = collectNames(transcript);
   const allKeys = new Set([...lineNames.keys(), ...inTextNames.keys()]);
@@ -174,7 +229,7 @@ export function annotateTranscriptSpeakers(
 
     const isAuthor = user.id === authorUserId;
     const transcriptName = lineName ?? canonicalInTextName(user, inTextName!);
-    const label = buildLabel(user, transcriptName, isAuthor);
+    const label = buildLabel(user, transcriptName, isAuthor, language);
 
     result = result.replace(
       new RegExp(
@@ -212,16 +267,32 @@ export function annotateTranscriptSpeakers(
 
   const mappingLines = speakers.map((speaker) => {
     if (speaker.isDm) {
-      return `- ${speaker.discordName} → Spielleiter (DM, kein Charakter)`;
+      return localize(
+        language,
+        `- ${speaker.discordName} → Spielleiter (DM, kein Charakter)`,
+        `- ${speaker.discordName} → Dungeon Master (DM, not a character)`
+      );
     }
     if (speaker.isAuthor) {
       return speaker.activePerson
-        ? `- ${speaker.discordName} → ${speaker.activePerson} (dein Charakter)`
-        : `- ${speaker.discordName} → du (kein Charakter ausgewählt)`;
+        ? localize(
+            language,
+            `- ${speaker.discordName} → ${speaker.activePerson} (dein Charakter)`,
+            `- ${speaker.discordName} → ${speaker.activePerson} (your character)`
+          )
+        : localize(
+            language,
+            `- ${speaker.discordName} → du (kein Charakter ausgewählt)`,
+            `- ${speaker.discordName} → you (no character selected)`
+          );
     }
     return speaker.activePerson
       ? `- ${speaker.discordName} → ${speaker.activePerson}`
-      : `- ${speaker.discordName} → keinem Charakter zugeordnet`;
+      : localize(
+          language,
+          `- ${speaker.discordName} → keinem Charakter zugeordnet`,
+          `- ${speaker.discordName} → no character assigned`
+        );
   });
 
   return { transcript: result, speakers, mappingLines };

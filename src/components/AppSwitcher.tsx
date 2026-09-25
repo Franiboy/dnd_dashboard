@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { SafeUser, VersionInfo } from '../../shared/types';
-import { APPS, isAppVisible } from '../lib/apps';
+import { APPS, getAppLabel, isAppVisible } from '../lib/apps';
+import { useI18n } from '../hooks/useI18n';
 import { AppIcon } from './AppIcon';
 
 interface AppSwitcherProps {
@@ -11,6 +12,7 @@ interface AppSwitcherProps {
 
 export function AppSwitcher({ user, version }: AppSwitcherProps) {
   const location = useLocation();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   // True while the icon rail fits the space the header row leaves for this
   // slot; when it does not, the popup button takes over. There is never a
@@ -79,16 +81,20 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
           rail would collapse to the popup in many spots where the icons
           themselves still fit comfortably. */}
       <nav
+        aria-label={t('shell.apps.navigation')}
         className={`flex min-w-0 flex-1 items-center gap-1 overflow-x-hidden ${railFits ? '' : 'invisible'}`}
       >
         <div ref={railInnerRef} className="mx-auto flex w-max shrink-0 items-center gap-1">
           {visibleApps.map((app) => {
             const active = location.pathname === app.path;
+            const label = getAppLabel(app, t);
             return (
               <Link
                 key={app.id}
                 to={app.path}
-                title={app.label}
+                title={label}
+                aria-label={label}
+                aria-current={active ? 'page' : undefined}
                 className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   active
                     ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
@@ -96,7 +102,7 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
                 }`}
               >
                 <AppIcon id={app.iconId ?? app.id} size={16} />
-                <span className="hidden xl:inline">{app.label}</span>
+                <span className="hidden xl:inline">{label}</span>
               </Link>
             );
           })}
@@ -106,12 +112,12 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
       {/* Collapsed variant: takes over whenever the rail does not fit. The
           trigger keeps its 44px touch size; the menu stays anchored to the
           header, so this wrapper must not create a positioning context. */}
-      <div className={`flex items-center ${railFits ? 'hidden' : ''}`}>
+      <div className={`flex items-center ${railFits && visibleApps.length > 0 ? 'hidden' : ''}`}>
         <button
           type="button"
           aria-haspopup="menu"
           aria-expanded={open}
-          aria-label="App-Auswahl"
+          aria-label={t('shell.apps.picker')}
           onClick={() => setOpen((o) => !o)}
           className={`flex size-11 items-center justify-center rounded-lg transition-colors ${
             open
@@ -120,6 +126,7 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
           }`}
         >
           <svg
+            aria-hidden="true"
             xmlns="http://www.w3.org/2000/svg"
             width="20"
             height="20"
@@ -141,28 +148,35 @@ export function AppSwitcher({ user, version }: AppSwitcherProps) {
       {open && (
         <div
           role="menu"
-          aria-label="App-Auswahl"
+          aria-label={t('shell.apps.picker')}
           className="menu-pop-in absolute inset-x-3 top-full z-50 mx-auto mt-2 max-h-[calc(100dvh-var(--header-height,0px)-1rem)] max-w-60 overflow-y-auto overscroll-contain rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2 shadow-xl"
         >
-          {visibleApps.map((app) => {
-            const active = location.pathname === app.path;
-            return (
-              <Link
-                key={app.id}
-                to={app.path}
-                role="menuitem"
-                onClick={() => setOpen(false)}
-                className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  active
-                    ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
-                    : 'text-slate-300 hover:bg-slate-700/50 hover:text-[var(--text-h)]'
-                }`}
-              >
-                <AppIcon id={app.iconId ?? app.id} size={16} />
-                {app.label}
-              </Link>
-            );
-          })}
+          {visibleApps.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-slate-400">{t('shell.apps.empty')}</p>
+          ) : (
+            visibleApps.map((app) => {
+              const active = location.pathname === app.path;
+              const label = getAppLabel(app, t);
+              return (
+                <Link
+                  key={app.id}
+                  to={app.path}
+                  role="menuitem"
+                  aria-label={label}
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => setOpen(false)}
+                  className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
+                      : 'text-slate-300 hover:bg-slate-700/50 hover:text-[var(--text-h)]'
+                  }`}
+                >
+                  <AppIcon id={app.iconId ?? app.id} size={16} />
+                  {label}
+                </Link>
+              );
+            })
+          )}
         </div>
       )}
     </div>

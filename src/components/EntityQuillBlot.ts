@@ -2,7 +2,8 @@ import Quill from 'quill';
 import Inline from 'quill/blots/inline';
 import type { EntityMapping, EntityType } from '../../shared/types';
 import { buildTriggers, findMatches } from '../lib/entityMatching';
-import { typeLabels } from '../lib/entityLabels';
+import { entityTypeLabelKeys, typeLabels } from '../lib/entityLabels';
+import { translate } from '../i18n';
 
 interface EntityValue {
   type: EntityType;
@@ -11,6 +12,22 @@ interface EntityValue {
   /** Set when several homonyms share this mention; the UI must ask. */
   ambiguous?: boolean;
   miniSummary?: string | null;
+  /** Resolved in the active UI language for the editor tooltip. */
+  typeLabel?: string;
+}
+
+function currentLanguage(): 'de' | 'en' {
+  if (
+    typeof document !== 'undefined' &&
+    document.documentElement.lang.toLowerCase().startsWith('en')
+  ) {
+    return 'en';
+  }
+  return 'de';
+}
+
+function fallbackTypeLabel(type: EntityType): string {
+  return translate(currentLanguage(), entityTypeLabelKeys[type]);
 }
 
 class EntityBlot extends Inline {
@@ -34,7 +51,8 @@ class EntityBlot extends Inline {
     node.classList.add('ql-entity', `ql-entity-${value.type}`);
     node.setAttribute('contenteditable', 'false');
     node.style.cursor = 'pointer';
-    const label = `${typeLabels[value.type]}: ${value.qualifier ? `${value.canonical} (${value.qualifier})` : value.canonical}`;
+    const label = `${value.typeLabel ?? fallbackTypeLabel(value.type)}: ${value.qualifier ? `${value.canonical} (${value.qualifier})` : value.canonical}`;
+    node.setAttribute('aria-label', label);
     node.setAttribute('title', value.miniSummary ? `${label} — ${value.miniSummary}` : label);
     return node;
   }
@@ -75,7 +93,14 @@ class EntityBlot extends Inline {
 
 Quill.register(EntityBlot);
 
-export function applyEntityHighlights(quill: Quill, mappings: EntityMapping[]) {
+export function applyEntityHighlights(
+  quill: Quill,
+  mappings: EntityMapping[],
+  typeLabel: (type: EntityType) => string = (entityType) =>
+    typeof document !== 'undefined' && document.documentElement.lang.toLowerCase().startsWith('en')
+      ? translate('en', entityTypeLabelKeys[entityType])
+      : typeLabels[entityType]
+) {
   const triggers = buildTriggers(mappings);
   const text = quill.getText();
   const matches = findMatches(text, triggers);
@@ -96,6 +121,7 @@ export function applyEntityHighlights(quill: Quill, mappings: EntityMapping[]) {
         qualifier: first.qualifier || undefined,
         ambiguous: match.candidates.length > 1 ? true : undefined,
         miniSummary: first.miniSummary,
+        typeLabel: typeLabel(first.type),
       },
       'silent'
     );

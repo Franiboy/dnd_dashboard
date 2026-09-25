@@ -35,6 +35,7 @@ function testUser(id: string): User {
     autoSessionToDiary: false,
     autoAcceptSessionDiary: false,
     themePrimary: null,
+    uiLanguage: null,
     failedLoginAttempts: 0,
     lockedUntil: null,
     createdAt: new Date().toISOString(),

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { db } from '../database.js';
 import {
   checkLoginAllowed,
   createAdminUser,
@@ -7,6 +8,7 @@ import {
   recordFailedLogin,
   resetFailedLogins,
   setUserRole,
+  setUserUiLanguage,
   toSafeUser,
   verifyPassword,
 } from './users.js';
@@ -62,6 +64,17 @@ describe('users', () => {
 
     const stillGuest = findUserByUsername('rolereject')!;
     expect(stillGuest.role).toBe('guest');
+  });
+
+  it('stores supported UI languages and normalizes invalid values to automatic selection', () => {
+    const user = createDiscordUser('discord-language-1', 'languageuser', 'Language User', null);
+    expect(user.uiLanguage).toBeNull();
+
+    expect(setUserUiLanguage(user.id, 'en')?.uiLanguage).toBe('en');
+    expect(setUserUiLanguage(user.id, null)?.uiLanguage).toBeNull();
+
+    db.prepare('UPDATE users SET ui_language = ? WHERE id = ?').run('fr', user.id);
+    expect(findUserByUsername('languageuser')?.uiLanguage).toBeNull();
   });
 
   it('tracks failed logins and lockout', async () => {

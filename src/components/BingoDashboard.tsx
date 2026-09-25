@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { BingoGame, Player, SafeUser, TaskAudience } from '../../shared/types';
 import type { Socket } from '../types';
+import { useI18n } from '../hooks/useI18n';
 import { BingoGrid } from './BingoGrid';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SideDrawer, SideDrawerItem } from './SideDrawer';
@@ -39,6 +40,7 @@ function getAvailableTaskCount(game: BingoGame, player: Player): number {
 }
 
 function SetupControls({ game, socket }: { game: BingoGame; socket: Socket | null }) {
+  const { t, formatNumber } = useI18n();
   const needed = game.gridSize * game.gridSize;
   const totalEnough = game.tasks.length >= needed;
   // Soft warning only: the game can be started at any time; players who cannot
@@ -52,34 +54,53 @@ function SetupControls({ game, socket }: { game: BingoGame; socket: Socket | nul
     .sort((a, b) => a.count - b.count)[0];
   const warning =
     bottleneck && bottleneck.count < needed
-      ? `${bottleneck.name} hat nur ${bottleneck.count} von ${needed} verfügbaren Aufgaben`
+      ? t('bingo.setup.limitedTasks', {
+          count: bottleneck.count,
+          name: bottleneck.name,
+          availableCount: formatNumber(bottleneck.count),
+          requiredCount: formatNumber(needed),
+        })
       : null;
 
   return (
     <div className="flex items-center gap-2 sm:gap-3">
-      <label className="text-slate-400 text-xs hidden xl:inline">Feldgröße:</label>
+      <label className="text-slate-400 text-xs hidden xl:inline" htmlFor="bingo-grid-size">
+        {t('bingo.setup.gridSize')}
+      </label>
       <select
+        id="bingo-grid-size"
+        aria-label={t('bingo.setup.gridSize')}
         value={game.gridSize}
         onChange={(e) => socket?.emit('setGridSize', parseInt(e.target.value))}
         className="px-2 py-1.5 rounded bg-slate-900 border border-[var(--border)] text-[var(--text-h)] text-xs"
       >
-        <option value={3}>3x3</option>
-        <option value={4}>4x4</option>
-        <option value={5}>5x5</option>
+        <option value={3}>
+          {formatNumber(3)}x{formatNumber(3)}
+        </option>
+        <option value={4}>
+          {formatNumber(4)}x{formatNumber(4)}
+        </option>
+        <option value={5}>
+          {formatNumber(5)}x{formatNumber(5)}
+        </option>
       </select>
       <button
         onClick={() => socket?.emit('startGame')}
         disabled={!totalEnough}
         title={
           !totalEnough
-            ? `${game.tasks.length} Aufgaben, mindestens ${needed} nötig`
+            ? t('bingo.setup.taskRequirement', {
+                count: game.tasks.length,
+                taskCount: formatNumber(game.tasks.length),
+                neededCount: formatNumber(needed),
+              })
             : warning
-              ? `Spiel starten – Hinweis: ${warning}`
-              : 'Spiel starten'
+              ? t('bingo.setup.startWithWarning', { warning })
+              : t('bingo.setup.start')
         }
         className="px-3 py-1.5 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50 text-xs"
       >
-        Spiel starten
+        {t('bingo.setup.start')}
       </button>
     </div>
   );
@@ -98,6 +119,7 @@ function BoardControls({
   isSetup: boolean;
   isPlaying: boolean;
 }) {
+  const { t } = useI18n();
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Boards can be locked in setup and, for late joiners, during the running
@@ -112,7 +134,7 @@ function BoardControls({
             : 'bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110'
         }`}
       >
-        {player.locked ? 'Entsperren' : 'Einlocken'}
+        {player.locked ? t('bingo.board.unlock') : t('bingo.board.lock')}
       </button>
     ) : null;
 
@@ -125,15 +147,15 @@ function BoardControls({
             onClick={() => setShowResetConfirm(true)}
             className="px-4 py-2 rounded bg-[var(--danger)] text-white font-semibold hover:bg-red-400 transition text-sm"
           >
-            Beenden & neue Runde
+            {t('bingo.board.endAndStartNewRound')}
           </button>
         )}
       </div>
 
       {showResetConfirm && (
         <ConfirmDialog
-          title="Neue Runde starten?"
-          confirmLabel="Starten"
+          title={t('bingo.board.resetTitle')}
+          confirmLabel={t('bingo.board.resetConfirmLabel')}
           variant="danger"
           onConfirm={() => {
             setShowResetConfirm(false);
@@ -141,7 +163,7 @@ function BoardControls({
           }}
           onCancel={() => setShowResetConfirm(false)}
         >
-          <p>Aufgaben bleiben erhalten, die Bretter werden zurückgesetzt.</p>
+          <p>{t('bingo.board.resetDescription')}</p>
         </ConfirmDialog>
       )}
     </>
@@ -158,6 +180,7 @@ export function BingoDashboard({
   isSetup,
   isPlaying,
 }: BingoDashboardProps) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<MobileTab>('field');
 
   // Late joiners fill their board while the game is already running.
@@ -186,7 +209,7 @@ export function BingoDashboard({
   );
 
   const fieldPanel = (
-    <Panel title="Dein Bingo-Feld" className="min-h-0" actions={fieldPanelActions}>
+    <Panel title={t('bingo.board.title')} className="min-h-0" actions={fieldPanelActions}>
       <BingoGrid
         game={game}
         socket={socket}
@@ -200,7 +223,7 @@ export function BingoDashboard({
 
   const taskPanel =
     isSetup || isPlaying ? (
-      <Panel title="Aufgaben" className="flex-1 min-h-0">
+      <Panel title={t('bingo.tasks.label')} className="flex-1 min-h-0">
         {editingBoard ? (
           <TaskPool
             game={game}
@@ -215,25 +238,25 @@ export function BingoDashboard({
         ) : isPlaying && isAdmin ? (
           <TaskStatus game={game} socket={socket} />
         ) : (
-          <p className="text-slate-400">Warte auf Spielstart...</p>
+          <p className="text-slate-400">{t('bingo.board.waitingForStart')}</p>
         )}
       </Panel>
     ) : null;
 
   const tabs: { id: MobileTab; label: string }[] = [
-    { id: 'field', label: 'Feld' },
-    { id: 'tasks', label: 'Aufgaben' },
+    { id: 'field', label: t('bingo.board.fieldTab') },
+    { id: 'tasks', label: t('bingo.tasks.label') },
   ];
 
   return (
     <div className="h-full flex flex-col min-h-0">
       <SideDrawer side="right" width="18rem" fitContent maxWidth="min(28rem, calc(100vw - 16rem))">
-        <SideDrawerItem id="bingo-players" label="Spieler" icon={<span>👤</span>}>
+        <SideDrawerItem id="bingo-players" label={t('bingo.players.label')} icon={<span>👤</span>}>
           <PlayerList game={game} playerId={playerId} />
         </SideDrawerItem>
 
         {isPlaying && (
-          <SideDrawerItem id="bingo-tasks" label="Aufgaben" icon={<span>📋</span>}>
+          <SideDrawerItem id="bingo-tasks" label={t('bingo.tasks.label')} icon={<span>📋</span>}>
             {editingBoard ? (
               <TaskPool
                 game={game}
@@ -248,7 +271,7 @@ export function BingoDashboard({
             ) : isAdmin ? (
               <TaskStatus game={game} socket={socket} />
             ) : (
-              <p className="text-slate-400">Warte bis der Spielleiter das Spiel beendet.</p>
+              <p className="text-slate-400">{t('bingo.board.waitForEnd')}</p>
             )}
           </SideDrawerItem>
         )}
@@ -288,8 +311,8 @@ export function BingoDashboard({
 
             {activeTab === 'tasks' &&
               (taskPanel ?? (
-                <Panel title="Aufgaben" className="flex-1 min-h-0">
-                  <p className="text-slate-400">Warte auf Spielstart...</p>
+                <Panel title={t('bingo.tasks.label')} className="flex-1 min-h-0">
+                  <p className="text-slate-400">{t('bingo.board.waitingForStart')}</p>
                 </Panel>
               ))}
           </>

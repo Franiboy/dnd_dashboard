@@ -9,7 +9,13 @@ import {
 } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import type { WhiteboardElement, WhiteboardPatch } from '../../../shared/types';
-import { TASK_STATUS_META, isBoardImageUrl, nextTaskStatus } from './whiteboardShared';
+import { useI18n } from '../../hooks/useI18n';
+import {
+  TASK_STATUS_CLASS_NAMES,
+  getTaskStatusLabel,
+  isBoardImageUrl,
+  nextTaskStatus,
+} from './whiteboardShared';
 import { ensureHtml } from '../quillConfig';
 import { useFitFontSize } from './useFitFontSize';
 import { NoteQuillEditor } from './NoteQuillEditor';
@@ -146,6 +152,7 @@ function TextElementEditor({
   boxWidth,
   boxHeight,
 }: NoteDraftProps & { boxWidth: number; boxHeight: number }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState(element.text);
   const { ref, fontSize } = useFitFontSize(draft, boxWidth, boxHeight, true);
   const shouldIgnoreBlur = useBlurGuard(ref);
@@ -173,12 +180,14 @@ function TextElementEditor({
         }
       }}
       className="h-full w-full resize-none overflow-hidden bg-transparent text-center leading-[1.15] outline-none"
-      placeholder="Text schreiben…"
+      aria-label={t('whiteboard.elements.textPlaceholder')}
+      placeholder={t('whiteboard.elements.textPlaceholder')}
     />
   );
 }
 
 function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
+  const { t } = useI18n();
   const [title, setTitle] = useState(element.text);
   const [description, setDescription] = useState(element.description ?? '');
   const titleRef = useFocusOnMount<HTMLInputElement>();
@@ -208,7 +217,8 @@ function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           }
         }}
         className="w-full rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-sm font-semibold text-[var(--text-h)] outline-none"
-        placeholder="Aufgabe…"
+        aria-label={t('whiteboard.elements.taskTitlePlaceholder')}
+        placeholder={t('whiteboard.elements.taskTitlePlaceholder')}
       />
       <textarea
         value={description}
@@ -224,13 +234,15 @@ function TaskEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           }
         }}
         className="min-h-0 flex-1 resize-none rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-xs text-[var(--text)] outline-none"
-        placeholder="Beschreibung (optional)…"
+        aria-label={t('whiteboard.elements.descriptionPlaceholder')}
+        placeholder={t('whiteboard.elements.descriptionPlaceholder')}
       />
     </div>
   );
 }
 
 function LinkEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
+  const { t } = useI18n();
   const [url, setUrl] = useState(element.url ?? '');
   const [label, setLabel] = useState(element.text);
   const ref = useFocusOnMount<HTMLInputElement>();
@@ -258,7 +270,8 @@ function LinkEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           }
         }}
         className="w-full rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-xs text-[var(--text-h)] outline-none"
-        placeholder="https://…"
+        aria-label={t('whiteboard.elements.linkUrlLabel')}
+        placeholder={t('whiteboard.elements.linkUrlPlaceholder')}
       />
       <input
         value={label}
@@ -274,7 +287,8 @@ function LinkEditor({ element, onUpdate, onCloseEdit }: NoteDraftProps) {
           }
         }}
         className="w-full rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-xs text-[var(--text)] outline-none"
-        placeholder="Titel (optional)"
+        aria-label={t('whiteboard.elements.linkTitlePlaceholder')}
+        placeholder={t('whiteboard.elements.linkTitlePlaceholder')}
       />
     </div>
   );
@@ -391,6 +405,7 @@ export function WhiteboardElementView({
   onBringForward,
   onSendBackward,
 }: WhiteboardElementViewProps) {
+  const { t } = useI18n();
   const isImageLink = element.type === 'link' && isBoardImageUrl(element.url ?? '');
   const isNote = element.type === 'note';
   const sanitizedNoteHtml = useMemo(() => {
@@ -437,7 +452,9 @@ export function WhiteboardElementView({
             boxHeight={element.height / contentScale - 16}
           />
         ) : !element.text ? (
-          <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
+          <span className="text-sm italic opacity-50">
+            {t('whiteboard.elements.doubleClickWrite')}
+          </span>
         ) : (
           <div
             ref={noteFitRef as RefObject<HTMLDivElement>}
@@ -465,7 +482,9 @@ export function WhiteboardElementView({
             boxHeight={element.height / contentScale - 16}
           />
         ) : !element.text ? (
-          <span className="text-sm italic opacity-50">Doppelklick zum Schreiben</span>
+          <span className="text-sm italic opacity-50">
+            {t('whiteboard.elements.doubleClickWrite')}
+          </span>
         ) : (
           <div
             ref={textFitRef as RefObject<HTMLDivElement>}
@@ -479,7 +498,8 @@ export function WhiteboardElementView({
     );
   } else if (element.type === 'task') {
     const status = element.status ?? 'open';
-    const meta = TASK_STATUS_META[status];
+    const statusClassName = TASK_STATUS_CLASS_NAMES[status];
+    const statusLabel = getTaskStatusLabel(status, t);
     body = (
       <div
         className="relative flex h-full w-full flex-col gap-1 overflow-hidden rounded-lg bg-[var(--panel)] p-2 pl-3 shadow"
@@ -490,7 +510,11 @@ export function WhiteboardElementView({
         ) : (
           <>
             <div className="break-words text-sm font-semibold leading-tight text-[var(--text-h)]">
-              {element.text || <span className="italic opacity-50">Doppelklick für Aufgabe</span>}
+              {element.text || (
+                <span className="italic opacity-50">
+                  {t('whiteboard.elements.doubleClickTask')}
+                </span>
+              )}
             </div>
             {element.description && (
               <div className="line-clamp-3 whitespace-pre-wrap break-words text-xs text-[var(--text)]">
@@ -506,10 +530,11 @@ export function WhiteboardElementView({
                 e.stopPropagation();
                 onUpdate(element.id, { status: nextTaskStatus(status) });
               }}
-              className={`mt-auto self-start rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.className}`}
-              title="Status ändern"
+              className={`mt-auto self-start rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusClassName}`}
+              title={t('whiteboard.elements.changeStatus')}
+              aria-label={t('whiteboard.elements.changeStatus')}
             >
-              {meta.label}
+              {statusLabel}
             </button>
           </>
         )}
@@ -526,7 +551,7 @@ export function WhiteboardElementView({
         ) : isImage && element.url ? (
           <img
             src={element.url}
-            alt={element.text || 'Vorschau'}
+            alt={element.text || t('whiteboard.elements.imagePreview')}
             draggable={false}
             className="pointer-events-none h-full w-full object-cover"
           />
@@ -534,7 +559,9 @@ export function WhiteboardElementView({
           <div className="flex h-full w-full flex-col justify-center gap-0.5 p-2">
             <div className="truncate text-sm font-medium text-[var(--accent)]">
               {element.text || element.url || (
-                <span className="italic opacity-50">Link hinterlegen</span>
+                <span className="italic opacity-50">
+                  {t('whiteboard.elements.linkPlaceholder')}
+                </span>
               )}
             </div>
             {element.url && <div className="truncate text-xs text-slate-400">{element.url}</div>}
@@ -599,6 +626,8 @@ export function WhiteboardElementView({
       {element.locked && !selected && !editing && !cropping && (
         <div
           className="pointer-events-none absolute z-10 flex items-center justify-center rounded-full bg-slate-700 text-slate-200 shadow"
+          title={t('whiteboard.elements.lock')}
+          aria-label={t('whiteboard.elements.lock')}
           style={{
             left: -10 * uiScale,
             top: -10 * uiScale,
@@ -613,7 +642,8 @@ export function WhiteboardElementView({
         <>
           <button
             type="button"
-            title="Löschen"
+            title={t('whiteboard.elements.delete')}
+            aria-label={t('whiteboard.elements.delete')}
             onPointerDown={(e) => {
               if (e.button === 0) e.stopPropagation();
             }}
@@ -645,7 +675,8 @@ export function WhiteboardElementView({
           </button>
           <button
             type="button"
-            title={isImageLink ? 'Zuschneiden' : 'Bearbeiten'}
+            title={t(isImageLink ? 'whiteboard.elements.crop' : 'whiteboard.elements.edit')}
+            aria-label={t(isImageLink ? 'whiteboard.elements.crop' : 'whiteboard.elements.edit')}
             onPointerDown={(e) => {
               if (e.button === 0) e.stopPropagation();
             }}
@@ -694,7 +725,10 @@ export function WhiteboardElementView({
           </button>
           <button
             type="button"
-            title={element.locked ? 'Lösen (wieder verschiebbar)' : 'Fixieren (nicht verschiebbar)'}
+            title={t(element.locked ? 'whiteboard.elements.unlock' : 'whiteboard.elements.lock')}
+            aria-label={t(
+              element.locked ? 'whiteboard.elements.unlock' : 'whiteboard.elements.lock'
+            )}
             onPointerDown={(e) => {
               if (e.button === 0) e.stopPropagation();
             }}
@@ -717,23 +751,27 @@ export function WhiteboardElementView({
           {(
             [
               {
-                title: 'Ebene nach vorn',
+                title: t('whiteboard.elements.bringForward'),
                 enabled: canBringForward && !element.locked,
                 onClick: () => onBringForward(element.id),
                 icon: <path d="M12 19V5m0 0-6 6m6-6 6 6" />,
               },
               {
-                title: 'Ebene nach hinten',
+                title: t('whiteboard.elements.sendBackward'),
                 enabled: canSendBackward && !element.locked,
                 onClick: () => onSendBackward(element.id),
                 icon: <path d="M12 5v14m0 0 6-6m-6 6-6-6" />,
               },
             ] as const
-          ).map((control) => (
+          ).map((control, index) => (
             <button
               key={control.title}
               type="button"
-              title={control.enabled ? control.title : `${control.title} (nicht möglich)`}
+              title={
+                control.enabled
+                  ? control.title
+                  : t('whiteboard.elements.unavailableAction', { action: control.title })
+              }
               aria-label={control.title}
               disabled={!control.enabled}
               onPointerDown={(e) => {
@@ -750,7 +788,7 @@ export function WhiteboardElementView({
                 width: 24 * uiScale,
                 height: 24 * uiScale,
                 left: -12 * uiScale,
-                top: (control.title === 'Ebene nach vorn' ? 28 : 56) * uiScale,
+                top: (28 + index * 28) * uiScale,
               }}
             >
               <svg
@@ -770,7 +808,8 @@ export function WhiteboardElementView({
           ))}
           {!element.locked && (
             <div
-              title="Größe ändern"
+              title={t('whiteboard.elements.resize')}
+              aria-label={t('whiteboard.elements.resize')}
               onPointerDown={(e) => {
                 // Right/middle presses fall through to the board pan.
                 if (e.button !== 0) return;
@@ -814,6 +853,7 @@ function CropOverlay({
   onApply: (crop: CropRect) => void;
   onCancel: () => void;
 }) {
+  const { t } = useI18n();
   const [rect, setRect] = useState<CropRect>({ x: 0, y: 0, w: 1, h: 1 });
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -951,7 +991,8 @@ function CropOverlay({
         <div className="absolute flex gap-2" style={{ left: 8, top: 'calc(100% + 10px)' }}>
           <button
             type="button"
-            title="Zuschneiden übernehmen"
+            title={t('whiteboard.elements.applyCrop')}
+            aria-label={t('whiteboard.elements.applyCrop')}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -975,7 +1016,8 @@ function CropOverlay({
           </button>
           <button
             type="button"
-            title="Abbrechen"
+            title={t('whiteboard.elements.cancel')}
+            aria-label={t('whiteboard.elements.cancel')}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();

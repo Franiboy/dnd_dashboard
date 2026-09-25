@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { useError } from './useError';
+import { useI18n } from './useI18n';
+import { getServerMessagePayload, localizeServerMessage } from '../i18n/serverMessages';
 import type {
   ClientToServerEvents,
   SafeUser,
@@ -21,11 +23,21 @@ function upsertInto(list: WhiteboardElement[], element: WhiteboardElement): Whit
   return next;
 }
 
+function connectErrorPayload(error: Error) {
+  return getServerMessagePayload((error as Error & { data?: unknown }).data) ?? error.message;
+}
+
 export function useWhiteboard(user: SafeUser | null) {
   const { showError } = useError();
+  const { t } = useI18n();
   const socketRef = useRef<WhiteboardSocket | null>(null);
   const [elements, setElements] = useState<WhiteboardElement[]>([]);
   const [connected, setConnected] = useState(false);
+  const tRef = useRef(t);
+
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   // Ids of elements currently being dragged/resized/edited locally.
   // Authoritative broadcasts for these are skipped so live gestures never
@@ -53,7 +65,19 @@ export function useWhiteboard(user: SafeUser | null) {
       localEditIdsRef.current.delete(id);
       setElements((prev) => prev.filter((e) => e.id !== id));
     });
-    socket.on('error', (message) => showError(message));
+    socket.on('error', (message) => {
+      const payload = getServerMessagePayload(message);
+      const localized = localizeServerMessage(payload ?? message, tRef.current, {
+        fallback: typeof message === 'string' ? message : undefined,
+      });
+      if (localized) showError(localized);
+    });
+    socket.on('connect_error', (error: Error) => {
+      const localized = localizeServerMessage(connectErrorPayload(error), tRef.current, {
+        fallback: error.message,
+      });
+      if (localized) showError(localized);
+    });
 
     return () => {
       socket.disconnect();

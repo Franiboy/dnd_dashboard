@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { z } from 'zod';
-import { AppError, parseWith } from '../errors.js';
+import { AppError, errorPayload, parseWith } from '../errors.js';
 import { authMiddleware, requireApproved, type AuthRequest } from '../auth.js';
 import { isAiEnabled } from '../ai/config.js';
 import { broadcastGameState, getIoServer } from '../socket.js';
@@ -27,6 +27,9 @@ const bingoRateLimit = rateLimit({
   // App runs behind nginx on a loopback-bound socket; nginx appends the real
   // client IP as the last X-Forwarded-For entry, so trusting proxies is safe.
   validate: { trustProxy: false },
+  message: errorPayload('Zu viele Bingo-Anfragen. Bitte später erneut versuchen.', {
+    fallbackCode: 'errors.rateLimit.bingo',
+  }),
 });
 
 const bingoRefreshRateLimit = rateLimit({
@@ -36,6 +39,9 @@ const bingoRefreshRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
+  message: errorPayload('Zu viele Bingo-Anfragen. Bitte später erneut versuchen.', {
+    fallbackCode: 'errors.rateLimit.bingo',
+  }),
 });
 
 router.use(authMiddleware, requireApproved, bingoRateLimit);
@@ -61,17 +67,28 @@ function canAccessAudience(req: AuthRequest, audience: TaskAudience): boolean {
 
 function requireSetupPhase(action: 'annehmen' | 'ablehnen' | 'aktualisieren'): void {
   if (getGame().status !== 'setup') {
-    throw new AppError(400, `Vorschläge können nur während des Setups ${action} werden`);
+    const messageKeys = {
+      annehmen: 'errors.bingo.suggestionAcceptSetupOnly',
+      ablehnen: 'errors.bingo.suggestionRejectSetupOnly',
+      aktualisieren: 'errors.bingo.suggestionRefreshSetupOnly',
+    } as const;
+    throw new AppError(400, `Vorschläge können nur während des Setups ${action} werden`, {
+      messageKey: messageKeys[action],
+    });
   }
 }
 
 function requireAccessibleSuggestion(req: AuthRequest, suggestionId: number, action: string) {
   const suggestion = getSuggestionById(suggestionId);
   if (!suggestion) {
-    throw new AppError(404, 'Vorschlag nicht gefunden');
+    throw new AppError(404, 'Vorschlag nicht gefunden', {
+      messageKey: 'errors.bingo.suggestionNotFound',
+    });
   }
   if (!canAccessAudience(req, suggestion.audience ?? 'players')) {
-    throw new AppError(403, `Nur Dungeon Master können DM-Vorschläge ${action}.`);
+    throw new AppError(403, `Nur Dungeon Master können DM-Vorschläge ${action}.`, {
+      messageKey: 'errors.bingo.dmSuggestionDenied',
+    });
   }
   return suggestion;
 }
@@ -131,7 +148,9 @@ router.post('/suggestions/refresh', bingoRefreshRateLimit, (req: AuthRequest, re
   requireSetupPhase('aktualisieren');
 
   if (!isAiEnabled()) {
-    throw new AppError(503, 'KI-Feature ist nicht konfiguriert');
+    throw new AppError(503, 'KI-Feature ist nicht konfiguriert', {
+      messageKey: 'errors.ai.disabled',
+    });
   }
 
   const audience = resolveAudience(req);

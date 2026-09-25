@@ -1,14 +1,17 @@
-import { useRef, type ComponentProps, type Ref } from 'react';
+import { useCallback, useEffect, useRef, type ComponentProps, type Ref } from 'react';
 import ReactQuill from 'react-quill-new';
 import type { EntityMapping } from '../../shared/types';
 import { useEntityMention } from '../hooks/useEntityMention';
+import { useI18n } from '../hooks/useI18n';
 import { EntityMentionDropdown } from './EntityMentionDropdown';
+import { applyQuillLocalization } from './quillConfig';
 
 type ReactQuillProps = ComponentProps<typeof ReactQuill>;
 
 interface QuillWithEntityMentionProps extends Omit<ReactQuillProps, 'ref'> {
   mappings: EntityMapping[];
   quillRef?: Ref<ReactQuill>;
+  'aria-label'?: string;
 }
 
 /**
@@ -21,14 +24,27 @@ export function QuillWithEntityMention({
   mappings,
   quillRef,
   readOnly,
+  'aria-label': ariaLabel,
   ...quillProps
 }: QuillWithEntityMentionProps) {
+  const { t, language } = useI18n();
+  const editorLabel = ariaLabel ?? t('diary.editor.label');
   const innerRef = useRef<ReactQuill | null>(null);
   const { mention, accept, setActiveIndex } = useEntityMention({
     getQuill: () => innerRef.current?.getEditor() ?? null,
     mappings,
     enabled: !readOnly,
   });
+
+  const localizeEditor = useCallback(() => {
+    const instance = innerRef.current;
+    if (!instance) return;
+    try {
+      applyQuillLocalization(instance.getEditor(), t, language, editorLabel);
+    } catch {
+      // ReactQuill can briefly expose its ref before the editor is ready.
+    }
+  }, [editorLabel, language, t]);
 
   const setRefs = (el: ReactQuill | null) => {
     innerRef.current = el;
@@ -39,7 +55,12 @@ export function QuillWithEntityMention({
       // oxlint-disable-next-line react/immutability
       (quillRef as { current: ReactQuill | null }).current = el;
     }
+    if (el) localizeEditor();
   };
+
+  useEffect(() => {
+    localizeEditor();
+  }, [localizeEditor]);
 
   return (
     <>

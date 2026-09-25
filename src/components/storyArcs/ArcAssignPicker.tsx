@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { StoryArc } from '../../../shared/types';
+import { useI18n } from '../../hooks/useI18n';
 import { formatArcLabel } from '../../lib/storyArcs';
 import { ChapterChip } from './ChapterChip';
 import { ChapterTimeline } from './ChapterTimeline';
@@ -27,6 +28,7 @@ export function ArcAssignPicker({
   align = 'left',
   className = '',
 }: ArcAssignPickerProps) {
+  const { t, formatNumber } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(ref, open, () => setOpen(false));
@@ -38,7 +40,13 @@ export function ArcAssignPicker({
       <ChapterChip
         arc={arc}
         disabled={disabled || arcs.length === 0}
-        title={arc ? `Kapitel wechseln – ${formatArcLabel(arc)}` : 'Kapitel zuweisen'}
+        title={
+          arc
+            ? t('sessions.storyArcs.changeChapter', {
+                label: formatArcLabel(arc, t, formatNumber),
+              })
+            : t('sessions.storyArcs.assignChapter')
+        }
         onClick={disabled ? undefined : () => setOpen((o) => !o)}
       />
       {open && (

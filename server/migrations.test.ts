@@ -64,6 +64,24 @@ describe('schema migrations', () => {
     expect(row.model).toBe('opencode/legacy-normal');
   });
 
+  it('adds and backfills a valid default for the global AI language', () => {
+    db.exec('ALTER TABLE ai_settings DROP COLUMN language');
+    db.prepare('INSERT OR IGNORE INTO ai_settings (id, model) VALUES (1, NULL)').run();
+
+    runMigrations();
+    expect(
+      (db.prepare('SELECT language FROM ai_settings WHERE id = 1').get() as { language: string })
+        .language
+    ).toBe('de');
+
+    db.prepare("UPDATE ai_settings SET language = 'fr' WHERE id = 1").run();
+    runMigrations();
+    expect(
+      (db.prepare('SELECT language FROM ai_settings WHERE id = 1').get() as { language: string })
+        .language
+    ).toBe('de');
+  });
+
   it('rebuilds whiteboard_elements so shape/stroke rows pass the type check', () => {
     // Simulate a pre-shape database: old CHECK constraint, no drawing columns.
     db.exec('DROP INDEX IF EXISTS idx_whiteboard_elements_owner_zone');

@@ -6,6 +6,9 @@ import type { McpSessionUser } from '../mcp/tokens.js';
 import { getModel } from './modelConfig.js';
 import { runOpenCode } from './opencode.js';
 import { getSessionWorkDir, getSessionWorkFile } from './sessionWorkdir.js';
+import type { Language } from '../../shared/types.js';
+import { getAiLanguage } from './languageConfig.js';
+import { localize, outputLanguageInstruction } from './promptLanguage.js';
 
 const log = createLogger('sessionBoundary');
 
@@ -80,8 +83,10 @@ export async function detectSessionBoundaries(
   sessionId: number,
   user: McpSessionUser,
   model?: string,
-  onLog?: (line: string) => void
+  onLog?: (line: string) => void,
+  language?: Language
 ): Promise<SessionBoundaryResult> {
+  const runLanguage = language ?? getAiLanguage();
   const session = getSessionById(sessionId);
   if (!session || !session.transcript || !session.transcript.trim()) {
     log.warn(`detectSessionBoundaries called without transcript for session ${sessionId}`);
@@ -121,31 +126,75 @@ export async function detectSessionBoundaries(
   const headDescription = headPath === workFile ? workFile : 'session_timeline_head.txt';
   const tailDescription = tailPath ? 'session_timeline_tail.txt' : null;
 
+  const t = (german: string, english: string) => localize(runLanguage, german, english);
   const prompt = [
-    'Du bist ein Assistent für ein D&D-Sessions-System. Du arbeitest mit Dateien und Tools und antwortest prägnant auf Deutsch.',
+    t(
+      'Du bist ein Assistent für ein D&D-Sessions-System. Du arbeitest mit Dateien und Tools und antwortest prägnant auf Deutsch.',
+      'You are an assistant for a D&D session system. You work with files and tools and respond concisely in English.'
+    ),
+    outputLanguageInstruction(runLanguage),
     '',
-    `Aufgabe: Bestimme für die D&D-Session ${sessionId} den exakten Start und das Ende der eigentlichen Spiel-Session innerhalb der Aufnahme.`,
+    t(
+      `Aufgabe: Bestimme für die D&D-Session ${sessionId} den exakten Start und das Ende der eigentlichen Spiel-Session innerhalb der Aufnahme.`,
+      `Task: Determine the exact start and end of the actual game session for D&D session ${sessionId} within the recording.`
+    ),
     '',
-    'Hintergrund: Die Gruppe nimmt ihren Discord-Sprachkanal auf. Vor der eigentlichen Session findet üblicherweise eine Vorbesprechung/Teambesprechung statt: Es wird über Organisatorisches, Teambelange, Charakter- oder Einkaufsfragen und Alltägliches (Small Talk, Technik, etc.) geredet. Auch nach der Session wird noch Small Talk gehalten und man verabschiedet sich. Diese Phasen gehören NICHT zur eigentlichen Spiel-Session und dürfen nicht als Beginn oder Ende der Session gewertet werden.',
+    t(
+      'Hintergrund: Die Gruppe nimmt ihren Discord-Sprachkanal auf. Vor der eigentlichen Session findet üblicherweise eine Vorbesprechung/Teambesprechung statt: Es wird über Organisatorisches, Teambelange, Charakter- oder Einkaufsfragen und Alltägliches (Small Talk, Technik, etc.) geredet. Auch nach der Session wird noch Small Talk gehalten und man verabschiedet sich. Diese Phasen gehören NICHT zur eigentlichen Spiel-Session und dürfen nicht als Beginn oder Ende der Session gewertet werden.',
+      'Background: The group records its Discord voice channel. Before the actual session, there is usually a pre-session or team discussion about organization, team matters, character or shopping questions, and everyday matters (small talk, technical issues, etc.). After the session, there is also small talk and people say goodbye. These phases do NOT belong to the actual game session and must not be treated as its start or end.'
+    ),
     '',
-    'Vorgehen:',
-    `1. Lies die Datei ${headDescription} mit dem read-Tool. Sie enthält den Anfang der Aufnahme${tailDescription ? ' (die ersten ca. 90 Minuten)' : ''}.`,
+    t('Vorgehen:', 'Procedure:'),
+    t(
+      `1. Lies die Datei ${headDescription} mit dem read-Tool. Sie enthält den Anfang der Aufnahme${tailDescription ? ' (die ersten ca. 90 Minuten)' : ''}.`,
+      `1. Read the file ${headDescription} with the read tool. It contains the beginning of the recording${tailDescription ? ' (approximately the first 90 minutes)' : ''}.`
+    ),
     ...(tailDescription
       ? [
-          `2. Lies die Datei ${tailDescription} mit dem read-Tool. Sie enthält das Ende der Aufnahme (die letzten ca. 90 Minuten).`,
+          t(
+            `2. Lies die Datei ${tailDescription} mit dem read-Tool. Sie enthält das Ende der Aufnahme (die letzten ca. 90 Minuten).`,
+            `2. Read the file ${tailDescription} with the read tool. It contains the end of the recording (approximately the last 90 minutes).`
+          ),
         ]
       : []),
-    `3. Bestimme anhand der Zeitstempel [MM:SS] bzw. [HH:MM:SS] den Zeitpunkt, ab dem die eigentliche Spiel-Session beginnt: die ersten klaren Spielhandlungen (z. B. der Spielleiter eröffnet die Session, eine Spielszene beginnt, Würfeln, Erkundung, Dialog in der Spielwelt) direkt NACH dem Ende von Vorbesprechung und Small Talk.`,
-    `4. Bestimme den Zeitpunkt, an dem die letzte Spielhandlung endet (z. B. Szenenabschluss, Kampfende, Level-Up, \u201EWir machen Schluss f\u00FCr heute\u201C, Questabschluss) direkt VOR beginnendem Small Talk, Organisatorischem oder Verabschiedung.`,
-    `5. Rechne die beiden Zeitstempel in Sekunden seit Aufnahmebeginn um: [12:30] = 750 Sekunden, [01:45:30] = 6330 Sekunden, [05:35:33] = 20133 Sekunden.`,
-    `6. Rufe genau einmal set_session_boundaries(sessionId=${sessionId}, startSeconds, endSeconds) mit diesen Sekundenwerten auf.`,
-    '7. Gib danach nur eine kurze Bestätigung aus, z. B. \u201EGrenzen gespeichert: Xs bis Ys\u201C.',
+    t(
+      `3. Bestimme anhand der Zeitstempel [MM:SS] bzw. [HH:MM:SS] den Zeitpunkt, ab dem die eigentliche Spiel-Session beginnt: die ersten klaren Spielhandlungen (z. B. der Spielleiter eröffnet die Session, eine Spielszene beginnt, Würfeln, Erkundung, Dialog in der Spielwelt) direkt NACH dem Ende von Vorbesprechung und Small Talk.`,
+      `3. Use the [MM:SS] or [HH:MM:SS] timestamps to determine when the actual game session begins: the first clear game actions (for example, the Dungeon Master opens the session, a game scene begins, dice rolling, exploration, or dialogue in the game world) directly AFTER the pre-session discussion and small talk.`
+    ),
+    t(
+      `4. Bestimme den Zeitpunkt, an dem die letzte Spielhandlung endet (z. B. Szenenabschluss, Kampfende, Level-Up, \u201EWir machen Schluss f\u00FCr heute\u201C, Questabschluss) direkt VOR beginnendem Small Talk, Organisatorischem oder Verabschiedung.`,
+      `4. Determine when the last game action ends (for example, a scene ends, combat ends, a level-up, "We are calling it a day", or a quest is completed), directly BEFORE small talk, organizational discussion, or goodbyes begin.`
+    ),
+    t(
+      `5. Rechne die beiden Zeitstempel in Sekunden seit Aufnahmebeginn um: [12:30] = 750 Sekunden, [01:45:30] = 6330 Sekunden, [05:35:33] = 20133 Sekunden.`,
+      `5. Convert both timestamps to seconds since the recording began: [12:30] = 750 seconds, [01:45:30] = 6330 seconds, [05:35:33] = 20133 seconds.`
+    ),
+    t(
+      `6. Rufe genau einmal set_session_boundaries(sessionId=${sessionId}, startSeconds, endSeconds) mit diesen Sekundenwerten auf.`,
+      `6. Call set_session_boundaries(sessionId=${sessionId}, startSeconds, endSeconds) exactly once with these second values.`
+    ),
+    t(
+      '7. Gib danach nur eine kurze Bestätigung aus, z. B. \u201EGrenzen gespeichert: Xs bis Ys\u201C.',
+      '7. Then output only a short confirmation, for example "Boundaries saved: Xs to Ys".'
+    ),
     '',
-    'Wichtig:',
-    '- Halte dich strikt an die Zeitstempel im Transkript und erfinde keine.',
-    '- Verändere keine Dateien außer dem (optionalen) Aufruf des Tools; bearbeite das Transkript nicht.',
-    '- Wenn der Übergang fließend ist, wähle den vernünftigsten erkennbaren Punkt für Beginn und Ende.',
-    '- Rufe das Tool genau einmal auf und speichere gültige Zahlen (endSeconds > startSeconds).',
+    t('Wichtig:', 'Important:'),
+    t(
+      '- Halte dich strikt an die Zeitstempel im Transkript und erfinde keine.',
+      '- Follow the transcript timestamps strictly and do not invent any.'
+    ),
+    t(
+      '- Verändere keine Dateien außer dem (optionalen) Aufruf des Tools; bearbeite das Transkript nicht.',
+      '- Do not change any files apart from the optional tool call; do not edit the transcript.'
+    ),
+    t(
+      '- Wenn der Übergang fließend ist, wähle den vernünftigsten erkennbaren Punkt für Beginn und Ende.',
+      '- If the transition is gradual, choose the most reasonable recognizable point for the start and end.'
+    ),
+    t(
+      '- Rufe das Tool genau einmal auf und speichere gültige Zahlen (endSeconds > startSeconds).',
+      '- Call the tool exactly once and save valid numbers (endSeconds > startSeconds).'
+    ),
   ].join('\n');
 
   const result = await runOpenCode({
@@ -155,6 +204,7 @@ export async function detectSessionBoundaries(
     title: `dnd-session-boundaries-${sessionId}-${Date.now()}`,
     scopes: ['recording:boundaries'],
     user,
+    language: runLanguage,
     onLog,
   });
 

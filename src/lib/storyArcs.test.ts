@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { arcMatchesFilter, formatArcLabel, sortArcsChronologically } from './storyArcs';
+import { formatNumberValue } from '../i18n/format';
+import { createTranslator } from '../i18n/messages';
+import {
+  arcMatchesFilter,
+  arcStatusLabel,
+  formatArcLabel,
+  sortArcsChronologically,
+} from './storyArcs';
 import type { StoryArc } from '../../shared/types';
 
 function arc(partial: Partial<StoryArc>): StoryArc {
@@ -31,16 +38,39 @@ describe('arcMatchesFilter', () => {
 });
 
 describe('formatArcLabel', () => {
+  const de = createTranslator('de');
+  const en = createTranslator('en');
+
   it('includes the chapter number and the game-day range', () => {
     expect(
       formatArcLabel(
-        arc({ name: 'Chaos in Brüden', chapterNumber: 2, gameDayStart: 3, gameDayEnd: 7 })
+        arc({ name: 'Chaos in Brüden', chapterNumber: 2, gameDayStart: 3, gameDayEnd: 7 }),
+        de,
+        (value) => formatNumberValue('de', value)
       )
     ).toBe('Kapitel 2 · Chaos in Brüden · Spieltag 3–7');
   });
 
+  it('localizes labels and formats numbers in English', () => {
+    expect(
+      formatArcLabel(
+        arc({ name: 'Chaos in Brüden', chapterNumber: 1234, gameDayStart: 1234, gameDayEnd: 1240 }),
+        en,
+        (value) => formatNumberValue('en', value)
+      )
+    ).toBe('Chapter 1,234 · Chaos in Brüden · Game day 1,234–1,240');
+  });
+
   it('omits chapter prefix and range when absent', () => {
-    expect(formatArcLabel(arc({ name: 'One-Shot-Arc' }))).toBe('One-Shot-Arc');
+    expect(formatArcLabel(arc({ name: 'One-Shot-Arc' }), en)).toBe('One-Shot-Arc');
+  });
+});
+
+describe('arcStatusLabel', () => {
+  it('maps technical story-arc status values to localized labels', () => {
+    expect(arcStatusLabel(arc({ status: 'active' }), createTranslator('de'))).toBe('Aktuell');
+    expect(arcStatusLabel(arc({ status: 'planned' }), createTranslator('en'))).toBe('Planned');
+    expect(arcStatusLabel(arc({ status: 'completed' }), createTranslator('en'))).toBe('Completed');
   });
 });
 

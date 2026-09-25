@@ -55,7 +55,8 @@ export function detectMention(textBeforeCursor: string): Omit<MentionQuery, 'cur
 export function filterEntityMentions(
   mappings: EntityMapping[],
   query: string,
-  limit = 8
+  limit = 8,
+  locale?: string
 ): MentionSuggestion[] {
   const normalized = query.trim().toLowerCase();
   const ranked: Array<{ suggestion: MentionSuggestion; rank: number }> = [];
@@ -106,7 +107,7 @@ export function filterEntityMentions(
     (a, b) =>
       a.rank - b.rank ||
       a.suggestion.canonical.length - b.suggestion.canonical.length ||
-      a.suggestion.canonical.localeCompare(b.suggestion.canonical, 'de')
+      a.suggestion.canonical.localeCompare(b.suggestion.canonical, locale)
   );
 
   const seen = new Set<string>();

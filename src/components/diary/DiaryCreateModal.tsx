@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApi } from '../../hooks/useApi';
+import { useI18n } from '../../hooks/useI18n';
 import { useStoryArcs } from '../../hooks/useStoryArcs';
 import { Loading } from '../Loading';
 import { Modal } from '../Modal';
 import { QuillWithEntityMention } from '../QuillWithEntityMention';
 import { ArcAssignPicker } from '../storyArcs/ArcAssignPicker';
-import { stripHtml, quillFormats, quillModules } from '../quillConfig';
+import { createQuillModules, stripHtml, quillFormats } from '../quillConfig';
 import type { CampaignDay, DiaryEntry } from '../../../shared/types';
 
 interface DiaryCreateModalProps {
@@ -45,6 +46,8 @@ export function DiaryCreateModal({
   mappings,
 }: DiaryCreateModalProps) {
   const { request } = useApi();
+  const { t, formatNumber } = useI18n();
+  const diaryQuillModules = useMemo(() => createQuillModules(t), [t]);
   const { arcs: storyArcs, activeArcId } = useStoryArcs();
   const [form, setForm] = useState<DiaryFormData>({ content: '' });
   const [formError, setFormError] = useState<string | null>(null);
@@ -99,17 +102,17 @@ export function DiaryCreateModal({
     const plainText = stripHtml(form.content).trim();
     const selectedDay = skipMode ? customDayValue : createDayValue;
     if (!plainText || selectedDay === '' || Number(selectedDay) <= 0) {
-      setFormError('Wähle einen Spieltag und erfülle den Inhalt');
+      setFormError(t('diary.create.errorSelectDayAndContent'));
       return;
     }
 
     const gameDay = Number(selectedDay);
     if (!Number.isInteger(gameDay) || gameDay <= 0) {
-      setFormError('Spieltag muss eine positive ganze Zahl sein');
+      setFormError(t('diary.create.errorPositiveDay'));
       return;
     }
     if (skipMode && currentGameDay === undefined) {
-      setFormError('Der aktuelle Spieltag wird noch geladen');
+      setFormError(t('diary.create.errorLoadingCurrentDay'));
       return;
     }
     if (
@@ -118,13 +121,11 @@ export function DiaryCreateModal({
       currentGameDay !== undefined &&
       gameDay <= currentGameDay
     ) {
-      setFormError(
-        `Überspringen nur nach dem höchsten bekannten Spieltag (Tag ${currentGameDay}) möglich`
-      );
+      setFormError(t('diary.create.errorSkipAfterCurrent', { day: formatNumber(currentGameDay) }));
       return;
     }
     if (entries.some((entry) => entry.gameDay === gameDay)) {
-      setFormError(`Spieltag ${gameDay} existiert bereits`);
+      setFormError(t('diary.create.errorDuplicateDay', { day: formatNumber(gameDay) }));
       return;
     }
 
@@ -134,7 +135,7 @@ export function DiaryCreateModal({
       ...(createArcValue !== '' ? { arcId: Number(createArcValue) } : {}),
     };
 
-    onAiStart('Eintrag wird erstellt und analysiert...');
+    onAiStart(t('diary.create.aiStatus'));
     await Promise.race([
       sseReadyRef.current,
       new Promise<void>((resolve) => setTimeout(resolve, 500)),
@@ -164,6 +165,11 @@ export function DiaryCreateModal({
     closeModal();
   }
 
+  const currentDayDetail =
+    currentGameDay !== null && currentGameDay !== undefined
+      ? t('diary.create.skipDescriptionDetail', { day: formatNumber(currentGameDay) })
+      : '';
+
   const modalActions = (
     <>
       <button
@@ -172,7 +178,7 @@ export function DiaryCreateModal({
         disabled={working}
         className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
       >
-        Abbrechen
+        {t('shared.cancel')}
       </button>
       <button
         type="submit"
@@ -186,7 +192,11 @@ export function DiaryCreateModal({
         }
         className="px-4 py-2 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
       >
-        {working ? <Loading text="" size="sm" /> : 'Erstellen'}
+        {working ? (
+          <Loading text={t('diary.create.creating')} size="sm" />
+        ) : (
+          t('diary.create.create')
+        )}
       </button>
     </>
   );
@@ -194,7 +204,7 @@ export function DiaryCreateModal({
   return (
     <Modal
       isOpen={isOpen}
-      title="Neuer Eintrag"
+      title={t('diary.newEntry')}
       onClose={closeModal}
       actions={modalActions}
       className="h-[85vh] flex flex-col max-w-5xl"
@@ -211,8 +221,11 @@ export function DiaryCreateModal({
         className="flex-1 min-h-0 flex flex-col space-y-4 px-1"
       >
         <div>
-          <label className="block text-sm text-slate-400 mb-1">Spieltag</label>
+          <label htmlFor="diary-game-day" className="block text-sm text-slate-400 mb-1">
+            {t('diary.create.gameDay')}
+          </label>
           <select
+            id="diary-game-day"
             value={skipMode ? '__skip__' : createDayValue}
             onChange={(e) => {
               const v = e.target.value;
@@ -230,11 +243,12 @@ export function DiaryCreateModal({
             required={!skipMode}
             className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
           >
-            {' '}
-            <option value="">Spieltag wählen…</option>
-            <option value="__skip__">Tage überspringen…</option>
+            <option value="">{t('diary.create.chooseGameDay')}</option>
+            <option value="__skip__">{t('diary.create.skipDays')}</option>
             {nextGameDay !== null && (
-              <option value={nextGameDay}>Spieltag {nextGameDay} – nächster Tag</option>
+              <option value={nextGameDay}>
+                {t('diary.create.nextDay', { day: formatNumber(nextGameDay) })}
+              </option>
             )}
             {campaignDays
               .filter((d) => !entries.some((entry) => entry.gameDay === d.day))
@@ -242,21 +256,26 @@ export function DiaryCreateModal({
               .filter((d) => d.day !== nextGameDay)
               .map((d) => (
                 <option key={d.day} value={d.day}>
-                  Spieltag {d.day}
+                  {t('diary.create.gameDayOption', { day: formatNumber(d.day) })}
                 </option>
               ))}
           </select>
           {skipMode && (
             <div className="mt-3">
-              <label className="block text-xs text-slate-400 mb-1">Tage überspringen</label>
+              <label htmlFor="diary-skip-day" className="block text-xs text-slate-400 mb-1">
+                {t('diary.create.skipDaysLabel')}
+              </label>
               <input
+                id="diary-skip-day"
                 type="number"
                 min={(currentGameDay ?? 0) + 1}
                 step={1}
                 placeholder={
                   currentGameDay !== null && currentGameDay !== undefined
-                    ? `z. B. ${currentGameDay + 7}`
-                    : 'z. B. 50'
+                    ? t('diary.create.skipPlaceholderKnown', {
+                        day: formatNumber(currentGameDay + 7),
+                      })
+                    : t('diary.create.skipPlaceholder', { day: formatNumber(50) })
                 }
                 value={customDayValue}
                 onChange={(e) => {
@@ -268,18 +287,14 @@ export function DiaryCreateModal({
                 className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               />
               <p className="mt-1 text-xs text-slate-500">
-                Legt den Tag direkt an – nur Ziffern, größer als der höchste bekannte Spieltag
-                {currentGameDay !== null && currentGameDay !== undefined
-                  ? ` (Tag ${currentGameDay})`
-                  : ''}
-                .
+                {t('diary.create.skipDescription', { detail: currentDayDetail })}
               </p>
             </div>
           )}
         </div>
         {storyArcs.length > 0 && (
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Kapitel</label>
+            <label className="block text-sm text-slate-400 mb-1">{t('diary.create.chapter')}</label>
             <ArcAssignPicker
               arcs={storyArcs}
               value={createArcValue === '' ? null : Number(createArcValue)}
@@ -289,15 +304,20 @@ export function DiaryCreateModal({
           </div>
         )}
         <div className="flex-1 min-h-0 flex flex-col">
-          <label className="block text-sm text-slate-400 mb-1">Inhalt</label>
+          <label htmlFor="diary-content" className="block text-sm text-slate-400 mb-1">
+            {t('diary.create.content')}
+          </label>
           <QuillWithEntityMention
             theme="snow"
             mappings={mappings}
             value={form.content}
             onChange={(value) => setForm((prev) => ({ ...prev, content: value }))}
-            modules={quillModules}
+            modules={diaryQuillModules}
             formats={quillFormats}
             readOnly={working}
+            id="diary-content"
+            aria-label={t('diary.editor.label')}
+            placeholder={t('diary.create.editorPlaceholder')}
             className="diary-editor bg-slate-900 text-[var(--text-h)] rounded border border-[var(--border)] flex-1 min-h-0"
           />
         </div>

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { SafeUser, VersionInfo } from '../../shared/types';
-import { APPS, getAppByPath, isAppVisible } from './apps';
+import { createTranslator } from '../i18n';
+import {
+  APPS,
+  getAppByPath,
+  getAppDescription,
+  getAppLabel,
+  getAppUiText,
+  isAppVisible,
+} from './apps';
 
 function makeUser(overrides: Partial<SafeUser> = {}): SafeUser {
   return {
@@ -16,12 +24,31 @@ function makeUser(overrides: Partial<SafeUser> = {}): SafeUser {
     autoSessionToDiary: false,
     autoAcceptSessionDiary: false,
     themePrimary: null,
+    uiLanguage: null,
     isInitialAdmin: false,
     ...overrides,
   };
 }
 
 const VERSION: VersionInfo = { aiEnabled: false, recordingEnabled: false };
+
+describe('localized app metadata', () => {
+  it('keeps stable ids and paths while translating user-facing names', () => {
+    const notes = getAppByPath('/tagebuch')!;
+    expect(notes.id).toBe('notes');
+    expect(getAppLabel(notes, createTranslator('de'))).toBe('Tagebuch');
+    expect(getAppLabel(notes, createTranslator('en'))).toBe('Diary');
+    expect(getAppDescription(notes, createTranslator('en'))).toContain('personal diary');
+  });
+
+  it('returns a complete translated UI text bundle for cards and menus', () => {
+    const bingo = getAppByPath('/bingo')!;
+    expect(getAppUiText(bingo, createTranslator('en'))).toEqual({
+      label: 'Bingo',
+      description: 'Collect tasks, start a bingo round, and play against each other.',
+    });
+  });
+});
 
 describe('isAppVisible', () => {
   it('gives admins unrestricted access to every app', () => {

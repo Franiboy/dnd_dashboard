@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useError } from '../hooks/useError';
+import { useI18n } from '../hooks/useI18n';
 import { useStoryArcs } from '../hooks/useStoryArcs';
 import { useTimeline } from '../hooks/useTimeline';
 import { useTimelineAiStatus } from '../hooks/useTimelineAiStatus';
@@ -10,8 +11,37 @@ import { Button } from '../components/Button';
 import { Loading } from '../components/Loading';
 import { SideDrawer, SideDrawerItem } from '../components/SideDrawer';
 import { HorizontalTimeline } from '../components/timeline/HorizontalTimeline';
+import { localizeServerMessage } from '../i18n/serverMessages';
+import type { TranslationKey, TFunction } from '../i18n/messages';
+
+const timelineStatusKeys: Record<string, TranslationKey> = {
+  'KI-Modell wird geladen...': 'timeline.status.modelLoading',
+  'KI arbeitet an der Zeitleiste...': 'timeline.status.working',
+  'Ereignisse werden extrahiert...': 'timeline.status.extracting',
+  'Fast fertig...': 'timeline.status.almostDone',
+  'Zeitleiste ist bereits aktuell.': 'timeline.status.alreadyCurrent',
+  'Aktualisierung der Zeitleiste abgeschlossen.': 'timeline.status.completed',
+};
+
+function localizeTimelineStatus(
+  status: string,
+  t: TFunction,
+  formatNumber: (value: number) => string
+): string {
+  const sessionMatch = status.match(/^Session „(.+)” \((\d+)\/(\d+)\) wird verarbeitet\.\.\.$/);
+  if (sessionMatch) {
+    return t('timeline.status.processingSession', {
+      name: sessionMatch[1],
+      current: formatNumber(Number(sessionMatch[2])),
+      total: formatNumber(Number(sessionMatch[3])),
+    });
+  }
+  const key = timelineStatusKeys[status];
+  return key ? t(key) : (localizeServerMessage(status, t, { fallback: status }) ?? status);
+}
 
 export function Timeline() {
+  const { t, formatNumber } = useI18n();
   const { user } = useAuth();
   const { showSuccess } = useError();
   const { arcs, selectedArcId } = useStoryArcs();
@@ -31,9 +61,10 @@ export function Timeline() {
 
   const { aiStatus, sseReadyRef } = useTimelineAiStatus(() => {
     setGenerating(false);
-    showSuccess('Zeitleiste aktualisiert.');
+    showSuccess(t('timeline.notifications.updated'));
     void loadTimeline();
   });
+  const displayedAiStatus = aiStatus ? localizeTimelineStatus(aiStatus, t, formatNumber) : null;
 
   // Global chapter filter (header) — same predicate as Sessions/Diary.
   const visibleEvents = useMemo(
@@ -71,12 +102,12 @@ export function Timeline() {
 
   return (
     <div className="h-full flex flex-col p-4 sm:p-6">
-      {aiStatus && (
+      {displayedAiStatus && (
         <div className="fixed bottom-4 right-4 bg-[var(--panel)] border border-[var(--border)] rounded-xl p-3 shadow-lg z-50 max-w-md">
           {generating || running ? (
-            <Loading size="sm" text={aiStatus} />
+            <Loading size="sm" text={displayedAiStatus} />
           ) : (
-            <p className="text-sm text-slate-400 break-words">{aiStatus}</p>
+            <p className="text-sm text-slate-400 break-words">{displayedAiStatus}</p>
           )}
         </div>
       )}
@@ -85,7 +116,7 @@ export function Timeline() {
         <SideDrawer side="right">
           <SideDrawerItem
             id="aktualisieren"
-            label="Aktualisieren"
+            label={t('timeline.drawer.label')}
             icon={
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -105,10 +136,7 @@ export function Timeline() {
           >
             <div className="w-72 space-y-3 p-2">
               <p className="text-xs leading-relaxed text-slate-400">
-                Die Zeitleiste zeigt nennenswerte Ereignisse aller Spieltage – KI-generiert aus den
-                Session-Zusammenfassungen. Neu abgeschlossene Sessions werden nachts automatisch
-                ergänzt; hier kannst du zusätzlich von Hand aktualisieren (auch für ältere
-                Sessions).
+                {t('timeline.drawer.description')}
               </p>
               <Button
                 variant="accent"
@@ -148,14 +176,21 @@ export function Timeline() {
                   )
                 }
               >
-                {generating || running ? 'Wird aktualisiert...' : 'Zeitleiste aktualisieren'}
+                {generating || running
+                  ? t('timeline.drawer.updating')
+                  : t('timeline.drawer.update')}
               </Button>
               {pendingCount > 0 && !generating && !running && (
                 <p className="text-[11px] text-amber-300/80">
-                  {pendingCount} Session{pendingCount === 1 ? '' : 's'} ohne/veraltete Ereignisse
+                  {t('timeline.drawer.pendingSessions', {
+                    count: pendingCount,
+                    formattedCount: formatNumber(pendingCount),
+                  })}
                 </p>
               )}
-              {aiStatus && <p className="break-words text-[11px] text-slate-500">{aiStatus}</p>}
+              {displayedAiStatus && (
+                <p className="break-words text-[11px] text-slate-500">{displayedAiStatus}</p>
+              )}
             </div>
           </SideDrawerItem>
         </SideDrawer>
@@ -164,17 +199,14 @@ export function Timeline() {
       <div className="flex-1 min-h-0">
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <p className="text-slate-400">Noch keine Zeitleisten-Ereignisse vorhanden.</p>
+            <p className="text-slate-400">{t('timeline.empty.title')}</p>
             {isAdmin && aiEnabled && (
-              <p className="text-sm text-slate-500 mt-2">
-                Öffne „Aktualisieren“ im SideDrawer, um die Ereignisse der bisherigen Sessions zu
-                generieren.
-              </p>
+              <p className="text-sm text-slate-500 mt-2">{t('timeline.empty.adminHelp')}</p>
             )}
           </div>
         ) : visibleEvents.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <p className="text-slate-400">Keine Ereignisse im gewählten Kapitel vorhanden.</p>
+            <p className="text-slate-400">{t('timeline.empty.filtered')}</p>
           </div>
         ) : (
           <HorizontalTimeline events={visibleEvents} arcs={arcs} focusEventId={focusEventId} />

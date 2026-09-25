@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type Quill from 'quill';
 import type { EntityMapping } from '../../shared/types';
 import { detectMention, filterEntityMentions, type MentionSuggestion } from '../lib/entityMention';
+import { useI18n } from './useI18n';
 
 export interface ActiveMention {
   atIndex: number;
@@ -45,6 +46,7 @@ function computePosition(quill: Quill, atIndex: number): { top: number; left: nu
  * (the "@" disappears); dismissing leaves "@" as plain typed text.
  */
 export function useEntityMention({ getQuill, mappings, enabled = true }: UseEntityMentionOptions) {
+  const { locale } = useI18n();
   const [mention, setMention] = useState<ActiveMention | null>(null);
   const mentionRef = useRef<ActiveMention | null>(null);
   mentionRef.current = mention;
@@ -71,7 +73,7 @@ export function useEntityMention({ getQuill, mappings, enabled = true }: UseEnti
       if (mentionRef.current !== null) setMention(null);
       return;
     }
-    const suggestions = filterEntityMentions(mappingsRef.current, detected.query);
+    const suggestions = filterEntityMentions(mappingsRef.current, detected.query, 8, locale);
     const prev = mentionRef.current;
     const sameQuery =
       prev !== null && prev.atIndex === detected.atIndex && prev.query === detected.query;
@@ -88,7 +90,7 @@ export function useEntityMention({ getQuill, mappings, enabled = true }: UseEnti
       position: computePosition(quill, detected.atIndex),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled]);
+  }, [enabled, locale]);
 
   const accept = useCallback(
     (suggestion: MentionSuggestion) => {

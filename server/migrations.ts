@@ -357,6 +357,17 @@ function migrateAiSettingsSingleModel(): void {
   `);
 }
 
+// Keep stored AI languages valid, defaulting missing or unsupported values to German.
+function backfillAiSettingsLanguage(): void {
+  if (!tableExists('ai_settings')) return;
+  if (!getExistingColumns('ai_settings').has('language')) return;
+  db.exec(`
+    UPDATE ai_settings
+    SET language = 'de'
+    WHERE language IS NULL OR language NOT IN ('de', 'en')
+  `);
+}
+
 // Legacy persons/organizations/locations tables bake UNIQUE(name) into their
 // DDL and lack the qualifier column, so homonyms cannot exist. Rebuild them
 // following the official SQLite table-rebuild order (create *_new, copy,
@@ -820,6 +831,7 @@ export function runMigrations(): void {
     setupSearchIndex();
     // Backfills that depend on the schema being present.
     migrateAiSettingsSingleModel();
+    backfillAiSettingsLanguage();
     fillRecordingSessionUpdatedAt();
     backfillGameDays();
     backfillSessionGameDayEnd();

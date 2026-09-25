@@ -1,5 +1,6 @@
 import { EntityRichText } from '../EntityRichText';
 import { Button } from '../Button';
+import { useI18n } from '../../hooks/useI18n';
 import type { DiaryEntry } from '../../../shared/types';
 
 /** Mapping rows as accepted by EntityRichText (same shape as useEntityMappings). */
@@ -35,6 +36,8 @@ export function DiarySummaryPanel({
   onSave,
   onCancel,
 }: DiarySummaryPanelProps) {
+  const { t } = useI18n();
+
   return (
     <div
       className={`mb-3 p-3 rounded-lg border ${entry.aiDirty ? 'bg-amber-900/20 border-amber-500/30' : 'bg-[var(--accent)]/10 border-[var(--accent)]/20'}`}
@@ -43,24 +46,28 @@ export function DiarySummaryPanel({
         <p
           className={`text-sm font-semibold ${entry.aiDirty ? 'text-amber-500' : 'text-[var(--accent)]'}`}
         >
-          Zusammenfassung
+          {t('diary.summary.title')}
         </p>
         {!editing && (
           <div className="flex items-center gap-2">
             {entry.aiDirty || !entry.summary ? (
               <button
                 type="button"
-                title="Zusammenfassung aktualisieren"
+                title={t('diary.summary.updateTitle')}
                 onClick={onGenerate}
                 disabled={working || processing}
                 className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
               >
-                {processing ? 'Wird generiert...' : entry.summary ? 'Aktualisieren' : 'Generieren'}
+                {processing
+                  ? t('diary.summary.generating')
+                  : entry.summary
+                    ? t('diary.summary.update')
+                    : t('diary.summary.generate')}
               </button>
             ) : (
               <button
                 type="button"
-                title="Zusammenfassung neu generieren"
+                title={t('diary.summary.regenerateTitle')}
                 onClick={onGenerate}
                 disabled={working}
                 className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
@@ -100,7 +107,8 @@ export function DiarySummaryPanel({
             )}
             <button
               type="button"
-              title="Zusammenfassung bearbeiten"
+              title={t('diary.summary.editTitle')}
+              aria-label={t('diary.summary.editLabel')}
               onClick={onStartEdit}
               disabled={working}
               className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
@@ -131,15 +139,16 @@ export function DiarySummaryPanel({
             onChange={(e) => onEditText(e.target.value)}
             rows={3}
             maxLength={500}
+            aria-label={t('diary.summary.editLabel')}
             disabled={working}
             className="w-full px-3 py-2 rounded border border-[var(--border)] bg-slate-900 text-[var(--text-h)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-y"
           />
           <div className="flex gap-2">
             <Button variant="accent" onClick={onSave} disabled={working}>
-              Speichern
+              {t('diary.summary.save')}
             </Button>
             <Button variant="ghost" onClick={onCancel} disabled={working}>
-              Abbrechen
+              {t('diary.summary.cancel')}
             </Button>
           </div>
         </div>
@@ -149,13 +158,11 @@ export function DiarySummaryPanel({
             <EntityRichText content={entry.summary} mappings={mappings} isHtml={false} />
           </p>
           {entry.aiDirty && (
-            <p className="text-xs text-amber-500 italic">
-              Zusammenfassung ist veraltet und sollte aktualisiert werden.
-            </p>
+            <p className="text-xs text-amber-500 italic">{t('diary.summary.stale')}</p>
           )}
         </div>
       ) : (
-        <p className="text-slate-500 text-sm italic">Noch keine Zusammenfassung vorhanden.</p>
+        <p className="text-slate-500 text-sm italic">{t('diary.summary.empty')}</p>
       )}
     </div>
   );

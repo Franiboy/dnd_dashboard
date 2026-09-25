@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SafeUser, UserRole } from '../../shared/types';
 import { AppIcon } from './AppIcon';
 import { Avatar } from './Avatar';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { useAuth } from '../hooks/useAuth';
 import { useError } from '../hooks/useError';
+import { useI18n } from '../hooks/useI18n';
 import { useTheme } from '../hooks/useTheme';
 import { buildTheme, isValidHexColor } from '../lib/color';
 
@@ -14,10 +16,13 @@ interface UserMenuProps {
   onExitSimulation?: () => void;
 }
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  guest: 'Gast',
-  dungeon_master: 'Dungeon Master',
-  player: 'Spieler',
+const ROLE_MESSAGE_KEYS: Record<
+  UserRole,
+  'common.roles.guest' | 'common.roles.dungeonMaster' | 'common.roles.player'
+> = {
+  guest: 'common.roles.guest',
+  dungeon_master: 'common.roles.dungeonMaster',
+  player: 'common.roles.player',
 };
 
 /** Curated starting points; the default green stays one click away. */
@@ -35,13 +40,14 @@ const PRESET_COLORS = [
 const FALLBACK_PICKER_VALUE = '#22c55e';
 
 const PREVIEW_CHIPS = [
-  { name: '--accent', label: 'Akzent' },
-  { name: '--accent-dim', label: 'Abgedunkelt' },
-  { name: '--accent-2', label: 'Komplementär' },
-  { name: '--panel', label: 'Hintergrund' },
+  { name: '--accent', key: 'common.accent' },
+  { name: '--accent-dim', key: 'common.accentDim' },
+  { name: '--accent-2', key: 'common.complementary' },
+  { name: '--panel', key: 'common.background' },
 ] as const;
 
 export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -62,15 +68,15 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
           credentials: 'include',
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Speichern fehlgeschlagen');
+        if (!res.ok) throw new Error('request-failed');
         updateUser({ themePrimary: data.user.themePrimary });
       } catch {
-        showError('Farbe konnte nicht gespeichert werden');
+        showError(t('common.colorSaveError'));
       } finally {
         endPreview();
       }
     },
-    [updateUser, showError, endPreview]
+    [endPreview, showError, t, updateUser]
   );
 
   /** Preview live and schedule the save (debounced while dragging the picker). */
@@ -125,7 +131,7 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
   }, [open]);
 
   const close = () => setOpen(false);
-  const roleLabel = [user.isAdmin ? 'Admin' : null, ROLE_LABELS[user.role]]
+  const roleLabel = [user.isAdmin ? t('common.admin') : null, t(ROLE_MESSAGE_KEYS[user.role])]
     .filter(Boolean)
     .join(' · ');
 
@@ -146,7 +152,7 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Benutzermenü"
+        aria-label={t('common.userMenu')}
         onClick={() => setOpen((o) => !o)}
         className="group flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
@@ -167,7 +173,7 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
         // the left viewport edge.
         <div
           role="menu"
-          aria-label="Benutzermenü"
+          aria-label={t('common.userMenu')}
           className="menu-pop-in absolute -left-3 top-full z-10 mt-[9px] w-60 border-x border-b border-[var(--border)] bg-[var(--panel)] p-2 shadow-xl before:absolute before:inset-x-0 before:bottom-full before:h-[9px] before:bg-[var(--panel)] before:content-[''] sm:-left-6"
         >
           <div className="mb-1.5 flex items-center gap-2.5 border-b border-[var(--border)] px-1 pb-2.5 pt-0.5">
@@ -180,10 +186,14 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
             </span>
           </div>
 
+          <div className="border-b border-[var(--border)] px-1 py-2">
+            <LanguageSwitcher id="user-menu-language" />
+          </div>
+
           <div className="border-b border-[var(--border)] px-1 pb-2 pt-1.5">
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                Design-Farbe
+                {t('common.designColor')}
               </span>
               {activeColor && (
                 <button
@@ -191,7 +201,7 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
                   onClick={() => applyThemeColor(null)}
                   className="text-[11px] text-slate-400 transition-colors hover:text-[var(--text-h)]"
                 >
-                  Zurücksetzen
+                  {t('common.reset')}
                 </button>
               )}
             </div>
@@ -200,7 +210,7 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
                 <button
                   key={hex}
                   type="button"
-                  aria-label={`Design-Farbe ${hex}`}
+                  aria-label={t('common.designColorValue', { color: hex })}
                   aria-pressed={activeColor === hex}
                   onClick={() => applyThemeColor(hex)}
                   className={`h-6 w-6 rounded-full border border-white/10 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-h)] ${
@@ -214,7 +224,7 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
               {/* Free picker: a hue-wheel affordance clearly distinct from the
                   preset swatches; the native input rides invisibly on top. */}
               <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-[var(--border)]" />
-              <span className="relative inline-flex" title="Eigene Farbe wählen">
+              <span className="relative inline-flex" title={t('common.customColor')}>
                 <span
                   className="flex h-6 w-6 items-center justify-center rounded-full ring-1 ring-white/20"
                   style={{
@@ -242,7 +252,7 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
                 </span>
                 <input
                   type="color"
-                  aria-label="Eigene Farbe wählen"
+                  aria-label={t('common.customColor')}
                   value={activeColor ?? FALLBACK_PICKER_VALUE}
                   onChange={(e) => applyThemeColor(e.target.value.toLowerCase())}
                   className="absolute inset-0 h-full w-full cursor-pointer rounded-full opacity-0"
@@ -251,10 +261,10 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
             </div>
             {activeColor && (
               <div className="mt-2 flex items-center gap-1" aria-hidden="true">
-                {PREVIEW_CHIPS.map(({ name, label }) => (
+                {PREVIEW_CHIPS.map(({ name, key }) => (
                   <span
                     key={name}
-                    title={label}
+                    title={t(key)}
                     className="h-3 w-8 rounded-sm border border-white/10"
                     style={{ backgroundColor: previewTokens[name] }}
                   />
@@ -274,7 +284,7 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
               className={`${menuItemClass} text-[var(--text)] hover:bg-slate-700/50`}
             >
               <AppIcon id="undo" size={16} className="shrink-0" />
-              Ansicht simulieren beenden
+              {t('common.endSimulation')}
             </button>
           )}
           <button
@@ -287,7 +297,7 @@ export function UserMenu({ user, onLogout, onExitSimulation }: UserMenuProps) {
             className={`${menuItemClass} text-[var(--danger)] hover:bg-[var(--danger)]/10`}
           >
             <AppIcon id="logout" size={16} className="shrink-0" />
-            Logout
+            {t('common.logout')}
           </button>
         </div>
       )}

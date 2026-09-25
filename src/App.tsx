@@ -3,6 +3,7 @@ import { useEffect, useState, lazy, Suspense } from 'react';
 import { Loading } from './components/Loading';
 import { useAuth } from './hooks/useAuth';
 import { useError } from './hooks/useError';
+import { useI18n } from './hooks/useI18n';
 import { Layout } from './components/Layout';
 import { PendingApproval } from './components/PendingApproval';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -48,12 +49,13 @@ function PublicRoutes({
 }: PublicRoutesProps) {
   const location = useLocation();
   const { showError } = useError();
+  const { t } = useI18n();
 
   useEffect(() => {
     if (!PUBLIC_PATHS.includes(location.pathname)) {
-      showError('Bitte einloggen, um diese Seite zu sehen.');
+      showError(t('auth.pleaseLogIn'));
     }
-  }, [location.pathname, showError]);
+  }, [location.pathname, showError, t]);
 
   return (
     <Routes>

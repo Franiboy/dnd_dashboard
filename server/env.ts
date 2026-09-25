@@ -51,7 +51,8 @@ const envSchema = z.object({
   BINGO_SUGGESTION_THRESHOLD: z.coerce.number().int().positive().optional(),
   BINGO_SUGGESTION_BATCH: z.coerce.number().int().positive().optional(),
 
-  WHISPER_LANGUAGE: z.string().default('de'),
+  // Bootstrap fallback only; the persisted Admin UI language is authoritative.
+  WHISPER_LANGUAGE: z.enum(['de', 'en']).default('de'),
   WHISPER_MODEL: z.string().default('base'),
   PYTHON_COMMAND: z.string().optional(),
   WHISPER_FP16: booleanFromEnv,

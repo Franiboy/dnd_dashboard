@@ -13,6 +13,9 @@ import {
   getTargetPoolSize,
 } from '../bingoConfig.js';
 import { listRecentCompletedSessions } from '../repositories/recordings.js';
+import type { Language } from '../../shared/types.js';
+import { getAiLanguage } from './languageConfig.js';
+import { localize, outputLanguageInstruction } from './promptLanguage.js';
 import {
   countPendingSuggestions,
   createBingoSuggestions,
@@ -47,7 +50,10 @@ function ensureBingoContextDir(): void {
   mkdirSync(BINGO_CONTEXT_DIR, { recursive: true });
 }
 
-function buildTranscriptsFile(): { sessionsIncluded: number; totalChars: number } {
+function buildTranscriptsFile(language: Language): {
+  sessionsIncluded: number;
+  totalChars: number;
+} {
   ensureBingoContextDir();
 
   const sessions = listRecentCompletedSessions(MAX_SESSIONS);
@@ -60,13 +66,13 @@ function buildTranscriptsFile(): { sessionsIncluded: number; totalChars: number 
 
     const header = `=== Session ${session.id}: ${session.name} (${session.startedAt}) ===\n`;
     const summaryBlock = session.longSummary
-      ? `--- Zusammenfassung ---\n${truncateText(session.longSummary, MAX_SUMMARY_PER_SESSION)}\n\n`
+      ? `--- ${localize(language, 'Zusammenfassung', 'Summary')} ---\n${truncateText(session.longSummary, MAX_SUMMARY_PER_SESSION)}\n\n`
       : session.summary
-        ? `--- Kurzzusammenfassung ---\n${truncateText(session.summary, MAX_SUMMARY_PER_SESSION)}\n\n`
+        ? `--- ${localize(language, 'Kurzzusammenfassung', 'Short summary')} ---\n${truncateText(session.summary, MAX_SUMMARY_PER_SESSION)}\n\n`
         : '';
 
     const transcriptPart = truncateText(session.transcript.trim(), MAX_TRANSCRIPT_PER_SESSION);
-    const transcriptBlock = `--- Transkript (gekürzt) ---\n${transcriptPart}\n`;
+    const transcriptBlock = `--- ${localize(language, 'Transkript (gekürzt)', 'Transcript (abridged)')} ---\n${transcriptPart}\n`;
 
     const block = `${header}${summaryBlock}${transcriptBlock}\n\n`;
 
@@ -81,84 +87,212 @@ function buildTranscriptsFile(): { sessionsIncluded: number; totalChars: number 
 
   const content =
     lines.length > 0
-      ? `Diese Datei enthält die Zusammenfassungen und gekürzten Transkripte der letzten ${sessionsIncluded} abgeschlossenen Aufnahme-Sessions.\n\n${lines.join('')}`
-      : 'Keine abgeschlossenen Sessions mit Transkripten vorhanden.';
+      ? `${localize(
+          language,
+          `Diese Datei enthält die Zusammenfassungen und gekürzten Transkripte der letzten ${sessionsIncluded} abgeschlossenen Aufnahme-Sessions.`,
+          `This file contains summaries and abridged transcripts from the last ${sessionsIncluded} completed recording sessions.`
+        )}\n\n${lines.join('')}`
+      : localize(
+          language,
+          'Keine abgeschlossenen Sessions mit Transkripten vorhanden.',
+          'No completed sessions with transcripts are available.'
+        );
 
   writeFileSync(TRANSCRIPTS_FILE, content, 'utf-8');
   return { sessionsIncluded, totalChars };
 }
 
-function prepareBingoContextFiles(): { transcriptsFile: string; sessionsIncluded: number } {
-  const { sessionsIncluded } = buildTranscriptsFile();
+function prepareBingoContextFiles(language: Language): {
+  transcriptsFile: string;
+  sessionsIncluded: number;
+} {
+  const { sessionsIncluded } = buildTranscriptsFile(language);
   return { transcriptsFile: TRANSCRIPTS_FILE, sessionsIncluded };
 }
 
-function buildPrompt(
+export function buildPrompt(
   count: number,
   transcriptsFile: string,
   batchId: string,
-  audience: TaskAudience
+  audience: TaskAudience,
+  language: Language = getAiLanguage()
 ): string {
+  const t = (german: string, english: string) => localize(language, german, english);
   const dmFocus =
     audience === 'dm'
       ? [
-          '8. Analysiere die Transkripte gezielt nach Momenten, die von den SPIELERN ausgelöst werden und die der Dungeon Master live am Tisch beobachten kann:',
-          '   - Würfelglück oder Würfelpech einzelner Spieler (z. B. natürliche 1en oder 20en, mehrere Fehlschläge hintereinander, verpatzte wichtige Würfe)',
-          '   - Typische Verhaltensmuster: jemand fragt ständig nach Boni oder Modifikatoren, vergisst seine Fähigkeiten, blättert im Regelwerk',
-          '   - Lustige Spieler-Sprüche, Floskeln oder Reaktionen, die sich wiederholen',
-          '   - Gruppendynamik: Plan wird sofort wieder verworfen, endlose Diskussionen über das Vorgehen, jemand redet sich in Gefahr',
-          '   - Missgeschicke: Charakterdaten werden vergessen, NPC-Namen falsch genannt, der Gruppe fällt etwas Offensichtliches spät auf',
-          '   - Wiederkehrende Interaktionen zwischen den Charakteren (Streit, Insider, Running Gags unter Spielern)',
+          t(
+            '8. Analysiere die Transkripte gezielt nach Momenten, die von den SPIELERN ausgelöst werden und die der Dungeon Master live am Tisch beobachten kann:',
+            '8. Analyze the transcripts specifically for moments caused by PLAYERS that the Dungeon Master can observe live at the table:'
+          ),
+          t(
+            '   - Würfelglück oder Würfelpech einzelner Spieler (z. B. natürliche 1en oder 20en, mehrere Fehlschläge hintereinander, verpatzte wichtige Würfe)',
+            "   - Individual players' lucky or unlucky dice rolls (for example, natural 1s or 20s, several failures in a row, botching important rolls)"
+          ),
+          t(
+            '   - Typische Verhaltensmuster: jemand fragt ständig nach Boni oder Modifikatoren, vergisst seine Fähigkeiten, blättert im Regelwerk',
+            '   - Typical behavior patterns: someone constantly asks about bonuses or modifiers, forgets their abilities, or flips through the rulebook'
+          ),
+          t(
+            '   - Lustige Spieler-Sprüche, Floskeln oder Reaktionen, die sich wiederholen',
+            '   - Funny player quotes, catchphrases, or reactions that recur'
+          ),
+          t(
+            '   - Gruppendynamik: Plan wird sofort wieder verworfen, endlose Diskussionen über das Vorgehen, jemand redet sich in Gefahr',
+            '   - Group dynamics: a plan is immediately abandoned, endless discussions about the approach, or someone talks themselves into danger'
+          ),
+          t(
+            '   - Missgeschicke: Charakterdaten werden vergessen, NPC-Namen falsch genannt, der Gruppe fällt etwas Offensichtliches spät auf',
+            '   - Mishaps: character details are forgotten, NPC names are said incorrectly, or the group notices something obvious too late'
+          ),
+          t(
+            '   - Wiederkehrende Interaktionen zwischen den Charakteren (Streit, Insider, Running Gags unter Spielern)',
+            '   - Recurring interactions between characters (arguments, inside jokes, or running gags among players)'
+          ),
         ]
       : [
-          '8. Analysiere die Transkripte gezielt nach wiederkehrenden, unbeabsichtigten oder DM-getriebenen Momenten, die sich für Bingo eignen:',
-          '   - Typische Sprüche, Floskeln oder Reaktionen des Dungeon Masters',
-          '   - Wiederkehrende Insider-Witze, running gags oder Memes der Gruppe, die oft unbeabsichtigt entstehen',
-          '   - Würfelglücks-/Pech-Muster, die der Spieler nicht steuern kann (z. B. natürliche 1 oder 20 an ungünstigen Stellen, mehrere Fehlschläge hintereinander)',
-          '   - Wiederkehrende Missgeschicke: Jemand vergisst einen wichtigen NPC-Namen, verwechselt Orte, missversteht den DM, verliert den Faden im Plan',
-          '   - Gruppendynamiken, die sich entwickeln, ohne dass einzelne Spieler sie direkt erzwingen (z. B. der Plan wird sofort verworfen, jemand redet sich in Gefahr, der Gruppe fällt erst spät etwas offensichtliches auf)',
-          '   - NPC- oder Gegner-Aktionen, die immer wieder auf gleiche Weise unerwartet laufen',
-          '   - Lustige, wiederkehrende Interaktionen zwischen Charakteren, NPCs oder dem DM, die aus Missverständnissen oder Improvisation entstehen',
+          t(
+            '8. Analysiere die Transkripte gezielt nach wiederkehrenden, unbeabsichtigten oder DM-getriebenen Momenten, die sich für Bingo eignen:',
+            '8. Analyze the transcripts specifically for recurring, unintentional, or DM-driven moments suitable for Bingo:'
+          ),
+          t(
+            '   - Typische Sprüche, Floskeln oder Reaktionen des Dungeon Masters',
+            '   - Typical quotes, catchphrases, or reactions from the Dungeon Master'
+          ),
+          t(
+            '   - Wiederkehrende Insider-Witze, running gags oder Memes der Gruppe, die oft unbeabsichtigt entstehen',
+            '   - Recurring inside jokes, running gags, or memes from the group that often arise unintentionally'
+          ),
+          t(
+            '   - Würfelglücks-/Pech-Muster, die der Spieler nicht steuern kann (z. B. natürliche 1 oder 20 an ungünstigen Stellen, mehrere Fehlschläge hintereinander)',
+            '   - Dice luck or bad-luck patterns the player cannot control (for example, a natural 1 or 20 at an awkward moment or several failures in a row)'
+          ),
+          t(
+            '   - Wiederkehrende Missgeschicke: Jemand vergisst einen wichtigen NPC-Namen, verwechselt Orte, missversteht den DM, verliert den Faden im Plan',
+            '   - Recurring mishaps: someone forgets an important NPC name, confuses locations, misunderstands the DM, or loses track of the plan'
+          ),
+          t(
+            '   - Gruppendynamiken, die sich entwickeln, ohne dass einzelne Spieler sie direkt erzwingen (z. B. der Plan wird sofort verworfen, jemand redet sich in Gefahr, der Gruppe fällt erst spät etwas offensichtliches auf)',
+            '   - Group dynamics that develop without any individual player directly forcing them (for example, a plan is immediately abandoned, someone talks themselves into danger, or the group notices something obvious too late)'
+          ),
+          t(
+            '   - NPC- oder Gegner-Aktionen, die immer wieder auf gleiche Weise unerwartet laufen',
+            '   - NPC or opponent actions that repeatedly go unexpectedly in the same way'
+          ),
+          t(
+            '   - Lustige, wiederkehrende Interaktionen zwischen Charakteren, NPCs oder dem DM, die aus Missverständnissen oder Improvisation entstehen',
+            '   - Funny recurring interactions between characters, NPCs, or the DM that arise from misunderstandings or improvisation'
+          ),
         ];
 
   const dmImportant =
     audience === 'dm'
-      ? 'WICHTIG: Diese Aufgaben landen auf dem privaten Bingo-Feld des Dungeon Masters. Er markiert sie selbst, sobald er den Moment am Tisch beobachtet. Die Aufgaben müssen Ereignisse beschreiben, die von den SPIELERN ausgelöst werden und während der Sitzung sichtbar passieren – nicht was der DM selbst tut oder erzählt. Vermeide Vorschläge über DM-Entscheidungen, NPCs oder Weltgeschehen.'
-      : 'WICHTIG: Die Aufgaben sollen Ereignisse beschreiben, die weitgehend außerhalb der direkten Kontrolle eines einzelnen Spielers liegen. Vermeide Vorschläge wie "Ein Spieler tut X" oder "Jemand entscheidet sich für Y". Fokus auf: DM-Sprüche, Würfelpech, NPC-Verhalten, Missverständnisse, vergessene Details und andere unbeabsichtigte Momente.';
+      ? t(
+          'WICHTIG: Diese Aufgaben landen auf dem privaten Bingo-Feld des Dungeon Masters. Er markiert sie selbst, sobald er den Moment am Tisch beobachtet. Die Aufgaben müssen Ereignisse beschreiben, die von den SPIELERN ausgelöst werden und während der Sitzung sichtbar passieren – nicht was der DM selbst tut oder erzählt. Vermeide Vorschläge über DM-Entscheidungen, NPCs oder Weltgeschehen.',
+          "IMPORTANT: These tasks go on the Dungeon Master's private Bingo board. The DM marks them when they observe the moment at the table. The tasks must describe events caused by PLAYERS that visibly happen during the session, not what the DM does or says. Avoid suggestions about DM decisions, NPCs, or world events."
+        )
+      : t(
+          'WICHTIG: Die Aufgaben sollen Ereignisse beschreiben, die weitgehend außerhalb der direkten Kontrolle eines einzelnen Spielers liegen. Vermeide Vorschläge wie "Ein Spieler tut X" oder "Jemand entscheidet sich für Y". Fokus auf: DM-Sprüche, Würfelpech, NPC-Verhalten, Missverständnisse, vergessene Details und andere unbeabsichtigte Momente.',
+          'IMPORTANT: The tasks should describe events largely outside any single player\'s direct control. Avoid suggestions such as "A player does X" or "Someone chooses Y". Focus on DM quotes, bad dice luck, NPC behavior, misunderstandings, forgotten details, and other unintentional moments.'
+        );
 
   return [
-    'Du bist ein Assistent für ein D&D-Bingo-Spiel. Du arbeitest mit Tools und antwortest prägnant auf Deutsch.',
+    t(
+      'Du bist ein Assistent für ein D&D-Bingo-Spiel. Du arbeitest mit Tools und antwortest prägnant auf Deutsch.',
+      'You are an assistant for a D&D Bingo game. You work with tools and respond concisely in English.'
+    ),
+    outputLanguageInstruction(language),
     '',
-    `Aufgabe: Erstelle genau ${count} neue Bingo-Aufgaben für die bevorstehende Sitzung.`,
+    t(
+      `Aufgabe: Erstelle genau ${count} neue Bingo-Aufgaben für die bevorstehende Sitzung.`,
+      `Task: Create exactly ${count} new Bingo tasks for the upcoming session.`
+    ),
     '',
-    `Deine Batch-ID ist "${batchId}". Rufe am Ende unbedingt submit_bingo_suggestions({ batchId: "${batchId}", suggestions: ["...", "..."] }) auf, um die Aufgaben an den Server zu übergeben.`,
+    t(
+      `Deine Batch-ID ist "${batchId}". Rufe am Ende unbedingt submit_bingo_suggestions({ batchId: "${batchId}", suggestions: ["...", "..."] }) auf, um die Aufgaben an den Server zu übergeben.`,
+      `Your batch ID is "${batchId}". At the end, you MUST call submit_bingo_suggestions({ batchId: "${batchId}", suggestions: ["...", "..."] }) to submit the tasks to the server.`
+    ),
     '',
-    'Vorgehen:',
-    '1. Rufe get_bingo_state() auf. Es liefert den aktuellen Bingo-Zustand: Spielfeldgröße, bereits vorhandene Aufgaben getrennt nach Spieler- und DM-Pool, ausstehende Vorschläge und kürzlich abgelehnte Vorschläge (vermeide alle davon).',
-    '2. Rufe get_previous_session_summaries(limit=5) auf, um die neuesten abgeschlossenen Aufnahme-Sessions zu sehen.',
-    '3. Rufe get_session_summary(sessionId) für Sessions auf, die für das Bingo besonders interessant erscheinen (z. B. die letzten 2-3 Sessions).',
-    `4. Lies die Datei ${transcriptsFile} mit dem read-Tool. Sie enthält die Zusammenfassungen und gekürzten Transkripte der letzten Sessions.`,
-    '5. Nutze list_entities, um bekannte Personen, Organisationen, Orte und namenhafte Gegenstände zu sehen.',
-    '6. Nutze get_entity(type, name, qualifier?) für alle Entitäten, die in den Sessions, Tagebüchern oder Bingo-Vorschlägen relevant erscheinen. Bei Namensgleichheit liefert list_entities Qualifier – nutze den passenden.',
-    '7. Nutze search_diary_entries(query), um Hintergrundwissen zu wiederkehrenden Themen, Orten oder Charakteren zu finden.',
+    t('Vorgehen:', 'Procedure:'),
+    t(
+      '1. Rufe get_bingo_state() auf. Es liefert den aktuellen Bingo-Zustand: Spielfeldgröße, bereits vorhandene Aufgaben getrennt nach Spieler- und DM-Pool, ausstehende Vorschläge und kürzlich abgelehnte Vorschläge (vermeide alle davon).',
+      '1. Call get_bingo_state(). It returns the current Bingo state: board size, existing tasks separated into player and DM pools, pending suggestions, and recently rejected suggestions (avoid all of them).'
+    ),
+    t(
+      '2. Rufe get_previous_session_summaries(limit=5) auf, um die neuesten abgeschlossenen Aufnahme-Sessions zu sehen.',
+      '2. Call get_previous_session_summaries(limit=5) to see the most recent completed recording sessions.'
+    ),
+    t(
+      '3. Rufe get_session_summary(sessionId) für Sessions auf, die für das Bingo besonders interessant erscheinen (z. B. die letzten 2-3 Sessions).',
+      '3. Call get_session_summary(sessionId) for sessions that seem especially interesting for Bingo (for example, the last two or three sessions).'
+    ),
+    t(
+      `4. Lies die Datei ${transcriptsFile} mit dem read-Tool. Sie enthält die Zusammenfassungen und gekürzten Transkripte der letzten Sessions.`,
+      `4. Read the file ${transcriptsFile} with the read tool. It contains summaries and abridged transcripts from the latest sessions.`
+    ),
+    t(
+      '5. Nutze list_entities, um bekannte Personen, Organisationen, Orte und namenhafte Gegenstände zu sehen.',
+      '5. Use list_entities to see known people, organizations, locations, and named items.'
+    ),
+    t(
+      '6. Nutze get_entity(type, name, qualifier?) für alle Entitäten, die in den Sessions, Tagebüchern oder Bingo-Vorschlägen relevant erscheinen. Bei Namensgleichheit liefert list_entities Qualifier – nutze den passenden.',
+      '6. Use get_entity(type, name, qualifier?) for every entity relevant to the sessions, diaries, or Bingo suggestions. For namesakes, list_entities provides qualifiers; use the appropriate one.'
+    ),
+    t(
+      '7. Nutze search_diary_entries(query), um Hintergrundwissen zu wiederkehrenden Themen, Orten oder Charakteren zu finden.',
+      '7. Use search_diary_entries(query) to find background knowledge about recurring topics, locations, or characters.'
+    ),
     ...dmFocus,
-    '9. Erstelle daraus Bingo-Aufgaben, die witzig, wiedererkennbar und realistisch für eine einzelne Sitzung sind.',
+    t(
+      '9. Erstelle daraus Bingo-Aufgaben, die witzig, wiedererkennbar und realistisch für eine einzelne Sitzung sind.',
+      '9. Create Bingo tasks from these moments that are funny, recognizable, and realistic for a single session.'
+    ),
     '',
     dmImportant,
     '',
-    'Regeln für die Aufgaben:',
-    '- Kurze, prägnante deutsche Sätze, die in eine Bingo-Zelle passen.',
-    '- Konkret und auf die bekannte Spielwelt bezogen, falls Daten vorhanden sind.',
-    '- Keine Wiederholungen bereits vorhandener Aufgaben, ausstehender Vorschläge oder kürzlich abgelehnte Vorschläge.',
-    '- Keine zwei neuen Vorschläge dürfen sich zu sehr ähneln.',
+    t('Regeln für die Aufgaben:', 'Task rules:'),
+    t(
+      '- Kurze, prägnante deutsche Sätze, die in eine Bingo-Zelle passen.',
+      '- Short, concise English sentences that fit in a Bingo cell.'
+    ),
+    t(
+      '- Konkret und auf die bekannte Spielwelt bezogen, falls Daten vorhanden sind.',
+      '- Make tasks concrete and tied to the known game world when data is available.'
+    ),
+    t(
+      '- Keine Wiederholungen bereits vorhandener Aufgaben, ausstehender Vorschläge oder kürzlich abgelehnte Vorschläge.',
+      '- Do not repeat existing tasks, pending suggestions, or recently rejected suggestions.'
+    ),
+    t(
+      '- Keine zwei neuen Vorschläge dürfen sich zu sehr ähneln.',
+      '- No two new suggestions may be too similar.'
+    ),
     audience === 'dm'
-      ? '- Mischung aus leichten und schweren Momenten; alles muss vom DM am Tisch beobachtbar sein.'
-      : '- Mischung aus Schwierigkeiten und Arten: Rollenspiel, Kampf, Erkundung, Soziales, Umgebung, Würfelglück.',
-    '- Jede Aufgabe muss in einer Sitzung realistisch erfüllbar sein.',
-    '- Verwende keine Markdown-Formatierung innerhalb der Aufgabentexte.',
-    '- Bevorzuge Aufgaben, die auf tatsächlich wiederkehrenden Momenten aus den Transkripten basieren.',
+      ? t(
+          '- Mischung aus leichten und schweren Momenten; alles muss vom DM am Tisch beobachtbar sein.',
+          '- Mix easy and difficult moments; everything must be observable by the DM at the table.'
+        )
+      : t(
+          '- Mischung aus Schwierigkeiten und Arten: Rollenspiel, Kampf, Erkundung, Soziales, Umgebung, Würfelglück.',
+          '- Mix difficulties and categories: roleplay, combat, exploration, social scenes, environment, and dice luck.'
+        ),
+    t(
+      '- Jede Aufgabe muss in einer Sitzung realistisch erfüllbar sein.',
+      '- Every task must be realistically achievable during one session.'
+    ),
+    t(
+      '- Verwende keine Markdown-Formatierung innerhalb der Aufgabentexte.',
+      '- Do not use Markdown formatting inside task texts.'
+    ),
+    t(
+      '- Bevorzuge Aufgaben, die auf tatsächlich wiederkehrenden Momenten aus den Transkripten basieren.',
+      '- Prefer tasks based on genuinely recurring moments in the transcripts.'
+    ),
     '',
-    `Rufe jetzt submit_bingo_suggestions mit der batchId "${batchId}" auf und übergibe genau ${count} Aufgaben als String-Array.`,
+    t(
+      `Rufe jetzt submit_bingo_suggestions mit der batchId "${batchId}" auf und übergibe genau ${count} Aufgaben als String-Array.`,
+      `Now call submit_bingo_suggestions with batchId "${batchId}" and submit exactly ${count} tasks as a string array.`
+    ),
   ].join('\n');
 }
 
@@ -194,7 +328,8 @@ function waitForBatch(
 
 export async function generateBingoSuggestionBatch(
   count: number,
-  audience: TaskAudience = 'players'
+  audience: TaskAudience = 'players',
+  language?: Language
 ): Promise<string[]> {
   if (!isAiEnabled()) {
     log.info('AI is not enabled; skipping bingo suggestion generation');
@@ -203,11 +338,12 @@ export async function generateBingoSuggestionBatch(
 
   if (count <= 0) return [];
 
+  const runLanguage = language ?? getAiLanguage();
   const batchId = randomUUID();
   createBingoSuggestionBatch(batchId, audience);
 
-  const { transcriptsFile, sessionsIncluded } = prepareBingoContextFiles();
-  const prompt = buildPrompt(count, transcriptsFile, batchId, audience);
+  const { transcriptsFile, sessionsIncluded } = prepareBingoContextFiles(runLanguage);
+  const prompt = buildPrompt(count, transcriptsFile, batchId, audience, runLanguage);
   log.info(
     `Generating ${count} bingo suggestions for pool "${audience}" (batchId=${batchId}, sessions in context: ${sessionsIncluded})`
   );
@@ -218,6 +354,7 @@ export async function generateBingoSuggestionBatch(
     model: getBingoModel(),
     title: `dnd-bingo-suggestions-${audience}-${Date.now()}`,
     scopes: ['entity:read', 'recording:read', 'diary:read', 'bingo:read', 'bingo:write'],
+    language: runLanguage,
   });
 
   if (!result.success) {

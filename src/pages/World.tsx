@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useEntityDialog } from '../hooks/useEntityDialog';
 import { useError } from '../hooks/useError';
+import { useI18n } from '../hooks/useI18n';
 import { useStoryArcs } from '../hooks/useStoryArcs';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DashboardHeader } from '../components/DashboardHeader';
@@ -9,7 +10,12 @@ import { Loading } from '../components/Loading';
 import { Panel } from '../components/Panel';
 import { Modal } from '../components/Modal';
 import { TabButton } from '../components/TabButton';
-import { typeLabels, typeAccusative, formatEntityLabel } from '../lib/entityLabels';
+import {
+  formatEntityLabel,
+  getEntityTypeLabel,
+  getEntityTypePluralLabel,
+} from '../lib/entityLabels';
+import type { TranslationKey } from '../i18n';
 import type {
   EntitiesResponse,
   EntityKnowledgeEntry,
@@ -19,15 +25,29 @@ import type {
 
 type PanelView = 'entities' | 'blacklist';
 
-const PANELS: { type: EntityType; title: string; emptyText: string }[] = [
-  { type: 'persons', title: 'Personen', emptyText: 'Noch keine Personen vorhanden.' },
+interface PanelDefinition {
+  type: EntityType;
+  titleKey: TranslationKey;
+  emptyKey: TranslationKey;
+}
+
+const PANELS: PanelDefinition[] = [
+  {
+    type: 'persons',
+    titleKey: 'world.panels.persons.title',
+    emptyKey: 'world.panels.persons.empty',
+  },
   {
     type: 'organizations',
-    title: 'Organisationen',
-    emptyText: 'Noch keine Organisationen vorhanden.',
+    titleKey: 'world.panels.organizations.title',
+    emptyKey: 'world.panels.organizations.empty',
   },
-  { type: 'locations', title: 'Orte', emptyText: 'Noch keine Orte vorhanden.' },
-  { type: 'items', title: 'Gegenstände', emptyText: 'Noch keine Gegenstände vorhanden.' },
+  {
+    type: 'locations',
+    titleKey: 'world.panels.locations.title',
+    emptyKey: 'world.panels.locations.empty',
+  },
+  { type: 'items', titleKey: 'world.panels.items.title', emptyKey: 'world.panels.items.empty' },
 ];
 
 interface DragPayload {
@@ -89,6 +109,7 @@ function EntityList({
   onRequestAction,
   onClickItem,
 }: EntityListProps) {
+  const { t } = useI18n();
   const isReclassifyTarget = dragPayload && dragPayload.type !== type;
   const isOwnDrag = dragPayload && dragPayload.type === type;
 
@@ -169,7 +190,16 @@ function EntityList({
               }}
               onDrop={(e) => handleRowDrop(e, item)}
               onClick={() => onClickItem(item.name, item.qualifier, type)}
-              title="Klicken zum Öffnen. Ziehen: auf andere Liste = umwandeln, auf anderes Element = Synonym, unten = Blacklist"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onClickItem(item.name, item.qualifier, type);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label={formatEntityLabel(item.name, item.qualifier)}
+              title={t('world.list.dragTitle')}
               className={`
                 flex items-center gap-2 px-3 py-2 rounded border text-[var(--text-h)] text-sm
                 cursor-grab active:cursor-grabbing select-none
@@ -218,8 +248,8 @@ function EntityList({
         `}
       >
         {isOwnDrag
-          ? `Hier fallen lassen, um als ${typeAccusative[type]} zu blacklisten`
-          : 'Zum Blacklisten hierher ziehen'}
+          ? t('world.list.dropBlacklist', { type: getEntityTypePluralLabel(type, t) })
+          : t('world.list.blacklistHint')}
       </div>
     </>
   );
@@ -233,6 +263,7 @@ interface BlacklistListProps {
 }
 
 function BlacklistList({ items, type, emptyText, onUnblacklist }: BlacklistListProps) {
+  const { t } = useI18n();
   if (items.length === 0) {
     return (
       <div className="flex-1 min-h-0 overflow-auto -m-4 p-4">
@@ -251,7 +282,8 @@ function BlacklistList({ items, type, emptyText, onUnblacklist }: BlacklistListP
           <span className="flex-1 min-w-0 truncate">{item}</span>
           <button
             type="button"
-            title="Aus Blacklist entfernen"
+            title={t('world.list.removeBlacklist')}
+            aria-label={t('world.list.removeBlacklist')}
             onClick={() => onUnblacklist(item, type)}
             className="text-slate-500 hover:text-[var(--accent)] transition"
           >
@@ -332,6 +364,7 @@ function DistributeKnowledgeDialog({
 }: DistributeKnowledgeDialogProps) {
   const { request } = useApi();
   const { showSuccess, showError } = useError();
+  const { t, formatNumber } = useI18n();
   const [text, setText] = useState('');
   const [working, setWorking] = useState(false);
 
@@ -350,11 +383,34 @@ function DistributeKnowledgeDialog({
     setWorking(false);
     if (!error && data) {
       const parts: string[] = [];
-      if (data.created.length) parts.push(`${data.created.length} neu`);
-      if (data.ended && data.ended.length) parts.push(`${data.ended.length} beendet`);
-      if (data.deleted.length) parts.push(`${data.deleted.length} als gelöscht markiert`);
+      if (data.created.length) {
+        parts.push(
+          t('world.distribute.changes.created', {
+            count: data.created.length,
+            formattedCount: formatNumber(data.created.length),
+          })
+        );
+      }
+      if (data.ended && data.ended.length) {
+        parts.push(
+          t('world.distribute.changes.ended', {
+            count: data.ended.length,
+            formattedCount: formatNumber(data.ended.length),
+          })
+        );
+      }
+      if (data.deleted.length) {
+        parts.push(
+          t('world.distribute.changes.deleted', {
+            count: data.deleted.length,
+            formattedCount: formatNumber(data.deleted.length),
+          })
+        );
+      }
       showSuccess(
-        parts.length ? `Wissen eingeordnet: ${parts.join(', ')}.` : 'Keine Änderungen erkannt.'
+        parts.length
+          ? t('world.distribute.success', { parts: parts.join(', ') })
+          : t('world.distribute.noChanges')
       );
       onDistributed();
       onClose();
@@ -366,7 +422,7 @@ function DistributeKnowledgeDialog({
   return (
     <Modal
       isOpen
-      title="Wissen einordnen"
+      title={t('world.distribute.title')}
       onClose={onClose}
       actions={
         <>
@@ -376,7 +432,7 @@ function DistributeKnowledgeDialog({
             disabled={working}
             className="px-4 py-2 rounded border border-[var(--border)] text-[var(--text-h)] hover:bg-slate-800 transition disabled:opacity-50"
           >
-            Abbrechen
+            {t('world.distribute.cancel')}
           </button>
           <button
             type="button"
@@ -384,21 +440,19 @@ function DistributeKnowledgeDialog({
             disabled={working || !text.trim()}
             className="px-4 py-2 rounded font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:brightness-110 transition disabled:opacity-50"
           >
-            {working ? 'Wird eingeordnet...' : 'Einordnen'}
+            {working ? t('world.distribute.processing') : t('world.distribute.action')}
           </button>
         </>
       }
     >
       <div className="space-y-4">
-        <p className="text-sm text-slate-400">
-          Gib einen Freitext ein. Die KI ordnet die Fakten passenden Entitäten zu, legt
-          Wissenseinträge an und markiert widersprüchliche Einträge als gelöscht.
-        </p>
+        <p className="text-sm text-slate-400">{t('world.distribute.description')}</p>
         <textarea
           value={text}
+          aria-label={t('world.distribute.title')}
           onChange={(e) => setText(e.target.value)}
           rows={6}
-          placeholder="z. B. Vimak und Gideon gehören der Wagenwacht an."
+          placeholder={t('world.distribute.placeholder')}
           className="w-full px-3 py-2 rounded bg-slate-900/50 border border-[var(--border)] text-[var(--text-h)] focus:border-[var(--accent)] focus:outline-none resize-y"
         />
       </div>
@@ -410,6 +464,7 @@ export function World() {
   const { request } = useApi();
   const { openEntity } = useEntityDialog();
   const { showSuccess } = useError();
+  const { t } = useI18n();
   const { selectedArcId, arcs: storyArcs } = useStoryArcs();
   // `null` = all, number = that arc, 'none' = entities without any arc. The
   // 'none' sentinel is forwarded to the server (arcId=none), not dropped.
@@ -417,7 +472,7 @@ export function World() {
   const filterArcId = typeof selectedArcId === 'number' ? selectedArcId : undefined;
   const filterArcLabel =
     selectedArcId === 'none'
-      ? 'Ohne Arc'
+      ? t('world.filter.noArc')
       : typeof selectedArcId === 'number'
         ? (storyArcs.find((arc) => arc.id === selectedArcId)?.name ?? null)
         : null;
@@ -519,7 +574,7 @@ export function World() {
     setPendingAction(null);
 
     if (!error) {
-      showSuccess('Aktion ausgeführt.');
+      showSuccess(t('world.actions.success'));
       load(filterArcParam);
       loadBlacklists();
     }
@@ -585,51 +640,43 @@ export function World() {
   function actionDialogContent(action: PendingAction) {
     switch (action.kind) {
       case 'blacklist':
-        return (
-          <>
-            Soll <strong>{action.name}</strong> als {typeLabels[action.type]} in die Blacklist
-            aufgenommen werden? Der Name wird aus der {typeAccusative[action.type]}-Liste entfernt
-            und zukünftig nicht mehr als {typeLabels[action.type]} erkannt.
-          </>
-        );
+        return t('world.actions.blacklistQuestion', {
+          name: action.name,
+          type: getEntityTypeLabel(action.type, t),
+          plural: getEntityTypePluralLabel(action.type, t),
+        });
       case 'unblacklist':
-        return (
-          <>
-            Soll <strong>{action.name}</strong> aus der Blacklist für {typeAccusative[action.type]}{' '}
-            entfernt werden? Der Name kann danach wieder als {typeLabels[action.type]} erkannt
-            werden.
-          </>
-        );
+        return t('world.actions.unblacklistQuestion', {
+          name: action.name,
+          type: getEntityTypeLabel(action.type, t),
+          plural: getEntityTypePluralLabel(action.type, t),
+        });
       case 'reclassify':
-        return (
-          <>
-            Soll <strong>{formatEntityLabel(action.name, action.qualifier)}</strong> von{' '}
-            {typeAccusative[action.fromType]} zu {typeAccusative[action.toType]} umgewandelt werden?
-          </>
-        );
+        return t('world.actions.reclassifyQuestion', {
+          name: formatEntityLabel(action.name, action.qualifier),
+          from: getEntityTypePluralLabel(action.fromType, t),
+          to: getEntityTypePluralLabel(action.toType, t),
+        });
       case 'synonym':
-        return (
-          <>
-            Soll <strong>{formatEntityLabel(action.name, action.qualifier)}</strong> als Synonym
-            (Alias) für{' '}
-            <strong>{formatEntityLabel(action.targetName, action.targetQualifier)}</strong>{' '}
-            gespeichert werden? Beide Entitäten werden zusammengeführt; zukünftige Erwähnungen von{' '}
-            {action.name} werden als {action.targetName} erkannt.
-          </>
-        );
+        return t('world.actions.synonymQuestion', {
+          name: formatEntityLabel(action.name, action.qualifier),
+          target: formatEntityLabel(action.targetName, action.targetQualifier),
+        });
     }
   }
 
   function actionDialogTitle(action: PendingAction) {
     switch (action.kind) {
       case 'blacklist':
-        return `${typeLabels[action.type]} blacklisten?`;
+        return t('world.actions.blacklistTitle', {
+          type: getEntityTypeLabel(action.type, t),
+        });
       case 'unblacklist':
-        return 'Aus Blacklist entfernen?';
+        return t('world.actions.unblacklistTitle');
       case 'reclassify':
-        return 'Typ ändern?';
+        return t('world.actions.reclassifyTitle');
       case 'synonym':
-        return 'Synonym erstellen?';
+        return t('world.actions.synonymTitle');
     }
   }
 
@@ -639,12 +686,13 @@ export function World() {
     return (
       <div key={type} className="h-full min-h-0">
         <Panel
-          title={isBlacklist ? `Blacklist – ${title}` : title}
+          title={isBlacklist ? t('world.list.blacklistTitle', { type: title }) : title}
           actions={
             <button
               type="button"
               onClick={() => toggleView(type)}
-              title={isBlacklist ? 'Zur normalen Ansicht' : 'Blacklist anzeigen'}
+              title={isBlacklist ? t('world.list.normalView') : t('world.list.showBlacklist')}
+              aria-label={isBlacklist ? t('world.list.normalView') : t('world.list.showBlacklist')}
               className="text-slate-500 hover:text-[var(--accent)] transition"
             >
               {isBlacklist ? <ListIcon /> : <BanIcon />}
@@ -655,7 +703,9 @@ export function World() {
             <BlacklistList
               items={blacklistData[type]}
               type={type}
-              emptyText={`Noch keine ${typeAccusative[type]} in der Blacklist.`}
+              emptyText={t('world.list.blacklistEmpty', {
+                type: getEntityTypePluralLabel(type, t),
+              })}
               onUnblacklist={handleUnblacklist}
             />
           ) : (
@@ -680,7 +730,7 @@ export function World() {
       <DashboardHeader>
         {filterArcLabel && (
           <span className="mr-auto text-sm text-slate-400">
-            Gefiltert nach Story Arc:{' '}
+            {t('world.filter.filteredByArc')}{' '}
             <strong className="text-[var(--text-h)]">{filterArcLabel}</strong>
           </span>
         )}
@@ -689,13 +739,13 @@ export function World() {
           onClick={() => setDistributeOpen(true)}
           className="px-4 py-2 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition"
         >
-          Wissen einordnen
+          {t('world.distribute.title')}
         </button>
       </DashboardHeader>
 
       {/* Desktop layout: all four lists side by side. */}
       <div className="hidden md:grid md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 min-h-0">
-        {PANELS.map((panel) => renderPanel(panel.type, panel.title, panel.emptyText))}
+        {PANELS.map((panel) => renderPanel(panel.type, t(panel.titleKey), t(panel.emptyKey)))}
       </div>
 
       {/* Mobile layout: full-height panel switched via tabs. */}
@@ -708,7 +758,7 @@ export function World() {
               onClick={() => setActivePanel(panel.type)}
               className="text-xs px-1"
             >
-              {panel.title}
+              {t(panel.titleKey)}
             </TabButton>
           ))}
         </div>
@@ -716,7 +766,7 @@ export function World() {
         {PANELS.map((panel) =>
           activePanel === panel.type ? (
             <div key={panel.type} className="flex-1 min-h-0">
-              {renderPanel(panel.type, panel.title, panel.emptyText)}
+              {renderPanel(panel.type, t(panel.titleKey), t(panel.emptyKey))}
             </div>
           ) : null
         )}
@@ -726,7 +776,7 @@ export function World() {
         <ConfirmDialog
           title={actionDialogTitle(pendingAction)}
           variant="danger"
-          confirmLabel="Bestätigen"
+          confirmLabel={t('world.actions.confirm')}
           loading={actionWorking}
           onConfirm={() => executeAction(pendingAction)}
           onCancel={cancelAction}

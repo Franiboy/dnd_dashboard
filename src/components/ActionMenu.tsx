@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
+import type { TranslationKey } from '../i18n';
 
 export interface ActionMenuItem {
   /** Stable id, used as the React key. */
   id: string;
   label: string;
+  /** Optional translation key for generic action copy. */
+  labelKey?: TranslationKey;
   /** Renders the item in the danger color; use for destructive actions. */
   danger?: boolean;
   disabled?: boolean;
@@ -12,7 +16,7 @@ export interface ActionMenuItem {
 
 interface ActionMenuProps {
   /** Accessible name for the trigger and the menu panel. */
-  ariaLabel: string;
+  ariaLabel?: string;
   items: ActionMenuItem[];
   /** Disables the trigger, e.g. while a request for the surrounding row is running. */
   disabled?: boolean;
@@ -24,7 +28,9 @@ interface ActionMenuProps {
  * when there are no items, so callers can mount it unconditionally.
  */
 export function ActionMenu({ ariaLabel, items, disabled = false }: ActionMenuProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const resolvedAriaLabel = ariaLabel ?? t('shared.actionMenu');
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -67,7 +73,7 @@ export function ActionMenu({ ariaLabel, items, disabled = false }: ActionMenuPro
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={ariaLabel}
+        aria-label={resolvedAriaLabel}
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         className={`inline-flex size-8 items-center justify-center rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -77,6 +83,7 @@ export function ActionMenu({ ariaLabel, items, disabled = false }: ActionMenuPro
         }`}
       >
         <svg
+          aria-hidden="true"
           xmlns="http://www.w3.org/2000/svg"
           width="18"
           height="18"
@@ -93,7 +100,7 @@ export function ActionMenu({ ariaLabel, items, disabled = false }: ActionMenuPro
       {open && (
         <div
           role="menu"
-          aria-label={ariaLabel}
+          aria-label={resolvedAriaLabel}
           className="menu-pop-in absolute right-0 top-full z-20 mt-1 w-60 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2 shadow-xl"
         >
           {items.map((item) => (
@@ -108,7 +115,7 @@ export function ActionMenu({ ariaLabel, items, disabled = false }: ActionMenuPro
               }}
               className={itemClass(item.danger)}
             >
-              {item.label}
+              {item.labelKey ? t(item.labelKey) : item.label}
             </button>
           ))}
         </div>

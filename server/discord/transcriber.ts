@@ -12,14 +12,14 @@ import {
 } from '../repositories/recordings.js';
 import { emitSessionsUpdated, emitProgressUpdated } from './recordingsEvents.js';
 import { createLogger } from '../logger.js';
+import { getAiLanguage } from '../ai/languageConfig.js';
+import { buildWhisperSpawnArgs } from './whisperArgs.js';
 import type { RecordingFile, RecordingSession, TranscriptionProgress } from '../../shared/types.js';
 
 const log = createLogger('transcriber');
 
 const WHISPER_MODEL = process.env.WHISPER_MODEL || 'base';
-const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE || 'de';
 const WHISPER_FP16 = process.env.WHISPER_FP16 === 'true';
-const WHISPER_INITIAL_PROMPT = process.env.WHISPER_INITIAL_PROMPT || undefined;
 const WHISPER_NOISE_REDUCE = process.env.WHISPER_NOISE_REDUCE !== 'false';
 function envNumber(name: string, defaultValue: number): number {
   const value = process.env[name];
@@ -270,40 +270,23 @@ function runTranscriptionScript(
       })),
   });
 
-  const args = [
-    '--',
-    TRANSCRIBE_SCRIPT,
-    '--manifest',
-    '-',
-    '--model',
-    WHISPER_MODEL,
-    '--language',
-    WHISPER_LANGUAGE,
-    '--fp16',
-    String(WHISPER_FP16),
-    '--trim-start',
-    String(trimStart),
-    '--noise-reduce',
-    String(WHISPER_NOISE_REDUCE),
-    '--vad-min-silence',
-    String(WHISPER_VAD_MIN_SILENCE),
-    '--vad-min-speech',
-    String(WHISPER_VAD_MIN_SPEECH),
-    '--compute-type',
-    WHISPER_COMPUTE_TYPE,
-    '--condition-on-previous',
-    String(WHISPER_CONDITION_ON_PREVIOUS),
-    '--filter-no-speech-prob',
-    String(WHISPER_FILTER_NO_SPEECH_PROB),
-  ];
-
-  if (trimEnd !== Infinity) {
-    args.push('--trim-end', String(trimEnd));
-  }
-
-  if (WHISPER_INITIAL_PROMPT) {
-    args.push('--initial-prompt', WHISPER_INITIAL_PROMPT);
-  }
+  // Read the global admin language for each process. The captured value stays
+  // attached to this process even if an admin changes the setting later.
+  const runLanguage = getAiLanguage();
+  const args = buildWhisperSpawnArgs({
+    script: TRANSCRIBE_SCRIPT,
+    model: WHISPER_MODEL,
+    language: runLanguage,
+    fp16: WHISPER_FP16,
+    trimStart,
+    trimEnd,
+    noiseReduce: WHISPER_NOISE_REDUCE,
+    vadMinSilence: WHISPER_VAD_MIN_SILENCE,
+    vadMinSpeech: WHISPER_VAD_MIN_SPEECH,
+    computeType: WHISPER_COMPUTE_TYPE,
+    conditionOnPrevious: WHISPER_CONDITION_ON_PREVIOUS,
+    filterNoSpeechProb: WHISPER_FILTER_NO_SPEECH_PROB,
+  });
 
   return new Promise((resolve, reject) => {
     let currentFileName = '';

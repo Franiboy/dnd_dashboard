@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { BingoSuggestion, TaskAudience, VersionInfo } from '../../shared/types';
-import { useApi } from '../hooks/useApi';
+import type { TFunction, TranslationKey } from '../i18n/messages';
+import { useApi, type ApiResponse } from '../hooks/useApi';
+import { useI18n } from '../hooks/useI18n';
+import { localizeServerMessage } from '../i18n/serverMessages';
 import { Loading } from './Loading';
 
 interface BingoAiSuggestionsProps {
@@ -9,31 +12,68 @@ interface BingoAiSuggestionsProps {
   audience?: TaskAudience;
 }
 
+type LocalizedApiError = Pick<
+  ApiResponse<unknown>,
+  'error' | 'errorCode' | 'messageKey' | 'errorParams' | 'params'
+>;
+
+function localizeApiError(
+  response: LocalizedApiError,
+  t: TFunction,
+  fallbackKey: TranslationKey
+): string | null {
+  const { error, errorCode, messageKey, errorParams, params } = response;
+  if (!error) return null;
+  if (!messageKey && !errorCode) return error;
+
+  return (
+    localizeServerMessage(
+      {
+        message: error,
+        errorCode,
+        messageKey,
+        params: errorParams ?? params,
+      },
+      t,
+      { fallback: error, fallbackKey }
+    ) ?? t(fallbackKey)
+  );
+}
+
 export function BingoAiSuggestions({ isSetup, audience }: BingoAiSuggestionsProps) {
   const { request } = useApi();
+  const { t } = useI18n();
   const [suggestions, setSuggestions] = useState<BingoSuggestion[]>([]);
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
 
   const fetchVersion = useCallback(() => {
-    return request<VersionInfo>('/api/version', undefined, false).then(({ data }) => {
+    return request<VersionInfo>('/api/version', undefined, false).then((response) => {
+      const { data } = response;
+      if (response.error) {
+        setStatusError(localizeApiError(response, t, 'bingo.suggestions.statusError'));
+        setAiEnabled(false);
+        return;
+      }
+      setStatusError(null);
       setAiEnabled(!!data?.aiEnabled);
     });
-  }, [request]);
+  }, [request, t]);
 
   const fetchSuggestions = useCallback(() => {
     return request<{ suggestions: BingoSuggestion[] }>(
       audience ? `/api/bingo/suggestions?audience=${audience}` : '/api/bingo/suggestions',
       undefined,
       false
-    ).then(({ data, error: reqError }) => {
-      setSuggestions(data?.suggestions ?? []);
-      setError(reqError);
+    ).then((response) => {
+      setSuggestions(response.data?.suggestions ?? []);
+      setLoadError(localizeApiError(response, t, 'bingo.suggestions.error'));
       setLoading(false);
     });
-  }, [request, audience]);
+  }, [request, audience, t]);
 
   useEffect(() => {
     fetchVersion();
@@ -53,9 +93,16 @@ export function BingoAiSuggestions({ isSetup, audience }: BingoAiSuggestionsProp
     if (processingId !== null) return;
     setProcessingId(id);
     try {
-      const { error } = await request(`/api/bingo/suggestions/${id}/accept`, { method: 'POST' });
-      if (!error) {
+      const response = await request(
+        `/api/bingo/suggestions/${id}/accept`,
+        { method: 'POST' },
+        false
+      );
+      if (!response.error) {
+        setLoadError(null);
         await fetchSuggestions();
+      } else {
+        setLoadError(localizeApiError(response, t, 'bingo.suggestions.error'));
       }
     } finally {
       setProcessingId(null);
@@ -66,9 +113,16 @@ export function BingoAiSuggestions({ isSetup, audience }: BingoAiSuggestionsProp
     if (processingId !== null) return;
     setProcessingId(id);
     try {
-      const { error } = await request(`/api/bingo/suggestions/${id}/reject`, { method: 'POST' });
-      if (!error) {
+      const response = await request(
+        `/api/bingo/suggestions/${id}/reject`,
+        { method: 'POST' },
+        false
+      );
+      if (!response.error) {
+        setLoadError(null);
         await fetchSuggestions();
+      } else {
+        setLoadError(localizeApiError(response, t, 'bingo.suggestions.error'));
       }
     } finally {
       setProcessingId(null);
@@ -80,7 +134,7 @@ export function BingoAiSuggestions({ isSetup, audience }: BingoAiSuggestionsProp
   if (aiEnabled === null) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-0">
-        <Loading text="Lade KI-Status..." size="sm" />
+        <Loading text={t('bingo.suggestions.loadingStatus')} size="sm" />
       </div>
     );
   }
@@ -88,7 +142,7 @@ export function BingoAiSuggestions({ isSetup, audience }: BingoAiSuggestionsProp
   if (aiEnabled === false) {
     return (
       <div className="text-slate-500 text-sm">
-        KI-Vorschläge sind nicht verfügbar, weil die KI nicht konfiguriert ist.
+        {statusError ?? t('bingo.suggestions.unavailable')}
       </div>
     );
   }
@@ -98,23 +152,23 @@ export function BingoAiSuggestions({ isSetup, audience }: BingoAiSuggestionsProp
   return (
     <div className="flex flex-col h-full gap-3 min-h-0">
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-slate-400 text-sm">
-          Vorgenerierte Vorschläge basierend auf Entitäten und aktuellen Aufgaben.
-        </span>
+        <span className="text-slate-400 text-sm">{t('bingo.suggestions.description')}</span>
       </div>
+
+      {loadError && (
+        <p role="alert" className="text-[var(--danger)] text-sm text-center">
+          {loadError}
+        </p>
+      )}
 
       {loading && suggestions.length === 0 ? (
         <div className="flex-1 flex items-center justify-center min-h-0">
-          <Loading text="Vorschläge laden..." size="sm" />
-        </div>
-      ) : error && !loading && suggestions.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-[var(--danger)] text-sm text-center gap-2 min-h-0">
-          <p>{error}</p>
+          <Loading text={t('bingo.suggestions.loading')} size="sm" />
         </div>
       ) : suggestions.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-500 text-sm text-center gap-2 min-h-0">
-          <p>Keine Vorschläge verfügbar.</p>
-          <p>Sie werden im Hintergrund vorgeneriert.</p>
+          <p>{t('bingo.suggestions.empty')}</p>
+          <p>{t('bingo.suggestions.generating')}</p>
         </div>
       ) : (
         <ul className="flex-1 min-h-0 overflow-auto space-y-2">
@@ -130,17 +184,21 @@ export function BingoAiSuggestions({ isSetup, audience }: BingoAiSuggestionsProp
                 </span>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
+                    type="button"
                     onClick={() => accept(suggestion.id)}
                     disabled={isBusy}
-                    title="Als Aufgabe übernehmen"
+                    title={t('bingo.suggestions.accept')}
+                    aria-label={t('bingo.suggestions.accept')}
                     className="px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:brightness-110 transition disabled:opacity-50"
                   >
                     {isProcessing ? '...' : '+'}
                   </button>
                   <button
+                    type="button"
                     onClick={() => reject(suggestion.id)}
                     disabled={isBusy}
-                    title="Vorschlag ablehnen"
+                    title={t('bingo.suggestions.reject')}
+                    aria-label={t('bingo.suggestions.reject')}
                     className="px-2 py-1 rounded bg-slate-800 text-[var(--danger)] text-xs font-semibold hover:bg-slate-700 transition disabled:opacity-50"
                   >
                     ×

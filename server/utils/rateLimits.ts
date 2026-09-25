@@ -1,5 +1,6 @@
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import type { AuthRequest } from '../auth.js';
+import { errorPayload } from '../errors.js';
 
 /**
  * Guard for AI-triggering endpoints (rewrites, summaries, knowledge runs):
@@ -15,5 +16,7 @@ export const aiRateLimit = rateLimit({
   // App runs behind nginx on a loopback-bound socket; nginx appends the real
   // client IP as the last X-Forwarded-For entry, so trusting proxies is safe.
   validate: { trustProxy: false },
-  message: { error: 'Zu viele KI-Anfragen. Bitte in wenigen Minuten erneut versuchen.' },
+  message: errorPayload('Zu viele KI-Anfragen. Bitte in wenigen Minuten erneut versuchen.', {
+    fallbackCode: 'errors.rateLimit.ai',
+  }),
 });

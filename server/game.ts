@@ -1,11 +1,21 @@
 import { randomBytes, randomUUID } from 'crypto';
 import type { BingoGame, Cell, Player, Task, TaskAudience, UserRole } from '../shared/types.js';
 import { loadGame, saveGame } from './repositories/games.js';
+import { AppError, type ServerErrorParams } from './errors.js';
 import { getAllUsers } from './repositories/users.js';
 import { runMigrations } from './migrations.js';
 
 function createId(): string {
   return randomUUID ? randomUUID() : randomBytes(16).toString('hex');
+}
+
+function gameError(
+  statusCode: number,
+  message: string,
+  messageKey: string,
+  params?: ServerErrorParams
+): AppError {
+  return new AppError(statusCode, message, { messageKey, params });
 }
 
 function defaultGame(): BingoGame {
@@ -133,7 +143,11 @@ export function addTask(
   }: { isPrivate?: boolean; assignedTo?: string[]; audience?: TaskAudience } = {}
 ): Task {
   if (game.status !== 'setup')
-    throw new Error('Aufgaben können nur vor Spielstart hinzugefügt werden.');
+    throw gameError(
+      400,
+      'Aufgaben können nur vor Spielstart hinzugefügt werden.',
+      'errors.bingo.addTaskSetupOnly'
+    );
   const taskAudience = normalizeAudience(audience);
   // The dm pool is already restricted to dungeon masters, so private
   // assignment would be redundant there.
@@ -155,13 +169,17 @@ export function updateTask(
   updates: { text?: string; isPrivate?: boolean; assignedTo?: string[]; audience?: TaskAudience }
 ): BingoGame {
   const task = game.tasks.find((t) => t.id === taskId);
-  if (!task) throw new Error('Aufgabe nicht gefunden.');
+  if (!task) throw gameError(404, 'Aufgabe nicht gefunden.', 'errors.bingo.taskNotFound');
   if (game.status !== 'setup')
-    throw new Error('Aufgaben können nur vor Spielstart bearbeitet werden.');
+    throw gameError(
+      400,
+      'Aufgaben können nur vor Spielstart bearbeitet werden.',
+      'errors.bingo.editTaskSetupOnly'
+    );
 
   if (updates.text !== undefined) {
     const text = updates.text.trim();
-    if (!text) throw new Error('Text darf nicht leer sein.');
+    if (!text) throw gameError(400, 'Text darf nicht leer sein.', 'errors.bingo.textMissing');
     task.text = text;
   }
 
@@ -185,7 +203,11 @@ export function updateTask(
   if (task.audience !== 'dm' && task.isPrivate) {
     const assignedTo = updates.assignedTo ?? task.assignedTo ?? [];
     if (assignedTo.length === 0)
-      throw new Error('Private Aufgaben müssen mindestens einer Person zugewiesen werden.');
+      throw gameError(
+        400,
+        'Private Aufgaben müssen mindestens einer Person zugewiesen werden.',
+        'errors.bingo.privateAssignment'
+      );
     task.assignedTo = assignedTo;
   } else {
     task.assignedTo = [];
@@ -197,7 +219,11 @@ export function updateTask(
 
 export function removeTask(taskId: string): BingoGame {
   if (game.status !== 'setup')
-    throw new Error('Aufgaben können nur vor Spielstart entfernt werden.');
+    throw gameError(
+      400,
+      'Aufgaben können nur vor Spielstart entfernt werden.',
+      'errors.bingo.removeTaskSetupOnly'
+    );
   game.tasks = game.tasks.filter((t) => t.id !== taskId);
   game.players.forEach((p) => {
     if (!p.board) return;
@@ -225,7 +251,11 @@ export function joinPlayer(
   role?: UserRole
 ): { game: BingoGame; playerId: string } {
   if (!canParticipate(role)) {
-    throw new Error('Nur Spieler und Dungeon Master können am Bingo teilnehmen.');
+    throw gameError(
+      403,
+      'Nur Spieler und Dungeon Master können am Bingo teilnehmen.',
+      'errors.bingo.participantOnly'
+    );
   }
   const id = createId();
   const player: Player = {
@@ -262,10 +292,14 @@ export function updatePlayerName(playerId: string, name: string): BingoGame {
 
 export function setGridSize(gridSize: number): BingoGame {
   if (game.status !== 'setup') {
-    throw new Error('Feldgröße kann nur in der Setup-Phase geändert werden.');
+    throw gameError(
+      400,
+      'Feldgröße kann nur in der Setup-Phase geändert werden.',
+      'errors.bingo.gridSizeSetupOnly'
+    );
   }
   if (gridSize < 3 || gridSize > 5) {
-    throw new Error('Ungültige Feldgröße.');
+    throw gameError(400, 'Ungültige Feldgröße.', 'errors.bingo.invalidGridSize');
   }
   game.gridSize = gridSize;
   game.players.forEach((p) => {
@@ -278,12 +312,18 @@ export function setGridSize(gridSize: number): BingoGame {
 
 export function startGame(): BingoGame {
   if (game.status !== 'setup') {
-    throw new Error('Spiel kann nur aus der Setup-Phase gestartet werden.');
+    throw gameError(
+      400,
+      'Spiel kann nur aus der Setup-Phase gestartet werden.',
+      'errors.bingo.startSetupOnly'
+    );
   }
   syncPlayersFromUsers();
   const needed = game.gridSize * game.gridSize;
   if (game.tasks.length < needed) {
-    throw new Error(`Mindestens ${needed} Aufgaben nötig.`);
+    throw gameError(400, `Mindestens ${needed} Aufgaben nötig.`, 'errors.bingo.minimumTasks', {
+      count: needed,
+    });
   }
   game.status = 'playing';
   // The game starts at any time: players with a complete locked board play
@@ -308,16 +348,24 @@ export function startGame(): BingoGame {
 
 export function updateBoard(playerId: string, board: Cell[][]): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
-  if (!player) throw new Error('Spieler nicht gefunden.');
+  if (!player) throw gameError(404, 'Spieler nicht gefunden.', 'errors.bingo.playerNotFound');
   if (player.locked)
-    throw new Error('Board ist gesperrt. Entsperre es, um Änderungen vorzunehmen.');
+    throw gameError(
+      409,
+      'Board ist gesperrt. Entsperre es, um Änderungen vorzunehmen.',
+      'errors.bingo.boardLocked'
+    );
   // Boards are editable in setup and, for late joiners, during the running
   // game until they are locked.
   if (game.status !== 'setup' && game.status !== 'playing') {
-    throw new Error('Board kann nur vor oder während des Spiels bearbeitet werden.');
+    throw gameError(
+      400,
+      'Board kann nur vor oder während des Spiels bearbeitet werden.',
+      'errors.bingo.boardPhase'
+    );
   }
   if (!isValidBoard(board, game.gridSize, { userId: player.userId, role: player.role }))
-    throw new Error('Ungültiges Board.');
+    throw gameError(400, 'Ungültiges Board.', 'errors.bingo.invalidBoard');
   player.board = board;
   persist();
   return game;
@@ -325,18 +373,26 @@ export function updateBoard(playerId: string, board: Cell[][]): BingoGame {
 
 export function lockBoard(playerId: string): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
-  if (!player) throw new Error('Spieler nicht gefunden.');
+  if (!player) throw gameError(404, 'Spieler nicht gefunden.', 'errors.bingo.playerNotFound');
   if (game.status !== 'setup' && game.status !== 'playing') {
-    throw new Error('Board kann nur vor oder während des Spiels eingelockt werden.');
+    throw gameError(
+      400,
+      'Board kann nur vor oder während des Spiels eingelockt werden.',
+      'errors.bingo.lockPhase'
+    );
   }
   if (
     !player.board ||
     !isValidBoard(player.board, game.gridSize, { userId: player.userId, role: player.role })
   ) {
-    throw new Error('Board ist ungültig.');
+    throw gameError(400, 'Board ist ungültig.', 'errors.bingo.invalidBoard');
   }
   if (player.board.some((row) => row.some((cell) => !cell.taskId))) {
-    throw new Error('Board muss vollständig ausgefüllt sein, bevor es eingelockt wird.');
+    throw gameError(
+      400,
+      'Board muss vollständig ausgefüllt sein, bevor es eingelockt wird.',
+      'errors.bingo.boardIncomplete'
+    );
   }
   player.locked = true;
   if (game.status === 'playing') player.status = 'playing';
@@ -346,8 +402,13 @@ export function lockBoard(playerId: string): BingoGame {
 
 export function unlockBoard(playerId: string): BingoGame {
   const player = game.players.find((p) => p.id === playerId);
-  if (!player) throw new Error('Spieler nicht gefunden.');
-  if (game.status !== 'setup') throw new Error('Board kann nur vor Spielstart entsperrt werden.');
+  if (!player) throw gameError(404, 'Spieler nicht gefunden.', 'errors.bingo.playerNotFound');
+  if (game.status !== 'setup')
+    throw gameError(
+      400,
+      'Board kann nur vor Spielstart entsperrt werden.',
+      'errors.bingo.unlockSetupOnly'
+    );
   player.locked = false;
   persist();
   return game;

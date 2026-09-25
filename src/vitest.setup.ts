@@ -26,4 +26,17 @@ export class TestResizeObserver {
 
 globalThis.ResizeObserver = TestResizeObserver as unknown as typeof ResizeObserver;
 
+/** Minimal IntersectionObserver stand-in for infinite-scroll components in jsdom. */
+export class TestIntersectionObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+}
+
+globalThis.IntersectionObserver =
+  TestIntersectionObserver as unknown as typeof IntersectionObserver;
+
 afterEach(cleanup);

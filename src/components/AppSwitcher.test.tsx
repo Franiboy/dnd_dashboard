@@ -1,9 +1,9 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppSwitcher } from './AppSwitcher';
 import { TestResizeObserver } from '../vitest.setup';
-import type { SafeUser, VersionInfo } from '../../shared/types';
+import { renderWithProviders } from '../test-utils/renderWithProviders';
+import type { Language, SafeUser, VersionInfo } from '../../shared/types';
 
 const baseUser: SafeUser = {
   id: 'u1',
@@ -18,17 +18,18 @@ const baseUser: SafeUser = {
   autoSessionToDiary: false,
   autoAcceptSessionDiary: false,
   themePrimary: null,
+  uiLanguage: null,
   isInitialAdmin: false,
 };
 
 const version: VersionInfo = { aiEnabled: true, recordingEnabled: false };
 
-function renderSwitcher(user: SafeUser = baseUser) {
-  return render(
-    <MemoryRouter initialEntries={['/tagebuch']}>
-      <AppSwitcher user={user} version={version} />
-    </MemoryRouter>
-  );
+function renderSwitcher(user: SafeUser = baseUser, language: Language = 'de') {
+  return renderWithProviders(<AppSwitcher user={user} version={version} />, {
+    user,
+    language,
+    router: { initialEntries: ['/tagebuch'] },
+  });
 }
 
 describe('AppSwitcher', () => {
@@ -53,6 +54,17 @@ describe('AppSwitcher', () => {
     );
   });
 
+  it('localizes app names and the picker in English', () => {
+    renderSwitcher({ ...baseUser, isAdmin: true, role: 'dungeon_master' }, 'en');
+
+    fireEvent.click(screen.getByRole('button', { name: 'App picker' }));
+    const menu = screen.getByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: 'Diary' })).toBeDefined();
+    expect(within(menu).getByRole('menuitem', { name: 'World' })).toBeDefined();
+    expect(within(menu).getByRole('menuitem', { name: 'Timeline' })).toBeDefined();
+    expect(within(menu).getByRole('menuitem', { name: 'Whiteboard' })).toBeDefined();
+  });
+
   it('hides apps the user may not see (recording disabled, no character)', () => {
     renderSwitcher();
 
@@ -64,6 +76,16 @@ describe('AppSwitcher', () => {
     expect(within(menu).queryByRole('menuitem', { name: 'Tagebuch' })).toBeNull();
     expect(within(menu).queryByRole('menuitem', { name: 'Admin' })).toBeNull();
     expect(within(menu).getByRole('menuitem', { name: 'Bingo' })).toBeDefined();
+  });
+
+  it('shows a localized empty state when every app is unavailable', () => {
+    renderSwitcher({
+      ...baseUser,
+      disabledApps: ['bingo', 'world', 'timeline', 'whiteboard'],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'App-Auswahl' }));
+    expect(screen.getByText('Keine Apps verfügbar.')).toBeDefined();
   });
 
   it('closes the popup when an app is chosen', () => {

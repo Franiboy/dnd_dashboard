@@ -1,10 +1,13 @@
-import type { Server } from 'socket.io';
+import type { Server, Socket } from 'socket.io';
 import type {
   BingoGame,
   ClientToServerEvents,
   ServerToClientEvents,
+  ServerMessageParams,
+  ServerMessagePayload,
   User,
 } from '../shared/types.js';
+import { AppError, messagePayload } from './errors.js';
 
 /** Per-socket server-side data, filled by the connection middleware. */
 export interface SocketData {
@@ -23,6 +26,43 @@ let ioServer: TypedIoServer | null = null;
 /** The live Socket.io server instance, or null before `setupSocket` ran. */
 export function getIoServer(): TypedIoServer | null {
   return ioServer;
+}
+
+type BingoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
+
+/** Emit a stable, localizable product error while retaining its text fallback. */
+function emitSocketError(
+  socket: BingoSocket,
+  message: string,
+  messageKey: string,
+  params?: ServerMessageParams
+): void {
+  socket.emit('error', messagePayload({ message, messageKey, errorCode: messageKey, params }));
+}
+
+function emitSocketException(socket: BingoSocket, error: unknown): void {
+  if (error instanceof AppError) {
+    socket.emit('error', messagePayload(error));
+    return;
+  }
+  const message = error instanceof Error ? error.message : 'Internal Server Error';
+  const known = messagePayload(message);
+  socket.emit(
+    'error',
+    known.errorCode
+      ? known
+      : messagePayload({
+          message,
+          messageKey: 'errors.internal',
+          errorCode: 'errors.internal',
+        })
+  );
+}
+
+function connectError(error: ServerMessagePayload): Error {
+  const result = new Error(error.message) as Error & { data?: ServerMessagePayload };
+  result.data = error;
+  return result;
 }
 import { getAuthenticatedUser } from './auth.js';
 import {
@@ -96,7 +136,28 @@ export function setupSocket(io: TypedIoServer) {
     const authToken =
       typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined;
     const user = getAuthenticatedUser(socket.handshake as any, authToken ? [authToken] : []);
-    if (!user || !user.isApproved) return next(new Error('Unauthorized'));
+    if (!user) {
+      return next(
+        connectError(
+          messagePayload({
+            message: 'Unauthorized',
+            messageKey: 'errors.unauthorized',
+            errorCode: 'errors.unauthorized',
+          })
+        )
+      );
+    }
+    if (!user.isApproved) {
+      return next(
+        connectError(
+          messagePayload({
+            message: 'Forbidden: Account not approved',
+            messageKey: 'errors.accountNotApproved',
+            errorCode: 'errors.accountNotApproved',
+          })
+        )
+      );
+    }
     socket.data.user = user;
     next();
   });
@@ -108,12 +169,16 @@ export function setupSocket(io: TypedIoServer) {
 
     socket.on('join', () => {
       const displayName = user?.displayName;
-      if (!displayName) return socket.emit('error', 'Name fehlt.');
+      if (!displayName) return emitSocketError(socket, 'Name fehlt.', 'errors.bingo.nameMissing');
 
       // Only players and dungeon masters actively play bingo; guests spectate
       // and keep receiving state broadcasts without a player entry.
       if (!canParticipate(user.role)) {
-        return socket.emit('error', 'Nur Spieler und Dungeon Master können am Bingo teilnehmen.');
+        return emitSocketError(
+          socket,
+          'Nur Spieler und Dungeon Master können am Bingo teilnehmen.',
+          'errors.bingo.participantOnly'
+        );
       }
 
       // Make sure role-based participants exist before matching.
@@ -146,31 +211,40 @@ export function setupSocket(io: TypedIoServer) {
       const isPrivate = typeof raw === 'string' ? false : !!raw?.isPrivate;
       const assignedTo = Array.isArray(raw?.assignedTo) ? raw.assignedTo : [];
       const audience = normalizeAudience(raw?.audience);
-      if (!text?.trim()) return socket.emit('error', 'Text fehlt.');
+      if (!text?.trim()) return emitSocketError(socket, 'Text fehlt.', 'errors.bingo.textMissing');
       if (isPrivate && assignedTo.length === 0)
-        return socket.emit(
-          'error',
-          'Private Aufgaben müssen mindestens einer Person zugewiesen werden.'
+        return emitSocketError(
+          socket,
+          'Private Aufgaben müssen mindestens einer Person zugewiesen werden.',
+          'errors.bingo.privateAssignment'
         );
       if (audience === 'dm' && !canManageDmTasks(user.role, user.isAdmin))
-        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben hinzufügen.');
+        return emitSocketError(
+          socket,
+          'Nur Dungeon Master können DM-Aufgaben hinzufügen.',
+          'errors.bingo.dmAddDenied'
+        );
       try {
         addTask(text, { isPrivate, assignedTo, audience });
         broadcastState();
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 
     socket.on('removeTask', (taskId) => {
       const task = getGame().tasks.find((t) => t.id === taskId);
       if (task?.audience === 'dm' && !canManageDmTasks(user.role, user.isAdmin))
-        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben entfernen.');
+        return emitSocketError(
+          socket,
+          'Nur Dungeon Master können DM-Aufgaben entfernen.',
+          'errors.bingo.dmRemoveDenied'
+        );
       try {
         removeTask(taskId);
         broadcastState();
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 
@@ -179,71 +253,85 @@ export function setupSocket(io: TypedIoServer) {
       const nextAudience = normalizeAudience(audience);
       const involvesDmPool = task?.audience === 'dm' || nextAudience === 'dm';
       if (involvesDmPool && !canManageDmTasks(user.role, user.isAdmin))
-        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben bearbeiten.');
+        return emitSocketError(
+          socket,
+          'Nur Dungeon Master können DM-Aufgaben bearbeiten.',
+          'errors.bingo.dmEditDenied'
+        );
       try {
         updateTask(taskId, { text, isPrivate, assignedTo, audience: nextAudience });
         broadcastState();
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 
     socket.on('setGridSize', (gridSize) => {
-      if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können die Feldgröße ändern.');
+      if (!user?.isAdmin)
+        return emitSocketError(
+          socket,
+          'Nur Admins können die Feldgröße ändern.',
+          'errors.bingo.gridSizeDenied'
+        );
       try {
         setGridSize(gridSize);
         broadcastState();
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 
     socket.on('startGame', () => {
-      if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel starten.');
+      if (!user?.isAdmin)
+        return emitSocketError(
+          socket,
+          'Nur Admins können das Spiel starten.',
+          'errors.bingo.startDenied'
+        );
       try {
         startGame();
         broadcastState();
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 
     socket.on('updateBoard', (board) => {
       const playerId = socketPlayerMap.get(socket.id);
-      if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+      if (!playerId) return emitSocketError(socket, 'Nicht beigetreten.', 'errors.bingo.notJoined');
       try {
         updateBoard(playerId, board);
         broadcastState();
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 
     socket.on('lockBoard', () => {
       const playerId = socketPlayerMap.get(socket.id);
-      if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+      if (!playerId) return emitSocketError(socket, 'Nicht beigetreten.', 'errors.bingo.notJoined');
       try {
         lockBoard(playerId);
         broadcastState();
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 
     socket.on('unlockBoard', () => {
       const playerId = socketPlayerMap.get(socket.id);
-      if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+      if (!playerId) return emitSocketError(socket, 'Nicht beigetreten.', 'errors.bingo.notJoined');
       try {
         unlockBoard(playerId);
         broadcastState();
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 
     socket.on('confirmTask', (taskId) => {
       const playerId = socketPlayerMap.get(socket.id);
-      if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+      if (!playerId) return emitSocketError(socket, 'Nicht beigetreten.', 'errors.bingo.notJoined');
       const beforeBingo = new Set(
         getGame()
           .players.filter((p) => p.status === 'bingo')
@@ -276,7 +364,7 @@ export function setupSocket(io: TypedIoServer) {
 
     socket.on('unconfirmTask', (taskId) => {
       const playerId = socketPlayerMap.get(socket.id);
-      if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+      if (!playerId) return emitSocketError(socket, 'Nicht beigetreten.', 'errors.bingo.notJoined');
       unconfirmTask(taskId);
       broadcastState();
     });
@@ -284,9 +372,13 @@ export function setupSocket(io: TypedIoServer) {
     // Dungeon masters mark dm-pool moments on their own board only.
     socket.on('confirmOwnTask', (taskId) => {
       if (!canManageDmTasks(user.role, user.isAdmin))
-        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben bestätigen.');
+        return emitSocketError(
+          socket,
+          'Nur Dungeon Master können DM-Aufgaben bestätigen.',
+          'errors.bingo.dmConfirmDenied'
+        );
       const playerId = socketPlayerMap.get(socket.id);
-      if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+      if (!playerId) return emitSocketError(socket, 'Nicht beigetreten.', 'errors.bingo.notJoined');
       const beforeBingo = new Set(
         getGame()
           .players.filter((p) => p.status === 'bingo')
@@ -303,15 +395,24 @@ export function setupSocket(io: TypedIoServer) {
 
     socket.on('unconfirmOwnTask', (taskId) => {
       if (!canManageDmTasks(user.role, user.isAdmin))
-        return socket.emit('error', 'Nur Dungeon Master können DM-Aufgaben zurücknehmen.');
+        return emitSocketError(
+          socket,
+          'Nur Dungeon Master können DM-Aufgaben zurücknehmen.',
+          'errors.bingo.dmUnconfirmDenied'
+        );
       const playerId = socketPlayerMap.get(socket.id);
-      if (!playerId) return socket.emit('error', 'Nicht beigetreten.');
+      if (!playerId) return emitSocketError(socket, 'Nicht beigetreten.', 'errors.bingo.notJoined');
       unconfirmOwnTask(playerId, taskId);
       broadcastState();
     });
 
     socket.on('resetGame', () => {
-      if (!user?.isAdmin) return socket.emit('error', 'Nur Admins können das Spiel zurücksetzen.');
+      if (!user?.isAdmin)
+        return emitSocketError(
+          socket,
+          'Nur Admins können das Spiel zurücksetzen.',
+          'errors.bingo.resetDenied'
+        );
       finishAndResetGame();
       broadcastState();
     });
@@ -321,19 +422,24 @@ export function setupSocket(io: TypedIoServer) {
         const created = createElement(element, user);
         broadcastWhiteboardUpsert(io, created);
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 
     socket.on('wbUpdate', ({ id, patch }) => {
       try {
         const before = getElement(id);
-        if (!before) return socket.emit('error', 'Element nicht gefunden.');
+        if (!before)
+          return emitSocketError(
+            socket,
+            'Element nicht gefunden.',
+            'errors.whiteboard.elementNotFound'
+          );
         const updated = updateElement(id, patch, user);
         if (before.zone === updated.zone) broadcastWhiteboardUpsert(io, updated);
         else broadcastWhiteboardZoneChange(io, before, updated);
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 
@@ -342,7 +448,7 @@ export function setupSocket(io: TypedIoServer) {
         removeElement(id, user);
         broadcastWhiteboardRemoved(io, id);
       } catch (e: any) {
-        socket.emit('error', e.message);
+        emitSocketException(socket, e);
       }
     });
 

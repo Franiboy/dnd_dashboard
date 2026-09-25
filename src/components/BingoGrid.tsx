@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { BingoGame, Cell, Task } from '../../shared/types';
 import type { Socket } from '../types';
+import { useI18n } from '../hooks/useI18n';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Modal } from './Modal';
 
@@ -21,6 +22,7 @@ export function BingoGrid({
   controls,
   availableTasks,
 }: BingoGridProps) {
+  const { t } = useI18n();
   const player = game.players.find((p) => p.id === playerId);
   const board = player?.board;
   const [draggedCell, setDraggedCell] = useState<{ r: number; c: number } | null>(null);
@@ -169,7 +171,8 @@ export function BingoGrid({
     return board.every((row) => row.every((cell) => cell.taskId !== taskId || cell.confirmedBy));
   };
 
-  if (!board) return <div className="text-slate-500 text-center">Kein Board verfügbar.</div>;
+  if (!board)
+    return <div className="text-slate-500 text-center">{t('bingo.grid.unavailable')}</div>;
 
   const pendingTaskData = pendingTask ? taskMap.get(pendingTask.id) : null;
 
@@ -202,7 +205,7 @@ export function BingoGrid({
                     onDrop={(e) => handleDrop(e, r, c)}
                     onDragEnd={() => setDraggedCell(null)}
                     onClick={() => handleCellClick(cell.taskId, !!cell.confirmedBy, r, c)}
-                    title={task?.text || (canEdit && isEmpty ? 'Leeres Feld' : '')}
+                    title={task?.text || (canEdit && isEmpty ? t('bingo.grid.emptyCell') : '')}
                     className={`
                       relative p-1 sm:p-2 min-h-0 min-w-0 overflow-hidden rounded-lg sm:rounded-xl border flex flex-col items-center justify-center text-center gap-0.5 sm:gap-1
                       transition select-none break-words
@@ -252,7 +255,7 @@ export function BingoGrid({
             className={`h-14 sm:h-16 rounded-xl border-2 border-dashed flex items-center justify-center text-xs sm:text-sm transition select-none
               ${isOverDeleteVisible ? 'bg-red-900/40 border-red-500 text-red-500' : 'bg-red-900/20 border-[var(--danger)] text-[var(--danger)]'}`}
           >
-            Aufgabe hierher ziehen zum Entfernen
+            {t('bingo.grid.dragToRemove')}
           </div>
         ) : (
           <>
@@ -266,12 +269,12 @@ export function BingoGrid({
               }}
             >
               {canEdit
-                ? 'Ziehe Aufgaben auf die Felder, Felder zum Tauschen, oder hierher zum Entfernen.'
+                ? t('bingo.grid.editInstructions')
                 : game.status === 'setup' && player?.locked
-                  ? 'Board ist eingelockt. Warte auf Spielstart.'
+                  ? t('bingo.grid.lockedDuringSetup')
                   : player?.status === 'lobby'
-                    ? 'Fülle dein Board und locke es ein, um am Spiel teilzunehmen.'
-                    : 'Zum Bestätigen auf eine Zelle klicken. Erneut klicken, um die Bestätigung zu entfernen.'}
+                    ? t('bingo.grid.fillAndLock')
+                    : t('bingo.grid.confirmInstructions')}
             </p>
             {controls && (
               <div className="flex flex-col items-center gap-2 shrink-0">{controls}</div>
@@ -282,20 +285,37 @@ export function BingoGrid({
 
       {pendingTaskData && pendingTask && (
         <ConfirmDialog
-          title={pendingTask.action === 'confirm' ? 'Aufgabe bestätigen' : 'Bestätigung entfernen'}
-          confirmLabel={pendingTask.action === 'confirm' ? 'Erledigt' : 'Entfernen'}
+          title={
+            pendingTask.action === 'confirm'
+              ? t('bingo.tasks.confirmTitle')
+              : t('bingo.tasks.removeConfirmationTitle')
+          }
+          confirmLabel={
+            pendingTask.action === 'confirm' ? t('bingo.tasks.done') : t('bingo.tasks.remove')
+          }
           variant={pendingTask.action === 'confirm' ? 'accent' : 'danger'}
           onConfirm={submit}
           onCancel={() => setPendingTask(null)}
         >
           <p>
-            Soll <span className="text-[var(--text-h)] font-medium">{pendingTaskData.text}</span>{' '}
-            {pendingTask.action === 'confirm'
-              ? 'als erledigt markiert werden? '
-              : 'nicht mehr als erledigt gelten? '}
-            {pendingTaskData.audience === 'dm'
-              ? 'Dies markiert nur dein eigenes Feld.'
-              : 'Dies gilt für alle Spieler.'}
+            {t(
+              pendingTask.action === 'confirm'
+                ? 'bingo.tasks.confirmQuestionStart'
+                : 'bingo.tasks.unconfirmQuestionStart'
+            )}
+            <span className="text-[var(--text-h)] font-medium">{pendingTaskData.text}</span>
+            {t(
+              pendingTask.action === 'confirm'
+                ? 'bingo.tasks.confirmQuestionEnd'
+                : 'bingo.tasks.unconfirmQuestionEnd',
+              {
+                scope: t(
+                  pendingTaskData.audience === 'dm'
+                    ? 'bingo.tasks.ownBoardScope'
+                    : 'bingo.tasks.allPlayersScope'
+                ),
+              }
+            )}
           </p>
         </ConfirmDialog>
       )}
@@ -330,12 +350,13 @@ function TaskSelectModal({
   onSelect: (taskId: string) => void;
   onClose: () => void;
 }) {
-  const available = tasks.filter((t) => !placedTaskIds.has(t.id));
+  const { t } = useI18n();
+  const available = tasks.filter((task) => !placedTaskIds.has(task.id));
 
   return (
-    <Modal isOpen onClose={onClose} title="Aufgabe auswählen">
+    <Modal isOpen onClose={onClose} title={t('bingo.grid.selectTask')}>
       {available.length === 0 ? (
-        <p className="text-slate-500">Keine verfügbaren Aufgaben. Füge zuerst Aufgaben hinzu.</p>
+        <p className="text-slate-500">{t('bingo.grid.noAvailableTasks')}</p>
       ) : (
         <ul className="max-h-80 space-y-2 overflow-auto">
           {available.map((task) => (
@@ -346,7 +367,15 @@ function TaskSelectModal({
                 className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded border border-[var(--border)] bg-slate-900/50 text-left text-[var(--text-h)] hover:bg-slate-800 transition"
               >
                 <span className="min-w-0 break-words">{task.text}</span>
-                {task.isPrivate && <span className="shrink-0 text-xs">🔒</span>}
+                {task.isPrivate && (
+                  <span
+                    className="shrink-0 text-xs"
+                    title={t('bingo.grid.privateTask')}
+                    aria-label={t('bingo.grid.privateTask')}
+                  >
+                    🔒
+                  </span>
+                )}
               </button>
             </li>
           ))}

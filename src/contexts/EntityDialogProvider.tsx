@@ -3,6 +3,7 @@ import { EntityDialogContext, type EntityDialogTab } from './EntityDialogContext
 import { Loading } from '../components/Loading';
 import { Modal } from '../components/Modal';
 import type { EntityType } from '../../shared/types';
+import { useI18n } from '../hooks/useI18n';
 
 const EntityEditDialog = lazy(() =>
   import('../components/EntityEditDialog').then((m) => ({ default: m.EntityEditDialog }))
@@ -22,6 +23,7 @@ interface EntityDialogState {
 
 export function EntityDialogProvider({ children }: EntityDialogProviderProps) {
   const [entity, setEntity] = useState<EntityDialogState | null>(null);
+  const { t } = useI18n();
 
   const openEntity = useCallback(
     (
@@ -65,7 +67,12 @@ export function EntityDialogProvider({ children }: EntityDialogProviderProps) {
       {entity && (
         <Suspense
           fallback={
-            <Modal isOpen title="Entität laden" className="max-w-xl" onClose={closeEntity}>
+            <Modal
+              isOpen
+              title={t('world.entityDialog.loading')}
+              className="max-w-xl"
+              onClose={closeEntity}
+            >
               <div className="py-8 flex justify-center">
                 <Loading size="md" />
               </div>

@@ -68,7 +68,9 @@ router.put('/:id', requireAdmin, (req: AuthRequest, res) => {
     updateStoryArc(id, updates)
   );
   if (!arc) {
-    throw new AppError(404, 'Story Arc nicht gefunden');
+    throw new AppError(404, 'Story Arc nicht gefunden', {
+      messageKey: 'errors.storyArc.notFound',
+    });
   }
   res.json({ arc });
 });
@@ -78,7 +80,9 @@ router.post('/:id/activate', requireAdmin, (req: AuthRequest, res) => {
 
   const arc = orFail('Story Arc konnte nicht aktiviert werden', () => activateStoryArc(id));
   if (!arc) {
-    throw new AppError(404, 'Story Arc nicht gefunden');
+    throw new AppError(404, 'Story Arc nicht gefunden', {
+      messageKey: 'errors.storyArc.notFound',
+    });
   }
   log.info(`Activated story arc ${arc.id} (${arc.name})`);
   res.json({ arc });
@@ -91,7 +95,9 @@ router.delete('/:id', requireAdmin, (req: AuthRequest, res) => {
   // (active/completed arcs are protected from deletion).
   const deleted = deleteStoryArc(id);
   if (!deleted) {
-    throw new AppError(404, 'Story Arc nicht gefunden');
+    throw new AppError(404, 'Story Arc nicht gefunden', {
+      messageKey: 'errors.storyArc.notFound',
+    });
   }
   log.info(`Deleted story arc ${id}`);
   res.json({ ok: true });
