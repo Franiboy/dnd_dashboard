@@ -28,15 +28,16 @@ jobs:
     env:
       RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.sha }}
     steps:
-      # The trusted build job needs its read-only token to fetch origin/main
-      # for the exact-release validation below.
+      # The token is never persisted in .git/config. The build container mounts
+      # this workspace and executes repository code, so a credential left in the
+      # checkout would be readable by that code.
       - name: Checkout exact revision
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: ${{ github.repository }}
           ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Validate release revision
         id: validate
@@ -44,10 +45,14 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          git fetch --quiet origin main
+          # Fetched with an explicit one-shot header instead of a persisted
+          # credential; the header is passed per command and never written to
+          # .git/config, which the build container can read.
+          # shellcheck disable=SC2016
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=$auth_header" fetch --quiet origin main
           git merge-base --is-ancestor "$RELEASE_SHA" origin/main
           git checkout --quiet --detach "$RELEASE_SHA"
-          git config --local --unset-all http.https://github.com/.extraheader || true
           echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
