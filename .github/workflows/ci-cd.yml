@@ -125,6 +125,11 @@ jobs:
       # fail silently here because `gh workflow run` returns 0 once the
       # request is accepted. Both checks below make the failure visible in this
       # run, where it can still be acted on.
+      #
+      # The pre-check needs contents access to the private repository, which
+      # AI_DISPATCH_TOKEN does not have, so today it reports that it cannot read
+      # the tip and defers to the post-dispatch check, which only needs the
+      # actions access the token does have.
       - name: Verify private automation pin
         id: pin
         shell: bash
@@ -132,12 +137,15 @@ jobs:
           GH_TOKEN: ${{ secrets.AI_DISPATCH_TOKEN }}
         run: |
           set -Eeuo pipefail
-          private_main="$(gh api repos/Franiboy/dnd_dashboard-deploy/commits/main --jq '.sha' 2>/dev/null || true)"
-          if [ -z "$private_main" ]; then
-            printf '::warning::cannot read the private main tip with this token; skipping the pin pre-check\n'
+          # gh api prints the API error body on stdout, so an emptiness test
+          # cannot distinguish "could not read" from "read a value". The exit
+          # status is the only reliable signal.
+          if ! private_main="$(gh api repos/Franiboy/dnd_dashboard-deploy/commits/main --jq '.sha')"; then
+            printf '::warning::AI_DISPATCH_TOKEN cannot read the private main tip; the pin check after the dispatch is authoritative\n'
             printf 'stale=false\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          [[ "$private_main" =~ ^[0-9a-f]{40}$ ]]
           if [ "$private_main" != "$PRIVATE_AUTOMATION_REF" ]; then
             printf '::error::DND_PRIVATE_AUTOMATION_REF is %s but the private main tip is %s; update the source variable to the private main tip\n' \
               "$PRIVATE_AUTOMATION_REF" "$private_main"
@@ -174,9 +182,13 @@ jobs:
             -f head_sha="$HEAD_SHA" \
             -f base_sha="$BASE_SHA"
 
-      # Confirms the private repository really started a run. Without this the
-      # dispatch looks successful in this repository even when the private
-      # validation job rejects the request.
+      # Confirms the private repository really started a run, and that it
+      # started it at the pinned commit. Without this the dispatch looks
+      # successful in this repository even when the private validation job
+      # rejects the request, which is exactly what a stale
+      # DND_PRIVATE_AUTOMATION_REF causes. A workflow_dispatch run reports the
+      # private main commit as its head SHA, so comparing that against the pin
+      # needs only the actions access AI_DISPATCH_TOKEN has.
       - name: Verify the private review run started
         shell: bash
         env:
@@ -185,12 +197,21 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "$STARTED_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+          [[ "$PRIVATE_AUTOMATION_REF" =~ ^[0-9a-f]{40}$ ]]
           for _ in 1 2 3 4 5 6; do
-            if run_id="$(gh run list --repo Franiboy/dnd_dashboard-deploy \
+            if found="$(gh run list --repo Franiboy/dnd_dashboard-deploy \
               --workflow ai-review-dispatch.yml --created ">=$STARTED_AT" --limit 1 \
-              --json databaseId --jq '.[0].databaseId // empty')"; then
-              if [ -n "$run_id" ]; then
-                printf 'private review run: %s\n' "$run_id"
+              --json databaseId,headSha \
+              --jq 'if length == 0 then "" else "\(.[0].databaseId) \(.[0].headSha)" end')"; then
+              if [ -n "$found" ]; then
+                run_id="${found%% *}"
+                private_head="${found##* }"
+                printf 'private review run: %s at %s\n' "$run_id" "$private_head"
+                if [ "$private_head" != "$PRIVATE_AUTOMATION_REF" ]; then
+                  printf '::error::the private repository dispatched at %s but DND_PRIVATE_AUTOMATION_REF is %s; the private dispatcher rejects that run. Update the source variable to the private main tip:\n\n  gh variable set DND_PRIVATE_AUTOMATION_REF --repo Franiboy/dnd_dashboard --body %s\n\n' \
+                    "$private_head" "$PRIVATE_AUTOMATION_REF" "$private_head"
+                  exit 1
+                fi
                 exit 0
               fi
             else
@@ -198,9 +219,9 @@ jobs:
               # carry actions on the private repository to dispatch it, and
               # without that the dispatch result cannot be observed at all.
               # Reporting that as a failed dispatch would be wrong, so it is
-              # raised as a warning and the pin pre-check above stays the
+              # raised as a warning and the private dispatcher stays the
               # authoritative gate.
-              printf '::warning::cannot read runs of Franiboy/dnd_dashboard-deploy; the dispatch for pull request %s was sent but its start is unverified\n' \
+              printf '::warning::cannot read runs of Franiboy/dnd_dashboard-deploy; the dispatch for pull request %s was sent but its start and pin are unverified\n' \
                 "$PR_NUMBER"
               exit 0
             fi
