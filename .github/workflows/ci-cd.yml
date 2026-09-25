@@ -85,7 +85,7 @@ jobs:
       contents: read
       issues: read
       pull-requests: read
-    uses: Franiboy/dnd_dashboard-deploy/.github/workflows/ai-review.yml@41d9040f030b9fde2840ccc7eb9ca37b3dd91b01
+    uses: Franiboy/dnd_dashboard-deploy/.github/workflows/ai-review.yml@a9b2c14556944d736e18060389d88efc76cfd046
     with:
       pr_number: ${{ github.event.pull_request.number }}
       head_sha: ${{ github.event.pull_request.head.sha }}
@@ -94,7 +94,7 @@ jobs:
       base_branch: ${{ github.base_ref }}
       base_sha: ${{ github.event.pull_request.base.sha }}
       source_repository: ${{ github.repository }}
-      automation_ref: 41d9040f030b9fde2840ccc7eb9ca37b3dd91b01
+      automation_ref: a9b2c14556944d736e18060389d88efc76cfd046
       pr_actor: ${{ github.event.pull_request.user.login }}
     secrets:
       AI_AUTOMATION_READ_TOKEN: ${{ secrets.AI_AUTOMATION_READ_TOKEN }}
