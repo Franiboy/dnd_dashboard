@@ -63,11 +63,22 @@ prefer pull requests over direct pushes.
 
 `DND_PRIVATE_AUTOMATION_REF` in this repository is the full private commit the
 dispatcher must run as, and it is maintained by hand. **Every merge in
-`Franiboy/dnd_dashboard-deploy` makes it stale**, and a stale value makes the
-private `Validate trusted source request` job fail while this repository still
-shows a green `Dispatch trusted AI review`.
+`Franiboy/dnd_dashboard-deploy` makes it stale**, and the private
+`Validate trusted source request` job rejects the run when the value no longer
+matches the private `main` tip.
 
-After merging in the private repository:
+The dispatch step verifies this itself, before and after the dispatch, and fails
+the `Dispatch trusted AI review` job in this repository rather than leaving a
+stale value to be discovered in the private run. The details are in the
+paragraph below.
+
+Changing private automation therefore takes three steps, in this order:
+
+1. merge the change in `Franiboy/dnd_dashboard-deploy`;
+2. merge a second private pull request that raises `uses:` and `automation_ref`
+   in `ai-review-dispatch.yml` to the new `main` tip, because the promote script
+   is executed from `inputs.automation_ref` and not from the running commit;
+3. re-sync the variable, which must equal the private `main` tip _after_ step 2:
 
 ```bash
 gh variable set DND_PRIVATE_AUTOMATION_REF --repo Franiboy/dnd_dashboard \
@@ -110,6 +121,13 @@ because the private dispatcher pins the run it validates to the event
 The trusted gate is a real check, not a formality: it fails when the
 `pull_request` run for that head is red, times out or unreadable, and the
 dispatch does not happen.
+
+The two runs use separate concurrency groups, `ci-<event>-<workflow>-<number>`.
+Sharing one group serialised them: the trusted run held the group while the
+`pull_request` run waited behind it, and the gate then waited for the run it had
+just blocked until its 900 s deadline. `cancel-in-progress` stays false for both
+pull request events, so neither run cancels the other; that rule does not depend
+on the group.
 
 ## Jobs
 
