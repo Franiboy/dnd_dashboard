@@ -75,8 +75,16 @@ gh variable set DND_PRIVATE_AUTOMATION_REF --repo Franiboy/dnd_dashboard \
 ```
 
 The dispatch job now performs this comparison itself and fails **in the source
-run** with the required value, so a stale pin can no longer pass unnoticed. A
-second step confirms that the private repository really started a run.
+run** with the required value, so a stale pin can no longer pass unnoticed. The
+comparison runs twice, on both sides of the dispatch: a pre-dispatch check
+compares the pin against the private `main` tip, and a post-dispatch check
+compares it against the head SHA the private run was actually created at, which
+is the value the private dispatcher validates. The pre-dispatch check needs
+contents access to the private repository, which `AI_DISPATCH_TOKEN` does not
+have, so today it reports that it cannot read the tip and the post-dispatch
+check is the authoritative one: it needs only the actions access the token has
+and fails closed. Only if it cannot read the private run list either does
+it report the dispatch as unverified and defer to the private dispatcher.
 
 ## Known duplication: two `CI` checks per pull request
 
@@ -112,9 +120,12 @@ but the names should be made unique before anything depends on the ordering.
    - the PR author is `Franiboy`;
    - `DND_AI_REVIEW_ENABLED` is `true`;
    - the PR has neither the `automerge` marker nor the `hold` marker.
-3. The source job uses only `AI_DISPATCH_TOKEN`, which has `Actions: write` on
-   the private deployment repository. It passes no source write, OpenCode or
-   private automation credential.
+3. The source job resolves the current `main` tip with its own job token, which
+   carries `contents: read` on this public repository. Reading a public commit
+   needs no secret, and `AI_DISPATCH_TOKEN` has no visibility into this
+   repository at all. Only the dispatch and the private-repository checks use
+   `AI_DISPATCH_TOKEN`, which carries `Actions: write` there. The job passes no
+   source write, OpenCode or private automation credential.
 4. The private dispatcher checks the exact source workflow run and PR through a
    read-only source token, verifies the event-time head/base SHAs and labels,
    and rejects stale, redirected or unauthenticated requests.
@@ -136,9 +147,14 @@ but the names should be made unique before anything depends on the ordering.
    with a copied workspace, no host mounts and no credentials.
 9. A clean hosted promotion job ignores validation metadata. It independently
    verifies the original AI artifact, protected paths, symlinks, base SHA and
-   hold state, adds `automerge` before any fix push, pushes without force,
-   waits for the newest `CI` check on the exact resulting SHA, and performs a
-   direct exact-head squash merge. No GitHub auto-merge is left queued.
+   hold state, adds `automerge` before any fix push, pushes without force, waits
+   for the pull request head to report the pushed commit, waits for the newest
+   `CI` check on the exact resulting SHA, and performs a direct exact-head
+   squash merge. No GitHub auto-merge is left queued. The head wait is necessary
+   because a pull request head ref is served from an eventually consistent read
+   path: the API can still answer with the pre-push commit for a short while
+   after the push was accepted. Only the pre-push commit is tolerated while the
+   push settles; any other value is an external change and fails closed.
 10. The source release workflow publishes a non-replaceable
     `release-<40-character-sha>` asset pair. With `DND_AUTO_DEPLOY_ENABLED=true`,
     it starts the private deployment workflow with that exact SHA.
