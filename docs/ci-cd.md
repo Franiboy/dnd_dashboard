@@ -145,9 +145,15 @@ but the names should be made unique before anything depends on the ordering.
    with a copied workspace, no host mounts and no credentials.
 9. A clean hosted promotion job ignores validation metadata. It independently
    verifies the original AI artifact, protected paths, symlinks, base SHA and
-   hold state, adds `automerge` before any fix push, pushes without force,
-   waits for the newest `CI` check on the exact resulting SHA, and performs a
-   direct exact-head squash merge. No GitHub auto-merge is left queued.
+   hold state, adds `automerge` before any fix push, pushes without force, waits
+   for the pull request head to report the pushed commit, waits for the newest
+   `CI` check on the exact resulting SHA, and performs a
+   direct exact-head squash merge. No GitHub auto-merge is left queued. The head
+   wait is necessary because a pull request head ref is served from an
+   eventually consistent read path: the API can still answer with the pre-push
+   commit for a short while after the push was accepted. Only that value is
+   tolerated while the push settles; any third value is an external change and
+   fails closed.
 10. The source release workflow publishes a non-replaceable
     `release-<40-character-sha>` asset pair. With `DND_AUTO_DEPLOY_ENABLED=true`,
     it starts the private deployment workflow with that exact SHA.
