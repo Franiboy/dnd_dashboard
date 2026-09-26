@@ -122,6 +122,12 @@ The trusted gate is a real check, not a formality: it fails when the
 `pull_request` run for that head is red, times out or unreadable, and the
 dispatch does not happen.
 
+The two runs use separate concurrency groups. Sharing one group serialised them,
+and the trusted run then waited for the `pull_request` run it had just blocked,
+so the gate could never be satisfied. The event name is part of the group for
+exactly that reason; the rule that a pull request run is never cancelled is
+expressed through `cancel-in-progress` and is independent of it.
+
 ## Jobs
 
 | Job                               | Repository/trigger                 | Runner                              | Purpose                                                            |
