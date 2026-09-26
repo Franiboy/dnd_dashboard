@@ -122,13 +122,12 @@ The trusted gate is a real check, not a formality: it fails when the
 `pull_request` run for that head is red, times out or unreadable, and the
 dispatch does not happen.
 
-Both pull request runs share one concurrency group, `ci-<workflow>-<number>`,
-and `cancel-in-progress` is false for both pull request events, so neither
-run cancels the other. The order decides the outcome: the gate reads an
-already completed `pull_request` run for its head, so it is satisfiable only
-while the `pull_request` run is created first. A trusted run that takes the
-group first queues the `pull_request` run behind it, and the gate then fails
-closed after 900 seconds.
+The two runs use separate concurrency groups, `ci-<event>-<workflow>-<number>`.
+Sharing one group serialised them: the trusted run held the group while the
+`pull_request` run waited behind it, and the gate then waited for the run it had
+just blocked until its 900 s deadline. `cancel-in-progress` stays false for both
+pull request events, so neither run cancels the other; that rule does not depend
+on the group.
 
 ## Jobs
 
