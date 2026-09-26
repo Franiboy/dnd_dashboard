@@ -122,11 +122,13 @@ The trusted gate is a real check, not a formality: it fails when the
 `pull_request` run for that head is red, times out or unreadable, and the
 dispatch does not happen.
 
-The two runs use separate concurrency groups. Sharing one group serialised them,
-and the trusted run then waited for the `pull_request` run it had just blocked,
-so the gate could never be satisfied. The event name is part of the group for
-exactly that reason; the rule that a pull request run is never cancelled is
-expressed through `cancel-in-progress` and is independent of it.
+Both pull request runs share one concurrency group, `ci-<workflow>-<number>`,
+and `cancel-in-progress` is false for both pull request events, so neither
+run cancels the other. The order decides the outcome: the gate reads an
+already completed `pull_request` run for its head, so it is satisfiable only
+while the `pull_request` run is created first. A trusted run that takes the
+group first queues the `pull_request` run behind it, and the gate then fails
+closed after 900 seconds.
 
 ## Jobs
 
