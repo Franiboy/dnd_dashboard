@@ -82,7 +82,9 @@ compares it against the head SHA the private run was actually created at, which
 is the value the private dispatcher validates. The pre-dispatch check needs
 contents access to the private repository, which `AI_DISPATCH_TOKEN` does not
 have, so today it reports that it cannot read the tip and the post-dispatch
-check is the authoritative one.
+check is the authoritative one: it needs only the actions access the token has
+and fails closed. Only if it cannot read the private run list either does
+it report the dispatch as unverified and defer to the private dispatcher.
 
 ## Known duplication: two `CI` checks per pull request
 
@@ -147,13 +149,12 @@ but the names should be made unique before anything depends on the ordering.
    verifies the original AI artifact, protected paths, symlinks, base SHA and
    hold state, adds `automerge` before any fix push, pushes without force, waits
    for the pull request head to report the pushed commit, waits for the newest
-   `CI` check on the exact resulting SHA, and performs a
-   direct exact-head squash merge. No GitHub auto-merge is left queued. The head
-   wait is necessary because a pull request head ref is served from an
-   eventually consistent read path: the API can still answer with the pre-push
-   commit for a short while after the push was accepted. Only that value is
-   tolerated while the push settles; any third value is an external change and
-   fails closed.
+   `CI` check on the exact resulting SHA, and performs a direct exact-head
+   squash merge. No GitHub auto-merge is left queued. The head wait is necessary
+   because a pull request head ref is served from an eventually consistent read
+   path: the API can still answer with the pre-push commit for a short while
+   after the push was accepted. Only the pre-push commit is tolerated while the
+   push settles; any other value is an external change and fails closed.
 10. The source release workflow publishes a non-replaceable
     `release-<40-character-sha>` asset pair. With `DND_AUTO_DEPLOY_ENABLED=true`,
     it starts the private deployment workflow with that exact SHA.
