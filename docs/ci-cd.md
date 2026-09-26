@@ -115,10 +115,9 @@ but the names should be made unique before anything depends on the ordering.
 3. The source job resolves the current `main` tip with its own job token, which
    carries `contents: read` on this public repository. Reading a public commit
    needs no secret, and `AI_DISPATCH_TOKEN` has no visibility into this
-   repository at all. Only the dispatch itself and the checks that read the
-   private repository use `AI_DISPATCH_TOKEN`, which carries `Actions: write`
-   there. The job passes no source write, OpenCode or private automation
-   credential.
+   repository at all. Only the dispatch and the private-repository checks use
+   `AI_DISPATCH_TOKEN`, which carries `Actions: write` there. The job passes no
+   source write, OpenCode or private automation credential.
 4. The private dispatcher checks the exact source workflow run and PR through a
    read-only source token, verifies the event-time head/base SHAs and labels,
    and rejects stale, redirected or unauthenticated requests.
