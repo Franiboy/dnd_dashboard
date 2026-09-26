@@ -24,7 +24,12 @@ concurrency:
 
 jobs:
   ci:
-    name: CI
+    # One workflow, two jobs that never share a name. The pull_request run tests
+    # the head commit. The trusted-target run does not repeat that work: it only
+    # proves the pull_request CI for the same commit was green, so the dispatch
+    # has an unambiguous green predecessor and the promotion gate selects a
+    # single check.
+    name: ${{ github.event_name == 'pull_request_target' && 'CI (trusted gate)' || 'CI' }}
     if: >-
       github.event_name != 'pull_request_target' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
@@ -40,7 +45,15 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      # The split-repository boundary only holds while no job here runs on the
+      # production host, so the invariant is checked and not only documented.
+      # This runs in both variants because it is the check that matters most in
+      # the trusted context.
+      - name: Verify no self-hosted job
+        run: bash scripts/verify-source-runners.sh .
+
       - name: Setup Node
+        if: github.event_name != 'pull_request_target'
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: .nvmrc
@@ -48,24 +61,60 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
+        if: github.event_name != 'pull_request_target'
         run: npm ci
 
       - name: Check formatting
+        if: github.event_name != 'pull_request_target'
         run: npm run format:check
 
       - name: Lint
+        if: github.event_name != 'pull_request_target'
         run: npm run lint
 
-      # The split-repository boundary only holds while no job here runs on the
-      # production host, so the invariant is checked and not only documented.
-      - name: Verify no self-hosted job
-        run: bash scripts/verify-source-runners.sh .
-
       - name: Test
+        if: github.event_name != 'pull_request_target'
         run: npm test
 
       - name: Build
+        if: github.event_name != 'pull_request_target'
         run: npm run build
+
+      # The trusted gate reads the pull_request run instead of repeating it. Two
+      # consequences beyond the saved time: no dependency lifecycle script from a
+      # pull request ever executes under a pull_request_target token, and the
+      # promotion gate in the private repository no longer has to guess between
+      # two identically named checks.
+      - name: Require green pull request CI for this head
+        if: github.event_name == 'pull_request_target'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          deadline=$(( $(date +%s) + 900 ))
+          while :; do
+            state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&event=pull_request&per_page=100" --jq \
+              '[.workflow_runs[] | select(.name == "CI")] | sort_by(.id) | last | if . == null then "missing" elif .status != "completed" then "pending" elif .conclusion == "success" then "success" else "failed" end')"
+            case "$state" in
+              success)
+                printf 'pull request CI is green on %s\n' "${HEAD_SHA:0:12}"
+                exit 0
+                ;;
+              failed)
+                printf '::error::the pull request CI for %s did not succeed; the AI review is not dispatched\n' \
+                  "${HEAD_SHA:0:12}"
+                exit 1
+                ;;
+            esac
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              printf '::error::no completed pull request CI run for %s within 900s\n' "${HEAD_SHA:0:12}"
+              exit 1
+            fi
+            sleep 15
+          done
 
   # The trusted source workflow only dispatches the private review workflow.
   # The private dispatcher is the caller of the self-hosted reusable workflow,

@@ -86,20 +86,37 @@ check is the authoritative one: it needs only the actions access the token has
 and fails closed. Only if it cannot read the private run list either does
 it report the dispatch as unverified and defer to the private dispatcher.
 
-## Known duplication: two `CI` checks per pull request
+## Two named checks per pull request, and why
 
-`pull_request` and `pull_request_target` both produce a check named `CI` on the
-same head commit, because the private promotion waits for "the newest `CI`
-check" on the exact resulting SHA. The promotion selects it by
-`sort_by(.id) | last`, which is well defined but depends on which trigger
-started last. Both runs are green, so this is not a functional problem today,
-but the names should be made unique before anything depends on the ordering.
+A pull request produces two checks, and they are deliberately different jobs:
+
+| Check               | Trigger               | What it runs                                                                                             |
+| ------------------- | --------------------- | -------------------------------------------------------------------------------------------------------- |
+| `CI`                | `pull_request`        | checkout, `npm ci`, format, lint, runner invariant, tests, build                                         |
+| `CI (trusted gate)` | `pull_request_target` | checkout, runner invariant, and a check that the `CI` run above concluded successfully for the same head |
+
+The trusted run exists because the dispatch job waits for it (`needs: ci`) and
+because the private dispatcher pins the run it validates to the event
+`pull_request_target`. It no longer repeats the suite. Two things follow:
+
+- No dependency lifecycle script from a pull request runs under a
+  `pull_request_target` token. That token is read only, but the script surface
+  is gone entirely.
+- The private promotion, which merges on its own, waits for exactly one check
+  named `CI` on the head it pushed. Before this split it selected the newest of
+  two identically named checks with `sort_by(.id) | last`, so the merge gate
+  depended on which trigger happened to start last. One name is one answer.
+
+The trusted gate is a real check, not a formality: it fails when the
+`pull_request` run for that head is red, times out or unreadable, and the
+dispatch does not happen.
 
 ## Jobs
 
 | Job                               | Repository/trigger                 | Runner                              | Purpose                                                            |
 | --------------------------------- | ---------------------------------- | ----------------------------------- | ------------------------------------------------------------------ |
 | `CI`                              | Public PR and `main` push          | GitHub-hosted                       | Clean checkout, `npm ci`, format, lint, tests, build               |
+| `CI (trusted gate)`               | Trusted `pull_request_target`      | GitHub-hosted                       | Runner invariant, then require green `CI` for the same head        |
 | `Dispatch trusted AI review`      | Trusted internal PR after green CI | GitHub-hosted                       | Dispatch the private workflow with an Actions-only token           |
 | `Validate trusted source request` | Private workflow dispatch          | GitHub-hosted                       | Verify source run, PR, SHAs, actor and hold state                  |
 | `Isolated AI review`              | Valid private dispatch             | Fresh `HomeServer-AI` JIT container | Run OpenCode with the configured default model and produce a patch |
@@ -111,7 +128,9 @@ but the names should be made unique before anything depends on the ordering.
 
 ## AI dispatch and review flow
 
-1. A source PR passes hosted CI.
+1. A source PR passes hosted CI. The `pull_request` run is the suite; the
+   `pull_request_target` run only verifies that suite's result for the same
+   head commit, it does not repeat it.
 2. The base-branch `pull_request_target` job dispatches
    `ai-review-dispatch.yml` only when all of these are true:
    - the event is `pull_request_target`;
