@@ -75,8 +75,14 @@ gh variable set DND_PRIVATE_AUTOMATION_REF --repo Franiboy/dnd_dashboard \
 ```
 
 The dispatch job now performs this comparison itself and fails **in the source
-run** with the required value, so a stale pin can no longer pass unnoticed. A
-second step confirms that the private repository really started a run.
+run** with the required value, so a stale pin can no longer pass unnoticed. The
+comparison runs twice, on both sides of the dispatch: a pre-dispatch check
+compares the pin against the private `main` tip, and a post-dispatch check
+compares it against the head SHA the private run was actually created at, which
+is the value the private dispatcher validates. The pre-dispatch check needs
+contents access to the private repository, which `AI_DISPATCH_TOKEN` does not
+have, so today it reports that it cannot read the tip and the post-dispatch
+check is the authoritative one.
 
 ## Known duplication: two `CI` checks per pull request
 
