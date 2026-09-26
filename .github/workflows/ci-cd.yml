@@ -17,7 +17,12 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # The event is part of the group on purpose. Both run types used to share one
+  # group, which serialised them: the trusted run held the group while the
+  # pull_request run waited, and the trusted gate then waited for the
+  # pull_request run it had just blocked. Separate groups let both run, and the
+  # existing "never cancel a pull request run" rule is unaffected.
+  group: ci-${{ github.event_name }}-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   # Keep pull-request and trusted-target runs alive while an AI fix commit
   # starts its fresh CI run. Only main-push runs may cancel older runs.
   cancel-in-progress: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' }}
