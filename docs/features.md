@@ -72,7 +72,7 @@ When AI is enabled (`AI_PROVIDER=opencode` and `AI_MODEL` set), the server keeps
 
 - Shows all known entities (people, organizations, places, notable items).
 - **Entity identity is `(name, qualifier)`**: names alone are not unique in a
-  campaign (two different beings can both be called "Kerigan"). The optional
+  campaign (two different beings can both be called "Halvard"). The optional
   qualifier disambiguates homonyms; it is stored in the `qualifier` column of
   `persons` / `organizations` / `locations` / `items` and is part of the unique index.
   An empty qualifier means the plain name. Display form is

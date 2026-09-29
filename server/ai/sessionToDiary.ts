@@ -86,8 +86,8 @@ export function perspectiveGuardLines(language: Language): string[] {
       '- First establish where your character is in each scene, and follow a consistent timeline of their own location.'
     ),
     t(
-      '- Nur Handlungen unter dem Discord-Namen deines Spielers sind Handlungen deines Charakters. Handlungen anderer Charaktere (z. B. "Vimak betritt die Arena") niemals in der Ich-Form übernehmen.',
-      "- Only actions under your player's Discord name are your character's actions. Never rewrite another character's actions (for example, \"Vimak enters the arena\") in the first person."
+      '- Nur Handlungen unter dem Discord-Namen deines Spielers sind Handlungen deines Charakters. Handlungen anderer Charaktere (z. B. "Ruvan betritt die Arena") niemals in der Ich-Form übernehmen.',
+      "- Only actions under your player's Discord name are your character's actions. Never rewrite another character's actions (for example, \"Ruvan enters the arena\") in the first person."
     ),
     t(
       '- Szenen, an denen dein Charakter nicht beteiligt ist, gehören NICHT in den Eintrag – auch wenn die Zusammenfassung sie beschreibt. Höchstens als Hör-Sage, wenn dein Charakter davon erfährt.',
@@ -316,8 +316,8 @@ export async function generateSessionDiaryDraft(
       '- Follow the supplied text strictly and do not invent details.'
     ),
     t(
-      '- Die Lang-Zusammenfassung ist die Faktenquelle und nennt Handlungen mit dem Namen des Handelnden (z. B. "Vimak betritt die Arena"). Übernimm diese Zuordnungen exakt und schreibe Handlungen anderer Charaktere niemals in der Ich-Form.',
-      '- The long summary is the source of facts and identifies actions by the acting character (for example, "Vimak enters the arena"). Preserve these attributions exactly and never write another character\'s actions in the first person.'
+      '- Die Lang-Zusammenfassung ist die Faktenquelle und nennt Handlungen mit dem Namen des Handelnden (z. B. "Ruvan betritt die Arena"). Übernimm diese Zuordnungen exakt und schreibe Handlungen anderer Charaktere niemals in der Ich-Form.',
+      '- The long summary is the source of facts and identifies actions by the acting character (for example, "Ruvan enters the arena"). Preserve these attributions exactly and never write another character\'s actions in the first person.'
     ),
     t(
       '- Verwende die exakte Schreibweise von Entitäten aus der Datenbank.',

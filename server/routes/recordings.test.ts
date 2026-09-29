@@ -8,8 +8,8 @@ const state = vi.hoisted(() => {
   const users: SafeUser[] = [
     {
       id: 'dm',
-      username: 'marek',
-      displayName: 'Marek',
+      username: 'torvald',
+      displayName: 'Torvald',
       avatarUrl: null,
       isAdmin: false,
       isApproved: true,
@@ -24,14 +24,14 @@ const state = vi.hoisted(() => {
     },
     {
       id: 'simulated',
-      username: 'alex',
-      displayName: 'Alex',
+      username: 'riven',
+      displayName: 'Riven',
       avatarUrl: null,
       isAdmin: false,
       isApproved: true,
       role: 'player',
       disabledApps: [],
-      activePerson: 'Vimak',
+      activePerson: 'Ruvan',
       autoSessionToDiary: false,
       autoAcceptSessionDiary: false,
       themePrimary: null,
@@ -50,7 +50,7 @@ const state = vi.hoisted(() => {
     transcriptionLanguage: 'de',
     stoppedAt: '2026-01-01T01:00:00.000Z',
     directory: '/tmp/test-recording',
-    transcript: '[00:00] Marek: Welcome.\n[00:01] Alex: I enter.',
+    transcript: '[00:00] Torvald: Welcome.\n[00:01] Riven: I enter.',
     error: null,
     trimStartSeconds: null,
     trimEndSeconds: null,
@@ -348,7 +348,7 @@ describe('recording transcript display language', () => {
       headers: { 'Accept-Language': 'en-US,en;q=0.9' },
     });
     expect((english.body.session as { transcript: string }).transcript).toContain(
-      'Dungeon Master (Marek)'
+      'Dungeon Master (Torvald)'
     );
 
     state.user.uiLanguage = 'de';
@@ -356,7 +356,7 @@ describe('recording transcript display language', () => {
       headers: { 'Accept-Language': 'en-US,en;q=0.9' },
     });
     expect((german.body.session as { transcript: string }).transcript).toContain(
-      'Spielleiter (Marek)'
+      'Spielleiter (Torvald)'
     );
 
     state.user.uiLanguage = null;
@@ -364,7 +364,7 @@ describe('recording transcript display language', () => {
       headers: { 'Accept-Language': 'fr-FR' },
     });
     expect((fallback.body.session as { transcript: string }).transcript).toContain(
-      'Spielleiter (Marek)'
+      'Spielleiter (Torvald)'
     );
   });
 
@@ -377,10 +377,10 @@ describe('recording transcript display language', () => {
 
     expect(response.status).toBe(200);
     expect((response.body.session as { transcript: string }).transcript).toContain(
-      'Dungeon Master (Marek)'
+      'Dungeon Master (Torvald)'
     );
     expect((response.body.session as { transcript: string }).transcript).toContain(
-      'Vimak (Alex) (you)'
+      'Ruvan (Riven) (you)'
     );
   });
 

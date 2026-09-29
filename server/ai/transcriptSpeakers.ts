@@ -204,7 +204,7 @@ function escapeRegExp(text: string): string {
 
 /**
  * Replaces Discord speaker labels in a transcript with character labels
- * (e.g. "Selene" -> "Vimak (Selene)", DM -> "Dungeon Master (Marek)", the
+ * (e.g. "Neris" -> "Ruvan (Neris)", DM -> "Dungeon Master (Torvald)", the
  * author additionally marked with "(you)"). Also cleans Whisper attribution
  * artifacts like `speaker:"..."` inside the text. Unresolved speakers stay
  * unchanged.
@@ -238,12 +238,12 @@ export function annotateTranscriptSpeakers(
       ),
       (_match, prefix: string) => `${prefix}${label}`
     );
-    // before-colon / before-& artifacts (e.g. `Selene:"..."`, `Marek &`)
+    // before-colon / before-& artifacts (e.g. `Neris:"..."`, `Torvald &`)
     result = result.replace(
       new RegExp(`${escapeRegExp(lineName ?? inTextName!)}(?=:\\s*"|=\\s*"|\\s*&\\s*)`, 'gi'),
       () => label
     );
-    // after-& artifacts (e.g. `Marek & Selene`, trailing `& Selene` without following `:`/`&`)
+    // after-& artifacts (e.g. `Torvald & Neris`, trailing `& Neris` without following `:`/`&`)
     result = result.replace(
       new RegExp(`(?<=&\\s*)${escapeRegExp(lineName ?? inTextName!)}\\b`, 'gi'),
       () => label

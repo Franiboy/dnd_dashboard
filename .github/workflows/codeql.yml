@@ -7,22 +7,31 @@ on:
   schedule:
     - cron: '23 3 * * 1'
 
+# The analysis needs to write its own results, nothing else.
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   analyze:
     name: Analyze JavaScript/TypeScript
+    # Code scanning is free for a public repository but part of GitHub Advanced
+    # Security for a private one, where the action answers
+    # "CodeQL job status was configuration error". The gate therefore stays
+    # closed until publication, and the publication runbook in docs/ci-cd.md sets
+    # the variable in the same step that changes the visibility.
     if: vars.DND_CODEQL_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
     steps:
+      # Only push and schedule trigger this workflow, so the revision is the
+      # commit itself. There is no pull-request event to read a head from.
       - name: Checkout exact revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Initialize CodeQL

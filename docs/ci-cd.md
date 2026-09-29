@@ -5,6 +5,10 @@ runner and the production runner are separate trust boundaries.
 
 - **Hosted source CI:** `.github/workflows/ci-cd.yml` runs ordinary checks on
   GitHub-hosted `ubuntu-24.04` runners.
+- **Hosted trusted gate:** the base-branch `pull_request_target` run of the same
+  workflow never checks out the pull request head and never executes a file from
+  the repository. It reads what it needs through the API as text, so no fork can
+  turn that run into code execution under the base repository's token.
 - **Hosted AI dispatch:** the trusted base-branch `pull_request_target` job
   dispatches the private deployment workflow with a narrowly scoped Actions
   token. It does not call a self-hosted reusable workflow directly.
@@ -59,6 +63,16 @@ private automation pins the exact private commit it executes. Re-evaluate this
 decision as soon as branch protection or rulesets become available; until then,
 prefer pull requests over direct pushes.
 
+The `403` names the way out: publishing the repository makes both the branch
+protection and the ruleset APIs available, which is why the publication runbook
+below creates a `main` ruleset that requires a pull request and both CI checks
+and forbids force pushes and deletions. That converts the worst part of this
+section from an accepted risk into an enforced rule: a direct push to `main`
+becomes impossible, and the only ways to reach `main` are a green pull request
+or a validated AI patch. It is the strongest reason in the pipeline for the
+change. The ruleset has to be created **after** the visibility switch, because
+the API answers `403` until then.
+
 ## Operator rule: private automation pin
 
 `DND_PRIVATE_AUTOMATION_REF` in this repository is the full private commit the
@@ -101,18 +115,23 @@ it report the dispatch as unverified and defer to the private dispatcher.
 
 A pull request produces two checks, and they are deliberately different jobs:
 
-| Check               | Trigger               | What it runs                                                                                             |
-| ------------------- | --------------------- | -------------------------------------------------------------------------------------------------------- |
-| `CI`                | `pull_request`        | checkout, `npm ci`, format, lint, runner invariant, tests, build                                         |
-| `CI (trusted gate)` | `pull_request_target` | checkout, runner invariant, and a check that the `CI` run above concluded successfully for the same head |
+| Check               | Trigger               | What it runs                                                                                                                                   |
+| ------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CI`                | `pull_request`        | checkout, `npm ci`, format, lint, runner invariant, tests, build                                                                               |
+| `CI (trusted gate)` | `pull_request_target` | the runner invariant read from the pull request through the API, then a check that the `CI` run above concluded successfully for the same head |
 
 The trusted run exists because the dispatch job waits for it (`needs: ci`) and
 because the private dispatcher pins the run it validates to the event
-`pull_request_target`. It no longer repeats the suite. Two things follow:
+`pull_request_target`. It no longer repeats the suite. Three things follow:
 
 - No dependency lifecycle script from a pull request runs under a
   `pull_request_target` token. That token is read only, but the script surface
   is gone entirely.
+- The trusted run checks out nothing at all. `actions/checkout` and every other
+  action are guarded to the `pull_request` event, and no trusted step runs a
+  file from the repository. Everything it needs arrives as text over the API,
+  which is what keeps the pull request from being code that executes under the
+  base repository's token once forks can open pull requests.
 - The private promotion, which merges on its own, waits for exactly one check
   named `CI` on the head it pushed. Before this split it selected the newest of
   two identically named checks with `sort_by(.id) | last`, so the merge gate
@@ -121,6 +140,24 @@ because the private dispatcher pins the run it validates to the event
 The trusted gate is a real check, not a formality: it fails when the
 `pull_request` run for that head is red, times out or unreadable, and the
 dispatch does not happen.
+
+Both run types verify the same runner invariant — this repository must never
+schedule a job on a self-hosted runner — but they do it without sharing a code
+path. The `pull_request` run executes the checked-out
+`scripts/verify-source-runners.sh`, which is safe there because that run already
+runs `npm ci` and the pull request's own tests with a read-only token. The
+trusted run has no checkout, so it lists `.github/workflows` at the head commit
+through the contents API, decodes each file and greps the same `runs-on` pattern
+in the file contents. Every read is checked by exit status, because `gh` writes
+an API error body to stdout: an unreadable listing or an empty result is a
+failure, never "nothing to check".
+
+`tests/ci/trustedWorkflow.test.ts` enforces the shape of that split (no action
+and no repository path in a step that admits `pull_request_target`, the checkout
+of a head explicitly guarded) and `tests/ci/trustedGate.test.ts` extracts and
+executes the real gate step from the workflow, including its `jq` filter, so the
+gate's behaviour is tested rather than transcribed. Both run in the `ci` Vitest
+project, so they are part of `npm run check` and of every CI run.
 
 The two runs use separate concurrency groups, `ci-<event>-<workflow>-<number>`.
 Sharing one group serialised them: the trusted run held the group while the
@@ -327,27 +364,175 @@ overlap migrations.
 The service unit is installed once by the reviewed host setup; release jobs do
 not copy repository-controlled files into `/etc/systemd`.
 
-## Publication checklist
+## Publishing the source repository
 
-Before changing the source repository from private to public:
+The source repository is still `PRIVATE`. Everything below is the ordered
+runbook that changes that, with the state of this repository at the time of
+writing. It is deliberately split into the checks that must hold _before_ the
+switch, the switch itself, and the settings that only become possible after it.
 
-- confirm `bash scripts/verify-source-runners.sh .` passes; the invariant is
-  also covered by `tests/ci/sourceRunners.test.ts`, so a `self-hosted` job fails
-  CI rather than review;
-- confirm `HomeServer` and `HomeServer-AI` are registered only to
-  `Franiboy/dnd_dashboard-deploy`;
-- confirm the private dispatcher and reusable workflow use a complete private
-  automation SHA;
-- set private Actions access and branch/CODEOWNERS protections where supported;
-- run a held AI canary and verify one fresh container per job;
-- verify cleanup after cancellation, crash and supervisor restart;
-- verify `/ready`, backups, rollback documentation and private deployment
-  dispatch;
-- rotate any credential that was ever placed in a build, archive or production
-  workspace;
-- confirm `SECURITY.md` and `.github/CODEOWNERS` exist and stay current. Both
-  are advisory while branch protection is unavailable, `SECURITY.md` still gives
-  reporters a private channel;
-- set `DND_CODEQL_ENABLED=true`. Code scanning is free for a public repository;
-  while the repository is private it requires GitHub Advanced Security and fails
-  with `CodeQL job status was configuration error`.
+### Already true, verified against the repository
+
+- No credential is committed. The tree and all 1085 commits were scanned for
+  tokens, private keys, `.env`, `*.db`, `recordings/` and `data/`; the release
+  archive contains only `dist/`, `dist-server/`, `node_modules/`,
+  `package.json`, `package-lock.json`, `.release-sha` and `manifest.json`.
+- No real player, character, Discord handle or campaign location is in the tree;
+  `docs/conventions.md` makes invented fixture names a rule. The commit history
+  does contain the maintainer's real name and a personal mail address in the
+  author field. That is accepted, not fixed: rewriting the history would
+  invalidate every existing pull request reference for no security gain, because
+  those values are author metadata, not secrets.
+- `bash scripts/verify-source-runners.sh .` passes, and the invariant is covered
+  by `tests/ci/sourceRunners.test.ts`, so a `self-hosted` job fails CI rather
+  than review. `tests/ci/trustedWorkflow.test.ts` additionally proves that no
+  workflow step which can run under `pull_request_target` checks out code or
+  executes a repository file.
+- `HomeServer` and `HomeServer-AI` are registered only to
+  `Franiboy/dnd_dashboard-deploy`, and the private dispatcher pins a complete
+  private automation SHA.
+- `SECURITY.md` and `.github/CODEOWNERS` exist and stay current. `SECURITY.md`
+  gives reporters a private channel; `CODEOWNERS` is advisory until the ruleset
+  below exists.
+
+### Step 0 — merge the anonymisation pull request first
+
+Do not switch the visibility while the pull request that removes the personal
+data is still open. Publication exposes the current `main` tip and every
+reachable ref immediately, and at that moment the real names are still in it.
+Merging first means the visible tree is already anonymised when the repository
+becomes readable; the names that remain are only the author metadata in the
+older commits, which is the accepted decision above. The same order applies to
+the ruleset in step 3: it must not exist while this pull request merges, so the
+first merge is not governed by a rule written blind.
+
+### Step 1 — the visibility switch
+
+```bash
+gh repo edit Franiboy/dnd_dashboard --visibility public
+```
+
+`gh repo edit` prompts for the visibility change confirmation. Nothing else in
+this document has to happen first. The two dispatch secrets stay in the
+repository and are not exposed by this command: `AI_DISPATCH_TOKEN` and
+`DEPLOY_DISPATCH_TOKEN` remain repository secrets with `Actions: write` on the
+private deployment repository only. What changes is the trust model, so the
+following two settings have to be set immediately afterwards.
+
+### Step 2 — settings that only exist for a public repository
+
+```bash
+# Code scanning is free here; while private it needs Advanced Security and
+# every run would end in "CodeQL job status was configuration error".
+gh variable set DND_CODEQL_ENABLED --repo Franiboy/dnd_dashboard --body true
+
+# Do not hand write tokens to workflows triggered by pull requests.
+gh api -X PATCH repos/Franiboy/dnd_dashboard -F \
+  'default_workflow_permissions=read' -f \
+  'can_approve_pull_request_reviews=false' >/dev/null
+```
+
+Then in the repository settings, under Actions → General, confirm
+**"Send write tokens to workflows from pull requests"** is off and
+**"Allow GitHub Actions to create and approve pull requests"** is off. The
+dispatch job is additionally guarded by
+`github.event.pull_request.head.repo.full_name == github.repository` and
+`github.event.pull_request.user.login == 'Franiboy'`, so a fork can neither
+reach the token nor start the private workflow.
+
+### Step 3 — the ruleset that makes `main` protected
+
+This is the part the current plan does not allow. It answers `403` until the
+repository is public, and it is what converts the "accepted risk" section above
+into an enforced rule:
+
+```bash
+gh api repos/Franiboy/dnd_dashboard/rulesets --input - <<'JSON'
+{
+  "name": "main",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    { "type": "pull_request",
+      "required_approving_review_count": 0,
+      "require_code_owner_review": false,
+      "required_review_thread_resolution": true },
+    { "type": "required_status_checks",
+      "strict_required_status_checks_policy": true,
+      "required_status_checks": [
+        { "context": "CI" }
+      ] }
+  ]
+}
+JSON
+```
+
+**Only `CI` is required, not `CI (trusted gate)`, and that is verified rather
+than assumed.** On a maintainer pull request the trusted run reports a check
+named exactly `CI (trusted gate)`, so the name would be matchable. On a
+Dependabot pull request it does not: the job condition skips the run because
+the author is not `Franiboy`, and the check is recorded under the unevaluated
+name expression instead. A ruleset requiring `CI (trusted gate)` would therefore
+sit at "Expected — waiting for status to be reported" on every Dependabot pull
+request and block it permanently. Requiring `CI` keeps the guarantee that
+matters — nothing reaches `main` without the full suite on the current head —
+without demanding a check that some pull requests can never produce.
+`strict_required_status_checks_policy` requires it to be green on the current
+head, not just somewhere in history.
+
+The trusted gate stays enforced where it belongs: the
+`Dispatch trusted AI review` job has `needs: ci`, and the private dispatcher
+validates the `pull_request_target` run itself. It is not a merge gate, and
+this ruleset does not pretend otherwise.
+
+**The review count is deliberately zero, and that is a decision, not an
+oversight.** A ruleset that requires an approving review would block the AI
+review's own promotion step: the pipeline has exactly one human, and nobody
+reviews the pull request the model opened. With `required_approving_review_count: 0`
+and a required pull request, the ruleset still does the job that actually
+protects the release: **a direct push to `main` becomes impossible**, so the only
+way to change `main` is a green pull request or a validated AI patch. What it
+does not add is a second pair of eyes, and nothing in this pipeline can. The
+`CODEOWNERS` map therefore stays advisory; `require_code_owner_review: true` is
+the right choice the moment a second person with push access exists.
+
+If a second maintainer appears, set `required_approving_review_count: 1` and
+`require_code_owner_review: true`, and give the private promotion an explicit
+bypass actor (a GitHub App registered as an `Integration` actor; a
+fine-grained personal access token cannot be named as a bypass actor). Without
+that bypass actor the AI promotion starts failing closed, which is the correct
+failure but an annoying one to discover in production.
+
+### Step 4 — after the switch
+
+- `DND_PRIVATE_AUTOMATION_REF` in the source repository must still equal the
+  private `main` tip. The visibility change does not touch it, but every
+  dispatch verifies it and fails loudly when it is stale.
+- `SOURCE_GITHUB_TOKEN` in the private repository's `production` environment
+  existed only because the source repository was private. Once it is public, the
+  deployment can read the release assets without it; remove it after confirming
+  one successful deployment without it.
+- The private promotion's `SOURCE_READ_TOKEN` still needs `Checks: read` on this
+  repository, otherwise `GET /repos/Franiboy/dnd_dashboard/commits/<sha>/check-runs`
+  answers `403` and the promotion fails closed after pushing its patch. See the
+  section above on the promotion permission.
+
+### Known blocker, independent of publication
+
+`SOURCE_READ_TOKEN` is a fine-grained token without `Checks: read` on this
+repository, so the AI review's patch is pushed and a human has to merge it. Fine
+grained token permissions are UI-only and cannot be granted through the API.
+Two ways out, in order of preference:
+
+1. grant `Checks: read` to `SOURCE_READ_TOKEN` for this repository in the token
+   settings;
+2. once the repository is public, let the private promotion read the check runs
+   with the private workflow's own `GITHUB_TOKEN` instead of a cross-repository
+   fine-grained token, and drop `SOURCE_READ_TOKEN` for that purpose.
+
+Until one of them is done, the promotion path is a documented, fail-closed
+half-automation: the patch lands, the merge does not.

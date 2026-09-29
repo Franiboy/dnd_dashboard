@@ -18,7 +18,7 @@ interface EntityChooserModalProps {
 
 /**
  * Asks the user which homonym was meant when a text mention matches several
- * entities with the same name (e.g. two "Kerigan").
+ * entities with the same name (e.g. two "Halvard").
  */
 export function EntityChooserModal({ candidates, onClose, onPick }: EntityChooserModalProps) {
   const { t } = useI18n();

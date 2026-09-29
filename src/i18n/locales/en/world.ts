@@ -45,7 +45,7 @@ export const world = {
     title: 'Organize knowledge',
     description:
       'Enter free text. The AI assigns the facts to suitable entities, creates knowledge entries, and marks contradictory entries as deleted.',
-    placeholder: 'e.g. Vimak and Gideon belong to the wagon guard.',
+    placeholder: 'e.g. Ruvan and Ilvane belong to the border watch.',
     cancel: 'Cancel',
     action: 'Organize',
     processing: 'Organizing...',
@@ -99,7 +99,7 @@ export const world = {
       title: 'Correct knowledge',
       description:
         'Describe what is wrong with the stored knowledge. The AI checks the affected entities, searches diary entries for verification (e.g. when something happened), sets dates and validity ranges cleanly, marks contradictory entries as deleted, creates corrected entries, and updates the summaries.',
-      placeholder: 'e.g. Vimak does not belong to the wagon guard, but to the Silver Ravens.',
+      placeholder: 'e.g. Ruvan does not belong to the border watch, but to the Silver Eagles.',
       cancel: 'Cancel',
       action: 'Correct',
       processing: 'Correcting...',
@@ -123,7 +123,7 @@ export const world = {
     identityDescription: 'The {type} is tracked under this name in entries.',
     qualifier: 'Qualifier',
     optional: '(optional)',
-    qualifierPlaceholder: 'e.g. Calzone’s companion',
+    qualifierPlaceholder: 'e.g. Ilvane’s companion',
     qualifierDescription: 'Distinguishes entities with the same name. Display:',
     autosave: {
       saving: 'Saving…',

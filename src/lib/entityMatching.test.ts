@@ -92,25 +92,25 @@ describe('findMatches', () => {
     const triggers = buildTriggers([
       {
         type: 'persons',
-        canonical: 'Kerigan',
+        canonical: 'Halvard',
         qualifier: '',
-        label: 'Kerigan',
+        label: 'Halvard',
         aliases: [],
         miniSummary: null,
       },
       {
         type: 'persons',
-        canonical: 'Kerigan',
-        qualifier: 'Begleiter von Calzone',
-        label: 'Kerigan (Begleiter von Calzone)',
+        canonical: 'Halvard',
+        qualifier: 'Begleiter von Ilvane',
+        label: 'Halvard (Begleiter von Ilvane)',
         aliases: [],
         miniSummary: null,
       },
     ]);
 
-    const matches = findMatches('Kerigan lacht.', triggers);
+    const matches = findMatches('Halvard lacht.', triggers);
     expect(matches).toHaveLength(1);
     expect(matches[0].candidates).toHaveLength(2);
-    expect(matches[0].candidates.map((c) => c.qualifier)).toEqual(['', 'Begleiter von Calzone']);
+    expect(matches[0].candidates.map((c) => c.qualifier)).toEqual(['', 'Begleiter von Ilvane']);
   });
 });

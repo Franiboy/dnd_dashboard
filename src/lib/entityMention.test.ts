@@ -24,11 +24,11 @@ describe('detectMention', () => {
   });
 
   it('detects a query after @', () => {
-    expect(detectMention('Hallo @Keri')).toEqual({ atIndex: 6, query: 'Keri' });
+    expect(detectMention('Hallo @Halv')).toEqual({ atIndex: 6, query: 'Halv' });
   });
 
   it('supports multi-word queries', () => {
-    expect(detectMention('@Kerigan von')).toEqual({ atIndex: 0, query: 'Kerigan von' });
+    expect(detectMention('@Halvard von')).toEqual({ atIndex: 0, query: 'Halvard von' });
   });
 
   it('rejects emails (alphanumeric directly before @)', () => {
@@ -36,12 +36,12 @@ describe('detectMention', () => {
   });
 
   it('allows @ after opening brackets and quotes', () => {
-    expect(detectMention('(@Keri')).toEqual({ atIndex: 1, query: 'Keri' });
-    expect(detectMention('"@Keri')).toEqual({ atIndex: 1, query: 'Keri' });
+    expect(detectMention('(@Halv')).toEqual({ atIndex: 1, query: 'Halv' });
+    expect(detectMention('"@Halv')).toEqual({ atIndex: 1, query: 'Halv' });
   });
 
   it('returns null after terminating punctuation', () => {
-    expect(detectMention('Hallo @Keri,')).toBeNull();
+    expect(detectMention('Hallo @Halv,')).toBeNull();
   });
 
   it('uses the last @ only', () => {
@@ -51,25 +51,25 @@ describe('detectMention', () => {
 
 describe('filterEntityMentions', () => {
   const mappings: EntityMapping[] = [
-    mapping('Kerigan', { qualifier: 'Norden', label: 'Kerigan (Norden)', aliases: ['Keri'] }),
-    mapping('Kerigan', { qualifier: 'Sueden', label: 'Kerigan (Sueden)' }),
-    mapping('Calzone', { type: 'locations', aliases: ['Cal'] }),
+    mapping('Halvard', { qualifier: 'Norden', label: 'Halvard (Norden)', aliases: ['Halv'] }),
+    mapping('Halvard', { qualifier: 'Sueden', label: 'Halvard (Sueden)' }),
+    mapping('Ilvane', { type: 'locations', aliases: ['Ilv'] }),
   ];
 
   it('ranks prefix hits before substring hits', () => {
-    const result = filterEntityMentions(mappings, 'Keri');
-    expect(result[0].canonical).toBe('Kerigan');
+    const result = filterEntityMentions(mappings, 'Halv');
+    expect(result[0].canonical).toBe('Halvard');
     expect(result.length).toBe(2);
   });
 
   it('matches aliases', () => {
-    const result = filterEntityMentions(mappings, 'Cal');
-    expect(result.map((r) => r.canonical)).toContain('Calzone');
+    const result = filterEntityMentions(mappings, 'Ilv');
+    expect(result.map((r) => r.canonical)).toContain('Ilvane');
   });
 
   it('keeps homonyms as separate suggestions', () => {
-    const result = filterEntityMentions(mappings, 'Kerigan');
-    expect(result.filter((r) => r.canonical === 'Kerigan').length).toBe(2);
+    const result = filterEntityMentions(mappings, 'Halvard');
+    expect(result.filter((r) => r.canonical === 'Halvard').length).toBe(2);
   });
 
   it('returns everything capped by limit on empty query', () => {
@@ -78,6 +78,6 @@ describe('filterEntityMentions', () => {
   });
 
   it('is case-insensitive', () => {
-    expect(filterEntityMentions(mappings, 'kerigan').length).toBe(2);
+    expect(filterEntityMentions(mappings, 'halvard').length).toBe(2);
   });
 });

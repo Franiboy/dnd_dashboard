@@ -19,4 +19,5 @@
 - Tests are written with Vitest and live next to the code they test (`*.test.ts` / `*.test.tsx`).
 - Server tests use an in-memory SQLite database configured in `vitest.config.ts`; `server/vitest.setup.ts` runs migrations before each test file.
 - Client tests run in `jsdom` with `@testing-library/react`; `src/vitest.setup.ts` cleans up the DOM after each test.
+- **Test fixtures, example text and comments use invented names only.** This repository is prepared for publication, so no real player, character, Discord handle or campaign location from the maintainer's group may enter the tree. Generic placeholders (`Test User`, `u1`, `Example User`) and invented fantasy names are fine. A one-off repair script for production campaign data is not part of the source tree; the schema and the tests carry the lesson instead.
 - The pre-commit hook runs `lint-staged`: it formats staged files with Prettier and auto-fixes TypeScript/JavaScript with `oxlint --fix`.

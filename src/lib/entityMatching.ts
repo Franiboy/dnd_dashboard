@@ -10,7 +10,7 @@ export interface Trigger {
 
 /**
  * One highlighted occurrence. When several entities share the same trigger
- * text (homonyms like two "Kerigan"), every one of them is listed in
+ * text (homonyms like two "Halvard"), every one of them is listed in
  * `candidates` so the UI can ask which entity was meant.
  */
 export interface Match {

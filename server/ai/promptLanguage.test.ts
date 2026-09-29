@@ -24,11 +24,11 @@ describe('prompt language helpers', () => {
       'Story arc: This task belongs to the story arc "The Shattered Crown" (game day 2–4).',
       '- Context queries (diary entries and session summaries) return content from this arc only. Other arcs are intentionally not visible.',
     ]);
-    expect(personaLines('Vimak', 'en')).toEqual([
+    expect(personaLines('Ruvan', 'en')).toEqual([
       'Perspective:',
-      '- This diary entry is written from the perspective of "Vimak".',
-      '- Write the text consistently in the first-person perspective of "Vimak".',
-      '- Use the tone, vocabulary, and knowledge that fit "Vimak" without changing the supplied facts.',
+      '- This diary entry is written from the perspective of "Ruvan".',
+      '- Write the text consistently in the first-person perspective of "Ruvan".',
+      '- Use the tone, vocabulary, and knowledge that fit "Ruvan" without changing the supplied facts.',
     ]);
 
     const prompt = buildPrompt(2, '/tmp/transcripts.txt', 'batch-en', 'dm', 'en');
@@ -46,7 +46,7 @@ describe('prompt language helpers', () => {
       {
         id: 'dm',
         username: 'dm',
-        displayName: 'Nils',
+        displayName: 'Bram',
         avatarUrl: null,
         isAdmin: false,
         isApproved: true,
@@ -61,14 +61,14 @@ describe('prompt language helpers', () => {
       },
       {
         id: 'player',
-        username: 'cloudsen',
-        displayName: 'Cloudsen',
+        username: 'nordwind',
+        displayName: 'Nordwind',
         avatarUrl: null,
         isAdmin: false,
         isApproved: true,
         role: 'player',
         disabledApps: [],
-        activePerson: 'Vimak',
+        activePerson: 'Ruvan',
         autoSessionToDiary: false,
         autoAcceptSessionDiary: false,
         themePrimary: null,
@@ -78,18 +78,18 @@ describe('prompt language helpers', () => {
     ];
 
     const result = annotateTranscriptSpeakers(
-      '[00:00] Nils: Welcome.\n[00:01] Cloudsen: I enter.',
+      '[00:00] Bram: Welcome.\n[00:01] Nordwind: I enter.',
       users,
       'player',
       'en'
     );
 
     expect(result.transcript).toBe(
-      '[00:00] Dungeon Master (Nils): Welcome.\n[00:01] Vimak (Cloudsen) (you): I enter.'
+      '[00:00] Dungeon Master (Bram): Welcome.\n[00:01] Ruvan (Nordwind) (you): I enter.'
     );
     expect(result.mappingLines).toEqual([
-      '- Nils → Dungeon Master (DM, not a character)',
-      '- Cloudsen → Vimak (your character)',
+      '- Bram → Dungeon Master (DM, not a character)',
+      '- Nordwind → Ruvan (your character)',
     ]);
   });
 

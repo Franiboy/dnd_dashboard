@@ -42,7 +42,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      # Only the pull_request run checks out the pull request head. In the
+      # pull_request_target run the head is never materialised, because that run
+      # carries the base repository's token: a checkout plus any repository
+      # script would be pull request code executing in the trusted context. The
+      # trusted run reads what it needs through the API as text instead.
       - name: Checkout exact revision
+        if: github.event_name != 'pull_request_target'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
@@ -52,10 +58,69 @@ jobs:
 
       # The split-repository boundary only holds while no job here runs on the
       # production host, so the invariant is checked and not only documented.
-      # This runs in both variants because it is the check that matters most in
-      # the trusted context.
+      # The pull request may still propose such a workflow, and the two run
+      # types check it without ever executing the same kind of code.
+      #
+      # In the pull_request run the checkout already exists and the suite
+      # installs dependencies and runs the pull request's own tests, so running
+      # the checked-out script adds no new capability to that context.
       - name: Verify no self-hosted job
+        if: github.event_name != 'pull_request_target'
         run: bash scripts/verify-source-runners.sh .
+
+      # The same invariant in the trusted run, without a checkout and without
+      # executing anything from the repository. gh writes an API error body to
+      # stdout, so every read is checked by exit status and fails closed: an
+      # unreadable listing is treated as a violation, never as "nothing to
+      # check". The job condition already restricts this run to a head inside
+      # this repository, which is what makes the base token able to read it.
+      - name: Verify the pull request adds no self-hosted job
+        if: github.event_name == 'pull_request_target'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          api="repos/${GITHUB_REPOSITORY}/contents"
+          if ! listing="$(gh api "${api}/.github/workflows?ref=${HEAD_SHA}" --jq '.[].path')"; then
+            printf '::error::could not read the workflow directory of %s; the runner invariant is unproven\n' \
+              "${HEAD_SHA:0:12}" >&2
+            exit 1
+          fi
+          checked=0
+          violations=0
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            case "$path" in
+              *.yml | *.yaml) ;;
+              *) continue ;;
+            esac
+            if ! content="$(gh api "${api}/${path}?ref=${HEAD_SHA}" --jq '.content' | tr -d '\n' | base64 -d)"; then
+              printf '::error::could not read %s at %s; the runner invariant is unproven\n' \
+                "$path" "${HEAD_SHA:0:12}" >&2
+              exit 1
+            fi
+            checked=$((checked + 1))
+            # Only `runs-on` lines are inspected, so prose in comments cannot
+            # trip the check and a mentioned label cannot hide a real one.
+            while IFS= read -r line; do
+              printf '  %s: %s\n' "$path" "$(printf '%s' "$line" | sed 's/^[[:space:]]*//')" >&2
+              violations=$((violations + 1))
+            done < <(printf '%s\n' "$content" | grep -nE '^[[:space:]]*(-[[:space:]]+)?runs-on:.*self-hosted' || true)
+          done <<< "$listing"
+          if [ "$checked" -eq 0 ]; then
+            printf '::error::no workflow file was read from %s; the runner invariant is unproven\n' \
+              "${HEAD_SHA:0:12}" >&2
+            exit 1
+          fi
+          if [ "$violations" -ne 0 ]; then
+            printf '::error::this repository must never schedule a job on a self-hosted runner (%d violation(s) at %s)\n' \
+              "$violations" "${HEAD_SHA:0:12}" >&2
+            exit 1
+          fi
+          printf 'checked %d workflow file(s) at %s, no self-hosted job\n' "$checked" "${HEAD_SHA:0:12}"
 
       - name: Setup Node
         if: github.event_name != 'pull_request_target'
@@ -85,11 +150,12 @@ jobs:
         if: github.event_name != 'pull_request_target'
         run: npm run build
 
-      # The trusted gate reads the pull_request run instead of repeating it. Two
+      # The trusted gate reads the pull_request run instead of repeating it. Three
       # consequences beyond the saved time: no dependency lifecycle script from a
-      # pull request ever executes under a pull_request_target token, and the
-      # promotion gate in the private repository no longer has to guess between
-      # two identically named checks.
+      # pull request ever executes under a pull_request_target token, no
+      # repository file is even checked out in that run, and the promotion gate
+      # in the private repository no longer has to guess between two identically
+      # named checks.
       - name: Require green pull request CI for this head
         if: github.event_name == 'pull_request_target'
         shell: bash

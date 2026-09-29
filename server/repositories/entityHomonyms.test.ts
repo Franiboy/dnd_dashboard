@@ -29,42 +29,42 @@ describe('homonym entities', () => {
   });
 
   it('allows two entities with the same name and different qualifiers', () => {
-    const paladin = ensureEntityExists('persons', 'Kerigan', 'Paladin des Klosters');
-    const gnome = ensureEntityExists('persons', 'Kerigan', 'Begleiter von Calzone');
+    const paladin = ensureEntityExists('persons', 'Halvard', 'Paladin');
+    const gnome = ensureEntityExists('persons', 'Halvard', 'Begleiter von Ilvane');
 
-    expect(paladin.qualifier).toBe('Paladin des Klosters');
-    expect(gnome.qualifier).toBe('Begleiter von Calzone');
+    expect(paladin.qualifier).toBe('Paladin');
+    expect(gnome.qualifier).toBe('Begleiter von Ilvane');
     expect(listAllEntityRefs().persons).toHaveLength(2);
   });
 
   it('rejects a duplicate (name, qualifier) pair', () => {
-    ensureEntityExists('persons', 'Kerigan', 'Begleiter von Calzone');
+    ensureEntityExists('persons', 'Halvard', 'Begleiter von Ilvane');
     // Same identity resolves to the existing row instead of failing.
-    const again = ensureEntityExists('persons', 'Kerigan', 'Begleiter von Calzone');
-    expect(again.qualifier).toBe('Begleiter von Calzone');
+    const again = ensureEntityExists('persons', 'Halvard', 'Begleiter von Ilvane');
+    expect(again.qualifier).toBe('Begleiter von Ilvane');
     expect(listAllEntityRefs().persons).toHaveLength(1);
   });
 
   it('resolves aliases to the exact qualified target', () => {
-    ensureEntityExists('persons', 'Kerigan', 'Paladin des Klosters');
-    ensureEntityExists('persons', 'Kerigan', 'Begleiter von Calzone');
-    addEntityAlias('persons', 'Carrigon', 'Kerigan', 'Paladin des Klosters');
+    ensureEntityExists('persons', 'Halvard', 'Paladin');
+    ensureEntityExists('persons', 'Halvard', 'Begleiter von Ilvane');
+    addEntityAlias('persons', 'Halgon', 'Halvard', 'Paladin');
 
-    expect(resolveEntityRef({ name: 'Carrigon', qualifier: '' }, 'persons')).toEqual({
-      name: 'Kerigan',
-      qualifier: 'Paladin des Klosters',
+    expect(resolveEntityRef({ name: 'Halgon', qualifier: '' }, 'persons')).toEqual({
+      name: 'Halvard',
+      qualifier: 'Paladin',
     });
-    expect(findEntityCanonical('persons', 'carrigon')).toEqual({
-      name: 'Kerigan',
-      qualifier: 'Paladin des Klosters',
+    expect(findEntityCanonical('persons', 'halgon')).toEqual({
+      name: 'Halvard',
+      qualifier: 'Paladin',
     });
     // The plain name stays ambiguous - no alias redirects it.
-    expect(resolveEntityRef({ name: 'Kerigan', qualifier: '' }, 'persons').qualifier).toBe('');
+    expect(resolveEntityRef({ name: 'Halvard', qualifier: '' }, 'persons').qualifier).toBe('');
   });
 
   it('keeps knowledge and summaries per homonym', () => {
-    ensureEntityExists('persons', 'Kerigan', '');
-    ensureEntityExists('persons', 'Kerigan', 'Begleiter von Calzone');
+    ensureEntityExists('persons', 'Halvard', '');
+    ensureEntityExists('persons', 'Halvard', 'Begleiter von Ilvane');
 
     const entryId = Number(
       db
@@ -73,36 +73,36 @@ describe('homonym entities', () => {
         )
         .run().lastInsertRowid
     );
-    setDiaryEntryPersons(entryId, ['Kerigan', 'Kerigan (Begleiter von Calzone)']);
+    setDiaryEntryPersons(entryId, ['Halvard', 'Halvard (Begleiter von Ilvane)']);
 
     const entities = getEntryEntities(entryId);
-    expect(entities.persons.sort()).toEqual(['Kerigan', 'Kerigan (Begleiter von Calzone)']);
+    expect(entities.persons.sort()).toEqual(['Halvard', 'Halvard (Begleiter von Ilvane)']);
   });
 
   it('returns detail with qualifier and only its own aliases', () => {
-    ensureEntityExists('persons', 'Kerigan', 'Paladin des Klosters');
-    ensureEntityExists('persons', 'Kerigan', 'Begleiter von Calzone');
-    addEntityAlias('persons', 'Karigen', 'Kerigan', 'Paladin des Klosters');
+    ensureEntityExists('persons', 'Halvard', 'Paladin');
+    ensureEntityExists('persons', 'Halvard', 'Begleiter von Ilvane');
+    addEntityAlias('persons', 'Halken', 'Halvard', 'Paladin');
 
-    const detail = getEntityDetail('persons', 'Kerigan', 'Paladin des Klosters');
-    expect(detail?.qualifier).toBe('Paladin des Klosters');
-    expect(detail?.aliases).toEqual(['Karigen']);
+    const detail = getEntityDetail('persons', 'Halvard', 'Paladin');
+    expect(detail?.qualifier).toBe('Paladin');
+    expect(detail?.aliases).toEqual(['Halken']);
 
-    const other = getEntityDetail('persons', 'Kerigan', 'Begleiter von Calzone');
+    const other = getEntityDetail('persons', 'Halvard', 'Begleiter von Ilvane');
     expect(other?.aliases).toEqual([]);
   });
 
   it('mappings expose labels for homonyms', () => {
-    ensureEntityExists('persons', 'Kerigan', 'Begleiter von Calzone');
-    const mappings = getEntityMappings().filter((m) => m.canonical === 'Kerigan');
+    ensureEntityExists('persons', 'Halvard', 'Begleiter von Ilvane');
+    const mappings = getEntityMappings().filter((m) => m.canonical === 'Halvard');
     expect(mappings).toHaveLength(1);
-    expect(mappings[0].label).toBe('Kerigan (Begleiter von Calzone)');
+    expect(mappings[0].label).toBe('Halvard (Begleiter von Ilvane)');
   });
 
   it('label helpers round-trip', () => {
-    expect(entityLabel({ name: 'Kerigan', qualifier: '' })).toBe('Kerigan');
-    expect(entityLabel({ name: 'Kerigan', qualifier: 'Gnom' })).toBe('Kerigan (Gnom)');
-    expect(splitEntityLabel('Kerigan (Gnom)')).toEqual({ name: 'Kerigan', qualifier: 'Gnom' });
+    expect(entityLabel({ name: 'Halvard', qualifier: '' })).toBe('Halvard');
+    expect(entityLabel({ name: 'Halvard', qualifier: 'Gnom' })).toBe('Halvard (Gnom)');
+    expect(splitEntityLabel('Halvard (Gnom)')).toEqual({ name: 'Halvard', qualifier: 'Gnom' });
     // Real names containing parentheses stay intact when parsed tolerantly.
     expect(splitEntityLabel('Weird (Name)')).toEqual({ name: 'Weird', qualifier: 'Name' });
   });

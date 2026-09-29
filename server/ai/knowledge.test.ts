@@ -31,37 +31,37 @@ function entry(
 describe('collectAffectedEntities', () => {
   it('puts the focus entity first and dedupes entities case-insensitively', () => {
     const result = {
-      created: [entry(1, 'persons', 'Vimak')],
+      created: [entry(1, 'persons', 'Ruvan')],
       deleted: [
-        { id: 2, reason: 'Widerspruch', entry: entry(2, 'persons', 'vimak') },
-        { id: 3, reason: 'Widerspruch', entry: entry(3, 'organizations', 'Wagenwacht') },
+        { id: 2, reason: 'Widerspruch', entry: entry(2, 'persons', 'ruvan') },
+        { id: 3, reason: 'Widerspruch', entry: entry(3, 'organizations', 'Grenzwacht') },
       ],
       ended: [],
     };
     const targets = collectAffectedEntities(
-      { entityType: 'organizations', entityName: 'Wagenwacht', entityQualifier: '' },
+      { entityType: 'organizations', entityName: 'Grenzwacht', entityQualifier: '' },
       result
     );
     expect(targets).toEqual([
-      { entityType: 'organizations', entityName: 'Wagenwacht', entityQualifier: '' },
-      { entityType: 'persons', entityName: 'Vimak', entityQualifier: '' },
+      { entityType: 'organizations', entityName: 'Grenzwacht', entityQualifier: '' },
+      { entityType: 'persons', entityName: 'Ruvan', entityQualifier: '' },
     ]);
   });
 
   it('keeps homonyms with different qualifiers separate', () => {
     const result = {
-      created: [entry(1, 'persons', 'Kerigan', 'Begleiter von Calzone')],
-      deleted: [{ id: 2, reason: 'Widerspruch', entry: entry(2, 'persons', 'Kerigan') }],
+      created: [entry(1, 'persons', 'Halvard', 'Begleiter von Ilvane')],
+      deleted: [{ id: 2, reason: 'Widerspruch', entry: entry(2, 'persons', 'Halvard') }],
       ended: [],
     };
     const targets = collectAffectedEntities(null, result);
     expect(targets).toEqual([
       {
         entityType: 'persons',
-        entityName: 'Kerigan',
-        entityQualifier: 'Begleiter von Calzone',
+        entityName: 'Halvard',
+        entityQualifier: 'Begleiter von Ilvane',
       },
-      { entityType: 'persons', entityName: 'Kerigan', entityQualifier: '' },
+      { entityType: 'persons', entityName: 'Halvard', entityQualifier: '' },
     ]);
   });
 
@@ -69,11 +69,11 @@ describe('collectAffectedEntities', () => {
     const result = {
       created: [],
       deleted: [],
-      ended: [{ id: 2, reason: 'Gilt nicht mehr', entry: entry(2, 'organizations', 'Wagenwacht') }],
+      ended: [{ id: 2, reason: 'Gilt nicht mehr', entry: entry(2, 'organizations', 'Grenzwacht') }],
     };
     const targets = collectAffectedEntities(null, result);
     expect(targets).toEqual([
-      { entityType: 'organizations', entityName: 'Wagenwacht', entityQualifier: '' },
+      { entityType: 'organizations', entityName: 'Grenzwacht', entityQualifier: '' },
     ]);
   });
 
