@@ -411,9 +411,20 @@ gh variable set DND_CODEQL_ENABLED --repo Franiboy/dnd_dashboard --body true
 
 gh api -X PATCH repos/Franiboy/dnd_dashboard \
   -F delete_branch_on_merge=true \
-  -F allow_update_branch=true \
+  -F allow_update_branch=true
+
+# The two workflow-permission fields are NOT set through the repository
+# endpoint; see the fourth API defect below.
+gh api -X PUT repos/Franiboy/dnd_dashboard/actions/permissions/workflow \
   -F default_workflow_permissions=read \
   -F can_approve_pull_request_reviews=false
+```
+
+The two workflow-permission fields must be verified on the endpoint that owns
+them, not on the repository object:
+
+```bash
+gh api repos/Franiboy/dnd_dashboard/actions/permissions/workflow
 ```
 
 The dispatch secrets were not exposed by the switch. `AI_DISPATCH_TOKEN` and
@@ -483,10 +494,11 @@ force pushes are refused for everyone.
   the `Dispatch trusted AI review` job has `needs: ci`, and the private
   dispatcher validates the `pull_request_target` run itself.
 
-#### Three API defects that make the obvious approach fail
+#### Four API defects that make the obvious approach fail
 
-All three were found by executing the request, not by reading the
-documentation, and each of them fails in a way that looks like success.
+All four were found by executing the request, not by reading the
+documentation, and each of them fails in a way that looks like success: the
+call succeeds and the intended effect is absent.
 
 1. **The ruleset API silently discards rule parameters that are not nested under
    `parameters`.** A create request carrying
@@ -503,16 +515,31 @@ documentation, and each of them fails in a way that looks like success.
    it, so a partial update that looks successful can drop the other rules. Same
    failure shape as the ruleset parameters above: the request goes through and
    the protection is quietly smaller than intended.
-3. **`RepositoryRole` cannot be used as a bypass actor for this repository
-   through the API.** It is rejected with `actor_id is required for
-RepositoryRole`, and supplying the repository id, the owner id, or omitting
-   `actor_id` are all rejected as well. That is what the "except me" half needs,
-   and it is why the configuration above uses classic branch protection with
-   `enforce_admins: false` instead, which expresses the same intent natively.
-   A ruleset with an empty `bypass_actors` reports
-   `current_user_can_bypass: "never"`, which in combination with a required
-   review locks the maintainer out of their own repository — so the ruleset was
-   deleted rather than left in that state.
+3. **`PATCH` on the repository endpoint silently ignores the two workflow
+   permission fields.** `gh api -X PATCH repos/Franiboy/dnd_dashboard -F
+can_approve_pull_request_reviews=true` answers `200`, the repository object
+   comes back with the field still `null`, and reading
+   `repos/…/actions/permissions/workflow` shows the value unchanged. The fields
+   belong to `PUT /repos/{owner}/{repo}/actions/permissions/workflow`, which
+   does write them — verified by a round trip through `true` and back. The
+   failure shape is the dangerous one: the documented command looks like it
+   worked, the setting was never applied, and nothing in the repository can
+   verify it afterwards. This one was found by the AI review, which asked for
+   exactly that verification because the tree could not prove it.
+4. **`RepositoryRole` cannot be used as a bypass actor for this repository
+   through the API.** It is rejected with
+   `actor_id is required for RepositoryRole`, and supplying the repository id,
+   the owner id, or omitting `actor_id` are all rejected as well. That is what
+   the "except me" half needs, and it is why the configuration above uses
+   classic branch protection with `enforce_admins: false` instead, which
+   expresses the same intent natively. A ruleset with an empty `bypass_actors`
+   reports `current_user_can_bypass: "never"`, which in combination with a
+   required review locks the maintainer out of their own repository — so the
+   ruleset was deleted rather than left in that state.
+
+The common shape is worth naming: in three of these four, GitHub accepts the
+request, reports success, and changes nothing. Reading the value back from the
+endpoint that owns it is the only check that tells the two apart.
 
 ### After the switch
 
