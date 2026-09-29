@@ -234,3 +234,4 @@ Server and client test files live next to the code they test and use the `*.test
 ## License
 
 Released under the [MIT License](./LICENSE).
+<!-- protection verification -->
