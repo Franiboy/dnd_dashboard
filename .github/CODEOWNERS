@@ -1,11 +1,12 @@
-# Advisory owner map for this repository.
+# Owner map for this repository.
 #
-# CODEOWNERS only takes effect once branch protection or a ruleset requires
-# review by the owner. This repository is on a plan where the branch protection
-# and ruleset APIs answer 403, so these entries document intent and become
-# enforceable the moment protection is available. The production trust boundary
-# is the private `Franiboy/dnd_dashboard-deploy` repository; everything that can
-# deploy, promote or review is owned from there.
+# `main` is protected with require_code_owner_reviews, so these entries are
+# binding: a pull request touching a listed path needs a review from its owner.
+# The maintainer is exempt through enforce_admins: false, which exists because
+# GitHub does not allow approving your own pull request and there is only one
+# account with push access. The production trust boundary is the private
+# `Franiboy/dnd_dashboard-deploy` repository; everything that can deploy,
+# promote or review is owned from there.
 * @Franiboy
 
 # Automation, releases and deployment plumbing.
