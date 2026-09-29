@@ -12,13 +12,11 @@ every confirmed report.
 
 ## Scope and trust boundary
 
-This repository holds the application source. It runs **read-only CI and release
-builds** on GitHub-hosted runners; it has no self-hosted runner and no
-write-capable automation of its own. It is currently `PRIVATE` and is being
-prepared for publication; the ordered runbook is in
-[`docs/ci-cd.md`](docs/ci-cd.md#publishing-the-source-repository). Nothing in
-this file assumes a visibility, and the trust boundary below does not change
-when it becomes public.
+This repository holds the application source and is **public**. It runs
+**read-only CI and release builds** on GitHub-hosted runners; it has no
+self-hosted runner and no write-capable automation of its own. The publication
+runbook and the resulting configuration are in
+[`docs/ci-cd.md`](docs/ci-cd.md#publication-state-and-operations).
 
 All write-capable automation lives in the private
 [`Franiboy/dnd_dashboard-deploy`](https://github.com/Franiboy/dnd_dashboard-deploy)
@@ -36,10 +34,10 @@ text. That property is asserted by `tests/ci/trustedWorkflow.test.ts`.
 
 Consequences worth knowing when reporting:
 
-- once the repository is public, pull requests are analysed by CodeQL on every
-  change and the results land in the repository's security tab. While it is
-  private, code scanning is part of GitHub Advanced Security and the workflow is
-  gated off (`DND_CODEQL_ENABLED`), so no analysis is produced.
+- pull requests are analysed by CodeQL on every change and the results land in
+  the repository's security tab. The gate `DND_CODEQL_ENABLED` exists because
+  code scanning is part of GitHub Advanced Security for a private repository and
+  free for a public one; it is enabled.
 - the deployment path only accepts an immutable, checksum-verified release asset
   whose native addons match the production platform, and it rolls back
   automatically when the readiness probe fails.

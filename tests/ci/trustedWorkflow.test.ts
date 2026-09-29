@@ -18,9 +18,9 @@ import {
  * the API as text, but it must not check out the pull request head and it must
  * not run a file from the repository.
  *
- * The test is the enforcement. Documentation alone cannot hold it, and this
- * repository is being prepared for publication, where fork pull requests become
- * possible in the first place.
+ * The test is the enforcement. Documentation alone cannot hold it, and it
+ * matters here because this repository is public, so any fork can open the pull
+ * request that would otherwise become trusted code.
  */
 
 /** Paths that would mean "running code from the repository". */

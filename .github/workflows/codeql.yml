@@ -16,9 +16,11 @@ jobs:
     name: Analyze JavaScript/TypeScript
     # Code scanning is free for a public repository but part of GitHub Advanced
     # Security for a private one, where the action answers
-    # "CodeQL job status was configuration error". The gate therefore stays
-    # closed until publication, and the publication runbook in docs/ci-cd.md sets
-    # the variable in the same step that changes the visibility.
+    # "CodeQL job status was configuration error". The gate exists for that
+    # reason alone and is enabled while the repository is public. This workflow
+    # triggers on a push to main and on a weekly schedule, not per pull
+    # request, so a pull request is analysed by the push that eventually
+    # reaches main.
     if: vars.DND_CODEQL_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20

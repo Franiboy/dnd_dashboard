@@ -1,6 +1,6 @@
 # CI/CD Pipeline
 
-The source repository, the private automation repository, the ephemeral AI
+The public source repository, the private automation repository, the ephemeral AI
 runner and the production runner are separate trust boundaries.
 
 - **Hosted source CI:** `.github/workflows/ci-cd.yml` runs ordinary checks on
@@ -31,7 +31,7 @@ runner and the production runner are separate trust boundaries.
   `HomeServer` workflow with an exact source SHA and performs a transactional
   deployment.
 
-The source repository must not contain a job with `runs-on: self-hosted`.
+The public source repository must not contain a job with `runs-on: self-hosted`.
 Keeping the runners and write-capable automation in a separate repository is
 the security boundary that prevents a public pull request from adding or
 redirecting a production job. Because this invariant decides whether pull
@@ -39,39 +39,32 @@ request code can reach the production host, it is enforced by
 `scripts/verify-source-runners.sh` and covered by `tests/ci/sourceRunners.test.ts`
 rather than only by this paragraph.
 
-## Accepted risk: no enforced branch protection
+## Branch protection on `main`
 
-The branch protection and ruleset APIs answer `403 Upgrade to GitHub Pro or make
-this repository public to enable this feature.` for both repositories, so
-required reviews, required status checks and a "no direct push" rule cannot be
-enforced by GitHub on the current plan.
+`main` is protected. A pull request must be approved by the maintainer, the
+`CODEOWNERS` review applies, stale approvals are dismissed on new pushes, `CI`
+must be green, and neither force pushes nor branch deletion are allowed.
 
-The activation gates are nevertheless enabled, because the canaries proved the
-chain works. The accepted consequence is explicit:
+The maintainer is exempt, by design. GitHub does not allow approving your own
+pull request, so a hard review requirement would make every pull request the
+maintainer opens permanently unmergeable and would also block the AI review's own
+promotion step. `enforce_admins: false` is what makes "protected, except I can
+push" and "pull requests need my approval" both true; the exact configuration
+and the verification are in the publication section below.
 
-- **A direct push to `main` bypasses the AI review and the promotion step.**
-  Such a push still produces a normal release build with the full test suite, the
-  native module gate and the transactional deployment, so it cannot ship a broken
-  or undeployable artifact. It can ship a change that no model reviewed.
-- `hold` and `automerge` are therefore conventions, not permissions: they
-  constrain the automation, not a human with push access.
+What remains a real accepted risk, and it is not about the review:
 
-Mitigations that do not depend on the plan: a direct push is visible in the
-release run and in the deployment log, the deployment can only install an
-immutable checksummed release of a commit that is an ancestor of `main`, and the
-private automation pins the exact private commit it executes. Re-evaluate this
-decision as soon as branch protection or rulesets become available; until then,
-prefer pull requests over direct pushes.
-
-The `403` names the way out: publishing the repository makes both the branch
-protection and the ruleset APIs available, which is why the publication runbook
-below creates a `main` ruleset that requires a pull request and both CI checks
-and forbids force pushes and deletions. That converts the worst part of this
-section from an accepted risk into an enforced rule: a direct push to `main`
-becomes impossible, and the only ways to reach `main` are a green pull request
-or a validated AI patch. It is the strongest reason in the pipeline for the
-change. The ruleset has to be created **after** the visibility switch, because
-the API answers `403` until then.
+- **A direct push to `main` by an admin bypasses the AI review and the
+  promotion step.** It cannot ship a broken or undeployable artifact: such a push
+  still produces a normal release build with the full test suite, the native
+  module gate and the transactional deployment. It can ship a change that no
+  model reviewed, and it is visible in the release run and the deployment log.
+  The deployment can only install an immutable checksummed release of a commit
+  that is an ancestor of `main`, and the private automation pins the exact
+  private commit it executes.
+- **`hold` and `automerge` are conventions, not permissions.** They constrain the
+  automation, not a human with push access. The review requirement is
+  structural for anyone else, advisory for the maintainer.
 
 ## Operator rule: private automation pin
 
@@ -364,14 +357,26 @@ overlap migrations.
 The service unit is installed once by the reviewed host setup; release jobs do
 not copy repository-controlled files into `/etc/systemd`.
 
-## Publishing the source repository
+## Publication: state and operations
 
-The source repository is still `PRIVATE`. Everything below is the ordered
-runbook that changes that, with the state of this repository at the time of
-writing. It is deliberately split into the checks that must hold _before_ the
-switch, the switch itself, and the settings that only become possible after it.
+The source repository is **public** since 2026-09-29. This section records what
+was done, in the order it had to be done, and the two API defects that made the
+obvious approach fail.
 
-### Already true, verified against the repository
+### Order, and why it was forced
+
+The branch protection and ruleset APIs answer `403 Upgrade to GitHub Pro or make
+this repository public to enable this feature.` while the repository is private.
+Nothing about `main` can be protected before publication, so publication is
+step one and not a choice at the end.
+
+Publication itself came last among the code work, for a different reason: the
+switch exposes the current `main` tip and every reachable ref immediately. While
+the pull request that removed the personal data was still open, those real names
+were one flag away from being world-readable. The anonymisation was merged
+first, so the tree was already clean when the repository became readable.
+
+### Verified before the switch
 
 - No credential is committed. The tree and all 1085 commits were scanned for
   tokens, private keys, `.env`, `*.db`, `recordings/` and `data/`; the release
@@ -391,135 +396,167 @@ switch, the switch itself, and the settings that only become possible after it.
 - `HomeServer` and `HomeServer-AI` are registered only to
   `Franiboy/dnd_dashboard-deploy`, and the private dispatcher pins a complete
   private automation SHA.
-- `SECURITY.md` and `.github/CODEOWNERS` exist and stay current. `SECURITY.md`
-  gives reporters a private channel; `CODEOWNERS` is advisory until the ruleset
-  below exists.
+- `SECURITY.md` and `.github/CODEOWNERS` exist and stay current; `SECURITY.md`
+  gives reporters a private channel, and `CODEOWNERS` is binding through
+  `require_code_owner_reviews` on `main`.
 
-### Step 0 — merge the anonymisation pull request first
-
-Do not switch the visibility while the pull request that removes the personal
-data is still open. Publication exposes the current `main` tip and every
-reachable ref immediately, and at that moment the real names are still in it.
-Merging first means the visible tree is already anonymised when the repository
-becomes readable; the names that remain are only the author metadata in the
-older commits, which is the accepted decision above. The same order applies to
-the ruleset in step 3: it must not exist while this pull request merges, so the
-first merge is not governed by a rule written blind.
-
-### Step 1 — the visibility switch
+### What was set
 
 ```bash
 gh repo edit Franiboy/dnd_dashboard --visibility public
-```
 
-`gh repo edit` prompts for the visibility change confirmation. Nothing else in
-this document has to happen first. The two dispatch secrets stay in the
-repository and are not exposed by this command: `AI_DISPATCH_TOKEN` and
-`DEPLOY_DISPATCH_TOKEN` remain repository secrets with `Actions: write` on the
-private deployment repository only. What changes is the trust model, so the
-following two settings have to be set immediately afterwards.
-
-### Step 2 — settings that only exist for a public repository
-
-```bash
-# Code scanning is free here; while private it needs Advanced Security and
-# every run would end in "CodeQL job status was configuration error".
+# Code scanning is free for a public repository. While private it needs Advanced
+# Security and every run ends in "CodeQL job status was configuration error".
 gh variable set DND_CODEQL_ENABLED --repo Franiboy/dnd_dashboard --body true
 
-# Do not hand write tokens to workflows triggered by pull requests.
-gh api -X PATCH repos/Franiboy/dnd_dashboard -F \
-  'default_workflow_permissions=read' -f \
-  'can_approve_pull_request_reviews=false' >/dev/null
+gh api -X PATCH repos/Franiboy/dnd_dashboard \
+  -F delete_branch_on_merge=true \
+  -F allow_update_branch=true
+
+# The two workflow-permission fields are NOT set through the repository
+# endpoint; see the fourth API defect below.
+gh api -X PUT repos/Franiboy/dnd_dashboard/actions/permissions/workflow \
+  -F default_workflow_permissions=read \
+  -F can_approve_pull_request_reviews=false
 ```
 
-Then in the repository settings, under Actions → General, confirm
-**"Send write tokens to workflows from pull requests"** is off and
-**"Allow GitHub Actions to create and approve pull requests"** is off. The
-dispatch job is additionally guarded by
+The two workflow-permission fields must be verified on the endpoint that owns
+them, not on the repository object:
+
+```bash
+gh api repos/Franiboy/dnd_dashboard/actions/permissions/workflow
+```
+
+The dispatch secrets were not exposed by the switch. `AI_DISPATCH_TOKEN` and
+`DEPLOY_DISPATCH_TOKEN` remain repository secrets with `Actions: write` on the
+private deployment repository only, and the dispatch job is guarded by
 `github.event.pull_request.head.repo.full_name == github.repository` and
 `github.event.pull_request.user.login == 'Franiboy'`, so a fork can neither
 reach the token nor start the private workflow.
 
-### Step 3 — the ruleset that makes `main` protected
+### `main` protection
 
-This is the part the current plan does not allow. It answers `403` until the
-repository is public, and it is what converts the "accepted risk" section above
-into an enforced rule:
+Classic branch protection, not a ruleset:
 
 ```bash
-gh api repos/Franiboy/dnd_dashboard/rulesets --input - <<'JSON'
+gh api -X PUT repos/Franiboy/dnd_dashboard/branches/main/protection --input - <<'JSON'
 {
-  "name": "main",
-  "target": "branch",
-  "enforcement": "active",
-  "bypass_actors": [],
-  "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
-  "rules": [
-    { "type": "deletion" },
-    { "type": "non_fast_forward" },
-    { "type": "pull_request",
-      "required_approving_review_count": 0,
-      "require_code_owner_review": false,
-      "required_review_thread_resolution": true },
-    { "type": "required_status_checks",
-      "strict_required_status_checks_policy": true,
-      "required_status_checks": [
-        { "context": "CI" }
-      ] }
-  ]
+  "required_status_checks": { "strict": false, "contexts": ["CI"] },
+  "enforce_admins": false,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": true,
+    "required_approving_review_count": 1,
+    "require_last_push_approval": false
+  },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
 }
 JSON
 ```
 
-**Only `CI` is required, not `CI (trusted gate)`, and that is verified rather
-than assumed.** On a maintainer pull request the trusted run reports a check
-named exactly `CI (trusted gate)`, so the name would be matchable. On a
-Dependabot pull request it does not: the job condition skips the run because
-the author is not `Franiboy`, and the check is recorded under the unevaluated
-name expression instead. A ruleset requiring `CI (trusted gate)` would therefore
-sit at "Expected — waiting for status to be reported" on every Dependabot pull
-request and block it permanently. Requiring `CI` keeps the guarantee that
-matters — nothing reaches `main` without the full suite on the current head —
-without demanding a check that some pull requests can never produce.
-`strict_required_status_checks_policy` requires it to be green on the current
-head, not just somewhere in history.
+What that means in practice, verified with a throwaway pull request rather than
+by reading the configuration back: a fresh pull request reports
+`reviewDecision: REVIEW_REQUIRED` and `mergeStateStatus: BLOCKED`. Deletion and
+force pushes are refused for everyone.
 
-The trusted gate stays enforced where it belongs: the
-`Dispatch trusted AI review` job has `needs: ci`, and the private dispatcher
-validates the `pull_request_target` run itself. It is not a merge gate, and
-this ruleset does not pretend otherwise.
+- **`enforce_admins: false` is the "except me" half.** GitHub does not allow
+  approving your own pull request, so a hard review requirement would make every
+  pull request the maintainer opens permanently unmergeable, and would also
+  block the AI review's own promotion. Letting admins bypass is what makes
+  "protected, except I can push" and "pull requests need my approval" true at
+  the same time. The cost is inherent: any account that is ever made an admin
+  gets the same bypass.
+- **Only `CI` is a required check, not `CI (trusted gate)`, and that is verified
+  rather than assumed.** On a maintainer pull request the trusted run reports a
+  check named exactly `CI (trusted gate)`. On a Dependabot pull request the job
+  is skipped by the author guard and the check is recorded under the
+  _unevaluated_ name expression, so requiring that name by context would leave
+  every Dependabot pull request at "Expected — waiting for status to be
+  reported" forever. Requiring `CI` keeps the guarantee that matters.
+- **`require_last_push_approval` is `false`, and that is forced by the
+  collaborator count.** The rule means the person who pushed last may not
+  approve. This repository has exactly one account with push access, so after
+  the maintainer's own push the requirement becomes unsatisfiable: nobody can
+  approve, because the only candidate is the one GitHub refuses to accept. The
+  UI reports it as "New changes require approval from someone other than the
+  last pusher", which reads like a permission problem and is not one.
+  `dismiss_stale_reviews` is the rule that does the intended work: any new
+  commit invalidates an existing approval, so "approve once, then push more
+  code" does not survive. It is the option to re-enable when a second person
+  with push access exists, and it is then genuinely worth having.
+- **`strict` is `false`, not `true`.** Strict mode additionally requires the
+  branch to be up to date with `main` before merging. The promotion merges a
+  pushed patch without merging `main` into the branch, so a concurrent commit to
+  `main` would block it. Non-strict still requires the check on the last push.
+- **The trusted gate is not a merge gate.** It stays enforced where it belongs:
+  the `Dispatch trusted AI review` job has `needs: ci`, and the private
+  dispatcher validates the `pull_request_target` run itself.
 
-**The review count is deliberately zero, and that is a decision, not an
-oversight.** A ruleset that requires an approving review would block the AI
-review's own promotion step: the pipeline has exactly one human, and nobody
-reviews the pull request the model opened. With `required_approving_review_count: 0`
-and a required pull request, the ruleset still does the job that actually
-protects the release: **a direct push to `main` becomes impossible**, so the only
-way to change `main` is a green pull request or a validated AI patch. What it
-does not add is a second pair of eyes, and nothing in this pipeline can. The
-`CODEOWNERS` map therefore stays advisory; `require_code_owner_review: true` is
-the right choice the moment a second person with push access exists.
+#### Four API defects that make the obvious approach fail
 
-If a second maintainer appears, set `required_approving_review_count: 1` and
-`require_code_owner_review: true`, and give the private promotion an explicit
-bypass actor (a GitHub App registered as an `Integration` actor; a
-fine-grained personal access token cannot be named as a bypass actor). Without
-that bypass actor the AI promotion starts failing closed, which is the correct
-failure but an annoying one to discover in production.
+All four were found by executing the request, not by reading the
+documentation, and each of them fails in a way that looks like success: the
+call succeeds and the intended effect is absent.
 
-### Step 4 — after the switch
+1. **The ruleset API silently discards rule parameters that are not nested under
+   `parameters`.** A create request carrying
+   `{"type": "pull_request", "required_approving_review_count": 1}` returns
+   `201 Created`, and the response body shows the rule created — with
+   `required_approving_review_count: 0`, `require_code_owner_review: false` and
+   an empty `required_status_checks` list. The protection looks installed and
+   protects nothing. The working shape is
+   `{"type": "pull_request", "parameters": { ... }}`, and the only reliable check
+   is to read the parameters back out of the response.
+2. **`PATCH` on the branch protection endpoint answers `404`.** Changing a single
+   rule with `PATCH` is the obvious incremental move and does not work. The full
+   rule set has to be resent with `PUT` — and a `PUT` that omits a rule removes
+   it, so a partial update that looks successful can drop the other rules. Same
+   failure shape as the ruleset parameters above: the request goes through and
+   the protection is quietly smaller than intended.
+3. **`PATCH` on the repository endpoint silently ignores the two workflow
+   permission fields.** `gh api -X PATCH repos/Franiboy/dnd_dashboard -F
+can_approve_pull_request_reviews=true` answers `200`, the repository object
+   comes back with the field still `null`, and reading
+   `repos/…/actions/permissions/workflow` shows the value unchanged. The fields
+   belong to `PUT /repos/{owner}/{repo}/actions/permissions/workflow`, which
+   does write them — verified by a round trip through `true` and back. The
+   failure shape is the dangerous one: the documented command looks like it
+   worked, the setting was never applied, and nothing in the repository can
+   verify it afterwards. This one was found by the AI review, which asked for
+   exactly that verification because the tree could not prove it.
+4. **`RepositoryRole` cannot be used as a bypass actor for this repository
+   through the API.** It is rejected with
+   `actor_id is required for RepositoryRole`, and supplying the repository id,
+   the owner id, or omitting `actor_id` are all rejected as well. That is what
+   the "except me" half needs, and it is why the configuration above uses
+   classic branch protection with `enforce_admins: false` instead, which
+   expresses the same intent natively. A ruleset with an empty `bypass_actors`
+   reports `current_user_can_bypass: "never"`, which in combination with a
+   required review locks the maintainer out of their own repository — so the
+   ruleset was deleted rather than left in that state.
+
+The common shape is worth naming: in three of these four, GitHub accepts the
+request, reports success, and changes nothing. Reading the value back from the
+endpoint that owns it is the only check that tells the two apart.
+
+### After the switch
 
 - `DND_PRIVATE_AUTOMATION_REF` in the source repository must still equal the
   private `main` tip. The visibility change does not touch it, but every
   dispatch verifies it and fails loudly when it is stale.
 - `SOURCE_GITHUB_TOKEN` in the private repository's `production` environment
-  existed only because the source repository was private. Once it is public, the
-  deployment can read the release assets without it; remove it after confirming
-  one successful deployment without it.
-- The private promotion's `SOURCE_READ_TOKEN` still needs `Checks: read` on this
-  repository, otherwise `GET /repos/Franiboy/dnd_dashboard/commits/<sha>/check-runs`
-  answers `403` and the promotion fails closed after pushing its patch. See the
-  section above on the promotion permission.
+  existed only because the source repository was private. Now that it is public
+  the deployment can read the release assets without it; remove it after
+  confirming one successful deployment without it.
+- CodeQL is enabled but has not run yet: the workflow triggers on a push to
+  `main` and on a schedule, and it has no `workflow_dispatch`. The next push to
+  `main` or the weekly cron produces the first analysis.
+- With `enforce_admins: false` the AI promotion token is an admin identity and
+  can bypass the review requirement. That is what keeps the designed self-merge
+  working, and it also means the human approval does not gate the AI. For pull
+  requests from anyone else the approval is structural, not advisory.
 
 ### Known blocker, independent of publication
 
