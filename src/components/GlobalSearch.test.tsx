@@ -20,7 +20,7 @@ vi.mock('../hooks/useEntityDialog', () => ({
 }));
 
 const user: SafeUser = createTestUser({
-  activePerson: 'Vimak',
+  activePerson: 'Ruvan',
   role: 'dungeon_master',
 });
 const version: VersionInfo = { aiEnabled: true, recordingEnabled: true };

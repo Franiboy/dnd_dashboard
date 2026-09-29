@@ -210,7 +210,7 @@ def _is_prompt_echo(text: str, initial_prompt: str) -> bool:
 
 def _is_amp_chain_hallucination(text: str) -> bool:
     # Hallucinated ampersand chains: "speaker&goblin1 & speaker2&speaker2 & ..."
-    # Legitimate intra-text "&" is rare (mostly "Marek & Selene Ja.").
+    # Legitimate intra-text "&" is rare (mostly "Torvald & Neris Ja.").
     # Chains with >=2 ampersands and fragmented short parts are almost always invented.
     if text.count("&") >= 2 and re.search(r"\w{2,}&\w{2,}", text):
         # Compact pairs within a longer chain are characteristic of the artifact.

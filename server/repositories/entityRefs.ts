@@ -2,7 +2,7 @@
  * Entity identity helpers shared across repositories, AI flows and tools.
  *
  * An entity is identified by its raw name plus an optional qualifier that
- * disambiguates homonyms ("Kerigan" the gnome vs "Kerigan" the paladin).
+ * disambiguates homonyms ("Halvard" the gnome vs "Halvard" the paladin).
  * Labels render as "Name (Qualifier)"; parsing back is tolerant and callers
  * should always try the untouched string as a plain name first.
  */

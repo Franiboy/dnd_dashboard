@@ -128,7 +128,7 @@ describe('requireActivePerson', () => {
   it('lets players with an assigned character pass', () => {
     const res = mockRes();
     const next = vi.fn();
-    requireActivePerson(authed({ ...baseUser, role: 'player', activePerson: 'Vimak' }), res, next);
+    requireActivePerson(authed({ ...baseUser, role: 'player', activePerson: 'Ruvan' }), res, next);
     expect(next).toHaveBeenCalled();
   });
 

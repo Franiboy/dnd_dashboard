@@ -7,7 +7,7 @@ import type { SafeUser, VersionInfo } from '../../shared/types';
 const version: VersionInfo = { aiEnabled: true, recordingEnabled: true };
 
 function user(overrides: Partial<SafeUser> = {}): SafeUser {
-  return createTestUser({ activePerson: 'Vimak', ...overrides });
+  return createTestUser({ activePerson: 'Ruvan', ...overrides });
 }
 
 describe('Home', () => {

@@ -23,7 +23,7 @@ interface EntityConfig {
 
 /**
  * Full identity of one world entity. Names alone are ambiguous in a campaign
- * ("Kerigan" the gnome vs "Kerigan" the paladin); the qualifier disambiguates.
+ * ("Halvard" the gnome vs "Halvard" the paladin); the qualifier disambiguates.
  * An empty qualifier means the plain, unqualified name.
  */
 export type { EntityRef } from './entityRefs.js';

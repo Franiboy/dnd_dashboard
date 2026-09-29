@@ -91,7 +91,7 @@ describe('buildFtsQuery', () => {
   it('defuses FTS5 query syntax and quotes', () => {
     // Without quoting, these would be valid (or invalid) FTS5 query grammar.
     expect(buildFtsQuery('a OR b NOT (c)')).toBe('"a"* "OR"* "b"* "NOT"* "(c)"*');
-    expect(buildFtsQuery('"kerigan"')).toBe('"kerigan"*');
+    expect(buildFtsQuery('"halvard"')).toBe('"halvard"*');
     expect(buildFtsQuery('title:geheim NEAR(x)')).toBe('"title:geheim"* "NEAR(x)"*');
   });
 

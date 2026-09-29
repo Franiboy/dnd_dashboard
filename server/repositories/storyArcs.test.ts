@@ -181,10 +181,10 @@ describe('story arc entity links (m:n)', () => {
     const entry = insertEntry('tester', arc.id, 1);
 
     // Auto-link through the diary entry funnel.
-    setDiaryEntryPersons(entry, ['Vimak']);
-    setDiaryEntryPersons(entry, ['Vimak']);
-    expect(listEntitiesForArc(arc.id).persons).toEqual([{ name: 'Vimak', qualifier: '' }]);
-    expect(listArcIdsForEntity('persons', 'Vimak')).toContain(arc.id);
+    setDiaryEntryPersons(entry, ['Ruvan']);
+    setDiaryEntryPersons(entry, ['Ruvan']);
+    expect(listEntitiesForArc(arc.id).persons).toEqual([{ name: 'Ruvan', qualifier: '' }]);
+    expect(listArcIdsForEntity('persons', 'Ruvan')).toContain(arc.id);
 
     // Manual removal is authoritative until the next run re-links.
     db.prepare('DELETE FROM story_arc_entities WHERE arc_id = ?').run(arc.id);
@@ -200,11 +200,11 @@ describe('story arc entity links (m:n)', () => {
   it('keeps one entity in several arcs', () => {
     const a = createStoryArc({ name: 'Arc-X' });
     const b = createStoryArc({ name: 'Arc-Y' });
-    ensureEntityExists('persons', 'Gideon');
-    linkStoryArcEntity(a.id, 'persons', { name: 'Gideon', qualifier: '' });
-    linkStoryArcEntity(b.id, 'persons', { name: 'Gideon', qualifier: '' });
-    linkStoryArcEntity(a.id, 'persons', { name: 'Gideon', qualifier: '' });
-    expect(listArcIdsForEntity('persons', 'Gideon').sort()).toEqual([a.id, b.id].sort());
+    ensureEntityExists('persons', 'Ilvane');
+    linkStoryArcEntity(a.id, 'persons', { name: 'Ilvane', qualifier: '' });
+    linkStoryArcEntity(b.id, 'persons', { name: 'Ilvane', qualifier: '' });
+    linkStoryArcEntity(a.id, 'persons', { name: 'Ilvane', qualifier: '' });
+    expect(listArcIdsForEntity('persons', 'Ilvane').sort()).toEqual([a.id, b.id].sort());
   });
 
   it('links case-insensitively: differently cased identities share one row', () => {
@@ -243,13 +243,13 @@ describe('story arc entity links (m:n)', () => {
 
 describe('story arc main-character auto-link', () => {
   it("files the approved users' active persons into every new arc", () => {
-    ensureEntityExists('persons', 'Calzone');
-    ensureEntityExists('persons', 'Vimak');
+    ensureEntityExists('persons', 'Ilvane');
+    ensureEntityExists('persons', 'Ruvan');
     ensureEntityExists('persons', 'Privat');
-    insertUser('u1', 'Calzone');
+    insertUser('u1', 'Ilvane');
     // Case/whitespace variants canonicalize onto the same person row.
-    insertUser('u2', ' vimak ');
-    insertUser('u3', 'VIMAK');
+    insertUser('u2', ' ruvan ');
+    insertUser('u3', 'RUVAN');
     insertUser('u4', null);
     // Unapproved users and names without a world entity row stay out.
     insertUser('u5', 'Privat', false);
@@ -257,16 +257,16 @@ describe('story arc main-character auto-link', () => {
 
     const arc = createStoryArc({ name: 'Hauptcharakter-Arc' });
     expect(listEntitiesForArc(arc.id).persons).toEqual([
-      { name: 'Calzone', qualifier: '' },
-      { name: 'Vimak', qualifier: '' },
+      { name: 'Ilvane', qualifier: '' },
+      { name: 'Ruvan', qualifier: '' },
     ]);
     expect(getStoryArc(arc.id)!.entityCount).toBe(2);
 
     // Every subsequent arc gets the same seed, not just the first one.
     const second = createStoryArc({ name: 'Zweiter Hauptcharakter-Arc' });
     expect(listEntitiesForArc(second.id).persons).toEqual([
-      { name: 'Calzone', qualifier: '' },
-      { name: 'Vimak', qualifier: '' },
+      { name: 'Ilvane', qualifier: '' },
+      { name: 'Ruvan', qualifier: '' },
     ]);
 
     expect(listArcIdsForEntity('persons', 'Privat')).toEqual([]);

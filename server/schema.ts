@@ -314,7 +314,7 @@ export const schema: Record<string, TableDef> = {
     columns: {
       id: { type: 'INTEGER', primaryKey: true, autoIncrement: true },
       name: { type: 'TEXT', notNull: true },
-      // Disambiguator for homonyms ("Kerigan" the gnome vs "Kerigan" the
+      // Disambiguator for homonyms ("Halvard" the gnome vs "Halvard" the
       // paladin). Empty string means the plain name. Legacy tables carry a
       // UNIQUE(name) constraint instead; migrations.ts rebuilds them.
       qualifier: { type: 'TEXT', notNull: true, default: "''" },

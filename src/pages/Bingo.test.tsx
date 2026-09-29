@@ -22,7 +22,7 @@ const game: BingoGame = {
     {
       id: 'player-1',
       userId: user.id,
-      name: 'Alex',
+      name: 'Riven',
       role: 'player',
       status: 'bingo',
       board: null,
@@ -44,8 +44,8 @@ beforeEach(() => {
 
 describe('Bingo page localization', () => {
   it.each([
-    ['de', 'Alex hat BINGO!', 'Trete dem Spiel bei...'],
-    ['en', 'Alex has BINGO!', 'Joining the game...'],
+    ['de', 'Riven hat BINGO!', 'Trete dem Spiel bei...'],
+    ['en', 'Riven has BINGO!', 'Joining the game...'],
   ] as const)('renders the %s board state and join message', (language, announcement, joining) => {
     renderWithProviders(<Bingo user={user} />, { user, language });
 

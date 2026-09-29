@@ -489,8 +489,8 @@ export type EntityType = 'persons' | 'organizations' | 'locations' | 'items';
  * One known entity of the world knowledge graph.
  *
  * Names alone are not unique in a campaign (two different beings can both be
- * called "Kerigan"). The optional qualifier disambiguates them, e.g.
- * "Kerigan" + "Begleiter von Calzone". Uniqueness is (name, qualifier);
+ * called "Halvard"). The optional qualifier disambiguates them, e.g.
+ * "Halvard" + "Begleiter von Ilvane". Uniqueness is (name, qualifier);
  * an empty qualifier means the plain, unambiguous name.
  */
 export interface EntityListItem {

@@ -50,7 +50,7 @@ export function detectMention(textBeforeCursor: string): Omit<MentionQuery, 'cur
 /**
  * Client-side filter over the known entity mappings. Matches against the
  * canonical name and all aliases, case-insensitive. Prefix hits rank before
- * substring hits so typing "@Keri" surfaces "Kerigan" first.
+ * substring hits so typing "@Halv" surfaces "Halvard" first.
  */
 export function filterEntityMentions(
   mappings: EntityMapping[],

@@ -91,7 +91,7 @@ describe('isAppVisible', () => {
 
   it('shows the diary for players with an assigned character', () => {
     const notes = getAppByPath('/tagebuch')!;
-    expect(isAppVisible(notes, makeUser({ activePerson: 'Vimak' }), VERSION)).toBe(true);
+    expect(isAppVisible(notes, makeUser({ activePerson: 'Ruvan' }), VERSION)).toBe(true);
   });
 
   it('exempts dungeon masters and admins from the character requirement', () => {

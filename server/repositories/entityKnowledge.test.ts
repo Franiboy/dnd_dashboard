@@ -30,9 +30,9 @@ describe('entityKnowledge repository', () => {
   it('creates an entry with a validity window', () => {
     const entry = createEntityKnowledge(
       'persons',
-      'Vimak',
+      'Ruvan',
       'Beziehungen',
-      'Steht Gideon wohlgesonnen',
+      'Steht Ilvane wohlgesonnen',
       'ai_extracted',
       '',
       3,
@@ -47,7 +47,7 @@ describe('entityKnowledge repository', () => {
       'persons',
       'Timeline End Person',
       null,
-      'Steht Gideon gut',
+      'Steht Ilvane gut',
       'manual'
     );
     expect(listActiveEntityKnowledge('persons', 'Timeline End Person')).toHaveLength(1);

@@ -17,7 +17,7 @@ const game: BingoGame = {
     {
       id: 'player-1',
       userId: user.id,
-      name: 'Alex',
+      name: 'Riven',
       role: 'player',
       status: 'playing',
       board: null,
@@ -38,6 +38,6 @@ describe('PlayerList localization', () => {
 
     expect(screen.getByTitle(wins)).not.toBeNull();
     expect(screen.getByText(status)).not.toBeNull();
-    expect(screen.getByText(/Alex/)).not.toBeNull();
+    expect(screen.getByText(/Riven/)).not.toBeNull();
   });
 });

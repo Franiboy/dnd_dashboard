@@ -9,15 +9,15 @@ import type { Language, SafeUser } from '../../shared/types.js';
 
 const users: SafeUser[] = [
   {
-    id: 'u-fenwick',
-    username: 'fenwick',
-    displayName: 'Fenwick',
+    id: 'u-rowan',
+    username: 'rowan',
+    displayName: 'Rowan',
     avatarUrl: null,
     isAdmin: false,
     isApproved: true,
     role: 'player',
     disabledApps: [],
-    activePerson: 'Calzone',
+    activePerson: 'Ilvane',
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
     themePrimary: null,
@@ -25,15 +25,15 @@ const users: SafeUser[] = [
     isInitialAdmin: false,
   },
   {
-    id: 'u-selenex',
-    username: 'selenex',
-    displayName: 'Selene',
+    id: 'u-nerisx',
+    username: 'nerisx',
+    displayName: 'Neris',
     avatarUrl: null,
     isAdmin: false,
     isApproved: true,
     role: 'player',
     disabledApps: [],
-    activePerson: 'Vimak',
+    activePerson: 'Ruvan',
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
     themePrimary: null,
@@ -41,15 +41,15 @@ const users: SafeUser[] = [
     isInitialAdmin: false,
   },
   {
-    id: 'u-jori',
-    username: 'warden_jori',
-    displayName: 'xWarden / Jori',
+    id: 'u-tovi',
+    username: 'warden_tovi',
+    displayName: 'xWarden / Tovi',
     avatarUrl: null,
     isAdmin: false,
     isApproved: true,
     role: 'player',
     disabledApps: [],
-    activePerson: 'Heinz-Hartmut',
+    activePerson: 'Bardwyn',
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
     themePrimary: null,
@@ -57,15 +57,15 @@ const users: SafeUser[] = [
     isInitialAdmin: false,
   },
   {
-    id: 'u-arrow',
-    username: 'arrowmaster',
-    displayName: 'Arrowmaster',
+    id: 'u-kestrel',
+    username: 'kestrel',
+    displayName: 'Kestrel',
     avatarUrl: null,
     isAdmin: false,
     isApproved: true,
     role: 'player',
     disabledApps: [],
-    activePerson: 'Archybald',
+    activePerson: 'Aldric',
     autoSessionToDiary: true,
     autoAcceptSessionDiary: false,
     themePrimary: null,
@@ -73,9 +73,9 @@ const users: SafeUser[] = [
     isInitialAdmin: false,
   },
   {
-    id: 'u-marek',
-    username: 'dm_marek',
-    displayName: 'Marek',
+    id: 'u-torvald',
+    username: 'dm_torvald',
+    displayName: 'Torvald',
     avatarUrl: null,
     isAdmin: false,
     isApproved: true,
@@ -89,9 +89,9 @@ const users: SafeUser[] = [
     isInitialAdmin: false,
   },
   {
-    id: 'u-lorros',
-    username: 'lorros_',
-    displayName: 'Lorros',
+    id: 'u-pell',
+    username: 'pell_',
+    displayName: 'Pell',
     avatarUrl: null,
     isAdmin: false,
     isApproved: true,
@@ -116,19 +116,19 @@ function annotate(
 
 describe('resolveTranscriptSpeaker', () => {
   it('matches the exact display name', () => {
-    expect(resolveTranscriptSpeaker('Selene', users)?.id).toBe('u-selenex');
+    expect(resolveTranscriptSpeaker('Neris', users)?.id).toBe('u-nerisx');
   });
 
   it('matches the username as fallback', () => {
-    expect(resolveTranscriptSpeaker('selenex', users)?.id).toBe('u-selenex');
+    expect(resolveTranscriptSpeaker('nerisx', users)?.id).toBe('u-nerisx');
   });
 
   it('matches server nicknames via normalized containment', () => {
-    expect(resolveTranscriptSpeaker('Warden | Jori', users)?.id).toBe('u-jori');
+    expect(resolveTranscriptSpeaker('Warden | Tovi', users)?.id).toBe('u-tovi');
   });
 
   it('matches near-identical transcription typos via edit distance', () => {
-    expect(resolveTranscriptSpeaker('fenwic', users)?.id).toBe('u-fenwick');
+    expect(resolveTranscriptSpeaker('rowam', users)?.id).toBe('u-rowan');
   });
 
   it('returns null for unknown or too short names', () => {
@@ -159,69 +159,65 @@ describe('resolveTranscriptDisplayLanguage', () => {
 describe('annotateTranscriptSpeakers', () => {
   it('replaces line-level speakers with character labels and marks the author', () => {
     const transcript = [
-      '[10:00] Marek: Die Arena liegt vor euch.',
-      '[10:05] Selene: Ich betrete die Arena.',
-      '[10:10] Fenwick: Ich bleibe hier.',
+      '[10:00] Torvald: Die Arena liegt vor euch.',
+      '[10:05] Neris: Ich betrete die Arena.',
+      '[10:10] Rowan: Ich bleibe hier.',
     ].join('\n');
-    const result = annotate(transcript, 'u-fenwick');
+    const result = annotate(transcript, 'u-rowan');
 
-    expect(result.transcript).toContain('[10:00] Spielleiter (Marek): Die Arena liegt vor euch.');
-    expect(result.transcript).toContain('[10:05] Vimak (Selene): Ich betrete die Arena.');
-    expect(result.transcript).toContain('[10:10] Calzone (Fenwick) (du): Ich bleibe hier.');
+    expect(result.transcript).toContain('[10:00] Spielleiter (Torvald): Die Arena liegt vor euch.');
+    expect(result.transcript).toContain('[10:05] Ruvan (Neris): Ich betrete die Arena.');
+    expect(result.transcript).toContain('[10:10] Ilvane (Rowan) (du): Ich bleibe hier.');
   });
 
   it('annotates hour-format timestamps', () => {
-    const result = annotate('[01:05:00] Fenwick: Ich bin noch da.', 'u-fenwick');
-    expect(result.transcript).toBe('[01:05:00] Calzone (Fenwick) (du): Ich bin noch da.');
+    const result = annotate('[01:05:00] Rowan: Ich bin noch da.', 'u-rowan');
+    expect(result.transcript).toBe('[01:05:00] Ilvane (Rowan) (du): Ich bin noch da.');
   });
 
-  it('matches the fuzzy nickname "Warden | Jori"', () => {
-    const result = annotate('[10:05] Warden | Jori: Ich wette fünf Gold.');
-    expect(result.transcript).toContain(
-      '[10:05] Heinz-Hartmut (Warden | Jori): Ich wette fünf Gold.'
-    );
+  it('matches the fuzzy nickname "Warden | Tovi"', () => {
+    const result = annotate('[10:05] Warden | Tovi: Ich wette fünf Gold.');
+    expect(result.transcript).toContain('[10:05] Bardwyn (Warden | Tovi): Ich wette fünf Gold.');
   });
 
   it('replaces Whisper attribution artifacts inside the text', () => {
     const transcript = [
-      '[10:00] Marek: Selene:"Du bist dran."',
-      '[10:01] Selene: fenwick:"Pass auf."',
-      '[10:02] Marek: Selene& Marek & sagen wir es so.',
+      '[10:00] Torvald: Neris:"Du bist dran."',
+      '[10:01] Neris: rowan:"Pass auf."',
+      '[10:02] Torvald: Neris& Torvald & sagen wir es so.',
     ].join('\n');
-    const result = annotate(transcript, 'u-fenwick');
+    const result = annotate(transcript, 'u-rowan');
 
     expect(result.transcript).toContain(
-      '[10:00] Spielleiter (Marek): Vimak (Selene):"Du bist dran."'
+      '[10:00] Spielleiter (Torvald): Ruvan (Neris):"Du bist dran."'
     );
+    expect(result.transcript).toContain('[10:01] Ruvan (Neris): Ilvane (Rowan) (du):"Pass auf."');
     expect(result.transcript).toContain(
-      '[10:01] Vimak (Selene): Calzone (Fenwick) (du):"Pass auf."'
-    );
-    expect(result.transcript).toContain(
-      '[10:02] Spielleiter (Marek): Vimak (Selene)& Spielleiter (Marek) & sagen wir es so.'
+      '[10:02] Spielleiter (Torvald): Ruvan (Neris)& Spielleiter (Torvald) & sagen wir es so.'
     );
   });
 
-  it('replaces trailing ampersand chain artifacts (e.g. Marek & Selene)', () => {
-    const transcript = '[04:26] Selene: Marek & Selene Ja. Ah, so rum';
+  it('replaces trailing ampersand chain artifacts (e.g. Torvald & Neris)', () => {
+    const transcript = '[04:26] Neris: Torvald & Neris Ja. Ah, so rum';
     const result = annotate(transcript);
     expect(result.transcript).toBe(
-      '[04:26] Vimak (Selene): Spielleiter (Marek) & Vimak (Selene) Ja. Ah, so rum'
+      '[04:26] Ruvan (Neris): Spielleiter (Torvald) & Ruvan (Neris) Ja. Ah, so rum'
     );
   });
 
   it('handles ampersand chains with various spacing', () => {
     const cases: [string, string][] = [
       [
-        '[10:00] Marek: Marek & Selene Ja',
-        '[10:00] Spielleiter (Marek): Spielleiter (Marek) & Vimak (Selene) Ja',
+        '[10:00] Torvald: Torvald & Neris Ja',
+        '[10:00] Spielleiter (Torvald): Spielleiter (Torvald) & Ruvan (Neris) Ja',
       ],
       [
-        '[10:00] Marek: Marek&Selene Ja',
-        '[10:00] Spielleiter (Marek): Spielleiter (Marek)&Vimak (Selene) Ja',
+        '[10:00] Torvald: Torvald&Neris Ja',
+        '[10:00] Spielleiter (Torvald): Spielleiter (Torvald)&Ruvan (Neris) Ja',
       ],
       [
-        '[10:00] Marek: Selene& Marek & Selene Ja',
-        '[10:00] Spielleiter (Marek): Vimak (Selene)& Spielleiter (Marek) & Vimak (Selene) Ja',
+        '[10:00] Torvald: Neris& Torvald & Neris Ja',
+        '[10:00] Spielleiter (Torvald): Ruvan (Neris)& Spielleiter (Torvald) & Ruvan (Neris) Ja',
       ],
     ];
     for (const [input, expected] of cases) {
@@ -230,34 +226,34 @@ describe('annotateTranscriptSpeakers', () => {
   });
 
   it('leaves unknown speakers and normal speech mentions unchanged', () => {
-    const transcript = '[10:00] Floh: Selene ist ein Goliath. Vimak ist auch da.';
-    const result = annotate(transcript, 'u-fenwick');
+    const transcript = '[10:00] Floh: Neris ist ein Goliath. Ruvan ist auch da.';
+    const result = annotate(transcript, 'u-rowan');
     expect(result.transcript).toBe(transcript);
   });
 
   it('keeps players without a character label unchanged', () => {
-    const result = annotate('[10:00] Lorros: Hallo zusammen.');
-    expect(result.transcript).toBe('[10:00] Lorros: Hallo zusammen.');
+    const result = annotate('[10:00] Pell: Hallo zusammen.');
+    expect(result.transcript).toBe('[10:00] Pell: Hallo zusammen.');
   });
 
   it('builds mapping lines for the prompt', () => {
     const transcript = [
-      '[10:00] Marek: Los.',
-      '[10:01] Selene: Ich gehe.',
-      '[10:02] Fenwick: Ich auch.',
-      '[10:03] Warden | Jori: Warten.',
-      '[10:04] Arrowmaster: Nee.',
-      '[10:05] Lorros: Hallo.',
+      '[10:00] Torvald: Los.',
+      '[10:01] Neris: Ich gehe.',
+      '[10:02] Rowan: Ich auch.',
+      '[10:03] Warden | Tovi: Warten.',
+      '[10:04] Kestrel: Nee.',
+      '[10:05] Pell: Hallo.',
     ].join('\n');
-    const result = annotate(transcript, 'u-fenwick');
+    const result = annotate(transcript, 'u-rowan');
 
     expect(result.mappingLines).toEqual([
-      '- Marek → Spielleiter (DM, kein Charakter)',
-      '- Selene → Vimak',
-      '- Fenwick → Calzone (dein Charakter)',
-      '- Warden | Jori → Heinz-Hartmut',
-      '- Arrowmaster → Archybald',
-      '- Lorros → keinem Charakter zugeordnet',
+      '- Torvald → Spielleiter (DM, kein Charakter)',
+      '- Neris → Ruvan',
+      '- Rowan → Ilvane (dein Charakter)',
+      '- Warden | Tovi → Bardwyn',
+      '- Kestrel → Aldric',
+      '- Pell → keinem Charakter zugeordnet',
     ]);
   });
 });

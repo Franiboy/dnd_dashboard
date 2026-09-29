@@ -45,7 +45,7 @@ export const world = {
     title: 'Wissen einordnen',
     description:
       'Gib einen Freitext ein. Die KI ordnet die Fakten passenden Entitäten zu, legt Wissenseinträge an und markiert widersprüchliche Einträge als gelöscht.',
-    placeholder: 'z. B. Vimak und Gideon gehören der Wagenwacht an.',
+    placeholder: 'z. B. Ruvan und Ilvane gehören der Grenzwacht an.',
     cancel: 'Abbrechen',
     action: 'Einordnen',
     processing: 'Wird eingeordnet...',
@@ -99,7 +99,7 @@ export const world = {
       title: 'Wissen korrigieren',
       description:
         'Beschreibe, was am gespeicherten Wissen falsch ist. Die KI prüft die betroffenen Entitäten, durchsucht die Tagebucheinträge zur Verifikation (z. B. um „wann“ etwas passiert ist), setzt Zeitpunkte und Gültigkeitsfenster sauber, markiert widersprüchliche Einträge als gelöscht, legt korrigierte Einträge an und aktualisiert die Zusammenfassungen.',
-      placeholder: 'z. B. Vimak gehört nicht der Wagenwacht an, sondern den Silberkrähen.',
+      placeholder: 'z. B. Ruvan gehört nicht der Grenzwacht an, sondern den Silberadler.',
       cancel: 'Abbrechen',
       action: 'Berichtigen',
       processing: 'Wird berichtigt...',
@@ -123,7 +123,7 @@ export const world = {
     identityDescription: 'Unter diesem Namen wird die Entität „{type}“ in den Einträgen geführt.',
     qualifier: 'Qualifier',
     optional: '(optional)',
-    qualifierPlaceholder: 'z. B. Begleiter von Calzone',
+    qualifierPlaceholder: 'z. B. Begleiter von Ilvane',
     qualifierDescription: 'Unterscheidet Entitäten mit gleichem Namen. Anzeige:',
     autosave: {
       saving: 'Speichert…',
