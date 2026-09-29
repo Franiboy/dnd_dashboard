@@ -42,9 +42,8 @@ rather than only by this paragraph.
 ## Branch protection on `main`
 
 `main` is protected. A pull request must be approved by the maintainer, the
-`CODEOWNERS` review applies, stale approvals are dismissed on new pushes, the
-last pushable commit needs its own approval, `CI` must be green, and neither
-force pushes nor branch deletion are allowed.
+`CODEOWNERS` review applies, stale approvals are dismissed on new pushes, `CI`
+must be green, and neither force pushes nor branch deletion are allowed.
 
 The maintainer is exempt, by design. GitHub does not allow approving your own
 pull request, so a hard review requirement would make every pull request the
@@ -437,7 +436,7 @@ gh api -X PUT repos/Franiboy/dnd_dashboard/branches/main/protection --input - <<
     "dismiss_stale_reviews": true,
     "require_code_owner_reviews": true,
     "required_approving_review_count": 1,
-    "require_last_push_approval": true
+    "require_last_push_approval": false
   },
   "restrictions": null,
   "allow_force_pushes": false,
@@ -465,6 +464,17 @@ force pushes are refused for everyone.
   _unevaluated_ name expression, so requiring that name by context would leave
   every Dependabot pull request at "Expected — waiting for status to be
   reported" forever. Requiring `CI` keeps the guarantee that matters.
+- **`require_last_push_approval` is `false`, and that is forced by the
+  collaborator count.** The rule means the person who pushed last may not
+  approve. This repository has exactly one account with push access, so after
+  the maintainer's own push the requirement becomes unsatisfiable: nobody can
+  approve, because the only candidate is the one GitHub refuses to accept. The
+  UI reports it as "New changes require approval from someone other than the
+  last pusher", which reads like a permission problem and is not one.
+  `dismiss_stale_reviews` is the rule that does the intended work: any new
+  commit invalidates an existing approval, so "approve once, then push more
+  code" does not survive. It is the option to re-enable when a second person
+  with push access exists, and it is then genuinely worth having.
 - **`strict` is `false`, not `true`.** Strict mode additionally requires the
   branch to be up to date with `main` before merging. The promotion merges a
   pushed patch without merging `main` into the branch, so a concurrent commit to
@@ -473,10 +483,10 @@ force pushes are refused for everyone.
   the `Dispatch trusted AI review` job has `needs: ci`, and the private
   dispatcher validates the `pull_request_target` run itself.
 
-#### Two API defects that make the obvious approach fail
+#### Three API defects that make the obvious approach fail
 
-Both were found by executing the request, not by reading the documentation, and
-both fail in a way that looks like success.
+All three were found by executing the request, not by reading the
+documentation, and each of them fails in a way that looks like success.
 
 1. **The ruleset API silently discards rule parameters that are not nested under
    `parameters`.** A create request carrying
@@ -487,7 +497,13 @@ both fail in a way that looks like success.
    protects nothing. The working shape is
    `{"type": "pull_request", "parameters": { ... }}`, and the only reliable check
    is to read the parameters back out of the response.
-2. **`RepositoryRole` cannot be used as a bypass actor for this repository
+2. **`PATCH` on the branch protection endpoint answers `404`.** Changing a single
+   rule with `PATCH` is the obvious incremental move and does not work. The full
+   rule set has to be resent with `PUT` — and a `PUT` that omits a rule removes
+   it, so a partial update that looks successful can drop the other rules. Same
+   failure shape as the ruleset parameters above: the request goes through and
+   the protection is quietly smaller than intended.
+3. **`RepositoryRole` cannot be used as a bypass actor for this repository
    through the API.** It is rejected with `actor_id is required for
 RepositoryRole`, and supplying the repository id, the owner id, or omitting
    `actor_id` are all rejected as well. That is what the "except me" half needs,
