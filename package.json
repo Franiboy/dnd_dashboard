@@ -47,7 +47,7 @@
     "isomorphic-dompurify": "^4.2.0",
     "jsonwebtoken": "^9.0.3",
     "libsodium-wrappers": "^0.8.4",
-    "quill": "2.0.2",
+    "quill": "2.0.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-quill-new": "^3.8.3",
@@ -67,7 +67,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^24.13.6",
+    "@types/node": "^26.6.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
@@ -92,7 +92,7 @@
     "*.{json,md,yml,yaml,css,html}": "prettier --write"
   },
   "overrides": {
-    "quill": "2.0.2",
+    "quill": "2.0.3",
     "tar": "7.5.22"
   }
 }
