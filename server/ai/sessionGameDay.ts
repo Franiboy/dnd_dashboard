@@ -100,6 +100,31 @@ export async function detectSessionGameDay(
     return { gameDay: session.gameDay, gameDayEnd: session.gameDayEnd ?? session.gameDay };
   }
 
+  // Wait with detection while an older session of the same arc still has no
+  // game day: without the predecessor day no reliable continuation is possible,
+  // so leave this session open (null) instead of guessing nextGameDay.
+  try {
+    const predecessor = db
+      .prepare(
+        `SELECT id FROM recording_sessions
+          WHERE started_at < (SELECT started_at FROM recording_sessions WHERE id = ?)
+            AND arc_id IS (SELECT arc_id FROM recording_sessions WHERE id = ?)
+            AND game_day IS NULL
+          ORDER BY started_at ASC
+          LIMIT 1`
+      )
+      .get(sessionId, sessionId) as { id: number } | undefined;
+    if (predecessor) {
+      log.info(
+        `Session ${sessionId} left open: predecessor session ${predecessor.id} has no game day yet`
+      );
+      return { gameDay: null, gameDayEnd: null };
+    }
+  } catch {
+    // If the check fails, fall through to the AI run (fail-open for analysis,
+    // the AI itself must still leave the day open when evidence is unclear).
+  }
+
   const workDir = getSessionWorkDir(sessionId);
   mkdirSync(workDir, { recursive: true });
   const workFile = getSessionWorkFile(sessionId);
@@ -140,7 +165,10 @@ export async function detectSessionGameDay(
       `- Aktueller Spieltag der Kampagne: ${currentGameDay ?? 'unbekannt (noch kein Spieltag gesetzt)'}.`,
       `- Current campaign game day: ${currentGameDay ?? 'unknown (no game day has been set yet)'}.`
     ),
-    t(`- Nächster freier Spieltag: ${nextGameDay}.`, `- Next available game day: ${nextGameDay}.`),
+    t(
+      `- Nächster freier Spieltag: ${nextGameDay} (nur Info, kein Default).`,
+      `- Next available game day: ${nextGameDay} (information only, not a default).`
+    ),
     t(
       `- Bekannte Campaign-Tage: ${campaignDays || '(noch keine)'}.`,
       `- Known campaign days: ${campaignDays || '(none yet)'}.`
@@ -159,12 +187,12 @@ export async function detectSessionGameDay(
     '',
     t('Vorgehen:', 'Procedure:'),
     t(
-      `1. Lies die Datei ${workFile} mit dem read-Tool. Sie enthält das vollständige, ggf. verbesserte Transkript (mit Timestamps [MM:SS]/[HH:MM:SS]).`,
-      `1. Read the file ${workFile} with the read tool. It contains the complete, possibly improved transcript (with timestamps [MM:SS]/[HH:MM:SS]).`
+      `1. Lies PFLICHTGEMÄSS die Datei ${workFile} mit dem read-Tool. Sie enthält das vollständige, ggf. verbesserte Transkript (mit Timestamps [MM:SS]/[HH:MM:SS]). Ohne diesen Datei-Read darfst du kein set_session_game_day aufrufen.`,
+      `1. You MUST read the file ${workFile} with the read tool. It contains the complete, possibly improved transcript (with timestamps [MM:SS]/[HH:MM:SS]). You must not call set_session_game_day without this file read.`
     ),
     t(
-      `2. Nutze optional get_previous_session_summaries(sessionId=${sessionId}) und get_session_summary für narrativen Kontext, falls die Tageszuordnung unklar ist.`,
-      `2. Optionally use get_previous_session_summaries(sessionId=${sessionId}) and get_session_summary for narrative context if the day assignment is unclear.`
+      `2. Falls die Tageszuordnung aus dem Transkript allein unklar bleibt, kannst du ergänzend get_previous_session_summaries(sessionId=${sessionId}) und get_session_summary für narrativen Kontext nutzen.`,
+      `2. If the day assignment remains unclear from the transcript alone, you may additionally use get_previous_session_summaries(sessionId=${sessionId}) and get_session_summary for narrative context.`
     ),
     t(
       '3. Analysiere das Transkript auf Zeit-Hinweise:',
@@ -196,8 +224,8 @@ export async function detectSessionGameDay(
       "   - Otherwise, if the content directly continues the previous session (same scene, no time jump), use that session's end day."
     ),
     t(
-      '   - Sonst: nutze den nächsten freien Tag (nextGameDay) als Start. Rate bewusst – lasse NICHT null.',
-      '   - Otherwise, use the next available day (nextGameDay) as the start. Make a deliberate estimate; do NOT leave it null.'
+      '   - Sonst: rufe KEIN Tool auf und lasse den Spieltag offen (null). Rate NICHT nextGameDay und erfinde keinen Tag.',
+      '   - Otherwise: call NO tool and leave the game day open (null). Do NOT guess nextGameDay and do not invent a day.'
     ),
     t('5. Bestimme endDay:', '5. Determine endDay:'),
     t(
@@ -213,22 +241,22 @@ export async function detectSessionGameDay(
       '   - Without a day change: end = start. The maximum span is 30 days (gameDayEnd - gameDay <= 30).'
     ),
     t(
-      `6. Rufe genau einmal set_session_game_day(sessionId=${sessionId}, gameDay, gameDayEnd) auf. gameDayEnd kann = gameDay sein für Single-Day.`,
-      `6. Call set_session_game_day(sessionId=${sessionId}, gameDay, gameDayEnd) exactly once. gameDayEnd may equal gameDay for a single-day session.`
+      `6. Rufe NUR bei klarer Transkript-Evidenz genau einmal set_session_game_day(sessionId=${sessionId}, gameDay, gameDayEnd) auf. gameDayEnd kann = gameDay sein für Single-Day. Bei Unsicherheit: kein Tool-Aufruf, offen lassen.`,
+      `6. Call set_session_game_day(sessionId=${sessionId}, gameDay, gameDayEnd) exactly once ONLY with clear transcript evidence. gameDayEnd may equal gameDay for a single-day session. If uncertain: no tool call, leave open.`
     ),
     t(
-      '7. Gib danach nur eine kurze Bestätigung aus, z. B. "Spieltag gesetzt: X bis Y".',
-      '7. Then output only a short confirmation, for example "Game day set: X through Y".'
+      '7. Gib danach nur eine kurze Bestätigung aus, z. B. "Spieltag gesetzt: X bis Y" oder "Spieltag offen gelassen: keine klare Evidenz".',
+      '7. Then output only a short confirmation, for example "Game day set: X through Y" or "Game day left open: no clear evidence".'
     ),
     '',
     t('Wichtig:', 'Important:'),
     t(
-      '- Du MUSST immer set_session_game_day aufrufen – auch bei Unsicherheit mit bester Schätzung (Bereich raten). Niemals ohne Tool-Aufruf enden.',
-      '- You MUST always call set_session_game_day, even when uncertain, using your best estimate (guess a range if necessary). Never finish without the tool call.'
+      '- Du darfst set_session_game_day NUR mit klarer Transkript-Evidenz (explizite Tagesnennung oder eindeutige Long-Rest-Kette mit Vorgänger-Anschluss) aufrufen. Bei Unsicherheit: KEIN Tool-Aufruf, offen lassen. Niemals raten.',
+      '- You may call set_session_game_day ONLY with clear transcript evidence (explicit day mention or an unambiguous long-rest chain continuing the predecessor). If uncertain: NO tool call, leave open. Never guess.'
     ),
     t(
-      '- Halte dich an die Transkript-Hinweise, erfinke aber keinen Widerspruch: wenn unklar, nimm Fortschreibung (previous.End+1 oder nextGameDay).',
-      '- Follow the transcript clues but do not invent a contradiction: if unclear, continue from the previous session (previous.End+1 or nextGameDay).'
+      '- Halte dich strikt an die Transkript-Hinweise (Long Rest / Übernachtung = Tageswechsel, Short Rest = keiner). nextGameDay ist nur Info, kein Default.',
+      '- Strictly follow the transcript clues (long rest / overnight stay = day change, short rest = none). nextGameDay is information only, not a default.'
     ),
     t('- Verwende nur positive ganze Zahlen.', '- Use positive integers only.'),
     t(
