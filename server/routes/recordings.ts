@@ -669,10 +669,14 @@ router.post('/:id/detect-game-day', requireAdmin, aiRateLimit, async (req: AuthR
       force: !!force,
     });
     if (result.gameDay === null) {
-      log.error(`detectSessionGameDay returned null for session ${id}`);
-      throw new AppError(500, 'KI-Ermittlung des Spieltags ist fehlgeschlagen', {
-        messageKey: 'errors.recordings.gameDayDetectionFailed',
+      log.info(`detectSessionGameDay left session ${id} open (no clear evidence)`);
+      broadcastAiLog({
+        message: 'Spieltag offen gelassen: keine klare Evidenz im Transkript.',
       });
+      emitSessionsUpdated();
+      const updated = getSessionById(id);
+      res.json({ session: updated ? withAnnotatedTranscript(updated, req) : updated });
+      return;
     }
     broadcastAiLog({
       message: `Spieltag ermittelt: ${result.gameDay}–${result.gameDayEnd ?? result.gameDay}.`,
