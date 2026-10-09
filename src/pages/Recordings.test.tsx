@@ -33,9 +33,10 @@ const session: RecordingSession = {
   guildId: 'guild',
   channelId: 'channel',
   createdBy: 'user',
-  startedAt: '2026-09-24T12:00:00.000Z',
+  // Relative to now so the session stays inside the 14-day delete window.
+  startedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
   transcriptionLanguage: 'de',
-  stoppedAt: '2026-09-24T14:00:00.000Z',
+  stoppedAt: new Date(Date.now() - 22 * 60 * 60 * 1000).toISOString(),
   directory: '/tmp/session',
   transcript: null,
   error: 'Transkription fehlgeschlagen: whisper failed',
