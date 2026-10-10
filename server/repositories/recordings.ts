@@ -353,6 +353,35 @@ export function updateSession(
   db.prepare(`UPDATE recording_sessions SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 }
 
+export interface ExpiredAudioSession {
+  id: number;
+  name: string;
+  startedAt: string;
+}
+
+/**
+ * Lists sessions whose audio files may be dropped by the retention cleanup:
+ * started before `cutoff`, still holding a tracked WAV, safely transcribed
+ * (transcript present, so the session content stays available) and not in an
+ * active recording or transcription run.
+ */
+export function listSessionsWithExpiredAudio(cutoffIso: string): ExpiredAudioSession[] {
+  return db
+    .prepare(
+      `SELECT s.id, s.name, s.started_at as startedAt
+       FROM recording_sessions s
+       WHERE s.started_at <= ?
+         AND s.status NOT IN ('recording', 'processing')
+         AND s.transcript IS NOT NULL
+         AND s.transcript <> ''
+         AND EXISTS (
+           SELECT 1 FROM recording_files f WHERE f.session_id = s.id AND f.wav_path IS NOT NULL
+         )
+       ORDER BY s.started_at ASC`
+    )
+    .all(cutoffIso) as ExpiredAudioSession[];
+}
+
 export function createFile(input: CreateFileInput): RecordingFile {
   const result = db
     .prepare(

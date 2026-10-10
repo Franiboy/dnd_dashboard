@@ -153,7 +153,7 @@ export const sessions = {
     deleteSessionMessage: 'Möchtest du die Session wirklich löschen?',
     deleteAudioTitle: 'Audiodateien löschen',
     deleteAudioMessage:
-      'Möchtest du die WAV-Audiodateien dieser Session wirklich löschen? Das Transkript bleibt erhalten.',
+      'Möchtest du die WAV-Audiodateien dieser Session wirklich löschen? Das Transkript bleibt erhalten. Audiodateien werden ohnehin automatisch {days} Tage nach der Session gelöscht.',
     deleteArcTitle: 'Story Arc löschen',
     deleteArcMessage:
       'Möchtest du den Story Arc „{name}“ wirklich löschen? Zugeordnete Sessions und Tagebucheinträge bleiben erhalten und sind dann ohne Arc.',

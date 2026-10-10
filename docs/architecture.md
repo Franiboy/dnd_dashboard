@@ -74,20 +74,21 @@ This document describes the high-level structure of the D&D Dashboard.
 
 ### Scheduler & Discord (`server/scheduler/` & `server/discord/`)
 
-| File                                                    | Purpose                                                                                        |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `scheduler/sessionAi.ts`                                | Nightly AI pipeline: transcript improvement → game boundaries → game-day detection → summaries |
-| `scheduler/timeline.ts`                                 | Timeline generation for pending/stale sessions (nightly job + manual admin trigger)            |
-| `scheduler/bingoSuggestions.ts`                         | Keeps the AI bingo suggestion pool filled in the background                                    |
-| `scheduler/entitySummaries.ts`                          | Starts AI-generated entity summaries in the background                                         |
-| `scheduler/sessionToDiary.ts`                           | Nightly auto-transfer of completed sessions to user diaries                                    |
-| `discord/bot.ts`                                        | Starts the Discord bot and joins voice channels for recordings                                 |
-| `discord/recorder.ts`                                   | Records Discord audio and stores PCM files                                                     |
-| `discord/transcriber.ts`                                | Runs Whisper transcription                                                                     |
-| `discord/scheduler.ts`                                  | Processes pending transcriptions                                                               |
-| `discord/oauth.ts`                                      | Discord OAuth2 token exchange, refresh and profile sync                                        |
-| `scheduler/discordTokenRefresh.ts`                      | Periodic refresh of stored Discord OAuth tokens                                                |
-| `discord/audio.ts` / `files.ts` / `recordingsEvents.ts` | Audio processing, file management, events                                                      |
+| File                                                    | Purpose                                                                                          |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `scheduler/sessionAi.ts`                                | Nightly AI pipeline: transcript improvement → game boundaries → game-day detection → summaries   |
+| `scheduler/timeline.ts`                                 | Timeline generation for pending/stale sessions (nightly job + manual admin trigger)              |
+| `scheduler/bingoSuggestions.ts`                         | Keeps the AI bingo suggestion pool filled in the background                                      |
+| `scheduler/entitySummaries.ts`                          | Starts AI-generated entity summaries in the background                                           |
+| `scheduler/sessionToDiary.ts`                           | Nightly auto-transfer of completed sessions to user diaries                                      |
+| `scheduler/audioCleanup.ts`                             | Deletes the audio files of sessions that are past the 14-day retention window (daily + on start) |
+| `discord/bot.ts`                                        | Starts the Discord bot and joins voice channels for recordings                                   |
+| `discord/recorder.ts`                                   | Records Discord audio and stores PCM files                                                       |
+| `discord/transcriber.ts`                                | Runs Whisper transcription                                                                       |
+| `discord/scheduler.ts`                                  | Processes pending transcriptions                                                                 |
+| `discord/oauth.ts`                                      | Discord OAuth2 token exchange, refresh and profile sync                                          |
+| `scheduler/discordTokenRefresh.ts`                      | Periodic refresh of stored Discord OAuth tokens                                                  |
+| `discord/audio.ts` / `files.ts` / `recordingsEvents.ts` | Audio processing, file management, events                                                        |
 
 ## Frontend (`src/`)
 
@@ -110,3 +111,4 @@ This document describes the high-level structure of the D&D Dashboard.
 ## Shared
 
 - `shared/types.ts` – Shared TypeScript types for frontend and backend.
+- `shared/retention.ts` – Retention windows of the recording module (delete window for sessions, audio retention) used by the server, the background cleanup and the sessions page.

@@ -49,6 +49,7 @@ import type {
   VersionInfo,
   CampaignDay,
 } from '../../shared/types';
+import { isWithinDeleteWindow, RECORDING_RETENTION_DAYS } from '../../shared/retention';
 import 'react-quill-new/dist/quill.snow.css';
 
 interface SessionsProps {
@@ -90,10 +91,8 @@ function parseTimeParam(ts: string): number | null {
   return (h ? parseInt(h, 10) : 0) * 3600 + parseInt(m, 10) * 60 + parseInt(s, 10);
 }
 
-const SESSION_DELETE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
-
 function isDeletableSession(session: RecordingSession): boolean {
-  return Date.now() - new Date(session.startedAt).getTime() < SESSION_DELETE_WINDOW_MS;
+  return isWithinDeleteWindow(session.startedAt);
 }
 
 const recordingStatusKeys = {
@@ -1475,7 +1474,7 @@ export function Sessions({ user }: SessionsProps) {
           onConfirm={confirmDeleteAudio}
           onCancel={() => setAudioToDelete(null)}
         >
-          <p>{t('sessions.dialogs.deleteAudioMessage')}</p>
+          <p>{t('sessions.dialogs.deleteAudioMessage', { days: RECORDING_RETENTION_DAYS })}</p>
         </ConfirmDialog>
       )}
 

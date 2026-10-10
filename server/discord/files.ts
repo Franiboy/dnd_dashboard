@@ -24,7 +24,19 @@ function getNormalizedWavPaths(file: { wavPath: string | null; pcmPath: string }
   return [...paths];
 }
 
-export async function deleteSessionAudioFiles(sessionId: number): Promise<number> {
+export interface DeleteSessionAudioOptions {
+  /**
+   * Set to false when a batch (e.g. the retention cleanup) deletes several
+   * sessions and emits a single update afterwards instead.
+   */
+  notify?: boolean;
+}
+
+export async function deleteSessionAudioFiles(
+  sessionId: number,
+  options: DeleteSessionAudioOptions = {}
+): Promise<number> {
+  const { notify = true } = options;
   const files = getFilesBySessionId(sessionId);
   let deleted = 0;
 
@@ -54,6 +66,8 @@ export async function deleteSessionAudioFiles(sessionId: number): Promise<number
     }
   }
 
-  emitSessionsUpdated();
+  if (notify) {
+    emitSessionsUpdated();
+  }
   return deleted;
 }
