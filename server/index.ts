@@ -43,6 +43,7 @@ import {
   startSessionCleanupScheduler,
   stopSessionCleanupScheduler,
 } from './scheduler/sessionCleanup.js';
+import { startAudioCleanupScheduler, stopAudioCleanupScheduler } from './scheduler/audioCleanup.js';
 import {
   startBingoSuggestionScheduler,
   stopBingoSuggestionScheduler,
@@ -190,6 +191,7 @@ startRecordingHealthCheck();
 startTranscriptionScheduler();
 startSummaryScheduler();
 startSessionCleanupScheduler();
+startAudioCleanupScheduler();
 startBingoSuggestionScheduler();
 startDiscordTokenRefreshScheduler();
 
@@ -323,6 +325,7 @@ async function shutdown(signal: string) {
   stopRecordingHealthCheck();
   stopSummaryScheduler();
   stopSessionCleanupScheduler();
+  stopAudioCleanupScheduler();
   stopBingoSuggestionScheduler();
   stopDiscordTokenRefreshScheduler();
 

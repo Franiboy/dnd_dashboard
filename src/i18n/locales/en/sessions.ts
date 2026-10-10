@@ -154,7 +154,7 @@ export const sessions = {
     deleteSessionMessage: 'Do you really want to delete this session?',
     deleteAudioTitle: 'Delete audio files',
     deleteAudioMessage:
-      'Do you really want to delete this session’s WAV audio files? The transcript will be kept.',
+      'Do you really want to delete this session’s WAV audio files? The transcript will be kept. Audio files are deleted automatically {days} days after the session anyway.',
     deleteArcTitle: 'Delete story arc',
     deleteArcMessage:
       'Do you really want to delete the story arc “{name}”? Assigned sessions and diary entries will be kept and will no longer have an arc.',

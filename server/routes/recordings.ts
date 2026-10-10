@@ -53,10 +53,10 @@ import {
 import { assignSessionToArc } from '../repositories/storyArcs.js';
 import { createLogger } from '../logger.js';
 import { SseBroadcaster, writeSse } from '../utils/sse.js';
+import { isWithinDeleteWindow } from '../../shared/retention.js';
 import type { RecordingSession, ServerMessagePayload } from '../../shared/types.js';
 
 const log = createLogger('recordings-routes');
-const SESSION_DELETE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 const router = Router();
 const sseClients = new SseBroadcaster();
@@ -768,7 +768,7 @@ router.put('/:id/arc', requireAdmin, (req: AuthRequest, res) => {
 router.delete('/:id', requireAdmin, async (req, res) => {
   const id = parseWith(idParamSchema, req.params.id);
   const session = requireSession(id);
-  if (Date.now() - new Date(session.startedAt).getTime() >= SESSION_DELETE_WINDOW_MS) {
+  if (!isWithinDeleteWindow(session.startedAt)) {
     throw new AppError(403, 'Aufnahmen älter als 14 Tage können nicht gelöscht werden', {
       messageKey: 'errors.recordings.deleteTooOld',
     });
