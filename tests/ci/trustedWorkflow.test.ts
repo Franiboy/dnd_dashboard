@@ -220,7 +220,17 @@ function runTrustedStep(
   }
 }
 
-describe('trusted runner-invariant step', () => {
+function hasTool(tool: string): boolean {
+  const probe = spawnSync(tool, ['--version'], { encoding: 'utf8' });
+  return !probe.error && probe.status === 0;
+}
+
+// The release validation container does not provide jq: skip the suite there
+// instead of failing it. CI runners (and the documented Linux setup) provide
+// both tools, so the suite still runs wherever it matters.
+const stepToolsAvailable = hasTool('bash') && hasTool('jq');
+
+describe.skipIf(!stepToolsAvailable)('trusted runner-invariant step', () => {
   const clean = 'name: CI\non: push\njobs:\n  a:\n    runs-on: ubuntu-24.04\n    steps: []\n';
   const selfHosted =
     'name: bad\non: push\njobs:\n  a:\n    runs-on: [self-hosted, Linux, X64, HomeServer]\n    steps: []\n';
