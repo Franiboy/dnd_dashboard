@@ -4,7 +4,7 @@ import { createLogger } from '../logger.js';
 
 const log = createLogger('model-config');
 
-const DEFAULT_MODEL = 'opencode/deepseek-v4-flash-free';
+const DEFAULT_MODEL = 'opencode-go/muse-spark-1.3-contributor';
 
 export function isValidModel(value: string | undefined | null): value is string {
   if (!value) return false;
