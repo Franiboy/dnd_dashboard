@@ -255,12 +255,21 @@ export async function cleanupOpenCodeSessions(
   const { keepSessionIds = new Set(), maxAgeMs = 24 * 60 * 60 * 1000, prefix = 'dnd-' } = options;
   const now = Date.now();
   const sessions = await listOpenCodeSessions();
-  const candidates = sessions.filter((s) => s.title.startsWith(prefix));
+  // Sessions without an id or title cannot be identified or deleted, and
+  // untitled sessions must not crash the cleanup (opencode lists them too).
+  const candidates = sessions.filter(
+    (s) => typeof s.id === 'string' && typeof s.title === 'string' && s.title.startsWith(prefix)
+  );
 
   let deleted = 0;
   for (const session of candidates) {
     if (keepSessionIds.has(session.id)) continue;
-    if (now - session.updated * 1000 < maxAgeMs) continue;
+    if (typeof session.updated !== 'number') continue;
+    // `opencode session list` reports `updated` in milliseconds; older
+    // versions used seconds. Normalize by magnitude so old sessions are
+    // actually recognized as old instead of appearing to be in the future.
+    const updatedMs = session.updated > 1e12 ? session.updated : session.updated * 1000;
+    if (now - updatedMs < maxAgeMs) continue;
 
     await deleteOpenCodeSession(session.id);
     deleted++;
