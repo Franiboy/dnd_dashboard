@@ -68,6 +68,7 @@ export const diary = {
     cancel: 'Abbrechen',
     stale: 'Zusammenfassung ist veraltet und sollte aktualisiert werden.',
     empty: 'Noch keine Zusammenfassung vorhanden.',
+    emptyContent: 'Der Eintrag enthält keinen Text – bitte zuerst Inhalt schreiben.',
     updated: 'Zusammenfassung aktualisiert.',
     maxLength: 'Zusammenfassung darf maximal {count} Zeichen haben',
     editLabel: 'Zusammenfassung bearbeiten',

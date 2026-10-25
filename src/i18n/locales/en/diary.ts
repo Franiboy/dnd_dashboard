@@ -67,6 +67,7 @@ export const diary = {
     cancel: 'Cancel',
     stale: 'The summary is outdated and should be updated.',
     empty: 'No summary yet.',
+    emptyContent: 'This entry has no text – please add content first.',
     updated: 'Summary updated.',
     maxLength: 'The summary may contain at most {count} characters',
     editLabel: 'Edit summary',

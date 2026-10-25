@@ -1,6 +1,7 @@
 import { EntityRichText } from '../EntityRichText';
 import { Button } from '../Button';
 import { useI18n } from '../../hooks/useI18n';
+import { stripHtml } from '../quillConfig';
 import type { DiaryEntry } from '../../../shared/types';
 
 /** Mapping rows as accepted by EntityRichText (same shape as useEntityMappings). */
@@ -37,6 +38,7 @@ export function DiarySummaryPanel({
   onCancel,
 }: DiarySummaryPanelProps) {
   const { t } = useI18n();
+  const contentEmpty = !stripHtml(entry.content ?? '').trim();
 
   return (
     <div
@@ -53,9 +55,11 @@ export function DiarySummaryPanel({
             {entry.aiDirty || !entry.summary ? (
               <button
                 type="button"
-                title={t('diary.summary.updateTitle')}
+                title={
+                  contentEmpty ? t('diary.summary.emptyContent') : t('diary.summary.updateTitle')
+                }
                 onClick={onGenerate}
-                disabled={working || processing}
+                disabled={working || processing || contentEmpty}
                 className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold hover:brightness-110 transition disabled:opacity-50"
               >
                 {processing
@@ -67,9 +71,13 @@ export function DiarySummaryPanel({
             ) : (
               <button
                 type="button"
-                title={t('diary.summary.regenerateTitle')}
+                title={
+                  contentEmpty
+                    ? t('diary.summary.emptyContent')
+                    : t('diary.summary.regenerateTitle')
+                }
                 onClick={onGenerate}
-                disabled={working}
+                disabled={working || contentEmpty}
                 className="text-[var(--accent)] hover:text-[var(--accent-dim)] transition disabled:opacity-50"
               >
                 {processing ? (
