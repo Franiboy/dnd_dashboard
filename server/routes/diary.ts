@@ -14,6 +14,7 @@ import {
   improveRewrittenWithCommand,
   processDiaryEntryAi,
   rewriteTextWithAi,
+  stripHtml,
 } from '../ai/rewrite.js';
 import { deleteOpenCodeSession } from '../ai/opencode.js';
 import { deleteRewrittenFile, getRewrittenFilePath, readRewrittenFile } from '../diaryFiles.js';
@@ -404,6 +405,11 @@ router.post('/entries/:id/summarize', aiRateLimit, async (req: AuthRequest, res)
 
   const id = parseWith(idParamSchema, req.params.id);
   const existing = requireOwnEntry(id, user.id);
+  if (!stripHtml(existing.content).trim()) {
+    throw new AppError(400, 'Inhalt darf nicht leer sein', {
+      messageKey: 'errors.validation.contentRequired',
+    });
+  }
 
   const stopProgress = startProgressMessages(user.id, {
     message: 'KI analysiert den Tagebucheintrag...',
