@@ -375,7 +375,7 @@ export async function summarizeTextWithAi(
   const runLanguage = language ?? getAiLanguage();
   const plainText = stripHtml(text);
   if (!plainText) {
-    log.warn('summarizeTextWithAi called with empty content');
+    log.warn(`summarizeTextWithAi called with empty content for entry ${entryId}`);
     return null;
   }
 

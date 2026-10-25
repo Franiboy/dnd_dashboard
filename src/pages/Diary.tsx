@@ -284,6 +284,10 @@ export function Diary() {
   }
 
   async function handleGenerateSummary(entry: DiaryEntry) {
+    if (isEmptyHtml(entry.content)) {
+      showError(t('diary.summary.emptyContent'));
+      return;
+    }
     setProcessingSummaryId(entry.id);
     await beginAiAction(localAiStatus('diary.summaryStatus', t('diary.summaryStatus')));
     const { data, error } = await request<{ entry: DiaryEntry }>(
