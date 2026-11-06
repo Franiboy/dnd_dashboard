@@ -32,7 +32,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
+    "@discordjs/opus": "^0.11.0",
     "@discordjs/voice": "^0.19.2",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "bcrypt": "^6.0.0",
@@ -67,13 +67,13 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^26.6.2",
+    "@types/node": "^24.19.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "concurrently": "^10.0.3",
     "husky": "^9.1.7",
-    "jsdom": "^30.0.1",
+    "jsdom": "^31.0.0",
     "lint-staged": "^17.3.0",
     "oxlint": "^1.82.0",
     "prettier": "^3.9.6",
@@ -94,5 +94,11 @@
   "overrides": {
     "quill": "2.0.3",
     "tar": "7.5.22"
+  },
+  "allowScripts": {
+    "@discordjs/opus": true,
+    "bcrypt": true,
+    "better-sqlite3": true,
+    "esbuild": true
   }
 }
