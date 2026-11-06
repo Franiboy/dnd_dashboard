@@ -5,8 +5,11 @@ Copy `.env.example` to `.env` and adjust the values:
 ```bash
 PORT=3001
 JWT_SECRET=change-me-in-production
-# Number of days until the dashboard login session expires (default: 7)
-JWT_EXPIRES_IN_DAYS=7
+# Inactivity window in days for a dashboard login session (default: 14).
+# Active sessions renew their cookie automatically; the absolute cap below still applies.
+JWT_EXPIRES_IN_DAYS=14
+# Hard cap in days from the original login, even for continuously active sessions (default: 90)
+JWT_MAX_SESSION_DAYS=90
 # Dashboard login sessions are RS256-signed JWTs. The RSA key pair is
 # generated automatically on first start under data/keys/ (gitignored).
 # To bring your own keys, place them as data/keys/jwt-private.pem and
@@ -85,7 +88,8 @@ AI_MODEL=opencode-go/muse-spark-1.3-contributor
 
 - `PORT` is optional, default is `3001`.
 - `JWT_SECRET` is only the fallback secret for MCP session tokens (see `MCP_TOKEN_SECRET`); setting `MCP_TOKEN_SECRET` explicitly is recommended. Dashboard login sessions do not use it: they are RS256-signed JWTs backed by the RSA key pair under `data/keys/`, which is generated automatically on first start (private key with `0600` permissions). Deleting the key pair logs everyone out; mount or back it up in production. The release deploy script aborts before restarting when the pair is missing or half-present — fresh installs can opt into generation with `DND_DEPLOY_ALLOW_NEW_JWT_KEYS=1` (consumed by `scripts/dnd-release-deploy.sh`, not by the server).
-- `JWT_EXPIRES_IN_DAYS` controls how long a dashboard login session remains valid (default: 7).
+- `JWT_EXPIRES_IN_DAYS` is the inactivity window of a dashboard login session (default: 14). Authenticated requests renew the cookie automatically, so users who keep visiting stay signed in; the value is not a hard cutoff from the login time.
+- `JWT_MAX_SESSION_DAYS` is the absolute session cap from the original login (default: 90). Renewals preserve the original login time, so even a continuously used session requires a fresh login after this period.
 - `TOKEN_ENCRYPTION_KEY` is required when Discord OAuth is configured. It is used to encrypt stored Discord access/refresh tokens at rest. It must be a base64-encoded 32-byte key (e.g. the output of `openssl rand -base64 32`).
 - `ADMIN_PASSWORD` must be set, otherwise `ensureAdminUser()` will not start.
 - `DEV_AUTO_LOGIN` (default `false`) enables an automatic admin login for local development: when the dashboard is opened without a session, it silently signs in as the initial admin. The server only offers this outside production (`NODE_ENV !== 'production'`). The `/api/version` endpoint exposes the state as `devAutoLogin`.
