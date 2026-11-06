@@ -30,6 +30,7 @@ const envSchema = z.object({
 
   JWT_SECRET: z.string().optional(),
   JWT_EXPIRES_IN_DAYS: positiveIntFromEnv,
+  JWT_MAX_SESSION_DAYS: positiveIntFromEnv,
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),
   MCP_TOKEN_SECRET: z.string().optional(),

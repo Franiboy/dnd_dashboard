@@ -25,14 +25,58 @@ const OAUTH_STATE_COOKIE_NAME = 'dnd_oauth_state';
 export const VIEW_AS_USER_HEADER = 'x-dnd-view-as-user';
 const OAUTH_STATE_MAX_AGE_MS = 5 * 60 * 1000;
 
-// Session lifetime is configurable in days; defaults to 7 days.
-const parsedJwtExpiresInDays = Number(process.env.JWT_EXPIRES_IN_DAYS || 7);
+// Session lifetime is configurable in days; defaults to 14 days. The cookie is
+// renewed on authenticated activity, so the window is an inactivity timeout
+// rather than a hard cutoff from the login time.
+const parsedJwtExpiresInDays = Number(process.env.JWT_EXPIRES_IN_DAYS || 14);
 const JWT_EXPIRES_IN_DAYS =
   Number.isFinite(parsedJwtExpiresInDays) && parsedJwtExpiresInDays > 0
     ? parsedJwtExpiresInDays
-    : 7;
+    : 14;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 const TOKEN_MAX_AGE_MS = JWT_EXPIRES_IN_DAYS * MS_PER_DAY;
+
+// Absolute cap from the original login. Renewals keep the original authTime,
+// so a stolen cookie cannot stay valid forever.
+const parsedJwtMaxSessionDays = Number(process.env.JWT_MAX_SESSION_DAYS || 90);
+const JWT_MAX_SESSION_DAYS =
+  Number.isFinite(parsedJwtMaxSessionDays) && parsedJwtMaxSessionDays > 0
+    ? parsedJwtMaxSessionDays
+    : 90;
+const MAX_SESSION_AGE_MS = JWT_MAX_SESSION_DAYS * MS_PER_DAY;
+
+// Renew a session at most once per day, and at most once per minute per user
+// to avoid issuing a new cookie for every parallel request at the threshold.
+export const SESSION_RENEW_AFTER_MS = MS_PER_DAY;
+const RENEW_THROTTLE_MS = 60 * 1000;
+
+export interface VerifiedSession {
+  userId: string;
+  issuedAtMs: number;
+  authTimeMs: number;
+}
+
+interface SessionPayload {
+  userId: string;
+  authTime?: number;
+  iat?: number;
+}
+
+/** Returns false once the absolute session cap (measured from the first login) is exceeded. */
+export function isSessionWithinMaxAge(authTimeMs: number, nowMs = Date.now()): boolean {
+  if (!Number.isFinite(authTimeMs)) return false;
+  // Tolerate small clock skew, but reject tokens that claim to start in the future.
+  if (authTimeMs > nowMs + 5 * 60 * 1000) return false;
+  return nowMs - authTimeMs <= MAX_SESSION_AGE_MS;
+}
+
+/** True when the token is old enough to refresh its cookie on the next request. */
+export function shouldRenewSession(
+  session: Pick<VerifiedSession, 'issuedAtMs'>,
+  nowMs = Date.now()
+): boolean {
+  return nowMs - session.issuedAtMs >= SESSION_RENEW_AFTER_MS;
+}
 
 function generateRsaKeyPair(): { privateKey: string; publicKey: string } {
   const { publicKey, privateKey } = generateKeyPairSync('rsa', {
@@ -146,15 +190,28 @@ const JWT_SIGN_OPTIONS: jwt.SignOptions = {
 };
 const JWT_VERIFY_OPTIONS: jwt.VerifyOptions = { algorithms: ['RS256'] };
 
-export function createToken(user: User): string {
-  return jwt.sign({ userId: user.id }, JWT_KEY_PAIR.privateKey, JWT_SIGN_OPTIONS);
+/**
+ * Issues a session token. `authTimeMs` is the original login time and must be
+ * preserved when an existing session is renewed, so the absolute cap still
+ * applies across renewals.
+ */
+export function createToken(user: User, authTimeMs: number = Date.now()): string {
+  const authTime = Math.floor(authTimeMs / 1000);
+  return jwt.sign({ userId: user.id, authTime }, JWT_KEY_PAIR.privateKey, JWT_SIGN_OPTIONS);
 }
 
-export function verifyToken(token: string): { userId: string } | null {
+export function verifyToken(token: string): VerifiedSession | null {
   try {
-    return jwt.verify(token, JWT_KEY_PAIR.publicKey, JWT_VERIFY_OPTIONS) as {
-      userId: string;
-    };
+    const payload = jwt.verify(token, JWT_KEY_PAIR.publicKey, JWT_VERIFY_OPTIONS) as SessionPayload;
+    if (!payload || typeof payload.userId !== 'string') return null;
+    if (typeof payload.iat !== 'number') return null;
+
+    const issuedAtMs = payload.iat * 1000;
+    // Legacy tokens without authTime fall back to their issue time.
+    const authTimeMs = typeof payload.authTime === 'number' ? payload.authTime * 1000 : issuedAtMs;
+    if (!isSessionWithinMaxAge(authTimeMs)) return null;
+
+    return { userId: payload.userId, issuedAtMs, authTimeMs };
   } catch {
     return null;
   }
@@ -275,19 +332,50 @@ function getBearerToken(req: Request): string | null {
   return value.replace(/^Bearer\s+/i, '');
 }
 
-export function getAuthenticatedUser(req: Request, extraTokens: string[] = []): User | null {
-  const candidates = [...extraTokens, ...getCookieTokens(req)];
-  const bearer = getBearerToken(req);
-  if (bearer) candidates.push(bearer);
+export interface AuthenticatedSession {
+  user: User;
+  session: VerifiedSession;
+  token: string;
+  source: 'cookie' | 'bearer';
+}
 
-  for (const token of candidates) {
-    const payload = verifyToken(token);
-    if (payload) {
-      const user = findUserById(payload.userId);
-      if (user) return user;
-    }
+export function getAuthenticatedSession(
+  req: Request,
+  extraTokens: string[] = []
+): AuthenticatedSession | null {
+  const candidates: Array<{ token: string; source: 'cookie' | 'bearer' }> = [
+    ...extraTokens.filter(Boolean).map((token) => ({ token, source: 'bearer' as const })),
+    ...getCookieTokens(req).map((token) => ({ token, source: 'cookie' as const })),
+  ];
+  const bearer = getBearerToken(req);
+  if (bearer) candidates.push({ token: bearer, source: 'bearer' });
+
+  for (const candidate of candidates) {
+    const session = verifyToken(candidate.token);
+    if (!session) continue;
+    const user = findUserById(session.userId);
+    if (user) return { user, session, token: candidate.token, source: candidate.source };
   }
   return null;
+}
+
+export function getAuthenticatedUser(req: Request, extraTokens: string[] = []): User | null {
+  return getAuthenticatedSession(req, extraTokens)?.user ?? null;
+}
+
+const lastRenewalByUser = new Map<string, number>();
+
+/** Re-issues the cookie for active sessions while preserving the absolute login time. */
+function renewSessionCookie(res: Response, authenticated: AuthenticatedSession): void {
+  if (authenticated.source !== 'cookie') return;
+  const now = Date.now();
+  if (!shouldRenewSession(authenticated.session, now)) return;
+
+  const lastRenewal = lastRenewalByUser.get(authenticated.user.id) ?? 0;
+  if (now - lastRenewal < RENEW_THROTTLE_MS) return;
+  lastRenewalByUser.set(authenticated.user.id, now);
+
+  setAuthCookie(res, createToken(authenticated.user, authenticated.session.authTimeMs));
 }
 
 export async function authMiddleware(
@@ -295,12 +383,14 @@ export async function authMiddleware(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const user = getAuthenticatedUser(req);
-  if (!user) {
+  const authenticated = getAuthenticatedSession(req);
+  if (!authenticated) {
+    clearAuthCookie(res);
     res.status(401).json(errorPayload('Unauthorized'));
     return;
   }
-  req.user = user;
+  req.user = authenticated.user;
+  renewSessionCookie(res, authenticated);
   next();
 }
 
