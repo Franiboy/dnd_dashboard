@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, type VoiceBasedChannel, type VoiceState } from 'discord.js';
-import { readdir, stat } from 'node:fs/promises';
+import { readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   isOpusAvailable,
@@ -15,6 +15,7 @@ import {
 import { startRecording, stopRecording, isRecording, getActiveRecording } from './recorder.js';
 import {
   createSession,
+  deleteSession,
   getSessionById,
   updateSession,
   getFilesBySessionId,
@@ -28,6 +29,7 @@ import type { RecordingChannel, RecordingSession } from '../../shared/types.js';
 import { BOT_TOKEN, GUILD_ID, RECORDINGS_DIR, isRecordingFeatureEnabled } from './config.js';
 import { emitSessionsUpdated, emitStatusUpdated } from './recordingsEvents.js';
 import { createLogger } from '../logger.js';
+import { AUTO_START_SETTLE_MS, isDiscardableEmptyAutoSession } from './autoRecording.js';
 
 const log = createLogger('discord-bot');
 
@@ -45,6 +47,7 @@ let cachedChannels: RecordingChannel[] | null = null;
 let channelsCachedAt = 0;
 const CHANNEL_CACHE_TTL = 60_000;
 const autoStopTimeouts = new Map<string, NodeJS.Timeout>();
+const autoStartTimeouts = new Map<string, NodeJS.Timeout>();
 let healthCheckInterval: NodeJS.Timeout | null = null;
 const AUTO_STOP_DEBOUNCE_MS = 5_000;
 let recoveryPromise: Promise<void> | null = null;
@@ -119,6 +122,8 @@ export async function stopBot(): Promise<void> {
   stopRecordingHealthCheck();
   for (const timeout of autoStopTimeouts.values()) clearTimeout(timeout);
   autoStopTimeouts.clear();
+  for (const timeout of autoStartTimeouts.values()) clearTimeout(timeout);
+  autoStartTimeouts.clear();
   try {
     await client.destroy();
   } catch (err) {
@@ -318,6 +323,39 @@ async function autoStartRecording(channel: VoiceBasedChannel): Promise<void> {
   }
 }
 
+function clearAutoStartTimeout(channelId: string): void {
+  const pendingStart = autoStartTimeouts.get(channelId);
+  if (pendingStart) {
+    clearTimeout(pendingStart);
+    autoStartTimeouts.delete(channelId);
+  }
+}
+
+/** Delay the automatic start so short join/leave flapping does not create phantom sessions. */
+function scheduleAutoStartRecording(channelId: string): void {
+  if (isRecording() || autoStartTimeouts.has(channelId)) return;
+
+  const timeout = setTimeout(async () => {
+    autoStartTimeouts.delete(channelId);
+    try {
+      if (isRecording()) return;
+      // Re-check after the settle window: the channel may be empty again by now.
+      if (await isChannelEmpty(channelId)) return;
+      const guild = getGuild();
+      if (!guild) return;
+      const channel = (await guild.channels
+        .fetch(channelId)
+        .catch(() => null)) as VoiceBasedChannel | null;
+      if (!channel || !channel.isVoiceBased()) return;
+      await autoStartRecording(channel);
+    } catch (err) {
+      log.error(`Delayed auto-start failed for channel ${channelId}:`, err);
+    }
+  }, AUTO_START_SETTLE_MS);
+
+  autoStartTimeouts.set(channelId, timeout);
+}
+
 async function autoStopRecordingIfEmpty(channelId: string): Promise<void> {
   const active = getActiveRecording();
   if (!active || active.channelId !== channelId) return;
@@ -376,23 +414,12 @@ async function handleVoiceStateUpdate(oldState: VoiceState, newState: VoiceState
       clearTimeout(pendingStop);
       autoStopTimeouts.delete(monitoredChannelId);
     }
-    try {
-      const fetched = (await guild.channels.fetch(monitoredChannelId)) as VoiceBasedChannel | null;
-      const channel =
-        fetched && fetched.isVoiceBased()
-          ? fetched
-          : (guild.channels.cache.get(monitoredChannelId) as VoiceBasedChannel | undefined);
-      if (channel) {
-        await autoStartRecording(channel);
-      }
-    } catch {
-      const fallback = guild.channels.cache.get(monitoredChannelId) as
-        VoiceBasedChannel | undefined;
-      if (fallback) await autoStartRecording(fallback);
-    }
+    scheduleAutoStartRecording(monitoredChannelId);
   }
 
   if (leftMonitored) {
+    // A pending start must not fire when everybody already left again.
+    clearAutoStartTimeout(monitoredChannelId);
     await autoStopRecordingIfEmpty(monitoredChannelId);
   }
 }
@@ -698,6 +725,17 @@ async function recoverAllRecordingsInternal(): Promise<void> {
   }
 }
 
+async function discardEmptyAutoSession(session: RecordingSession): Promise<void> {
+  const { directory } = deleteSession(session.id);
+  if (directory) {
+    try {
+      await rm(directory, { recursive: true, force: true });
+    } catch (err) {
+      log.error(`Failed to delete empty auto recording directory ${directory}:`, err);
+    }
+  }
+}
+
 export async function finishRecording(sessionId: number): Promise<RecordingSession> {
   const rec = getActiveRecording();
   if (!rec) {
@@ -732,6 +770,18 @@ export async function finishRecording(sessionId: number): Promise<RecordingSessi
       }
     } catch (err) {
       log.error(`Fallback disk scan failed for session ${sessionId}:`, err);
+    }
+    if (isDiscardableEmptyAutoSession(session.createdBy, session.startedAt, stoppedAt)) {
+      // Phantom session from a short join/leave flap: drop it instead of surfacing an error.
+      await discardEmptyAutoSession(session);
+      log.info(
+        `Discarded empty auto-started recording session ${sessionId} (no audio, ${Math.round(
+          (Date.parse(stoppedAt) - Date.parse(session.startedAt)) / 1000
+        )}s)`
+      );
+      emitStatusUpdated();
+      emitSessionsUpdated();
+      return { ...session, status: 'error', stoppedAt, error: 'Keine Audio-Daten aufgezeichnet.' };
     }
     updateSession(sessionId, {
       status: 'error',
