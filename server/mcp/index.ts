@@ -74,7 +74,7 @@ if (!payload) {
   // exposes no functionality. Hard-exiting here made opencode's MCP layer
   // retry/loop and produced "MCP server started without valid session token"
   // errors on every token-less spawn (e.g. by the opencode background server).
-  log.warn('MCP server started without valid session token; running with empty scopes');
+  log.debug('MCP server started without valid session token; running with empty scopes');
 }
 
 log.info(`MCP server starting with scopes: ${[...allowedScopes].join(', ')}`);
